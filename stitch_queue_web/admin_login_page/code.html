@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kongzas Admin Portal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#6366f1", // Indigo/Blueish purple from the button
+              secondary: "#ec4899", // Pink accent requested in prompt
+              "background-light": "#f3f4f6",
+              "background-dark": "#18181b", // Zinc-900 like dark mode
+              "card-light": "#ffffff",
+              "card-dark": "#27272a", // Zinc-800
+              "input-bg-dark": "#3f3f46", // Zinc-700
+              "input-bg-light": "#f9fafb", // Gray-50
+            },
+            fontFamily: {
+              display: ["Inter", "sans-serif"],
+              sans: ["Inter", "sans-serif"],
+            },
+            borderRadius: {
+              DEFAULT: "0.5rem",
+              'xl': "1rem",
+              '2xl': "1.5rem",
+            },
+            boxShadow: {
+                'glow': '0 0 20px -5px rgba(99, 102, 241, 0.4)',
+            }
+          },
+        },
+      };
+    </script>
+<style>@keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-sans text-gray-800 dark:text-gray-100 min-h-screen flex items-center justify-center p-4 transition-colors duration-300">
+<div class="w-full max-w-md animate-fade-in">
+<div class="text-center mb-8">
+<h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white mb-2">
+                Kongzas
+            </h1>
+<p class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Admin Access Portal
+            </p>
+</div>
+<div class="bg-card-light dark:bg-card-dark rounded-2xl shadow-xl dark:shadow-2xl dark:shadow-black/50 overflow-hidden border border-gray-100 dark:border-gray-700 p-8 relative">
+<div class="absolute -top-10 -right-10 w-24 h-24 bg-secondary/20 rounded-full blur-2xl"></div>
+<div class="flex items-center justify-center gap-2 mb-8 text-gray-800 dark:text-white">
+<span class="material-icons text-3xl text-secondary dark:text-white/90">vpn_key</span>
+<h2 class="text-2xl font-semibold">Sign In</h2>
+</div>
+<form action="#" class="space-y-6" method="POST">
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-600 dark:text-gray-300 text-center" for="email">
+                        Email
+                    </label>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-primary transition-colors">
+<span class="material-icons text-xl">mail_outline</span>
+</div>
+<input class="block w-full pl-10 pr-3 py-3 border border-gray-200 dark:border-gray-600 rounded-xl leading-5 bg-input-bg-light dark:bg-input-bg-dark text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition duration-150 ease-in-out sm:text-sm" id="email" name="email" placeholder="admin@example.com" type="email" value="admin@example.com"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="block text-sm font-medium text-gray-600 dark:text-gray-300 text-center" for="password">
+                        Password
+                    </label>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-primary transition-colors">
+<span class="material-icons text-xl">lock_outline</span>
+</div>
+<input class="block w-full pl-10 pr-3 py-3 border border-gray-200 dark:border-gray-600 rounded-xl leading-5 bg-input-bg-light dark:bg-input-bg-dark text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition duration-150 ease-in-out sm:text-sm" id="password" name="password" placeholder="••••••••" type="password" value="password123"/>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center">
+<input class="h-4 w-4 text-secondary focus:ring-secondary border-gray-300 rounded cursor-pointer" id="remember-me" name="remember-me" type="checkbox"/>
+<label class="ml-2 block text-sm text-gray-600 dark:text-gray-300 cursor-pointer" for="remember-me">
+                        Remember me
+                    </label>
+</div>
+<div class="text-sm">
+<a class="font-medium text-secondary hover:text-pink-600 dark:text-secondary dark:hover:text-pink-400 transition-colors" href="#">
+                        Forgot Password?
+                    </a>
+</div>
+</div>
+<div class="pt-2">
+<button class="w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-gray-800 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-200 transform hover:-translate-y-0.5" type="submit">
+                        Login to Dashboard
+                    </button>
+</div>
+</form>
+</div>
+<div class="mt-8 text-center space-y-1">
+<p class="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                Authorized personnel only.
+            </p>
+<p class="text-xs text-gray-400 dark:text-gray-500">
+                All access attempts are logged.
+            </p>
+</div>
+</div>
+<div class="fixed top-4 right-4">
+<button class="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none transition-colors" id="theme-toggle">
+<span class="material-icons dark:hidden">dark_mode</span>
+<span class="material-icons hidden dark:block">light_mode</span>
+</button>
+</div>
+<script>
+        // Simple dark mode toggle logic
+        const toggleButton = document.getElementById('theme-toggle');
+        const htmlElement = document.documentElement;
+        // Check system preference initially
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            htmlElement.classList.add('dark');
+        }
+        toggleButton.addEventListener('click', () => {
+            htmlElement.classList.toggle('dark');
+        });
+    </script>
+</body></html>

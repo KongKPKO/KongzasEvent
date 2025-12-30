@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Admin Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#5A67D8", // Indigo-500ish as primary action color
+                        secondary: "#EC4899", // Pink for navigation highlights as requested
+                        "background-light": "#F3F4F6",
+                        "background-dark": "#18181B",
+                        "surface-light": "#FFFFFF",
+                        "surface-dark": "#27272A",
+                        "border-light": "#E5E7EB",
+                        "border-dark": "#3F3F46",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+<nav class="bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark shadow-sm">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex justify-between h-16">
+<div class="flex items-center">
+<span class="text-secondary font-bold text-xl tracking-tight">Kongzas</span>
+</div>
+<div class="hidden sm:flex sm:space-x-8 items-center">
+<a class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 hover:text-secondary dark:hover:text-secondary transition-colors group" href="#">
+<span class="material-icons-outlined text-2xl mb-0.5 group-hover:scale-110 transition-transform duration-200">home</span>
+<span class="text-xs font-medium">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 hover:text-secondary dark:hover:text-secondary transition-colors group" href="#">
+<span class="material-icons-outlined text-2xl mb-0.5 group-hover:scale-110 transition-transform duration-200">coffee</span>
+<span class="text-xs font-medium">Menu</span>
+</a>
+<a class="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 hover:text-secondary dark:hover:text-secondary transition-colors group" href="#">
+<span class="material-icons-outlined text-2xl mb-0.5 group-hover:scale-110 transition-transform duration-200">people</span>
+<span class="text-xs font-medium">Queue</span>
+</a>
+</div>
+<div class="flex items-center sm:hidden">
+<button class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-secondary" type="button">
+<span class="material-icons-outlined">menu</span>
+</button>
+</div>
+</div>
+</div>
+</nav>
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="md:flex md:items-center md:justify-between mb-8">
+<div class="flex-1 min-w-0">
+<h2 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white sm:text-3xl sm:truncate">
+                    Admin Dashboard
+                </h2>
+<div class="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:mt-0 sm:space-x-6">
+<div class="mt-2 flex items-center text-sm text-green-500 dark:text-green-400 font-medium">
+<span class="material-icons-outlined text-sm mr-1.5">fiber_manual_record</span>
+                        System Online
+                    </div>
+<div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
+<span class="material-icons-outlined text-lg mr-1.5">event</span>
+                        Comic Square 9
+                    </div>
+</div>
+</div>
+<div class="mt-4 flex md:mt-0 md:ml-4">
+<button class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-surface-light dark:bg-surface-dark hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary" type="button">
+<span class="material-icons-outlined mr-2 text-sm">settings</span>
+                    Settings
+                </button>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<div class="lg:col-span-2 space-y-6">
+<div class="bg-surface-light dark:bg-surface-dark overflow-hidden shadow rounded-lg border border-border-light dark:border-border-dark">
+<div class="px-4 py-5 sm:p-6">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white flex items-center">
+<span class="material-icons-outlined mr-2 text-primary">confirmation_number</span>
+                                Queue Control
+                            </h3>
+<button class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center transition-colors">
+<span class="material-icons-outlined mr-1 text-sm">refresh</span> Reset Queue
+                            </button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 text-center divide-y md:divide-y-0 md:divide-x divide-gray-200 dark:divide-gray-700">
+<div class="py-2">
+<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total in Queue</dt>
+<dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">3</dd>
+</div>
+<div class="py-2">
+<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Next Ticket</dt>
+<dd class="mt-1 text-3xl font-semibold text-primary">#6</dd>
+</div>
+<div class="py-2">
+<dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Waiting</dt>
+<dd class="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">1</dd>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row gap-4 justify-center">
+<button class="w-full sm:w-auto inline-flex justify-center items-center px-6 py-4 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all transform active:scale-95" type="button">
+<span class="material-icons-outlined mr-2">play_arrow</span>
+                                Call Next Ticket (#6)
+                            </button>
+<button class="w-full sm:w-auto inline-flex justify-center items-center px-6 py-4 border border-gray-300 dark:border-gray-600 shadow-sm text-base font-medium rounded-md text-gray-700 dark:text-gray-200 bg-surface-light dark:bg-surface-dark hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all" type="button">
+<span class="material-icons-outlined mr-2">undo</span>
+                                Undo Last
+                            </button>
+</div>
+</div>
+<div class="bg-gray-50 dark:bg-gray-800/50 px-4 py-4 sm:px-6">
+<div class="text-sm text-center text-gray-500 dark:text-gray-400">
+<span class="material-icons-outlined align-middle text-sm mr-1">info</span>
+                            Calling a ticket notifies the user immediately.
+                        </div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-surface-light dark:bg-surface-dark shadow rounded-lg border border-border-light dark:border-border-dark flex flex-col">
+<div class="px-4 py-5 sm:p-6 flex-1">
+<h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center">
+<span class="material-icons-outlined mr-2 text-yellow-500">notifications_active</span>
+                                Waiting for Arrival (1)
+                            </h4>
+<div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4 flex flex-col items-center justify-center space-y-3">
+<div class="text-center">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100 mb-2">
+                                        Ready
+                                    </span>
+<div class="text-4xl font-bold text-gray-900 dark:text-white mb-1">#5</div>
+<div class="text-xs text-gray-500 dark:text-gray-400">Called 0:33 ago</div>
+</div>
+<button class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                                    Confirm Arrival
+                                </button>
+</div>
+</div>
+</div>
+<div class="bg-surface-light dark:bg-surface-dark shadow rounded-lg border border-border-light dark:border-border-dark flex flex-col">
+<div class="px-4 py-5 sm:p-6 flex-1">
+<h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center">
+<span class="material-icons-outlined mr-2 text-green-500">check_circle</span>
+                                Being Served (1)
+                            </h4>
+<div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4 flex flex-col items-center justify-center h-full">
+<div class="text-center py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 mb-2">
+                                        Serving
+                                    </span>
+<div class="text-4xl font-bold text-gray-900 dark:text-white mb-1">#4</div>
+<div class="text-xs text-gray-500 dark:text-gray-400">Active</div>
+</div>
+<div class="w-full flex justify-center pt-2">
+<button class="text-sm text-green-700 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300 font-medium">
+                                        Mark Complete
+                                    </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div class="bg-surface-light dark:bg-surface-dark shadow rounded-lg border border-border-light dark:border-border-dark">
+<div class="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+<h3 class="text-lg font-medium text-gray-900 dark:text-white">Waiting List</h3>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                            1
+                        </span>
+</div>
+<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+<li class="px-4 py-4 sm:px-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer group">
+<div class="flex items-center justify-between">
+<div class="flex items-center">
+<div class="flex-shrink-0">
+<span class="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-primary font-bold">#6</span>
+</div>
+<div class="ml-4">
+<div class="text-sm font-medium text-gray-900 dark:text-white">Next in Line</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">Waited 0m</div>
+</div>
+</div>
+<div>
+<span class="material-icons-outlined text-gray-400 group-hover:text-gray-500">chevron_right</span>
+</div>
+</div>
+</li>
+</ul>
+<div class="bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-right sm:px-6 rounded-b-lg">
+<a class="text-sm font-medium text-primary hover:text-indigo-500" href="#">View all waiting</a>
+</div>
+</div>
+<div class="bg-surface-light dark:bg-surface-dark shadow rounded-lg border border-border-light dark:border-border-dark opacity-75 hover:opacity-100 transition-opacity">
+<div class="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+<h3 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+<span class="material-icons-outlined text-red-500 mr-2 text-base">error_outline</span>
+                            Missed
+                        </h3>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200">
+                            1
+                        </span>
+</div>
+<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+<li class="px-4 py-4 sm:px-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+<div class="flex items-center justify-between">
+<div class="flex items-center">
+<div class="flex-shrink-0">
+<span class="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold">#3</span>
+</div>
+<div class="ml-4">
+<div class="text-sm font-medium text-gray-900 dark:text-white">Ticket Expired</div>
+<div class="text-xs text-gray-500 dark:text-gray-400">Called 1h ago</div>
+</div>
+</div>
+<button class="text-xs text-primary hover:underline">Recall</button>
+</div>
+</li>
+</ul>
+</div>
+<div class="bg-surface-light dark:bg-surface-dark shadow rounded-lg border border-border-light dark:border-border-dark p-6">
+<h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Analytics</h3>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+<dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Served Total</dt>
+<dd class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">2</dd>
+</div>
+<div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-center">
+<dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Expired Total</dt>
+<dd class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">1</dd>
+</div>
+<div class="col-span-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg flex justify-between items-center">
+<div>
+<dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg Wait Time</dt>
+<dd class="mt-1 text-lg font-bold text-gray-900 dark:text-white">~12m</dd>
+</div>
+<span class="material-icons-outlined text-gray-400 text-2xl">timer</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<footer class="bg-surface-light dark:bg-surface-dark border-t border-border-light dark:border-border-dark mt-auto">
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+<p class="text-center text-sm text-gray-500 dark:text-gray-400">
+                © 2026 Kongzas Event Management. All rights reserved.
+            </p>
+</div>
+</footer>
+</body></html>

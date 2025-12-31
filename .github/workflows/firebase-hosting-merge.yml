@@ -16,10 +16,7 @@ jobs:
           node-version: 18
       - name: Install dependencies
         run: npm ci
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-      - name: Run Playwright tests
-        run: npx playwright test
+      # Tests are now handled by scheduled-tests.yml to speed up deployment
       - run: npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:

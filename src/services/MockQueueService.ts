@@ -15,20 +15,30 @@ const notify = () => {
   listeners.forEach(cb => cb({ ...currentState }));
 };
 
-export const MockQueueService: QueueService = {
-  subscribeToQueue: (callback) => {
+const mockService = {
+  subscribeToQueue: (callback: (state: QueueState) => void) => {
     listeners.add(callback);
     callback({ ...currentState }); // Initial value
     return () => listeners.delete(callback);
   },
 
-  updateServing: async (_number) => {
+  // Helper for E2E tests
+  _forceExpire: (ticketId: number) => {
+      if (currentState.tickets[ticketId]) {
+          // Force status to expired directly to avoid timing issues in tests
+          currentState.tickets[ticketId].status = 'expired';
+          currentState.tickets[ticketId].calledAt = Date.now() - (31 * 60 * 1000); // Keep time logic just in case for display
+          notify();
+      }
+  },
+
+  updateServing: async (_number: number) => {
     console.warn("Deprecated updateServing called");
   },
 
   callNext: async () => {
     // Cleanup first
-    MockQueueService.cleanupExpired!();
+    mockService.cleanupExpired!();
 
     // 1. Complete Pending
     Object.values(currentState.tickets).forEach(t => {
@@ -63,15 +73,15 @@ export const MockQueueService: QueueService = {
     if (changed) notify();
   },
 
-  confirmTicket: async (ticketId) => {
+  confirmTicket: async (ticketId: number) => {
     const ticket = currentState.tickets[ticketId];
-    if (ticket && ticket.status === 'ready') {
+    if (ticket && (ticket.status === 'ready' || ticket.status === 'expired')) {
       currentState.tickets[ticketId].status = 'pending';
       notify();
     }
   },
 
-  completeTicket: async (ticketId) => {
+  completeTicket: async (ticketId: number) => {
     const ticket = currentState.tickets[ticketId];
     if (ticket) {
       currentState.tickets[ticketId].status = 'complete';
@@ -106,3 +116,5 @@ export const MockQueueService: QueueService = {
     console.log("Mock undo not implemented");
   }
 };
+
+export const MockQueueService = mockService as QueueService;

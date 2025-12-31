@@ -142,7 +142,7 @@ export class FirebaseQueueService implements QueueService {
       const tickets: Record<number, TicketData> = data.tickets || {};
       const ticket = tickets[ticketId];
 
-      if (ticket && ticket.status === 'ready') {
+      if (ticket && (ticket.status === 'ready' || ticket.status === 'expired')) {
         // SAVE SNAPSHOT FOR UNDO
         const previousTickets = JSON.parse(JSON.stringify(tickets));
 
@@ -223,6 +223,27 @@ export class FirebaseQueueService implements QueueService {
       isAccepting: true,
       lastUpdated: Date.now(),
       tickets: {}
+    });
+  }
+
+  // Helper for E2E tests
+  async _forceExpire(ticketId: number): Promise<void> {
+    await runTransaction(db, async (txn) => {
+      const docSnap = await txn.get(this.docRef);
+      if (!docSnap.exists()) return;
+
+      const data = docSnap.data();
+      const tickets: Record<number, TicketData> = data.tickets || {};
+      
+      if (tickets[ticketId]) {
+         tickets[ticketId].status = 'expired';
+         tickets[ticketId].calledAt = Date.now() - (35 * 60 * 1000); // > 30 mins
+         
+         txn.update(this.docRef, {
+            tickets: tickets,
+            lastUpdated: Date.now()
+         });
+      }
     });
   }
 }

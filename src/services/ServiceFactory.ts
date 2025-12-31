@@ -15,5 +15,9 @@ export const getQueueService = (): QueueService => {
       serviceInstance = MockQueueService;
     }
   }
+  if (typeof window !== 'undefined') {
+    // @ts-ignore
+    window.queueService = serviceInstance;
+  }
   return serviceInstance;
 };

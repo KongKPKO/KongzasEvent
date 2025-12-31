@@ -271,7 +271,12 @@ const Admin = () => {
                                     <div className="text-xs text-gray-500 dark:text-gray-400">Called {formatElapsedTime(Date.now() - (t.calledAt || 0))} ago</div>
                                  </div>
                               </div>
-
+                              <button
+                                 onClick={() => handleConfirm(t.id)}
+                                 className="ml-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-primary hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-sm"
+                              >
+                                 Confirm Arrival
+                              </button>
                            </div>
                         </li>
                      ))}

@@ -10,6 +10,14 @@ import Menu from './pages/Menu';
 import Login from './pages/Login';
 import MainLayout from './components/MainLayout';
 import { RequireAuth } from './components/RequireAuth';
+import AppSupabase from './AppSupabase';
+
+// Customer Pages
+import CustomerLayout from './pages/customer/CustomerLayout';
+import CustomerHome from './pages/customer/Home';
+import MenuView from './pages/customer/MenuView';
+import QueueView from './pages/customer/QueueView';
+import ManageProducts from './pages/ManageProducts';
 
 function App() {
   return (
@@ -29,6 +37,19 @@ function App() {
 
           {/* Login Page */}
           <Route path="/login" element={<Login />} />
+          
+          {/* Supabase Demo Integration */}
+          <Route path="/supabase-demo" element={<AppSupabase />} />
+          <Route path="/manage-products" element={<ManageProducts />} />
+
+          {/* Customer Facing App (Slug-Based) */}
+          <Route path="/:slug" element={<CustomerLayout />}>
+             <Route path="home" element={<CustomerHome />} />
+             <Route path="menu" element={<MenuView />} />
+             <Route path="queue" element={<QueueView />} />
+             {/* Default redirect to home if just slug is entered? Or maybe show home */}
+             <Route index element={<CustomerHome />} />
+          </Route>
         </Routes>
       </div>
     </Router>

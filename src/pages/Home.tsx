@@ -17,7 +17,7 @@ const Home = () => {
   ].filter(link => link.url);
 
   return (
-    <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-12">
+    <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-20">
       {/* Header Section */}
       <div className="pt-12 pb-6 px-6 text-center">
         <h1 className="text-3xl font-black text-[#ff4d94] mb-2 tracking-tight">
@@ -25,9 +25,11 @@ const Home = () => {
         </h1>
         
         {artist.bio && (
-          <p className="text-gray-500 font-medium text-sm leading-relaxed max-w-[280px] mx-auto mb-5">
-            {artist.bio}
-          </p>
+          <div className="text-gray-500 font-medium text-sm leading-relaxed max-w-[280px] mx-auto mb-5">
+            {artist.bio.split('\n').map((line, i) => (
+              <div key={i} className="min-h-[1.5em]">{line}</div>
+            ))}
+          </div>
         )}
 
         {/* Status Badge */}
@@ -119,10 +121,10 @@ const Home = () => {
       </div>
 
       {/* Social Footer */}
-      <div className="mt-12 px-8">
+      <div className="px-8">
         <div className="flex items-center gap-4 mb-6">
            <div className="h-px bg-gray-200 flex-1"></div>
-           <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Follow Me</span>
+           <span className="text-xs font-bold text-black uppercase tracking-widest">Follow Me</span>
            <div className="h-px bg-gray-200 flex-1"></div>
         </div>
 
@@ -133,7 +135,7 @@ const Home = () => {
                  href={link.url}
                  target="_blank"
                  rel="noreferrer"
-                 className="text-gray-400 hover:text-[#ff4d94] hover:scale-110 transition-all duration-300"
+                 className="text-black hover:scale-110 transition-all duration-300"
               >
                  {link.icon}
               </a>

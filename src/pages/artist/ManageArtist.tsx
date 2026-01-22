@@ -1,0 +1,665 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../../supabaseClient';
+import { Calendar, User, MapPin, Store, Ticket, Trash2, Plus, X, BarChart2, LayoutDashboard, List, History } from 'lucide-react';
+import { Button } from '../../components/ui';
+import { Link, useLocation } from 'react-router-dom';
+
+interface Artist {
+  id: string;
+  display_name: string;
+  bio: string;
+  is_active: boolean;
+  x_url: string;
+  ig_url: string;
+  facebook_url: string;
+  tiktok_url: string;
+  email: string;
+}
+
+interface Event {
+  id: string;
+  artist_id: string;
+  event_name: string;
+  location_name: string;
+  location_detail: string;
+  booth_number: string;
+  entrance_fee: string;
+  transit_info: string;
+  start_date: string;
+  end_date: string;
+  status: 'Confirmed' | 'Cancelled';
+}
+
+const ManageArtist = () => {
+  const [artist, setArtist] = useState<Artist | null>(null);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentEvent, setCurrentEvent] = useState<Partial<Event>>({});
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
+
+  // Stats Modal State
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [summaryStats, setSummaryStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        if (isMounted) setIsLoading(true);
+
+        // 1. Fetch Artist (slug='test1' for currrent user context)
+        const { data: artistData, error: artistError } = await supabase
+          .from('artists')
+          .select('*')
+          .eq('slug', 'test1')
+          .single();
+
+        if (artistError) throw artistError;
+
+        if (isMounted && artistData) {
+          setArtist(artistData);
+
+          // 2. Fetch Events
+          const { data: eventData, error: eventError } = await supabase
+            .from('events')
+            .select('*')
+            .eq('artist_id', artistData.id)
+            .order('start_date', { ascending: true });
+
+          if (eventError) throw eventError;
+
+          if (isMounted) {
+            setEvents(eventData || []);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+
+
+    fetchData();
+
+    return () => { isMounted = false; };
+  }, []);
+
+  const location = useLocation();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // --- Profile Actions ---
+
+  const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (!artist) return;
+    setArtist({ ...artist, [e.target.name]: e.target.value });
+  };
+
+  const handleProfileSave = async () => {
+    if (!artist) return;
+    try {
+      setIsSaving(true);
+      const { error } = await supabase
+        .from('artists')
+        .update({
+          display_name: artist.display_name,
+          bio: artist.bio,
+          x_url: artist.x_url,
+          ig_url: artist.ig_url,
+          facebook_url: artist.facebook_url,
+          tiktok_url: artist.tiktok_url,
+          email: artist.email
+        })
+        .eq('id', artist.id);
+
+      if (error) throw error;
+      alert("Profile updated successfully!");
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      alert("Failed to update profile.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- Event Actions ---
+
+  const handleOpenModal = (event?: Event) => {
+    if (event) {
+      setCurrentEvent(event);
+      setIsEditingEvent(true);
+    } else {
+      setCurrentEvent({
+        event_name: '',
+        location_name: '',
+        location_detail: '',
+        booth_number: '',
+        entrance_fee: '',
+        transit_info: '',
+        start_date: '',
+        end_date: '',
+        status: 'Confirmed'
+      });
+      setIsEditingEvent(false);
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleFunctionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setCurrentEvent({ ...currentEvent, [e.target.name]: e.target.value });
+  };
+
+  const handleEventSave = async () => {
+    if (!artist || !currentEvent.event_name || !currentEvent.start_date || !currentEvent.end_date) {
+      alert("Please fill in required fields (Name, Start Date, End Date)");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      const eventPayload = {
+        ...currentEvent,
+        artist_id: artist.id,
+      };
+      // Remove id if it's undefined (new event) to let DB generate it
+      if (!isEditingEvent) delete eventPayload.id;
+
+      const { data, error } = await supabase
+        .from('events')
+        .upsert(eventPayload)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        if (isEditingEvent) {
+          setEvents(events.map(e => e.id === data.id ? data : e));
+        } else {
+          setEvents([...events, data].sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()));
+        }
+        setIsModalOpen(false);
+      }
+    } catch (error) {
+      console.error("Error saving event:", error);
+      alert("Failed to save event.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEventDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this event?")) return;
+    try {
+      const { error } = await supabase.from('events').delete().eq('id', id);
+      if (error) throw error;
+      setEvents(events.filter(e => e.id !== id));
+    } catch (error) {
+       console.error("Error deleting event:", error);
+       alert("Failed to delete event.");
+    }
+  };
+
+  // --- STATS LOGIC ---
+  const handleOpenStats = async (event: Event) => {
+      setCurrentEvent(event);
+      setIsStatsModalOpen(true);
+      setLoadingStats(true);
+      setSummaryStats(null);
+
+      try {
+         const { data: queues, error } = await supabase
+            .from('queues')
+            .select('*')
+            .eq('event_id', event.id);
+
+         if (error) throw error;
+
+         if (queues) {
+            // 1. Count Statuses
+            const total = queues.length;
+            const served = queues.filter(q => q.status === 'complete').length;
+            const cancelled = queues.filter(q => q.status === 'missed').length; // User Cancelled
+            const expired = queues.filter(q => q.status === 'expired').length;   // System Expired
+            
+            // 2. Calc Averages (Only for Served/Relevant tickets to avoid skew)
+            let totalWaitTime = 0;
+            let waitCount = 0;
+            let totalServiceTime = 0;
+            let serviceCount = 0;
+
+            queues.forEach(q => {
+               // Wait Time: Created -> Called
+               if (q.called_at && q.created_at) {
+                  const wait = (new Date(q.called_at).getTime() - new Date(q.created_at).getTime()) / 60000;
+                  if (wait > 0 && wait < 600) { // Filter outliers > 10 hours
+                     totalWaitTime += wait;
+                     waitCount++;
+                  }
+               }
+
+               // Service Time: Called -> Completed (Only for completed tickets)
+               if (q.status === 'complete' && q.completed_at && q.called_at) {
+                   const service = (new Date(q.completed_at).getTime() - new Date(q.called_at).getTime()) / 60000;
+                   if (service > 0 && service < 300) { // Filter outliers > 5 hours
+                       totalServiceTime += service;
+                       serviceCount++;
+                   }
+               }
+            });
+
+            setSummaryStats({
+               total,
+               served,
+               cancelled,
+               expired,
+               avgWait: waitCount > 0 ? Math.round(totalWaitTime / waitCount) : 0,
+               avgService: serviceCount > 0 ? Math.round(totalServiceTime / serviceCount) : 0
+            });
+         }
+
+      } catch (err) {
+         console.error("Error fetching stats:", err);
+      } finally {
+         setLoadingStats(false);
+      }
+  };
+
+
+  if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">Loading Artist Center...</div>;
+  if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">Artist not found.</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
+       
+       {/* New Unified Header */}
+       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm mb-8">
+          <div className="flex items-center gap-2">
+             <div className="bg-pink-500 text-white p-1.5 rounded-lg font-bold">K</div>
+             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-600">Kongzas</span>
+          </div>
+          
+          <div className="flex items-center gap-6">
+
+             <Link to="/artist/manage" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                <LayoutDashboard size={20} />
+                <span>Home</span>
+             </Link>
+             <Link to="/manage-products" className="text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                <List size={20} />
+                <span>Menu</span>
+             </Link>
+             <Link to={`/artist/dashboard`} className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                <History size={20} />
+                <span>Queue</span>
+             </Link>
+             <div className="h-6 w-px bg-gray-200 mx-2"></div>
+              <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
+                 Log Out
+              </Button>
+          </div>
+       </nav>
+
+      <div className="max-w-7xl mx-auto px-6 lg:px-12 pb-12 pt-24">
+        
+        {/* Header */}
+        <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+           <div>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-1">Artist Admin Center</h1>
+              <p className="text-slate-500">Manage your profile and upcoming events</p>
+           </div>
+           
+           <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${artist.is_active ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-100 border-gray-200 text-gray-500'}`}>
+                {artist.is_active ? 'Online' : 'Offline'}
+              </span>
+           </div>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* --- LEFT COL: Profile Settings --- */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+               <User className="text-[#ff4d94]" size={20} />
+               <h2 className="font-bold text-lg text-slate-800">Profile Settings</h2>
+            </div>
+            
+            <div className="p-6 space-y-5">
+               {/* Display Name */}
+               <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Display Name</label>
+                  <input 
+                    name="display_name"
+                    value={artist.display_name}
+                    onChange={handleProfileChange}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all"
+                  />
+               </div>
+
+               {/* Bio */}
+               <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Bio</label>
+                  <textarea 
+                    name="bio"
+                    value={artist.bio}
+                    onChange={handleProfileChange}
+                    rows={4}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all resize-none leading-relaxed"
+                  />
+                  <p className="text-[10px] text-gray-400 text-right">Supports new lines</p>
+               </div>
+
+               <div className="h-px bg-gray-100 my-2"></div>
+
+               {/* Socials */}
+               <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-2">Social Links</h3>
+                  {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
+                    <div key={field} className="relative">
+                       <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-400 select-none uppercase w-16">
+                          {field.replace('_url', '').replace('email', 'Email')}
+                       </span>
+                       <input 
+                          name={field}
+                          value={(artist as any)[field] || ''}
+                          onChange={handleProfileChange}
+                          placeholder={field === 'email' ? 'contact@email.com' : 'https://...'}
+                          className="w-full bg-white border border-gray-200 rounded-lg pl-20 pr-4 py-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all"
+                       />
+                    </div>
+                  ))}
+               </div>
+
+               <Button 
+                 onClick={handleProfileSave} 
+                 disabled={isSaving}
+                 className="w-full mt-4 bg-[#ff4d94] hover:bg-[#e63e80] text-white font-bold h-12 rounded-xl shadow-lg shadow-pink-200 active:scale-95 transition-all"
+               >
+                 {isSaving ? 'Saving...' : 'Save Profile Changes'}
+               </Button>
+            </div>
+          </div>
+
+
+          {/* --- RIGHT COL: Event Management --- */}
+          <div className="lg:col-span-2 space-y-6">
+             
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[600px] flex flex-col">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                   <div className="flex items-center gap-2">
+                     <Calendar className="text-[#ff4d94]" size={20} />
+                     <h2 className="font-bold text-lg text-slate-800">Event Management</h2>
+                     <span className="bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full text-xs font-bold">{events.length}</span>
+                   </div>
+                   <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-9 shadow-sm flex items-center gap-2">
+                      <Plus size={14} /> Add Event
+                   </Button>
+                </div>
+
+                <div className="p-0 flex-1 overflow-x-auto">
+                   {events.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-gray-300 py-20">
+                         <Calendar size={48} className="mb-4 opacity-20" />
+                         <p className="font-medium">No events scheduled.</p>
+                      </div>
+                   ) : (
+                      <table className="w-full text-left border-collapse">
+                         <thead>
+                            <tr className="bg-gray-50/50 text-xs text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                               <th className="px-6 py-4 font-bold">Date</th>
+                               <th className="px-6 py-4 font-bold">Event</th>
+                               <th className="px-6 py-4 font-bold">Location</th>
+                               <th className="px-6 py-4 font-bold text-right">Actions</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-gray-50">
+                            {events.map((evt, idx) => (
+                               <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
+                                  <td className="px-6 py-4">
+                                     <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-slate-800">
+                                           {new Date(evt.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                        </span>
+                                        <span className="text-[10px] text-gray-400 font-medium">
+                                           {new Date(evt.start_date).getFullYear()}
+                                        </span>
+                                        {idx === 0 && <span className="text-[9px] font-bold text-[#ff4d94] mt-1 uppercase tracking-wider">Next Up</span>}
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                     <div className="font-bold text-slate-900 text-sm">{evt.event_name}</div>
+                                     <div className="flex items-center gap-3 mt-1">
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                           {evt.status}
+                                        </span>
+                                        {evt.booth_number && (
+                                           <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                              <Store size={10} /> {evt.booth_number}
+                                           </span>
+                                        )}
+                                        {evt.entrance_fee && (
+                                           <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                              <Ticket size={10} /> {evt.entrance_fee}
+                                           </span>
+                                        )}
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-xs text-gray-500 font-medium">
+                                     <div className="flex items-start gap-1.5">
+                                        <MapPin size={12} className="shrink-0 mt-0.5 text-pink-400" />
+                                        <span>
+                                           {evt.location_name}
+                                           {evt.location_detail && <span className="block text-gray-400 text-[10px]">{evt.location_detail}</span>}
+                                        </span>
+                                     </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={() => handleOpenStats(evt)}
+                                          className="text-gray-400 hover:text-pink-600 hover:bg-pink-50 p-1.5 rounded-md transition-colors"
+                                          title="View Stats"
+                                        >
+                                           <BarChart2 size={16} />
+                                        </button>
+                                        <button 
+                                          onClick={() => handleOpenModal(evt)}
+                                          className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors"
+                                        >
+                                           Edit
+                                        </button>
+                                        <button 
+                                          onClick={() => handleEventDelete(evt.id)}
+                                          className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors"
+                                        >
+                                           <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                   </td>
+                                </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   )}
+                </div>
+             </div>
+
+          </div>
+        </div>
+        
+      </div>
+      
+      {/* --- ADD/EDIT MODAL --- */}
+      {isModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                  <h3 className="font-bold text-lg text-slate-800">{isEditingEvent ? 'Edit Event' : 'New Event'}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                     <X size={20} />
+                  </button>
+               </div>
+               
+               <div className="p-6 overflow-y-auto space-y-4 text-sm">
+                  <div className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                     <div className="space-y-1 flex-1">
+                        <label className="font-bold text-xs uppercase text-gray-400">Status</label>
+                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="w-full bg-white border border-gray-200 rounded-md p-2 text-sm font-semibold focus:border-pink-500 outline-none">
+                           <option value="Confirmed">Confirmed</option>
+                           <option value="Cancelled">Cancelled</option>
+                        </select>
+                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Event Name *</label>
+                     <input name="event_name" value={currentEvent.event_name} onChange={handleFunctionChange} className="input-field w-full border border-gray-200 rounded-lg p-3 font-semibold focus:ring-pink-500 focus:border-pink-500 outline-none" placeholder="e.g. Cosplay Festival 2026" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                        <label className="font-bold text-xs uppercase text-gray-400">Start Date *</label>
+                        <input type="datetime-local" name="start_date" value={currentEvent.start_date} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="font-bold text-xs uppercase text-gray-400">End Date *</label>
+                        <input type="datetime-local" name="end_date" value={currentEvent.end_date} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
+                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                        <label className="font-bold text-xs uppercase text-gray-400">Location Name</label>
+                        <input name="location_name" value={currentEvent.location_name || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. BITEC Bangna" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="font-bold text-xs uppercase text-gray-400">Booth No.</label>
+                        <input name="booth_number" value={currentEvent.booth_number || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. A-12" />
+                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Location Detail</label>
+                     <input name="location_detail" value={currentEvent.location_detail || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Hall 98, Near Entrance 2" />
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Entrance Fee</label>
+                     <input name="entrance_fee" value={currentEvent.entrance_fee || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. 300 THB / Free" />
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Transit Info</label>
+                     <textarea name="transit_info" rows={3} value={currentEvent.transit_info || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 resize-none" placeholder="BTS Bangna..." />
+                  </div>
+               </div>
+
+               <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-500">Cancel</Button>
+                  <Button onClick={handleEventSave} className="bg-pink-500 hover:bg-pink-600 text-white font-bold px-6 shadow-md shadow-pink-200">
+                     {isSaving ? 'Saving...' : 'Save Event'}
+                  </Button>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* --- STATS MODAL --- */}
+      {isStatsModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
+               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                  <div className="flex items-center gap-2">
+                     <BarChart2 className="text-[#ff4d94]" size={20} />
+                     <div>
+                        <h3 className="font-bold text-lg text-slate-800">Performance Summary</h3>
+                        <p className="text-xs text-gray-400 font-medium">{currentEvent.event_name}</p>
+                     </div>
+                  </div>
+                  <button onClick={() => setIsStatsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                     <X size={20} />
+                  </button>
+               </div>
+               
+               <div className="p-8">
+                  {loadingStats ? (
+                     <div className="py-12 text-center text-gray-400 font-medium animate-pulse">Calculating metrics...</div>
+                  ) : summaryStats ? (
+                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {/* Total Tickets */}
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center">
+                           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Limit</div>
+                           <div className="text-3xl font-black text-slate-800">{summaryStats.total}</div>
+                           <div className="text-[10px] text-gray-400 mt-1">Tickets Issued</div>
+                        </div>
+
+                        {/* Served */}
+                        <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
+                           <div className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Served</div>
+                           <div className="text-3xl font-black text-green-700">{summaryStats.served}</div>
+                           <div className="text-[10px] text-green-600/70 mt-1">
+                              {summaryStats.total > 0 ? Math.round((summaryStats.served / summaryStats.total) * 100) : 0}% Rate
+                           </div>
+                        </div>
+
+                        {/* Avg Wait */}
+                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                           <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Avg Wait</div>
+                           <div className="text-3xl font-black text-blue-700">{summaryStats.avgWait}<span className="text-sm font-bold text-blue-400 ml-1">m</span></div>
+                           <div className="text-[10px] text-blue-600/70 mt-1">To Get Called</div>
+                        </div>
+
+                        {/* Avg Service */}
+                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 text-center">
+                           <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Avg Service</div>
+                           <div className="text-3xl font-black text-purple-700">{summaryStats.avgService}<span className="text-sm font-bold text-purple-400 ml-1">m</span></div>
+                           <div className="text-[10px] text-purple-600/70 mt-1">At Counter</div>
+                        </div>
+
+                        {/* Missed / Cancelled Split */}
+                         <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center col-span-2 mt-2 flex items-center justify-between px-6">
+                           <div className="text-left">
+                              <div className="text-red-700 font-bold text-sm">Cancelled</div>
+                              <div className="text-red-400 text-[10px]">By User</div>
+                           </div>
+                           <div className="text-3xl font-black text-red-600">{summaryStats.cancelled}</div>
+                        </div>
+
+                         <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 text-center col-span-2 mt-2 flex items-center justify-between px-6">
+                           <div className="text-left">
+                              <div className="text-gray-700 font-bold text-sm">Expired</div>
+                              <div className="text-gray-400 text-[10px]">System Removal</div>
+                           </div>
+                           <div className="text-3xl font-black text-gray-600">{summaryStats.expired}</div>
+                        </div>
+
+                     </div>
+                  ) : (
+                     <div className="text-center text-gray-400">No data available.</div>
+                  )}
+               </div>
+
+               <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+                  <Button onClick={() => setIsStatsModalOpen(false)} variant="ghost" className="text-gray-500 hover:text-gray-700">Close</Button>
+               </div>
+            </div>
+         </div>
+      )}
+
+    </div>
+  );
+};
+
+export default ManageArtist;

@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Pages
 // Pages
-import Home from './pages/Home';
+import Home from './pages/customer/Home';
 import Admin from './pages/Admin';
 import Queue from './pages/Queue';
 import Menu from './pages/Menu';
@@ -18,6 +18,7 @@ import CustomerHome from './pages/customer/Home';
 import MenuView from './pages/customer/MenuView';
 import QueueView from './pages/customer/QueueView';
 import ManageProducts from './pages/ManageProducts';
+import ManageArtist from './pages/artist/ManageArtist';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
           {/* Supabase Demo Integration */}
           <Route path="/supabase-demo" element={<AppSupabase />} />
           <Route path="/manage-products" element={<ManageProducts />} />
+          <Route path="/artist/manage" element={<ManageArtist />} />
 
           {/* Customer Facing App (Slug-Based) */}
           <Route path="/:slug" element={<CustomerLayout />}>

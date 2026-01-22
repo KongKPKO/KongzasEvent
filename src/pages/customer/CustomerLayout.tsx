@@ -1,8 +1,10 @@
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
+import { Home, ShoppingBag, Users } from 'lucide-react';
 import { useArtist } from '../../hooks/useArtist';
 
 const CustomerLayout = () => {
   const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
   const { artist, loading, error } = useArtist(slug);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-pink-500 font-bold">Loading...</div>;
@@ -20,21 +22,30 @@ const CustomerLayout = () => {
           <Outlet context={{ artist }} />
           
           {/* Bottom Nav for Mobile */}
-          <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 flex justify-around items-center py-3 z-50 text-xs font-medium text-gray-400">
-             <a href={`/${slug}/home`} className="flex flex-col items-center gap-1 hover:text-pink-500 transition-colors">
-                <span className="material-icons-outlined text-xl">home</span>
+          {/* Bottom Nav for Mobile */}
+          {/* Bottom Nav for Mobile */}
+          <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 flex justify-around items-end pb-6 h-20 z-50 text-[11px] font-bold tracking-tight">
+             <Link 
+               to={`/${slug}/home`} 
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/home') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+             >
+                <Home size={22} strokeWidth={location.pathname.endsWith('/home') ? 2.5 : 2} />
                 Home
-             </a>
-             <a href={`/${slug}/menu`} className="flex flex-col items-center gap-1 hover:text-pink-500 transition-colors">
-                 <span className="material-icons-outlined text-xl">restaurant_menu</span>
-                Menu
-             </a>
-             <a href={`/${slug}/queue`} className="flex flex-col items-center gap-1 text-pink-500 transition-colors">
-                 <div className="w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center -mt-6 shadow-lg border-4 border-white text-white">
-                    <span className="material-icons-outlined text-xl">confirmation_number</span>
-                 </div>
-                 Queue
-             </a>
+             </Link>
+             <Link 
+               to={`/${slug}/menu`} 
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/menu') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+             >
+                <ShoppingBag size={22} strokeWidth={location.pathname.endsWith('/menu') ? 2.5 : 2} />
+                Merchandise
+             </Link>
+             <Link 
+               to={`/${slug}/queue`} 
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+             >
+                <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} />
+                Queue
+             </Link>
           </nav>
        </div>
     </div>

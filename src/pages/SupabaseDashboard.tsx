@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Button } from '../components/ui';
-import { LayoutDashboard, Users, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Check } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 
 interface QueueItem {
   id: string; // UUID from DB
   artist_id: string;
+  event_id?: string;
   queue_number: number;
-  status: 'waiting' | 'ready' | 'pending' | 'completed' | 'expired'; // Expanded statuses
+  status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued'; // Standardized statuses
   last_updated_at: string;
   created_at?: string; // We might need timestamp for waiting time
+}
+
+interface DashboardEvent {
+  id: string;
+  event_name: string;
+  start_date: string;
+  end_date: string;
+  is_booth_open: boolean;
+  status: 'Confirmed' | 'Cancelled';
 }
 
 const formatElapsedTime = (dateString?: string) => {
@@ -30,6 +40,18 @@ const formatElapsedTime = (dateString?: string) => {
 const SupabaseDashboard = () => {
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isBoothActive, setIsBoothActive] = useState(false);
+  
+  // Event & Ticket State
+  // Event & Ticket State
+  const [events, setEvents] = useState<DashboardEvent[]>([]); 
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [activeEventStatusMessage, setActiveEventStatusMessage] = useState<string>('No Active Event Today');
+  
+  const location = useLocation();
+
+  // Helper: Date Range Format
+
 
   // Fetch initial data
   const fetchQueues = async () => {
@@ -37,20 +59,80 @@ const SupabaseDashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Fetch artist status
+      const { data: artistData } = await supabase
+        .from('artists')
+        .select('is_active')
+        .eq('id', user.id)
+        .single();
+      
+      if (artistData) {
+         setIsBoothActive(artistData.is_active);
+      }
+
+      const { data: eventsData } = await supabase
+        .from('events')
+        .select('*')
+        .eq('artist_id', user.id)
+        .gte('end_date', new Date().toISOString()) // Only future/current events
+        .order('start_date', { ascending: true });
+
+      setEvents(eventsData || []);
+
+      // AUTOMATIC EVENT SELECTION
+      if (eventsData && eventsData.length > 0) {
+         const today = new Date();
+         const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
+         // 1. Find ALL events overlapping with today
+         const todaysEvents = eventsData.filter(event => {
+            const start = new Date(event.start_date).toISOString().split('T')[0];
+            const end = new Date(event.end_date).toISOString().split('T')[0];
+            return todayStr >= start && todayStr <= end;
+         });
+
+         // 2. Sort by start date (earliest first)
+         todaysEvents.sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+
+         if (todaysEvents.length > 0) {
+            // 3. Find first CONFIRMED event
+            const confirmedEvent = todaysEvents.find(e => e.status === 'Confirmed');
+
+            if (confirmedEvent) {
+               setSelectedEventId(confirmedEvent.id);
+               setIsBoothActive(confirmedEvent.is_booth_open || false);
+               setActiveEventStatusMessage('');
+            } else {
+               // Event exists but is NOT Confirmed (Cancelled)
+               setSelectedEventId('');
+               setIsBoothActive(false);
+               setActiveEventStatusMessage("No confirmed event scheduled today"); // Specific message for Cancelled
+            }
+         } else {
+             // No event at all
+            setSelectedEventId('');
+            setIsBoothActive(false);
+            setActiveEventStatusMessage("No Active Event Today");
+         }
+      } else {
+          setSelectedEventId('');
+          setIsBoothActive(false);
+          setActiveEventStatusMessage("No Active Event Today");
+      }
+
+      // Fetch Queues (Filter by selectedEventId if strictly needed, but getting all is easier for overview stats unless huge)
+      // For dashboard we probably want to see ALL queues or just Active Event queues?
+      // Let's filter by artist_id as before, but later visual filtering can be applied.
       const { data, error } = await supabase
         .from('queues')
         .select('*')
         .eq('artist_id', user.id)
-        .order('id', { ascending: true }); // Get all to filter locally
+        .order('id', { ascending: true });
 
       if (error) {
         console.error('Error fetching queues:', error);
       } else {
-        // @ts-ignore - Assuming DB has matching fields or we map them. 
-        // If DB strictly has 'waiting'|'calling', we map 'calling' -> waiting for arrival?
-        // User asked to "Keep existing Supabase integration".
-        // If the DB schema is strict on status enum, we might need to be careful.
-        // Assuming we can store strings 'waiting', 'ready', 'pending', 'completed', 'expired'.
+        // @ts-ignore
         setQueues(data || []);
       }
     } catch (err) {
@@ -58,6 +140,30 @@ const SupabaseDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleBooth = async () => {
+      if (!selectedEventId) {
+          alert("No Active Event Today! Cannot open booth.");
+          return;
+      }
+
+      const newStatus = !isBoothActive;
+      setIsBoothActive(newStatus); // Optimistic update
+      
+      // Update local events state as well to reflect change in dropdown if we showed it there
+      setEvents(prev => prev.map(e => e.id === selectedEventId ? { ...e, is_booth_open: newStatus } : e));
+
+      const { error } = await supabase
+          .from('events')
+          .update({ is_booth_open: newStatus })
+          .eq('id', selectedEventId);
+
+      if (error) {
+          console.error('Error updating booth status:', error);
+          setIsBoothActive(!newStatus); // Revert on error
+          alert('Failed to update booth status');
+      }
   };
 
   useEffect(() => {
@@ -70,9 +176,27 @@ const SupabaseDashboard = () => {
         fetchQueues();
       })
       .subscribe();
+      
+    // EOD Reset Check
+    // Check every minute if the day has changed
+    const timer = setInterval(() => {
+       const today = new Date().toDateString();
+       const storedDate = localStorage.getItem('last_session_date');
+       
+       if (storedDate && storedDate !== today) {
+           console.log("New Day Detected! Refreshing...");
+           window.location.reload(); // Hard refresh to clear all state/caches
+       } else {
+           localStorage.setItem('last_session_date', today);
+       }
+    }, 60000); // Check every 60s
+    
+    // Initialize session date
+    localStorage.setItem('last_session_date', new Date().toDateString());
 
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(timer);
     };
   }, []);
 
@@ -90,27 +214,22 @@ const SupabaseDashboard = () => {
 
   const handleCallNext = () => {
      if (nextTicket) {
-        updateStatus(nextTicket.id, 'ready');
+        updateStatus(nextTicket.id, 'calling');
      }
   };
 
   const handleConfirmArrival = (id: string) => {
-     updateStatus(id, 'pending');
+     updateStatus(id, 'serving');
   };
 
   const handleComplete = (id: string) => {
-     updateStatus(id, 'completed');
+     updateStatus(id, 'complete');
   };
 
-  const handleUndo = () => {
-     // Naive undo: find the last updated ticket that is NOT waiting and move it back/revert?
-     // Without a robust history stack, "Undo" is hard. 
-     // For this UI demo, maybe just "Reset" or alert?
-     // Or we can find the most recently updated item and revert state.
-     // Let's implementing a simple "Call Back" logic? 
-     // Or simplified: Just alert for now as valid undo requires history.
-     alert("Undo not fully implemented in this demo version.");
-  };
+
+
+   // --- TICKET GENERATION LOGIC REMOVED (Customer Driven) ---
+
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -119,17 +238,21 @@ const SupabaseDashboard = () => {
   // derived state
   // Mapping notes: 
   // 'waiting' -> Waiting List
-  // 'ready' -> Waiting for Arrival
-  // 'pending' -> Being Served
-  // 'completed' -> Served
-  // 'expired' -> Missed
-  // Note: If DB only has 'calling', we treat 'calling' as 'ready' for this UI.
+  // 'calling' -> Waiting for Arrival
+  // 'serving' -> Being Served
+  // 'complete' -> Served
+  // 'missed'/'expired' -> Missed
   
-  const waitingTickets = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a,b) => a.queue_number - b.queue_number);
-  const readyTickets = queues.filter(q => q.status === 'ready' || q.status === 'calling'); // Supporting 'calling' as legacy 'ready'
-  const pendingTickets = queues.filter(q => q.status === 'pending'); 
-  const completedTickets = queues.filter(q => q.status === 'completed');
-  const expiredTickets = queues.filter(q => q.status === 'expired');
+  // Filter by selectedEventId if one is selected, otherwise show all (or could force selection)
+  const filteredQueues = selectedEventId 
+      ? queues.filter(q => q.event_id === selectedEventId) 
+      : queues;
+
+  const waitingTickets = filteredQueues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a,b) => a.queue_number - b.queue_number);
+  const readyTickets = filteredQueues.filter(q => q.status === 'calling'); 
+  const pendingTickets = filteredQueues.filter(q => q.status === 'serving'); 
+  const completedTickets = filteredQueues.filter(q => q.status === 'complete');
+  const expiredTickets = filteredQueues.filter(q => q.status === 'missed' || q.status === 'expired');
 
   const nextTicket = waitingTickets[0];
   const totalInQueue = waitingTickets.length + readyTickets.length + pendingTickets.length;
@@ -147,7 +270,20 @@ const SupabaseDashboard = () => {
          </div>
          
          <div className="flex items-center gap-6">
-            <Link to="/" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+
+            {/* Active Event Display (Auto-Selected) */}
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${selectedEventId ? 'bg-pink-50 border-pink-200 text-pink-700' : 'bg-gray-100 border-gray-200 text-gray-500'}`}>
+               <Ticket size={16} className={selectedEventId ? "text-pink-500" : "text-gray-400"} />
+               <span className="text-xs font-bold max-w-[200px] truncate">
+                  {selectedEventId 
+                     ? events.find(e => e.id === selectedEventId)?.event_name 
+                     : activeEventStatusMessage}
+               </span>
+            </div>
+
+            <div className="h-6 w-px bg-gray-200"></div>
+
+            <Link to="/artist/manage" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/artist/manage' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
                <LayoutDashboard size={20} />
                <span>Home</span>
             </Link>
@@ -173,7 +309,7 @@ const SupabaseDashboard = () => {
             {/* LEFT COLUMN (2/3) */}
             <div className="lg:col-span-2 space-y-6">
                
-               {/* Queue Control Card */}
+                {/* Queue Control Card */}
                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="p-6">
                      <div className="flex justify-between items-center mb-6">
@@ -181,11 +317,34 @@ const SupabaseDashboard = () => {
                            <LayoutDashboard className="text-pink-500" size={20} />
                            Queue Control
                         </h2>
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium flex items-center gap-1">
-                           <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                           System Online
-                        </span>
+                        
+                        {/* Booth Status Toggle */}
+                        <div className="flex items-center gap-3">
+                           <span className={`text-xs font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-600' : 'text-gray-400'}`}>
+                              {isBoothActive ? 'Booth Open' : 'Booth Closed'}
+                           </span>
+                           <button 
+                              onClick={handleToggleBooth}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 ${
+                                 isBoothActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-gray-300'
+                              }`}
+                           >
+                              <span
+                                 className={`${
+                                    isBoothActive ? 'translate-x-6' : 'translate-x-1'
+                                 } inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200`}
+                              />
+                           </button>
+                        </div>
                      </div>
+
+                     {/* Active Event Display */}
+                     {selectedEventId && (
+                        <div className="mb-6 bg-pink-50/50 border border-pink-100 rounded-lg p-3 text-center">
+                           <div className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-1">Active Event</div>
+                           <div className="font-bold text-gray-900">{events.find(e => e.id === selectedEventId)?.event_name}</div>
+                        </div>
+                     )}
 
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 text-center divide-y md:divide-y-0 md:divide-x divide-gray-100">
                         <div className="py-2">
@@ -202,26 +361,18 @@ const SupabaseDashboard = () => {
                         </div>
                      </div>
 
-                     <div className="flex gap-4 justify-center">
-                        <Button
-                           onClick={handleCallNext}
-                           disabled={!nextTicket}
-                           className={`w-full sm:w-auto px-8 py-4 h-auto text-lg rounded-xl shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 ${
-                              !nextTicket ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-pink-500 hover:bg-pink-600 text-white'
-                           }`}
-                        >
-                           <Play size={24} fill="currentColor" />
-                           Call Next {nextTicket ? `(#${nextTicket.queue_number})` : ''}
-                        </Button>
-                        <Button
-                           onClick={handleUndo}
-                           variant="outline"
-                           className="w-full sm:w-auto px-6 py-4 h-auto text-lg rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2"
-                        >
-                           <RotateCcw size={20} />
-                           Undo
-                        </Button>
-                     </div>
+                        <div className="w-full">
+                           <Button
+                              onClick={handleCallNext}
+                              disabled={!nextTicket}
+                              className={`w-full py-5 text-xl rounded-2xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 ${
+                                 !nextTicket ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-200'
+                              }`}
+                           >
+                              <Play size={28} fill="currentColor" />
+                              <span className="font-black">Call Next {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>
+                           </Button>
+                        </div>
                   </div>
                </div>
 
@@ -352,7 +503,9 @@ const SupabaseDashboard = () => {
                               <li key={t.id} className="px-4 py-3 flex items-center justify-between">
                                  <div className="flex items-center gap-3">
                                     <span className="text-xs font-bold text-red-400">#{t.queue_number}</span>
-                                    <span className="text-xs text-gray-400">Expired</span>
+                                    <span className="text-xs text-gray-400">
+                                       {t.status === 'expired' ? 'Expired' : 'Cancelled'}
+                                    </span>
                                  </div>
                                  <button 
                                     onClick={() => handleCallNext()} // Simplified re-call logic, ideally handleConfirmArrival(t.id) if we want to restore specifically

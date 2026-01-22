@@ -47,6 +47,7 @@ const SupabaseDashboard = () => {
   const [events, setEvents] = useState<DashboardEvent[]>([]); 
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [activeEventStatusMessage, setActiveEventStatusMessage] = useState<string>('No Active Event Today');
+  const [analyticsMode, setAnalyticsMode] = useState<'today' | 'total'>('today'); // New state for Analytics Toggle
   
   const location = useLocation();
 
@@ -80,6 +81,8 @@ const SupabaseDashboard = () => {
       setEvents(eventsData || []);
 
       // AUTOMATIC EVENT SELECTION
+      let currentEventId = '';
+
       if (eventsData && eventsData.length > 0) {
          const today = new Date();
          const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -99,6 +102,7 @@ const SupabaseDashboard = () => {
             const confirmedEvent = todaysEvents.find(e => e.status === 'Confirmed');
 
             if (confirmedEvent) {
+               currentEventId = confirmedEvent.id;
                setSelectedEventId(confirmedEvent.id);
                setIsBoothActive(confirmedEvent.is_booth_open || false);
                setActiveEventStatusMessage('');
@@ -120,21 +124,27 @@ const SupabaseDashboard = () => {
           setActiveEventStatusMessage("No Active Event Today");
       }
 
-      // Fetch Queues (Filter by selectedEventId if strictly needed, but getting all is easier for overview stats unless huge)
-      // For dashboard we probably want to see ALL queues or just Active Event queues?
-      // Let's filter by artist_id as before, but later visual filtering can be applied.
-      const { data, error } = await supabase
-        .from('queues')
-        .select('*')
-        .eq('artist_id', user.id)
-        .order('id', { ascending: true });
+      // CRITICAL UPDATE: Data Leak Fix
+      // Only fetch queues if we have a valid Active Event ID.
+      // Otherwise, clear the queues.
+      if (currentEventId) {
+          const { data, error } = await supabase
+            .from('queues')
+            .select('*')
+            .eq('artist_id', user.id)
+            .eq('event_id', currentEventId) // Strict Filter
+            .order('id', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching queues:', error);
+          if (error) {
+            console.error('Error fetching queues:', error);
+          } else {
+            // @ts-ignore
+            setQueues(data || []);
+          }
       } else {
-        // @ts-ignore
-        setQueues(data || []);
+          setQueues([]); // Reset UI
       }
+
     } catch (err) {
       console.error("Unexpected error:", err);
     } finally {
@@ -251,11 +261,43 @@ const SupabaseDashboard = () => {
   const waitingTickets = filteredQueues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a,b) => a.queue_number - b.queue_number);
   const readyTickets = filteredQueues.filter(q => q.status === 'calling'); 
   const pendingTickets = filteredQueues.filter(q => q.status === 'serving'); 
-  const completedTickets = filteredQueues.filter(q => q.status === 'complete');
+
   const expiredTickets = filteredQueues.filter(q => q.status === 'missed' || q.status === 'expired');
 
   const nextTicket = waitingTickets[0];
   const totalInQueue = waitingTickets.length + readyTickets.length + pendingTickets.length;
+
+  // -- Analytics Logic --
+  const getAnalyticsData = () => {
+      let served = 0;
+      let missed = 0;
+      let waitTimes: number[] = [];
+
+      // Filter based on Analytics Mode (Today vs Total)
+      const targetQueues = analyticsMode === 'today' 
+          ? queues.filter(q => {
+                const date = q.created_at ? new Date(q.created_at).toDateString() : '';
+                return date === new Date().toDateString();
+            })
+          : queues;
+
+      targetQueues.forEach(q => {
+          if (q.status === 'complete') served++;
+          if (q.status === 'missed' || q.status === 'expired') missed++;
+          
+          // Calculate wait time rough estimate (Processing time essentially)
+          if ((q.status === 'complete' || q.status === 'serving') && q.created_at) {
+              const start = new Date(q.created_at).getTime();
+              const end = new Date(q.last_updated_at).getTime();
+              waitTimes.push((end - start) / 60000); // in minutes
+          }
+      });
+
+      const avgWaitVal = waitTimes.length > 0 ? waitTimes.reduce((a,b) => a+b, 0) / waitTimes.length : 0;
+      return { served, missed, avgWait: Math.round(avgWaitVal) };
+  };
+
+  const analytics = getAnalyticsData();
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading dashboard...</div>;
 
@@ -524,23 +566,42 @@ const SupabaseDashboard = () => {
 
                {/* Analytics Card */}
                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                  <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                     <BarChart2 size={18} className="text-gray-400" />
-                     Analytics
-                  </h3>
+                  <div className="flex justify-between items-start mb-4">
+                     <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <BarChart2 size={18} className="text-gray-400" />
+                        Analytics
+                     </h3>
+                     
+                     {/* Toggle Switch */}
+                     <div className="relative flex bg-gray-100 rounded-lg p-0.5">
+                        <button 
+                            onClick={() => setAnalyticsMode('today')}
+                            className={`text-[10px] font-bold px-3 py-1 rounded-md transition-all ${analyticsMode === 'today' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                        >
+                            Today
+                        </button>
+                        <button 
+                            onClick={() => setAnalyticsMode('total')}
+                            className={`text-[10px] font-bold px-3 py-1 rounded-md transition-all ${analyticsMode === 'total' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                        >
+                            Total
+                        </button>
+                     </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                      <div className="bg-gray-50 rounded-lg p-3 text-center">
                         <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Served</div>
-                        <div className="text-2xl font-black text-gray-900">{completedTickets.length}</div>
+                        <div className="text-2xl font-black text-gray-900">{analytics.served}</div>
                      </div>
                      <div className="bg-gray-50 rounded-lg p-3 text-center">
                         <div className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Missed</div>
-                        <div className="text-2xl font-black text-gray-900">{expiredTickets.length}</div>
+                        <div className="text-2xl font-black text-gray-900">{analytics.missed}</div>
                      </div>
                      <div className="col-span-2 bg-gray-50 rounded-lg p-3 flex justify-between items-center px-4">
                         <div className="text-left">
                            <div className="text-xs text-gray-500 uppercase font-bold tracking-wider">Avg Wait</div>
-                           <div className="text-lg font-black text-gray-900">~12m</div>
+                           <div className="text-lg font-black text-gray-900">{analytics.avgWait}m</div>
                         </div>
                         <History size={24} className="text-gray-300" />
                      </div>

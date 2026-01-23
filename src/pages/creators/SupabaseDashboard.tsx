@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { Button } from '../components/ui';
-import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck, X } from 'lucide-react';
+import { Button } from '../../components/ui';
+import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface QueueItem {
@@ -51,7 +51,9 @@ const SupabaseDashboard = () => {
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [activeEventStatusMessage, setActiveEventStatusMessage] = useState<string>('No Active Event Today');
   const [analyticsMode, setAnalyticsMode] = useState<'today' | 'total'>('today'); // New state for Analytics Toggle
+
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
+  const [artistName, setArtistName] = useState<string>('');
   
   const location = useLocation();
 
@@ -67,12 +69,14 @@ const SupabaseDashboard = () => {
       // Fetch artist status
       const { data: artistData } = await supabase
         .from('artists')
-        .select('broadcast_message')
+        .select('broadcast_message, display_name')
         .eq('id', user.id)
         .single();
       
       if (artistData) {
          setBroadcastMessage(artistData.broadcast_message || null);
+         // @ts-ignore
+         if (artistData.display_name) setArtistName(artistData.display_name);
       }
 
       const { data: eventsData } = await supabase
@@ -205,6 +209,7 @@ const SupabaseDashboard = () => {
 
   useEffect(() => {
     let activeChannel: RealtimeChannel | null = null;
+    let systemChannel: RealtimeChannel | null = null;
     let timerId: ReturnType<typeof setInterval>;
 
     const setupDashboard = async () => {
@@ -215,42 +220,78 @@ const SupabaseDashboard = () => {
        // 2. Initial Fetch
        fetchQueues();
 
-       // 3. Setup Realtime Subscription (Filtered by Artist ID)
-       activeChannel = supabase
-         .channel(`dashboard-${user.id}`)
-         .on('postgres_changes', { event: '*', schema: 'public', table: 'queues', filter: `artist_id=eq.${user.id}` }, (payload) => {
-            console.log('Queue Change:', payload);
-            
-            if (payload.eventType === 'INSERT') {
-               // OPTIMIZATION: Add new ticket immediately to UI (Appears at TOP as requested)
-               const newTicket = payload.new as QueueItem;
-               setQueues((prev) => {
-                  // Prevent Duplicates
-                  if (prev.find(q => q.id === newTicket.id)) return prev;
-                  return [newTicket, ...prev]; 
-               });
-            } 
-            else if (payload.eventType === 'UPDATE') {
-               // Update existing item in place
-               const updatedTicket = payload.new as QueueItem;
-               setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
-            }
-            else {
-               // DELETE or others: Fallback to full fetch
-               fetchQueues();
-            }
+       // 3. UNIQUE CHANNEL NAME - Force fresh connection (bypass zombie channels)
+       const channelName = `dashboard-${user.id}-${Date.now()}`;
+       console.log('🔌 Setting up Realtime subscription:', channelName);
+       
+       // 4. System Channel for Connection Diagnostics
+       systemChannel = supabase.channel('system-diagnostics-' + Date.now())
+         .on('system', { event: '*' }, (payload) => {
+            console.log('🔌 System Event:', payload);
          })
+         .subscribe((status) => {
+            console.log('🔌 System Channel Status:', status);
+         });
+
+       // 5. Main Realtime Subscription
+       // แก้ไข: เพิ่ม filter เพื่อระบุ Scope ให้ชัดเจน ป้องกันปัญหา Unable to subscribe
+       activeChannel = supabase
+         .channel(channelName)
+         // QUEUE CHANGES
+         .on(
+            'postgres_changes', 
+            { 
+               event: '*', 
+               schema: 'public', 
+               table: 'queues',
+               filter: `artist_id=eq.${user.id}` // ✅ จุดที่เพิ่ม: กรองเฉพาะคิวของ Artist คนนี้
+            }, 
+            (payload) => {
+               console.log('⚡ RT Event Received:', payload.eventType, payload);
+            
+               if (payload.eventType === 'INSERT') {
+                  const newTicket = payload.new as QueueItem;
+                  console.log('⚡ New Ticket INBOUND:', newTicket);
+                  
+                  setQueues((prev) => {
+                     if (prev.find(q => q.id === newTicket.id)) {
+                        return prev;
+                     }
+                     return [newTicket, ...prev];
+                  });
+               } 
+               else if (payload.eventType === 'UPDATE') {
+                  const updatedTicket = payload.new as QueueItem;
+                  console.log('✏️ UPDATE detected', updatedTicket);
+                  setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
+               }
+               else if (payload.eventType === 'DELETE') {
+                  const deletedId = (payload.old as QueueItem).id;
+                  console.log('🗑️ DELETE detected', deletedId);
+                  setQueues((prev) => prev.filter(q => q.id !== deletedId));
+               }
+            }
+         )
+         // EVENT CHANGES - (ส่วนนี้เหมือนเดิม)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `artist_id=eq.${user.id}` }, (payload) => {
-            console.log('Event Change:', payload);
+            console.log('📅 Event Change:', payload.eventType);
             fetchQueues();
          })
+         // ARTIST CHANGES - (ส่วนนี้เหมือนเดิม)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'artists', filter: `id=eq.${user.id}` }, (payload) => {
-            console.log('Artist Change:', payload);
+            console.log('👤 Artist Change:', payload.eventType);
             fetchQueues(); 
          })
-         .subscribe();
+         .subscribe((status, err) => {
+            console.log('📡 Realtime Status:', status);
+            if (status === 'SUBSCRIBED') {
+               console.log('✅ Connected!');
+            } else if (status === 'CHANNEL_ERROR') {
+               console.error('❌ Error:', err);
+            }
+         });
 
-       // 4. EOD Check
+       // 6. EOD Check
        timerId = setInterval(() => {
           const today = new Date().toDateString();
           const storedDate = localStorage.getItem('last_session_date');
@@ -267,10 +308,45 @@ const SupabaseDashboard = () => {
     setupDashboard();
 
     return () => {
+      console.log('🧹 Cleaning up Realtime channels...');
       if (activeChannel) supabase.removeChannel(activeChannel);
+      if (systemChannel) supabase.removeChannel(systemChannel);
       if (timerId) clearInterval(timerId);
     };
   }, []);
+
+  // AUTO-EXPIRATION: Expire tickets in 'calling' status for > 30 minutes
+  // NOTE: Only applies to 'calling' status, NOT 'waiting'
+  useEffect(() => {
+    const EXPIRATION_TIME_MS = 30 * 60 * 1000; // 30 minutes
+    
+    const expirationCheck = () => {
+      const now = Date.now();
+      queues.forEach((ticket) => {
+        // Use updated_at from DB (fallback to last_updated_at for backwards compatibility)
+        const updatedAt = (ticket as any).updated_at || ticket.last_updated_at;
+        
+        if (
+          ticket.status === 'calling' && 
+          updatedAt && 
+          (now - new Date(updatedAt).getTime()) > EXPIRATION_TIME_MS
+        ) {
+          console.log('⏰ Auto-expiring CALLING ticket:', ticket.queue_number, 
+            '| Calling for:', Math.round((now - new Date(updatedAt).getTime()) / 60000), 'mins');
+          updateStatus(ticket.id, 'expired');
+        }
+      });
+    };
+
+    // Run immediately on mount
+    expirationCheck();
+    
+    // Then check every 1 minute
+    const expirationTimer = setInterval(expirationCheck, 60000);
+    console.log('⏰ Auto-expiration timer started (checks every 1 min for calling > 30 mins)');
+    
+    return () => clearInterval(expirationTimer);
+  }, [queues]);
 
 
   const updateStatus = async (id: string, newStatus: string) => {
@@ -311,8 +387,7 @@ const SupabaseDashboard = () => {
   };
 
   const handleConfirmArrival = (id: string) => {
-     // Also sets served_at via the modified updateStatus logic logic or explicit pass if needed, 
-     // but updateStatus above handles it based on string check 'serving'
+     // Also sets served_at via the modified updateStatus logic logic
      updateStatus(id, 'serving');
   };
 
@@ -320,9 +395,8 @@ const SupabaseDashboard = () => {
      updateStatus(id, 'complete');
   };
 
-  const handleSkipTicket = (id: string) => {
-     updateStatus(id, 'missed');
-  };
+
+
 
 
 
@@ -353,7 +427,7 @@ const SupabaseDashboard = () => {
   const expiredTickets = filteredQueues.filter(q => q.status === 'missed' || q.status === 'expired');
 
   const nextTicket = waitingTickets[0];
-  const totalInQueue = waitingTickets.length + readyTickets.length + pendingTickets.length;
+  const totalInQueue = filteredQueues.length; // All tickets for this event
 
   // -- Analytics Logic --
   const getAnalyticsData = () => {
@@ -438,7 +512,12 @@ const SupabaseDashboard = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-2">
+         <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage Queues</h1>
+         <p className="text-sm text-pink-600 font-bold">{artistName}</p>
+      </div>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             
             {/* LEFT COLUMN (2/3) */}
@@ -547,7 +626,7 @@ const SupabaseDashboard = () => {
                      <div className="p-3 flex-1 flex flex-col">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                            <Bell className="text-yellow-500" size={14} />
-                           Waiting ({readyTickets.length})
+                           Calling ({readyTickets.length})
                         </h3>
                         {readyTickets.length > 0 ? (
                            <div className="space-y-1.5">
@@ -661,11 +740,11 @@ const SupabaseDashboard = () => {
                                  <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-bold text-red-400">#{t.queue_number}</span>
                                     <span className="text-[9px] text-gray-400">
-                                       {t.status === 'expired' ? 'Exp' : 'Can'}
+                                       {t.status === 'expired' ? 'Expired' : 'Cancelled'}
                                     </span>
                                  </div>
                                  <button 
-                                    onClick={() => handleCallNext()} 
+                                    onClick={() => updateStatus(t.id, 'waiting')}
                                     className="text-[9px] text-pink-500 font-bold hover:underline"
                                  >
                                     Recall

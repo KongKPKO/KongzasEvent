@@ -1,35 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom'; // ต้องใช้เพื่อรับข้อมูล Artist จาก Parent Route
-import { supabase } from '../../supabaseClient';
-import { Instagram, Facebook, Music2, Mail, MapPin, Ticket, Train, Calendar, Store } from 'lucide-react';
+import { useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom'; 
+import { useArtistRealtime } from '../../hooks/useArtistRealtime';
+import { useMidnightTick } from '../../hooks/useMidnightTick';
+import { Instagram, Facebook, Music2, Mail, MapPin, Ticket, Train, Calendar } from 'lucide-react';
 import { Card } from '../../components/ui';
-
-// 1. Interfaces
-interface Event {
-  id: string;
-  artist_id: string;
-  event_name: string;
-  start_date: string;
-  end_date: string;
-  location_name: string;
-  location_detail: string;
-  transit_info: string;
-  booth_number: string;
-  entrance_fee?: string;
-  status?: 'Confirmed' | 'Cancelled';
-}
-
-interface Artist {
-  id: string;
-  display_name: string;
-  bio: string;
-  is_active: boolean;
-  x_url?: string;
-  ig_url?: string;
-  facebook_url?: string;
-  tiktok_url?: string;
-  email?: string;
-}
+import CustomerHeader from '../../components/CustomerHeader';
 
 const XIcon = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" className={className}>
@@ -38,14 +13,38 @@ const XIcon = ({ size = 20, className = "" }: { size?: number, className?: strin
 );
 
 const Home = () => {
-  // 2. State Management (กู้คืนส่วนที่หายไป)
-  const { artist: contextArtist } = useOutletContext<{ artist: Artist }>();
-  const [artist, setArtist] = useState<Artist | null>(contextArtist || null);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [isBoothActive, setIsBoothActive] = useState<boolean>(contextArtist?.is_active || false);
-  const [isLoading, setIsLoading] = useState(true);
+  // Midnight Watcher
+  const currentDate = useMidnightTick();
 
-  // 3. Helper Functions
+  // 1. Unified Realtime Hook
+  const { artist: contextArtist } = useOutletContext<{ artist: any }>(); // Keep basic context for ID
+  const { artist, events, isConnected, refresh } = useArtistRealtime({ 
+    artistId: contextArtist?.id 
+  });
+  
+  // Use local artist state from Hook, fallback to context for initial render to prevent flash
+  const displayArtist = artist || contextArtist;
+  
+  // Midnight Refresh Effect
+  useEffect(() => {
+    refresh();
+  }, [currentDate, refresh]);
+
+  // Early return if no artist data
+  if (!displayArtist) return <div className="p-10 text-center text-gray-400">Loading Artist Profile...</div>;
+  
+  // Derive Booth Status: Check if ANY valid event is currently open AND valid for today
+  const activeOpenEvent = events.find(e => {
+       const start = e.start_date.substring(0, 10);
+       const end = e.end_date.substring(0, 10);
+       const isOpen = e.is_booth_open && e.status === 'Confirmed';
+       return isOpen && currentDate >= start && currentDate <= end;
+  });
+  // Strict Event-Based Logic: Only Open if a specific Event is Open.
+  // Legacy "Artist Active" switch is ignored for Booth Status to prevent desync.
+  const isBoothActive = !!activeOpenEvent;
+
+  // 2. Helper Functions
   const getBoxDate = (dateString: string) => {
     const date = new Date(dateString);
     return {
@@ -61,92 +60,63 @@ const Home = () => {
     return `${startDate.toLocaleDateString('en-GB', options)} - ${endDate.toLocaleDateString('en-GB', options)}, ${endDate.getFullYear()}`;
   };
 
-  // 4. Data Fetching & Realtime
-  useEffect(() => {
-    let isMounted = true;
-    if (!contextArtist?.id) return;
 
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        // Fetch Events (Sort by date to support Auto-Next Up logic)
-        const { data: eventsData, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('artist_id', contextArtist.id)
-          .gte('end_date', new Date().toISOString())
-          .order('start_date', { ascending: true });
-
-        if (error) throw error;
-        if (isMounted) setEvents(eventsData || []);
-      } catch (err) {
-        console.error("Fetch Error:", err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    fetchData();
-
-    const channel = supabase
-      .channel(`artist-status-${contextArtist.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${contextArtist.id}` },
-        (payload) => { setIsBoothActive(payload.new.is_active); }
-      ).subscribe();
-
-    return () => { isMounted = false; supabase.removeChannel(channel); };
-  }, [contextArtist?.id]);
-
-  if (!contextArtist || !artist) return <div className="p-10 text-center">Loading Artist Profile...</div>;
 
   const socialLinks = [
-    { icon: <XIcon size={20} />, url: artist.x_url, label: 'X', hoverClass: 'hover:bg-black' },
-    { icon: <Instagram size={20} />, url: artist.ig_url, label: 'Instagram', hoverClass: 'hover:bg-[#d62976]' },
-    { icon: <Facebook size={20} />, url: artist.facebook_url, label: 'Facebook', hoverClass: 'hover:bg-[#1877f2]' },
-    { icon: <Music2 size={20} />, url: artist.tiktok_url, label: 'TikTok', hoverClass: 'hover:bg-black' },
-    { icon: <Mail size={20} />, url: artist.email ? `mailto:${artist.email}` : '', label: 'Email', hoverClass: 'hover:bg-[#ea4335]' },
+    { icon: <XIcon size={20} />, url: displayArtist.x_url, label: 'X', hoverClass: 'hover:bg-black' },
+    { icon: <Instagram size={20} />, url: displayArtist.ig_url, label: 'Instagram', hoverClass: 'hover:bg-[#d62976]' },
+    { icon: <Facebook size={20} />, url: displayArtist.facebook_url, label: 'Facebook', hoverClass: 'hover:bg-[#1877f2]' },
+    { icon: <Music2 size={20} />, url: displayArtist.tiktok_url, label: 'TikTok', hoverClass: 'hover:bg-black' },
+    { icon: <Mail size={20} />, url: displayArtist.email ? `mailto:${displayArtist.email}` : '', label: 'Email', hoverClass: 'hover:bg-[#ea4335]' },
   ].filter(link => link.url);
 
-  // 5. Auto-set Next Up Logic
-  // เลือกงานแรกที่สถานะไม่ใช่ Cancelled
+  // 3. Auto-set Next Up Logic
   const nextUpEventId = events.find(e => e.status !== 'Cancelled')?.id;
 
   return (
-    <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-20 animate-fade-in">
-      {/* Header Section */}
-      <div className="pt-12 pb-2 px-6 text-center">
-        <h1 className="text-3xl font-black text-[#ff4d94] mb-2 tracking-tight drop-shadow-sm">
-          {artist.display_name || 'Artist Name'}
-        </h1>
-        {artist.bio && (
-          <div className="text-gray-500 font-medium text-sm leading-relaxed max-w-[280px] mx-auto mb-5 whitespace-pre-line">
-            {artist.bio}
+    <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">
+      
+      {/* Offline Indicator */}
+      {!isConnected && (
+         <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
+            Offline - Reconnecting...
+         </div>
+      )}
+
+      <CustomerHeader 
+        artistId={displayArtist.id} 
+        title={displayArtist.display_name || 'Artist Name'}
+      >
+        {displayArtist.bio && (
+          <div className="text-gray-500 font-medium text-xs leading-relaxed max-w-[280px] mx-auto mb-3 whitespace-pre-line">
+            {displayArtist.bio}
           </div>
         )}
 
         {/* Status Badge */}
-        <div className="flex justify-center">
+        <div className="flex justify-center mb-1">
           {isBoothActive ? (
-            <div className="inline-flex items-center px-3 py-1 bg-green-50 border border-green-100 rounded-full">
-              <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-              <span className="text-green-700 text-[10px] font-bold uppercase tracking-wider">Booth Open</span>
+            <div className="inline-flex items-center px-2.5 py-0.5 bg-green-50 border border-green-100 rounded-full animate-fade-in">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+              <span className="text-green-700 text-[9px] font-bold uppercase tracking-wider">
+                  {activeOpenEvent ? 'Booth Open' : 'Booth Open'}
+              </span>
             </div>
           ) : (
-            <div className="inline-flex items-center px-3 py-1 bg-red-50 border border-red-100 rounded-full">
-               <div className="w-2 h-2 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
-               <span className="text-red-700 text-[10px] font-bold uppercase tracking-wider">Booth Closed</span>
+            <div className="inline-flex items-center px-2.5 py-0.5 bg-red-50 border border-red-100 rounded-full animate-fade-in">
+               <div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
+               <span className="text-red-700 text-[9px] font-bold uppercase tracking-wider">Booth Closed</span>
             </div>
           )}
         </div>
-      </div>
+      </CustomerHeader>
+
 
       {/* Events Section */}
-      <div className="flex-1 px-5 mt-1">
-        <h3 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">Next Events</h3>
-        <div className="space-y-4 mb-4">
-          {isLoading ? (
-            <div className="text-center py-10 text-gray-400">Loading events...</div>
-          ) : events.length === 0 ? (
+      <div className="flex-1 px-4 mt-2">
+        <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2 px-1">Next Events</h3>
+        <div className="space-y-3 mb-4">
+          {events.length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm font-medium">No upcoming events</div>
           ) : (
             events.map((event) => {
@@ -157,7 +127,7 @@ const Home = () => {
               return (
                 <Card 
                   key={event.id} 
-                  className={`border-none shadow-md p-5 rounded-2xl relative overflow-hidden ring-1 ring-gray-100 transition-all duration-300
+                  className={`border-none shadow-sm p-4 rounded-3xl relative overflow-hidden ring-1 ring-gray-100 transition-all duration-300
                     ${isCancelled 
                        ? 'bg-gray-50 opacity-100 grayscale-[0.8] ring-gray-200'
                        : isNextUp 
@@ -168,7 +138,7 @@ const Home = () => {
                    {/* Cancelled Overlay */}
                    {isCancelled && (
                       <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                         <div className="border-[3px] border-red-500 text-red-500 text-2xl font-black uppercase tracking-widest -rotate-12 px-4 py-2 rounded-lg bg-white/10 backdrop-blur-[1px]">
+                         <div className="border-[2px] border-red-500 text-red-500 text-xl font-black uppercase tracking-widest -rotate-12 px-4 py-2 rounded-lg bg-white/10 backdrop-blur-[1px]">
                             Cancelled
                          </div>
                       </div>
@@ -176,23 +146,23 @@ const Home = () => {
 
                    {/* Next Up Badge */}
                    {isNextUp && !isCancelled && (
-                     <div className="absolute top-0 right-0 bg-[#ff4d94] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10">
+                     <div className="absolute top-0 right-0 bg-[#ff4d94] text-white text-[10px] font-bold px-3 py-1 rounded-bl-2xl z-10">
                         NEXT UP
                      </div>
                    )}
 
                    <div className={`flex items-start gap-4 ${isCancelled ? 'opacity-50' : ''}`}>
-                      <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center border shrink-0
+                      <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border shrink-0
                         ${isNextUp && !isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
                          <span className={`text-[10px] font-bold uppercase ${isNextUp && !isCancelled ? 'text-[#ff4d94]' : 'text-gray-400'}`}>{month}</span>
                          <span className="text-2xl font-black text-gray-900 leading-none">{day}</span>
                       </div>
 
                       <div className="flex-1 space-y-2 pt-0.5">
-                         <h4 className="font-bold text-gray-900 text-lg leading-none">{event.event_name}</h4>
+                         <h4 className="font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h4>
                          <div className="space-y-1.5 text-gray-500 text-xs font-medium">
                             <div className="flex items-start gap-2"><MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{event.location_name}</span></div>
-                            {event.booth_number && <div className="flex items-center gap-2"><Store size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{event.booth_number}</span></div>}
+
                             {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{event.entrance_fee}</span></div>}
                             {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}
                             <div className="flex items-center gap-2"><Calendar size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{formatDateRange(event.start_date, event.end_date)}</span></div>
@@ -208,14 +178,14 @@ const Home = () => {
 
       {/* Social Footer */}
       <div className="px-8 mt-6">
-        <div className="flex items-center gap-4 mb-2">
+        <div className="flex items-center gap-4 mb-4">
            <div className="h-px bg-gray-200 flex-1"></div>
            <span className="text-xs font-bold text-black uppercase tracking-widest">Follow Me</span>
            <div className="h-px bg-gray-200 flex-1"></div>
         </div>
-        <div className="flex justify-center items-center gap-4 mb-4">
+        <div className="flex justify-center items-center gap-6 mb-4">
            {socialLinks.map((link, i) => (
-              <a key={i} href={link.url} target="_blank" rel="noreferrer" className={`p-3 rounded-full transition-all text-black ${link.hoverClass} hover:text-white`}>
+              <a key={i} href={link.url} target="_blank" rel="noreferrer" className="text-black hover:text-[#ff4d94] hover:scale-110 transition-all">
                  {link.icon}
               </a>
            ))}

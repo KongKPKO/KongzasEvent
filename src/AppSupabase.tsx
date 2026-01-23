@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import SupabaseLogin from './pages/SupabaseLogin';
-import SupabaseDashboard from './pages/SupabaseDashboard';
+import SupabaseDashboard from './pages/creators/SupabaseDashboard';
 import './index.css'; 
 
 /**

@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabaseClient';
-import { Button, Card } from '../components/ui';
+import { supabase } from '../../supabaseClient';
+import { Button, Card } from '../../components/ui';
 import { Link } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, ArrowLeft, FileText, Edit2, X } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
+import StickyBanner from '../../components/StickyBanner';
 import Papa from 'papaparse';
+import imageCompression from 'browser-image-compression';
+import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 interface Product {
   id: string;
@@ -12,37 +15,81 @@ interface Product {
   image_url: string;
   description?: string;
   category?: string;
+  status?: 'enable' | 'disable' | 'soldout';
 }
 
 const ManageProducts = () => {
    const [products, setProducts] = useState<Product[]>([]);
    const [loading, setLoading] = useState(true);
    const [uploading, setUploading] = useState(false);
+   const [compressing, setCompressing] = useState(false);
    
    // Form State
    const [name, setName] = useState('');
    const [price, setPrice] = useState('');
    const [description, setDescription] = useState('');
-   const [category, setCategory] = useState('A3'); // Default
+   const [category, setCategory] = useState(''); // Default
+   const [status, setStatus] = useState('enable'); // Default
    const [file, setFile] = useState<File | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    
+   // Filter & Sort State
+   const [searchQuery, setSearchQuery] = useState('');
+   const [selectedCategory, setSelectedCategory] = useState('All');
+   const [sortOption, setSortOption] = useState('name_asc');
+
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
    const [editFile, setEditFile] = useState<File | null>(null);
    const editFileInputRef = useRef<HTMLInputElement>(null);
    const csvInputRef = useRef<HTMLInputElement>(null);
+   
+   const [artistId, setArtistId] = useState<string>('');
+   const [artistName, setArtistName] = useState<string>('');
 
    const categories = [
-      "A3", "A4", "Badge", "Cheki", "Clip", "Keychain", 
-      "Photo4*6", "Photocard", "Service", "Shaker", "Standy", "Sticker"
+      "A3", "A4", "Badge", "Cheki", "Keychain", 
+      "Photo4*6", "Photocard", "Shaker", "Standy", "Sticker"
    ].sort().concat(["Other"]);
+   
+   // Derived Data for Suggestions (Unique Categories from Products + Defaults)
+   // We use this for the datalist suggestions
+   const allCategorySuggestions = Array.from(new Set([
+      ...categories.filter(c => c !== 'Other'), // Defaults
+      ...products.map(p => p.category?.trim()).filter(Boolean) as string[]
+   ])).sort();
+
+   // Derived Data for Filter Chips (includes "All")
+   const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
+
+   const filteredProducts = products.filter(product => {
+      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
+      return matchesSearch && matchesCategory;
+   }).sort((a, b) => {
+      if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
+      if (sortOption === 'price_asc') return a.price - b.price;
+      if (sortOption === 'price_desc') return b.price - a.price;
+      return 0;
+   });
 
    const fetchProducts = async () => {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setArtistId(user.id);
+
+      // Fetch Artist Name
+      const { data: artist } = await supabase
+         .from('artists')
+         .select('display_name')
+         .eq('id', user.id)
+         .single();
+      
+      if (artist) setArtistName(artist.display_name);
+
+
 
       const { data, error } = await supabase
          .from('products')
@@ -60,7 +107,7 @@ const ManageProducts = () => {
       fetchProducts();
    }, []);
 
-   const getProductImageUrl = (dbValue: string) => {
+   const getProductImageUrl = (dbValue: string, width: number = 400) => {
       if (!dbValue) return '';
       let path = dbValue;
       if (dbValue.includes('http') && dbValue.includes('Menu/')) {
@@ -68,18 +115,54 @@ const ManageProducts = () => {
          if (parts.length > 1) path = parts[1];
       }
       const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-      return data.publicUrl;
+      
+      // Use ImageKit Utility
+      return getOptimizedImageUrl(data.publicUrl, width);
    };
 
-   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleImageCompression = async (imageFile: File): Promise<File> => {
+      // Options for compression
+      const options = {
+         maxSizeMB: 0.5,           // 500KB
+         maxWidthOrHeight: 1200,   // Max dimension
+         useWebWorker: true,
+         fileType: 'image/webp'    // Try to convert to WebP
+      };
+
+      // Skip if already small enough (e.g. < 500KB)
+      if (imageFile.size / 1024 / 1024 < 0.5) {
+         return imageFile; 
+      }
+
+      try {
+         const compressedFile = await imageCompression(imageFile, options);
+         // Keep original name but change extension if converted
+         const newName = imageFile.name.replace(/\.[^/.]+$/, "") + '.webp';
+         return new File([compressedFile], newName, { type: 'image/webp' });
+      } catch (error) {
+         console.warn('Image compression failed, using original.', error);
+         return imageFile;
+      }
+   };
+
+   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
          const selectedFile = e.target.files[0];
          // Basic validation
-         if (!['image/jpeg', 'image/png'].includes(selectedFile.type)) {
-            alert('Only JPG and PNG files are allowed.');
+         if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
+            alert('Only JPG, PNG and WebP files are allowed.');
             return;
          }
-         setFile(selectedFile);
+
+         setCompressing(true);
+         try {
+             const compressed = await handleImageCompression(selectedFile);
+             setFile(compressed);
+         } catch (err) {
+            setFile(selectedFile);
+         } finally {
+            setCompressing(false);
+         }
       }
    };
 
@@ -115,6 +198,7 @@ const ManageProducts = () => {
                price: parseFloat(price),
                description,
                category,
+               status,
                image_url: filePath // Store relative path
             }]);
 
@@ -124,7 +208,8 @@ const ManageProducts = () => {
          setName('');
          setPrice('');
          setDescription('');
-         setCategory('A3');
+         setCategory('');
+         setStatus('enable');
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
          
@@ -171,19 +256,29 @@ const ManageProducts = () => {
       setName(product.name);
       setPrice(product.price.toString());
       setDescription(product.description || '');
-      setCategory(product.category || 'A3');
+      setCategory(product.category || '');
+      setStatus(product.status || 'enable');
       setEditFile(null);
       setIsEditModalOpen(true);
    };
 
-   const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
          const selectedFile = e.target.files[0];
-         if (!['image/jpeg', 'image/png'].includes(selectedFile.type)) {
-            alert('Only JPG and PNG files are allowed.');
+         if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
+            alert('Only JPG, PNG, and WebP files are allowed.');
             return;
          }
-         setEditFile(selectedFile);
+
+         setCompressing(true);
+         try {
+             const compressed = await handleImageCompression(selectedFile);
+             setEditFile(compressed);
+         } catch (err) {
+             setEditFile(selectedFile);
+         } finally {
+             setCompressing(false);
+         }
       }
    };
 
@@ -229,6 +324,7 @@ const ManageProducts = () => {
                price: parseFloat(price),
                description,
                category,
+               status,
                image_url: imageUrl
             })
             .eq('id', editingProduct.id);
@@ -242,7 +338,10 @@ const ManageProducts = () => {
          setName('');
          setPrice('');
          setDescription('');
-         setCategory('A3');
+         setPrice('');
+         setDescription('');
+         setCategory('');
+         setStatus('enable');
          
          await fetchProducts();
          alert('Product updated successfully!');
@@ -267,11 +366,11 @@ const ManageProducts = () => {
       Papa.parse(file, {
          header: true,
          skipEmptyLines: true,
-         transformHeader: (header) => {
+         transformHeader: (header: string) => {
             // Trim whitespace and convert to lowercase for case-insensitive matching
             return header.trim().toLowerCase();
          },
-         complete: async (results) => {
+         complete: async (results: Papa.ParseResult<Record<string, string>>) => {
             const rows = results.data as any[];
             if (!rows || rows.length === 0) {
                alert('CSV is empty.');
@@ -347,7 +446,7 @@ const ManageProducts = () => {
                   if (csvInputRef.current) csvInputRef.current.value = '';
                   await fetchProducts();
                } catch (err: any) {
-                  console.error('Bulk upload error:', err);
+                  console.error('File upload error:', err);
                   alert('Failed to upload items. ' + err.message);
                } finally {
                   setUploading(false);
@@ -356,35 +455,61 @@ const ManageProducts = () => {
                alert(`No valid rows found.\n\n${errors.length > 0 ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '') : "Ensure CSV has 'name' and 'price' columns."}`);
             }
          },
-         error: (err) => {
+         error: (err: Error) => {
             console.error('CSV Parse Error:', err);
             alert('Failed to parse CSV file.');
          }
-      });
+   });
    };
 
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
+         {artistId && <StickyBanner artistId={artistId} />}
          {/* Simple Header */}
-         <nav className="bg-white border-b border-gray-200 px-4 h-16 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-            <div className="flex items-center gap-4">
-               <Link to="/supabase-demo" className="text-gray-500 hover:text-pink-500 transition-colors">
-                  <ArrowLeft size={24} />
+         {/* New Unified Header */}
+         <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+               <div className="bg-pink-500 text-white p-1.5 rounded-lg font-bold">K</div>
+               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-600">Kongzas</span>
+            </div>
+            
+            <div className="flex items-center gap-6">
+
+               <Link to="/manage-events" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                  <LayoutDashboard size={20} />
+                  <span>Home</span>
                </Link>
-               <h1 className="text-xl font-bold text-gray-800">Manage Menu</h1>
+               <Link to="/manage-products" className="text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                  <List size={20} />
+                  <span>Menu</span>
+               </Link>
+               <Link to="/manage-queues" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                  <History size={20} />
+                  <span>Queue</span>
+               </Link>
+               <div className="h-6 w-px bg-gray-200 mx-2"></div>
+               <Button onClick={() => supabase.auth.signOut()} variant="ghost" className="text-gray-500 hover:text-red-500">
+                  Log Out
+               </Button>
             </div>
          </nav>
+         
+         {/* Page Title Wrapper for Layout Cleanup */}
+         <div className="max-w-5xl mx-auto px-6 pt-2 mb-2">
+            <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage Products</h1>
+            <p className="text-sm text-pink-600 font-bold">{artistName}</p>
+         </div>
 
-         <main className="max-w-5xl mx-auto p-6">
+         <main className="max-w-5xl mx-auto px-6 pb-12">
             
             {/* ADD PRODUCT FORM */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8 animate-fade-in">
-               <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                     <Plus className="text-pink-500" />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 animate-fade-in">
+               <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                     <Plus className="text-pink-500" size={18} />
                      Add New Item
                   </h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                      <input 
                         type="file" 
                         ref={csvInputRef}
@@ -396,34 +521,34 @@ const ManageProducts = () => {
                         type="button"
                         onClick={() => csvInputRef.current?.click()}
                         disabled={uploading}
-                        className="bg-[#ff4d94] hover:bg-[#ff3385] text-white py-2 px-4 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-sm"
+                        className="bg-[#ff4d94] hover:bg-[#ff3385] text-white py-1.5 px-3 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
                      >
-                        {uploading ? <Loader className="animate-spin" size={16} /> : <FileText size={16} />}
-                        {uploading ? 'Uploading...' : 'Bulk Upload (.csv)'}
+                        {uploading ? <Loader className="animate-spin" size={14} /> : <FileText size={14} />}
+                        {uploading ? 'Uploading...' : 'Upload File'}
                      </Button>
                   </div>
                </div>
                
-               <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
-                  <div className="lg:col-span-1">
-                     <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
+               <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+                  <div className="lg:col-span-1 space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product Name</label>
                      <input 
                         type="text" 
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
                         placeholder="e.g. Iced Latte"
                         required
                      />
                   </div>
                   
-                  <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-2">Price (THB)</label>
+                  <div className="space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Price (THB)</label>
                      <input 
                         type="number" 
                         value={price}
                         onChange={(e) => setPrice(e.target.value)}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
                         placeholder="0.00"
                         min="0"
                         step="0.01"
@@ -431,21 +556,38 @@ const ManageProducts = () => {
                      />
                   </div>
 
-                  <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                     <select
+                  <div className="space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category</label>
+                     <input
+                        list="category-suggestions"
+                        type="text"
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white"
-                     >
-                        {categories.map(cat => (
-                           <option key={cat} value={cat}>{cat}</option>
+                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                        placeholder="Select or type..."
+                     />
+                     <datalist id="category-suggestions">
+                        {allCategorySuggestions.map(cat => (
+                           <option key={cat} value={cat} />
                         ))}
+                     </datalist>
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                     <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
+                     >
+                        <option value="enable">Enable</option>
+                        <option value="disable">Disable</option>
+                        <option value="soldout">Sold Out</option>
                      </select>
                   </div>
 
-                  <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                  <div className="space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image</label>
                      <div className="relative">
                         <input 
                            type="file" 
@@ -457,24 +599,27 @@ const ManageProducts = () => {
                         />
                         <label 
                            htmlFor="file-upload" 
-                           className={`w-full flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
+                           className={`w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
                         >
-                           <Upload size={18} className="mr-2" />
-                           <span className="truncate text-sm">{file ? file.name : 'Choose Image'}</span>
+                           <Upload size={14} className="mr-2" />
+                           <span className="truncate text-xs font-medium">
+                              {compressing ? 'Compressing...' : (file ? file.name : 'Choose Image')}
+                           </span>
                         </label>
                      </div>
+                     {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
                   </div>
 
-                  <div className="lg:col-span-4">
-                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="lg:col-span-4 space-y-1">
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
                         Description 
-                        <span className="text-xs text-gray-400 ml-2">({description.length}/200)</span>
+                        <span className="text-[10px] text-gray-400 ml-2 font-normal">({description.length}/200)</span>
                      </label>
                      <textarea 
                         value={description}
                         onChange={(e) => setDescription(e.target.value.slice(0, 200))}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all h-20 resize-none"
-                        placeholder="Brief description of the product..."
+                        className="w-full px-3 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all h-16 resize-none"
+                        placeholder="Brief description..."
                      />
                   </div>
 
@@ -482,31 +627,93 @@ const ManageProducts = () => {
                      <Button 
                         type="submit" 
                         disabled={uploading}
-                        className="bg-pink-500 hover:bg-pink-600 text-white py-2.5 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
+                        className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9"
                      >
-                        {uploading ? <Loader className="animate-spin mx-auto" size={20} /> : 'Add Product'}
+                        {uploading ? <Loader className="animate-spin mx-auto" size={16} /> : 'Add Product'}
                      </Button>
                   </div>
 
                </form>
             </div>
 
+            {/* FILTER & SORT SECTION */}
+            <div className="mb-8 space-y-4">
+               {/* Search & Sort Row */}
+               <div className="flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                     <input 
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm"
+                     />
+                  </div>
+                  
+                  <div className="relative min-w-[200px]">
+                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <ArrowUpDown className="text-gray-400" size={16} />
+                     </div>
+                     <select
+                        value={sortOption}
+                        onChange={(e) => setSortOption(e.target.value)}
+                        className="w-full pl-10 pr-8 py-2.5 appearance-none rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm font-medium text-sm"
+                     >
+                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="price_asc">Price (Low to High)</option>
+                        <option value="price_desc">Price (High to Low)</option>
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </div>
+               </div>
+
+               {/* Category Chips */}
+               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  {uniqueCategories.map(cat => (
+                     <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                           selectedCategory === cat 
+                              ? 'bg-pink-500 text-white shadow-md shadow-pink-200' 
+                              : 'bg-white border border-gray-200 text-gray-600 hover:border-pink-300 hover:text-pink-500'
+                        }`}
+                     >
+                        {cat}
+                     </button>
+                  ))}
+               </div>
+            </div>
+
             {/* PRODUCT LIST */}
-            <h2 className="text-lg font-bold text-gray-800 mb-4 px-1">Current Menu ({products.length})</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4 px-1">Current Menu ({filteredProducts.length})</h2>
             
             {loading ? (
                <div className="text-center py-12 text-gray-400">Loading products...</div>
-            ) : products.length > 0 ? (
+            ) : filteredProducts.length > 0 ? (
                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                  {products.map(product => (
+                  {filteredProducts.map(product => (
                      <Card key={product.id} className="overflow-hidden border border-gray-100 shadow-sm group hover:shadow-md transition-shadow">
                         <div className="aspect-square bg-gray-100 relative overflow-hidden">
                            <img 
-                              src={getProductImageUrl(product.image_url)} 
+                              src={getProductImageUrl(product.image_url, 400)} 
                               alt={product.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 bg-gray-200"
                               onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Image'; }}
                            />
+                           {product.status === 'disable' && (
+                              <div className="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
+                                 <span className="text-white font-black text-sm tracking-wider border-2 border-white px-2 py-1 rotate-[-12deg]">DISABLED</span>
+                              </div>
+                           )}
+                           {product.status === 'soldout' && (
+                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                 <span className="text-red-500 font-black text-sm tracking-wider border-2 border-red-500 px-2 py-1 rotate-[-12deg]">SOLD OUT</span>
+                              </div>
+                           )}
                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                               <Button 
                                  onClick={() => handleEditClick(product)}
@@ -522,7 +729,7 @@ const ManageProducts = () => {
                               </Button>
                            </div>
                         </div>
-                        <div className="p-4 flex flex-col h-full">
+                        <div className="p-1.5 flex flex-col h-full">
                            <div className="flex justify-between items-start mb-2">
                               <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2">{product.name}</h3>
                               <span className="text-pink-600 font-bold text-sm shrink-0">฿{product.price}</span>
@@ -600,15 +807,15 @@ const ManageProducts = () => {
 
                         <div>
                            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                           <select
+                           <input
+                              list="category-suggestions"
+                              type="text"
                               value={category}
                               onChange={(e) => setCategory(e.target.value)}
-                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white"
-                           >
-                              {categories.map(cat => (
-                                 <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                           </select>
+                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                              placeholder="Select or type category..."
+                           />
+                           {/* Datalist is reusable, defined above in the Add form */}
                         </div>
 
                         <div>
@@ -627,9 +834,25 @@ const ManageProducts = () => {
                                  className={`w-full flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer transition-colors ${editFile ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
                               >
                                  <Upload size={18} className="mr-2" />
-                                 <span className="truncate text-sm">{editFile ? editFile.name : 'Choose New Image'}</span>
+                                 <span className="truncate text-sm">
+                                    {compressing ? 'Compressing...' : (editFile ? editFile.name : 'Choose New Image')}
+                                 </span>
                               </label>
                            </div>
+                           {compressing && <p className="text-xs text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
+                        </div>
+
+                        <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                           <select
+                              value={status}
+                              onChange={(e) => setStatus(e.target.value)}
+                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white"
+                           >
+                              <option value="enable">Enable</option>
+                              <option value="disable">Disable</option>
+                              <option value="soldout">Sold Out</option>
+                           </select>
                         </div>
                      </div>
 
@@ -650,9 +873,11 @@ const ManageProducts = () => {
                         <div>
                            <label className="block text-sm font-medium text-gray-700 mb-2">Current Image</label>
                            <img 
-                              src={getProductImageUrl(editingProduct.image_url)} 
+                              src={getProductImageUrl(editingProduct.image_url, 200)} 
                               alt="Current"
-                              className="w-32 h-32 object-cover rounded-lg border border-gray-200"
+                              loading="lazy"
+                              decoding="async"
+                              className="w-32 h-32 object-cover rounded-lg border border-gray-200 bg-gray-100"
                               onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Image'; }}
                            />
                         </div>

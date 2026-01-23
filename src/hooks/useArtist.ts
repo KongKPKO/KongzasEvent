@@ -6,12 +6,13 @@ export interface Artist {
   slug: string;
   display_name?: string;
   bio?: string;
-  is_active?: boolean;
+
   x_url?: string;
   ig_url?: string;
   facebook_url?: string;
   tiktok_url?: string;
   email?: string;
+  broadcast_message?: string;
 }
 
 export const useArtist = (slug: string | undefined) => {
@@ -29,19 +30,20 @@ export const useArtist = (slug: string | undefined) => {
       try {
         const { data, error } = await supabase
           .from('artists')
-          .select('id, slug, display_name, bio, is_active, x_url, ig_url, facebook_url, tiktok_url, email')
+          .select('id, slug, display_name, bio, x_url, ig_url, facebook_url, tiktok_url, email, broadcast_message')
           .eq('slug', slug)
           .single();
 
         if (error) {
-           setError('Artist not found');
+           console.error("Supabase Artist Fetch Error:", error.message, error.details);
+           setError(`Artist not found: ${error.message}`);
            setArtist(null);
         } else {
            setArtist(data);
         }
-      } catch (err) {
-        console.error(err);
-        setError('Failed to fetch artist');
+      } catch (err: any) {
+        console.error("Unexpected Error fetching artist:", err);
+        setError(`Failed to fetch artist: ${err.message || 'Unknown error'}`);
       } finally {
         setLoading(false);
       }

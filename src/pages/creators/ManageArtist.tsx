@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Calendar, User, MapPin, Store, Ticket, Trash2, Plus, X, BarChart2, LayoutDashboard, List, History } from 'lucide-react';
+import { Calendar, User, MapPin, Ticket, Trash2, Plus, X, BarChart2, LayoutDashboard, List, History } from 'lucide-react';
 import { Button } from '../../components/ui';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -8,7 +8,7 @@ interface Artist {
   id: string;
   display_name: string;
   bio: string;
-  is_active: boolean;
+
   x_url: string;
   ig_url: string;
   facebook_url: string;
@@ -22,7 +22,7 @@ interface Event {
   event_name: string;
   location_name: string;
   location_detail: string;
-  booth_number: string;
+
   entrance_fee: string;
   transit_info: string;
   start_date: string;
@@ -53,11 +53,18 @@ const ManageArtist = () => {
       try {
         if (isMounted) setIsLoading(true);
 
-        // 1. Fetch Artist (slug='test1' for currrent user context)
+        // 1. Get User
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+           handleLogout();
+           return;
+        }
+
+        // 2. Fetch Artist by User ID
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
           .select('*')
-          .eq('slug', 'test1')
+          .eq('id', user.id)
           .single();
 
         if (artistError) throw artistError;
@@ -143,7 +150,7 @@ const ManageArtist = () => {
         event_name: '',
         location_name: '',
         location_detail: '',
-        booth_number: '',
+
         entrance_fee: '',
         transit_info: '',
         start_date: '',
@@ -240,18 +247,25 @@ const ManageArtist = () => {
             let serviceCount = 0;
 
             queues.forEach(q => {
-               // Wait Time: Created -> Called
-               if (q.called_at && q.created_at) {
-                  const wait = (new Date(q.called_at).getTime() - new Date(q.created_at).getTime()) / 60000;
+               // Wait Time: Created -> Arrived (served_at)
+               // Fallback: If no served_at (legacy), rely on called_at if reasonable, or exclude.
+               // We prefer served_at for accuracy.
+               if (q.created_at && (q.served_at || q.called_at)) {
+                  const endTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
+                  const wait = (endTime - new Date(q.created_at).getTime()) / 60000;
+                  
                   if (wait > 0 && wait < 600) { // Filter outliers > 10 hours
                      totalWaitTime += wait;
                      waitCount++;
                   }
                }
 
-               // Service Time: Called -> Completed (Only for completed tickets)
-               if (q.status === 'complete' && q.completed_at && q.called_at) {
-                   const service = (new Date(q.completed_at).getTime() - new Date(q.called_at).getTime()) / 60000;
+               // Service Time: Arrived (served_at) -> Completed (completed_at)
+               // Only for completed tickets
+               if (q.status === 'complete' && q.completed_at && (q.served_at || q.called_at)) {
+                   const startTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
+                   const service = (new Date(q.completed_at).getTime() - startTime) / 60000;
+                   
                    if (service > 0 && service < 300) { // Filter outliers > 5 hours
                        totalServiceTime += service;
                        serviceCount++;
@@ -284,7 +298,7 @@ const ManageArtist = () => {
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
        
        {/* New Unified Header */}
-       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm mb-8">
+       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-2">
              <div className="bg-pink-500 text-white p-1.5 rounded-lg font-bold">K</div>
              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-600">Kongzas</span>
@@ -292,15 +306,15 @@ const ManageArtist = () => {
           
           <div className="flex items-center gap-6">
 
-             <Link to="/artist/manage" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+             <Link to="/manage-events" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-events' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
                 <LayoutDashboard size={20} />
                 <span>Home</span>
              </Link>
-             <Link to="/manage-products" className="text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+             <Link to="/manage-products" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-products' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
                 <List size={20} />
                 <span>Menu</span>
              </Link>
-             <Link to={`/artist/dashboard`} className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+             <Link to="/manage-queues" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-queues' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
                 <History size={20} />
                 <span>Queue</span>
              </Link>
@@ -311,83 +325,85 @@ const ManageArtist = () => {
           </div>
        </nav>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-12 pb-12 pt-24">
+      {/* Main Content - iPad Optimized (1180px Fit) */}
+      <div className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">
         
         {/* Header */}
-        <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-1">Artist Admin Center</h1>
-              <p className="text-slate-500">Manage your profile and upcoming events</p>
+              <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
+              <p className="text-sm md:text-base text-pink-600 font-bold">{artist.display_name}</p>
            </div>
            
            <div className="flex items-center gap-3">
-              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${artist.is_active ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-100 border-gray-200 text-gray-500'}`}>
-                {artist.is_active ? 'Online' : 'Offline'}
-              </span>
+              {/* Status Badge Removed */}
            </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* --- LEFT COL: Profile Settings --- */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
-               <User className="text-[#ff4d94]" size={20} />
-               <h2 className="font-bold text-lg text-slate-800">Profile Settings</h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-auto self-start">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+               <User className="text-[#ff4d94]" size={16} />
+               <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
             </div>
             
-            <div className="p-6 space-y-5">
+            <div className="p-4 space-y-3">
                {/* Display Name */}
-               <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Display Name</label>
+               <div className="space-y-0.5">
+                  <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Display Name</label>
                   <input 
                     name="display_name"
                     value={artist.display_name}
                     onChange={handleProfileChange}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all"
+                    className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-pink-500/50 focus:border-pink-500 transition-all"
                   />
                </div>
 
                {/* Bio */}
-               <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase text-slate-400 tracking-wider">Bio</label>
+               <div className="space-y-0.5">
+                  <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Bio</label>
                   <textarea 
                     name="bio"
                     value={artist.bio}
                     onChange={handleProfileChange}
-                    rows={4}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 transition-all resize-none leading-relaxed"
+                    rows={3}
+                    className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500/50 focus:border-pink-500 transition-all resize-none leading-relaxed"
                   />
-                  <p className="text-[10px] text-gray-400 text-right">Supports new lines</p>
                </div>
 
-               <div className="h-px bg-gray-100 my-2"></div>
+               <div className="h-px bg-gray-100 my-0.5"></div>
 
-               {/* Socials */}
-               <div className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-2">Social Links</h3>
-                  {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
-                    <div key={field} className="relative">
-                       <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-400 select-none uppercase w-16">
-                          {field.replace('_url', '').replace('email', 'Email')}
-                       </span>
-                       <input 
-                          name={field}
-                          value={(artist as any)[field] || ''}
-                          onChange={handleProfileChange}
-                          placeholder={field === 'email' ? 'contact@email.com' : 'https://...'}
-                          className="w-full bg-white border border-gray-200 rounded-lg pl-20 pr-4 py-2 text-xs font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all"
-                       />
-                    </div>
-                  ))}
+               {/* Socials - Single Column Compact */}
+               <div className="space-y-1">
+                  <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-0.5">Social Links</h3>
+                  <div className="flex flex-col gap-1">
+                     {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
+                       <div key={field} className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                             <span className="text-[9px] font-bold text-gray-400 uppercase w-16 truncate">
+                                {field.replace('_url', '').replace('email', 'Email')}
+                             </span>
+                          </div>
+                          <input 
+                             name={field}
+                             value={(artist as any)[field] || ''}
+                             onChange={handleProfileChange}
+                             placeholder={field === 'email' ? 'contact@email.com' : '...'}
+                             className="w-full bg-white border border-gray-200 rounded pl-16 pr-2 py-1 text-xs font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all"
+                          />
+                       </div>
+                     ))}
+                  </div>
                </div>
 
                <Button 
                  onClick={handleProfileSave} 
                  disabled={isSaving}
-                 className="w-full mt-4 bg-[#ff4d94] hover:bg-[#e63e80] text-white font-bold h-12 rounded-xl shadow-lg shadow-pink-200 active:scale-95 transition-all"
+                 className="w-full mt-1 bg-[#ff4d94] hover:bg-[#e63e80] text-white font-bold h-9 text-xs rounded shadow-md shadow-pink-200 active:scale-95 transition-all"
                >
-                 {isSaving ? 'Saving...' : 'Save Profile Changes'}
+                 {isSaving ? 'Saving...' : 'Save Updates'}
                </Button>
             </div>
           </div>
@@ -444,11 +460,7 @@ const ManageArtist = () => {
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                                            {evt.status}
                                         </span>
-                                        {evt.booth_number && (
-                                           <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                              <Store size={10} /> {evt.booth_number}
-                                           </span>
-                                        )}
+
                                         {evt.entrance_fee && (
                                            <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                                               <Ticket size={10} /> {evt.entrance_fee}
@@ -539,14 +551,10 @@ const ManageArtist = () => {
                      </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                      <div className="space-y-1">
                         <label className="font-bold text-xs uppercase text-gray-400">Location Name</label>
                         <input name="location_name" value={currentEvent.location_name || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. BITEC Bangna" />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-400">Booth No.</label>
-                        <input name="booth_number" value={currentEvent.booth_number || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. A-12" />
                      </div>
                   </div>
 

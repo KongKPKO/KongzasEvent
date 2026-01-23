@@ -19,8 +19,8 @@ const Login = () => {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Success! Redirect to Admin
-      navigate('/admin');
+      // Success! Redirect to Dashboard
+      navigate('/manage-events');
     } catch (err: any) {
       console.error("Login failed", err);
       if (err.code === 'auth/invalid-credential') {

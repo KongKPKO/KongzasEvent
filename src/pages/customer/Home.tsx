@@ -86,6 +86,8 @@ const Home = () => {
       <CustomerHeader 
         artistId={displayArtist.id} 
         title={displayArtist.display_name || 'Artist Name'}
+        avatarUrl={displayArtist.image_url}
+        avatarDisplay="stacked"
       >
         {displayArtist.bio && (
           <div className="text-gray-500 font-medium text-xs leading-relaxed max-w-[280px] mx-auto mb-3 whitespace-pre-line">

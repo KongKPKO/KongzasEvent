@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { Button } from '../../components/ui';
 import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface QueueItem {
   id: string; // UUID from DB
@@ -41,9 +41,15 @@ const formatElapsedTime = (dateString?: string) => {
 };
 
 const SupabaseDashboard = () => {
+  const navigate = useNavigate();
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isBoothActive, setIsBoothActive] = useState(false);
+
+  const handleLogout = async () => {
+      await supabase.auth.signOut();
+      navigate('/manage-login');
+  };
   
   // Event & Ticket State
   // Event & Ticket State
@@ -54,6 +60,7 @@ const SupabaseDashboard = () => {
 
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
   const [artistName, setArtistName] = useState<string>('');
+  const [artistAvatar, setArtistAvatar] = useState<string>('');
   
   const location = useLocation();
 
@@ -64,12 +71,15 @@ const SupabaseDashboard = () => {
   const fetchQueues = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+         navigate('/manage-login');
+         return;
+      }
 
       // Fetch artist status
       const { data: artistData } = await supabase
         .from('artists')
-        .select('broadcast_message, display_name')
+        .select('broadcast_message, display_name, image_url')
         .eq('id', user.id)
         .single();
       
@@ -77,6 +87,7 @@ const SupabaseDashboard = () => {
          setBroadcastMessage(artistData.broadcast_message || null);
          // @ts-ignore
          if (artistData.display_name) setArtistName(artistData.display_name);
+         if (artistData.image_url) setArtistAvatar(artistData.image_url);
       }
 
       const { data: eventsData } = await supabase
@@ -403,9 +414,7 @@ const SupabaseDashboard = () => {
    // --- TICKET GENERATION LOGIC REMOVED (Customer Driven) ---
 
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
+
 
   // derived state
   // Mapping notes: 
@@ -505,9 +514,20 @@ const SupabaseDashboard = () => {
                <span>Queue</span>
             </Link>
             <div className="h-6 w-px bg-gray-200 mx-2"></div>
-             <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
-                Log Out
-             </Button>
+ 
+             {/* Avatar in Header */}
+             <div className="flex items-center gap-3">
+                {artistAvatar ? (
+                   <img src={artistAvatar} alt={artistName} className="w-9 h-9 rounded-full border-2 border-white shadow-sm object-cover bg-gray-100" />
+                ) : (
+                   <div className="w-9 h-9 rounded-full bg-pink-100 flex items-center justify-center text-xs font-bold text-pink-500 border-2 border-white shadow-sm">
+                      {artistName ? artistName.charAt(0) : <UserCheck size={16} />}
+                   </div>
+                )}
+                <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500 text-xs">
+                   Log Out
+                </Button>
+             </div>
          </div>
       </nav>
 

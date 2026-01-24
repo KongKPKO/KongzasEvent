@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button, Card } from '../../components/ui';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
 import StickyBanner from '../../components/StickyBanner';
 import Papa from 'papaparse';
@@ -19,6 +19,7 @@ interface Product {
 }
 
 const ManageProducts = () => {
+   const navigate = useNavigate();
    const [products, setProducts] = useState<Product[]>([]);
    const [loading, setLoading] = useState(true);
    const [uploading, setUploading] = useState(false);
@@ -77,7 +78,13 @@ const ManageProducts = () => {
    const fetchProducts = async () => {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      
+      // Fix: Force redirect if no session to prevent "Artist not found" errors
+      if (!user) {
+         navigate('/manage-login'); 
+         return;
+      }
+
       setArtistId(user.id);
 
       // Fetch Artist Name
@@ -107,6 +114,11 @@ const ManageProducts = () => {
       fetchProducts();
    }, []);
 
+   const handleLogout = async () => {
+      await supabase.auth.signOut();
+      navigate('/manage-login'); // Redirect to login page immediately
+   };
+
    const getProductImageUrl = (dbValue: string, width: number = 400) => {
       if (!dbValue) return '';
       let path = dbValue;
@@ -120,17 +132,24 @@ const ManageProducts = () => {
       return getOptimizedImageUrl(data.publicUrl, width);
    };
 
+
    const handleImageCompression = async (imageFile: File): Promise<File> => {
       // Options for compression
       const options = {
-         maxSizeMB: 0.5,           // 500KB
-         maxWidthOrHeight: 1200,   // Max dimension
+         maxSizeMB: 0.2,           // 200KB
+         maxWidthOrHeight: 1024,   // Max dimension
          useWebWorker: true,
-         fileType: 'image/webp'    // Try to convert to WebP
+         fileType: 'image/webp',   // Try to convert to WebP
+         initialQuality: 0.8       // 80% quality at first
       };
 
-      // Skip if already small enough (e.g. < 500KB)
-      if (imageFile.size / 1024 / 1024 < 0.5) {
+      // If file is larger than 10MB, reject immediately
+      if (imageFile.size > 10 * 1024 * 1024) {
+         alert("File size must be less than 10MB");
+         throw new Error("File too large");
+      }
+      // Skip if already small enough (e.g. < 200KB)
+      if (imageFile.size / 1024 / 1024 < 0.2) {
          return imageFile; 
       }
 
@@ -488,7 +507,7 @@ const ManageProducts = () => {
                   <span>Queue</span>
                </Link>
                <div className="h-6 w-px bg-gray-200 mx-2"></div>
-               <Button onClick={() => supabase.auth.signOut()} variant="ghost" className="text-gray-500 hover:text-red-500">
+               <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
                   Log Out
                </Button>
             </div>

@@ -138,6 +138,8 @@ const MenuView = () => {
           artistId={displayArtist.id} 
           title={displayArtist?.display_name || 'Menu'}
           className=""
+          avatarUrl={displayArtist.image_url}
+          avatarDisplay="inline"
        >
              <div 
                 onClick={() => totalItems > 0 && setIsExpanded(!isExpanded)}

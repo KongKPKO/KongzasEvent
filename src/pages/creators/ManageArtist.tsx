@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Calendar, User, MapPin, Ticket, Trash2, Plus, X, BarChart2, LayoutDashboard, List, History } from 'lucide-react';
 import { Button } from '../../components/ui';
-import { Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import AvatarUpload from '../../components/AvatarUpload';
 
 interface Artist {
   id: string;
   display_name: string;
   bio: string;
+  image_url: string;
 
   x_url: string;
   ig_url: string;
@@ -31,6 +33,7 @@ interface Event {
 }
 
 const ManageArtist = () => {
+  const navigate = useNavigate();
   const [artist, setArtist] = useState<Artist | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,7 +59,7 @@ const ManageArtist = () => {
         // 1. Get User
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-           handleLogout();
+           navigate('/manage-login'); // Force redirect
            return;
         }
 
@@ -103,6 +106,7 @@ const ManageArtist = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    navigate('/manage-login'); // Redirect to login page immediately
   };
 
   // --- Profile Actions ---
@@ -110,6 +114,26 @@ const ManageArtist = () => {
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (!artist) return;
     setArtist({ ...artist, [e.target.name]: e.target.value });
+  };
+
+  const handleAvatarUpload = async (url: string) => {
+    if (!artist) return;
+    try {
+       // 1. Update Local State (Optimistic)
+       setArtist({ ...artist, image_url: url });
+
+       // 2. IMMEDIATE SAVE to DB
+       const { error } = await supabase
+          .from('artists')
+          .update({ image_url: url })
+          .eq('id', artist.id);
+
+       if (error) throw error;
+       alert('Profile picture updated successfully!');
+    } catch (error) {
+       console.error("Error saving avatar:", error);
+       alert('Failed to save profile picture.');
+    }
   };
 
   const handleProfileSave = async () => {
@@ -125,7 +149,8 @@ const ManageArtist = () => {
           ig_url: artist.ig_url,
           facebook_url: artist.facebook_url,
           tiktok_url: artist.tiktok_url,
-          email: artist.email
+          email: artist.email,
+          image_url: artist.image_url
         })
         .eq('id', artist.id);
 
@@ -350,6 +375,15 @@ const ManageArtist = () => {
             </div>
             
             <div className="p-4 space-y-3">
+               {/* Avatar Upload */}
+               <div className="flex justify-center mb-2">
+                  <AvatarUpload 
+                    artistId={artist.id}
+                    currentImageUrl={artist.image_url}
+                    onUploadComplete={handleAvatarUpload}
+                  />
+               </div>
+
                {/* Display Name */}
                <div className="space-y-0.5">
                   <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Display Name</label>

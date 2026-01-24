@@ -1,0 +1,74 @@
+name: Full Stack QA Pipeline 🚀
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Build & Test (Playwright + K6)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. ดึงโค้ดล่าสุดลงมา
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. ติดตั้ง Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # 3. ติดตั้ง K6
+      - name: Setup K6
+        uses: grafana/setup-k6-action@v1
+
+      # 4. ติดตั้ง Dependency ทั้งหมด
+      - name: Install Dependencies
+        run: npm ci
+
+      # 5. ติดตั้ง Browser สำหรับ Playwright
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      # 6. จำลอง Supabase ขึ้นมา (ใช้ Supabase CLI)
+      # หมายเหตุ: ต้องมี folder 'supabase' ในโปรเจกต์ถึงจะ start ได้
+      - name: Start Supabase (Local in CI)
+        run: |
+          npx supabase start -x studio,migra,imgproxy,deno-relay --debug
+          # ดึง Anon Key ออกมาเพื่อใช้ในขั้นตอนถัดไป
+          ANON_KEY=$(npx supabase status -o json | jq -r .anon_key)
+          API_URL=$(npx supabase status -o json | jq -r .api_url)
+          echo "SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
+          echo "SUPABASE_URL=$API_URL" >> $GITHUB_ENV
+
+      # 7. เริ่มรัน Server (Frontend) แบบ Background
+      - name: Start Frontend App
+        run: |
+          npm run dev -- --host &
+          npx wait-on tcp:5173 # รอจนกว่า port 5173 จะพร้อมใช้งาน
+
+      # 8. รัน Functional Test & Security Test (Playwright)
+      - name: 🧪 Run Playwright Tests (Functional & Security)
+        run: npx playwright test
+        env:
+          # ใส่รหัสผ่าน Test Login ไว้ใน GitHub Secrets หรือใส่ตรงนี้ถ้าเป็น Mock
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      # 9. รัน Load/Soak Test (K6)
+      - name: 🔥 Run K6 Soak Test (Backend Performance)
+        # ส่งค่า Key ที่ได้จากขั้นตอนที่ 6 เข้าไปใน K6
+        run: k6 run -e SUPABASE_KEY=$SUPABASE_KEY -e SUPABASE_URL=$SUPABASE_URL src/tests/api-soak-test.js
+
+      # 10. เก็บผลเทสไว้ดู (Artifacts)
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

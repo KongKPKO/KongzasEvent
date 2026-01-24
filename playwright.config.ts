@@ -48,6 +48,70 @@ export default defineConfig({
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
+    {
+      name: 'edge',
+      use: { ...devices['Desktop Edge'] },
+    },
+    {
+      name: 'safari',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'chrome',
+      use: { ...devices['Mobile Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Mobile Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Mobile Safari'] },
+    },
+    {
+      name: 'edge',
+      use: { ...devices['Mobile Edge'] },
+    },
+    {
+      name: 'safari',
+      use: { ...devices['Mobile Safari'] },
+    },
+    // --- 📱 Mobile (ที่ควรเทส!) ---
+    
+    // 1. ตัวแทน iOS (iPhone ยอดฮิต)
+    // จำลองขนาดหน้าจอ 390x844 และ User Agent ของ iPhone 13
+    {
+      name: 'Mobile Chrome', // Android
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'Mobile Chrome', // Android
+      use: { ...devices['Samsung Galaxy S25'] },
+    },
+
+    // 2. ตัวแทน Android (Pixel)
+    // จำลองขนาดหน้าจอ 393x851 และ User Agent ของ Android
+    {
+      name: 'Mobile Safari', // iOS
+      use: { ...devices['iPhone 12'] },
+    },
+    {
+      name: 'Mobile Safari', // iOS
+      use: { ...devices['iPhone 17'] },
+    },
+    // --- 📱 Tablets (จอใหญ่กว่ามือถือ แต่ยังเป็น Touch Screen) ---
+    {
+      name: 'iPad Pro', // จอใหญ่ แนวนอน (Landscape) เหมาะเทส Dashboard ร้านค้า
+      use: { 
+        ...devices['iPad Pro 11'], 
+        // ปกติ iPad ร้านค้ามักวางแนวนอน เราบังคับ Landscape ได้เลย
+        viewport: { width: 1194, height: 834 } // หรือใช้ default ก็ได้ครับ
+      }, 
+    },
+    {
+      name: 'iPad Mini', // จอเล็ก แนวตั้ง (Portrait) คล้ายมือถือเครื่องใหญ่
+      use: { ...devices['iPad Mini'] },
+    },
   ],
 
   /* Run your local dev server before starting the tests */

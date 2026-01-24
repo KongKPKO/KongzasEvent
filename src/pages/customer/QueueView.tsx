@@ -379,7 +379,7 @@ const QueueView = () => {
   const isBoothOpen = activeEvent?.is_booth_open;
 
   return (
-    <div className="px-4 py-2 pt-8 flex flex-col items-center min-h-screen pb-24 w-full max-w-md mx-auto relative bg-gray-50/50">
+    <div className="min-h-screen bg-gray-50 pb-24 animate-fade-in flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl">
        {/* Offline Indicator */}
        {!isConnected && (
          <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
@@ -390,88 +390,93 @@ const QueueView = () => {
        <CustomerHeader 
           artistId={displayArtist.id} 
           title={displayArtist.display_name || 'Queue'}
-          transparent={true} // Removes white background
+          transparent={true} // Restored transparent background
+          avatarUrl={displayArtist.image_url}
+          avatarDisplay="inline"
        >
           {activeEvent && (
-              <div className="inline-block bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-pink-100">
+              <div className="inline-block bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-pink-100 mt-0.5">
                  {activeEvent.event_name}
               </div>
           )}
        </CustomerHeader>
 
-       {/* NOW SERVING INDICATOR (Compact) */}
-       <div className="w-full bg-slate-900 rounded-2xl p-4 shadow-xl shadow-slate-200 mb-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500 rounded-full blur-[40px] opacity-20 -mr-8 -mt-8 animate-pulse-slow"></div>
-          
-          <div className="relative flex flex-row items-center justify-between px-2">
-             <div className="flex flex-col items-start gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mb-1"></span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">Now<br/>Serving</span>
-             </div>
-             
-             <div className={`text-4xl font-black tracking-tighter ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}>
-                {nowServingNumber ? (
-                   <span><span className="text-pink-500 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
-                ) : (
-                   <span className="text-2xl text-gray-600">--</span>
-                )}
-             </div>
-          </div>
-       </div>
-
-       {/* MAIN TICKET AREA */}
-       {myTicket ? (
-          <div className="w-full flex-1 flex flex-col gap-4">
-             {renderTicketStatus()}
-
-             {/* ACTION BUTTONS (Outside Card) */}
-             <div className="flex flex-col gap-2 w-full animate-fade-in-up delay-100 mt-auto">
-                 <Button 
-                    onClick={handleRefresh} 
-                    className="w-full bg-[#ff4d94] hover:bg-pink-600 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
-                 >
-                    <RefreshCcw size={16} /> Refresh Status
-                 </Button>
+       {/* Content Area with Padding */}
+       <div className="w-full px-4 mt-4 flex flex-col items-center flex-1">
+           {/* NOW SERVING INDICATOR (Compact) */}
+           <div className="w-full bg-slate-900 rounded-2xl p-4 shadow-xl shadow-slate-200 mb-4 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500 rounded-full blur-[40px] opacity-20 -mr-8 -mt-8 animate-pulse-slow"></div>
+              
+              <div className="relative flex flex-row items-center justify-between px-2">
+                 <div className="flex flex-col items-start gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mb-1"></span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">Now<br/>Serving</span>
+                 </div>
                  
-                 <button 
-                    onClick={handleLeaveQueue} 
-                    className="flex items-center justify-center gap-1 text-gray-400 hover:text-red-500 font-medium text-xs transition-colors py-2"
-                 >
-                    <LogOut size={14} /> 
-                    {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? 'Close Ticket' : 'Leave Queue'}
-                 </button>
+                 <div className={`text-4xl font-black tracking-tighter ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}>
+                    {nowServingNumber ? (
+                       <span><span className="text-pink-500 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
+                    ) : (
+                       <span className="text-2xl text-gray-600">--</span>
+                    )}
+                 </div>
               </div>
-          </div>
-       ) : (
-          <div className="w-full flex-1 flex flex-col justify-center">
-             <div className="bg-white p-6 rounded-3xl shadow-lg border border-white text-center mb-4">
-                <div className="w-16 h-16 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                   <span className="material-icons-outlined text-3xl">confirmation_number</span>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">
-                   {activeEvent && isBoothOpen ? "Join the Queue" : (eventStatusMessage || "Booth Closed")}
-                </h3>
-                <p className="text-gray-500 text-xs leading-relaxed px-4">
-                   {activeEvent && isBoothOpen
-                      ? "Get a number and wait for your turn." 
-                      : (eventStatusMessage === "Today's event has been cancelled." 
-                            ? "This event has been cancelled."
-                            : "Queue is currently closed.")}
-                </p>
-             </div>
-             <Button 
-                onClick={handleGetTicket} 
-                disabled={!activeEvent || !isBoothOpen || loading}
-                className={`w-full py-4 text-base shadow-lg font-bold rounded-xl transition-transform active:scale-95 ${
-                   activeEvent && isBoothOpen
-                    ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-200 text-white' 
-                    : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
-                }`}
-             >
-                {activeEvent && isBoothOpen ? "Get Ticket" : (eventStatusMessage || "Booth Closed")}
-             </Button>
-          </div>
-       )}
+           </div>
+
+           {/* MAIN TICKET AREA */}
+           {myTicket ? (
+              <div className="w-full flex-1 flex flex-col gap-4">
+                 {renderTicketStatus()}
+
+                 {/* ACTION BUTTONS (Outside Card) */}
+                 <div className="flex flex-col gap-2 w-full animate-fade-in-up delay-100 mt-auto">
+                     <Button 
+                        onClick={handleRefresh} 
+                        className="w-full bg-[#ff4d94] hover:bg-pink-600 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
+                     >
+                        <RefreshCcw size={16} /> Refresh Status
+                     </Button>
+                     
+                     <button 
+                        onClick={handleLeaveQueue} 
+                        className="flex items-center justify-center gap-1 text-gray-400 hover:text-red-500 font-medium text-xs transition-colors py-2"
+                     >
+                        <LogOut size={14} /> 
+                        {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? 'Close Ticket' : 'Leave Queue'}
+                     </button>
+                  </div>
+              </div>
+           ) : (
+              <div className="w-full flex-1 flex flex-col justify-center">
+                 <div className="bg-white p-6 rounded-3xl shadow-lg border border-white text-center mb-4">
+                    <div className="w-16 h-16 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                       <span className="material-icons-outlined text-3xl">confirmation_number</span>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">
+                       {activeEvent && isBoothOpen ? "Join the Queue" : (eventStatusMessage || "Booth Closed")}
+                    </h3>
+                    <p className="text-gray-500 text-xs leading-relaxed px-4">
+                       {activeEvent && isBoothOpen
+                          ? "Get a number and wait for your turn." 
+                          : (eventStatusMessage === "Today's event has been cancelled." 
+                                ? "This event has been cancelled."
+                                : "Queue is currently closed.")}
+                    </p>
+                 </div>
+                 <Button 
+                    onClick={handleGetTicket} 
+                    disabled={!activeEvent || !isBoothOpen || loading}
+                    className={`w-full py-4 text-base shadow-lg font-bold rounded-xl transition-transform active:scale-95 ${
+                       activeEvent && isBoothOpen
+                        ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-200 text-white' 
+                        : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
+                    }`}
+                 >
+                    {activeEvent && isBoothOpen ? "Get Ticket" : (eventStatusMessage || "Booth Closed")}
+                 </Button>
+              </div>
+           )}
+       </div>
     </div>
   );
 };

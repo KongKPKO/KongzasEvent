@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import SupabaseLogin from './pages/SupabaseLogin';
+// import SupabaseLogin from './pages/SupabaseLogin'; // Removed unused
 import SupabaseDashboard from './pages/creators/SupabaseDashboard';
+import { Navigate } from 'react-router-dom';
 import './index.css'; 
 
 /**
@@ -27,7 +28,7 @@ function AppSupabase() {
   }, []);
 
   if (!session) {
-    return <SupabaseLogin />;
+    return <Navigate to="/manage-login" replace />;
   } else {
     // The Dashboard now includes the Header/Nav self-contained as per request "App.jsx and... css"
     return <SupabaseDashboard />;

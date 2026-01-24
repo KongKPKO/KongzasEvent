@@ -7,7 +7,7 @@ export interface RealtimeArtist {
   id: string;
   display_name: string;
   bio: string;
-
+  image_url?: string;
   broadcast_message?: string;
 }
 
@@ -40,8 +40,8 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
         // Timezone-safe date string (YYYY-MM-DD) for broad filtering
         const todayStr = new Date().toLocaleDateString('en-CA');
         
-        const [artistRes, eventsRes] = await Promise.all([
-           supabase.from('artists').select('id, display_name, bio, broadcast_message').eq('id', artistId).single(),
+const [artistRes, eventsRes] = await Promise.all([
+           supabase.from('artists').select('id, display_name, bio, image_url, broadcast_message').eq('id', artistId).single(),
            // Filter strictly by date string to prevent timezone dropouts
            supabase.from('events').select('id, event_name, start_date, end_date, location_name, entrance_fee, transit_info, status, is_booth_open')
              .eq('artist_id', artistId)

@@ -10,7 +10,7 @@ interface CustomerHeaderProps {
   className?: string; // For additional styling if needed
 }
 
-const CustomerHeader = ({ artistId, title, avatarUrl, avatarDisplay, children, className = "", transparent = false }: CustomerHeaderProps & { transparent?: boolean }) => {
+const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className = "", transparent = false }: CustomerHeaderProps & { transparent?: boolean }) => {
   return (
     <div className={`sticky top-0 z-30 transition-all ${transparent ? '' : 'bg-white/95 backdrop-blur-sm shadow-sm'} ${className}`}>
       {/* Added pt-8 for "Move Down" fix (12-16px more breathing room), pb-3 for spacing */}

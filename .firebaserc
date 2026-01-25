@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "event-queue-app"
-  }
+  },
+  "targets": {
+    "event-queue-app": {
+      "hosting": {
+        "createeq": [
+          "createeq"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

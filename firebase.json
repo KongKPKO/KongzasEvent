@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "target": "createeq",
     "public": "dist",
     "ignore": [
       "firebase.json",

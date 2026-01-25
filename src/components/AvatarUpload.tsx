@@ -84,7 +84,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
 
       // 1. สร้าง URL แบบตรงๆ จาก Supabase ก่อน (เพื่อเอามาเช็ค)
       const { data: { publicUrl } } = supabase.storage
-        .from('Avatar') // หรือชื่อ Bucket ที่คุณใช้
+        .from('Avatar') // ชื่อ Bucket ที่คุณใช้
         .getPublicUrl(filePath);
 
       // 2. สร้างตัวแปร finalUrl รอไว้

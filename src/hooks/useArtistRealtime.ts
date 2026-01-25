@@ -10,6 +10,11 @@ export interface RealtimeArtist {
   image_url?: string;
   broadcast_message?: string;
   is_queue_open?: boolean; // New Field
+  x_url?: string | null;
+  facebook_url?: string | null;
+  ig_url?: string | null;
+  tiktok_url?: string | null;
+  email?: string | null;
 }
 
 export interface RealtimeEvent {

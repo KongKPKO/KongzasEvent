@@ -45,7 +45,7 @@ const ManageProducts = () => {
    const editFileInputRef = useRef<HTMLInputElement>(null);
    const csvInputRef = useRef<HTMLInputElement>(null);
    
-   const [artistId, setArtistId] = useState<string>('');
+   const [, setArtistId] = useState<string>('');
    const [artistName, setArtistName] = useState<string>('');
 
    const categories = [

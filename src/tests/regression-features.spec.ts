@@ -9,7 +9,7 @@ const TEST_SLUG = 'test1';
 
 // Supabase Config for Test Setup
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key-here'; 
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Regression Features: Queue Control & Notifications', () => {

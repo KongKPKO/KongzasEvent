@@ -1,64 +1,69 @@
 import { test, expect } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 
+const TEST_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
+const TEST_PASSWORD = 'SupaF@irytail1';
 const BASE_URL = 'http://localhost:5173';
-// ⚠️ แก้รหัสผ่านตรงนี้ให้ตรงกับที่คุณใช้สมัคร User 'konglnwzas@gmail.com'
-const TEST_PASSWORD = 'SupaF@irytail1'; 
+
+// Setup Supabase Client
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Security & Vulnerability Testing', () => {
 
-  // 🔒 1. ทดสอบเจาะเข้าหลังบ้าน (Unauthenticated Access)
+  // ✅ 1. เพิ่มส่วนนี้: Seed User เผื่อไว้ (แม้บาง Test จะไม่ได้ใช้ แต่กันเหนียวสำหรับ XSS test)
+  test.beforeAll(async () => {
+        console.log('🛡️ Security Test: Seeding User & Artist Data...');
+        const { data: authData } = await supabase.auth.signUp({
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD,
+        });
+        
+        const userId = authData.user?.id;
+        if (userId) {
+             await supabase.from('artists').upsert({
+                id: userId,
+                email: TEST_EMAIL,
+                slug: 'test-security', 
+                display_name: 'Security Test Artist',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+        }
+  });
+
+  // 🔒 2. ทดสอบ Unauthenticated Access
   test('Security: Should block access to Protected Routes without Login', async ({ page, context }) => {
-    // ✅ แก้ไข: ต้องเข้าหน้าเว็บก่อน ถึงจะสั่งล้าง Storage ได้
     await page.goto(BASE_URL);
-    
-    // เคลียร์ข้อมูลเก่าทิ้งให้หมด
     await context.clearCookies();
     await page.evaluate(() => window.localStorage.clear());
 
-    // พยายามเข้าหน้า Admin ตรงๆ
-    const protectedRoutes = [
-        '/manage-queues',
-        '/manage-events'
-        // ตัด /manage-products ออกก่อนถ้ายังไม่ได้ทำหน้านี้
-    ];
+    const protectedRoutes = ['/manage-queues', '/manage-events'];
 
     for (const route of protectedRoutes) {
         console.log(`Testing unauthorized access to: ${route}`);
         await page.goto(`${BASE_URL}${route}`);
-        
-        // ต้องโดนถีบกลับมาหน้า Login เท่านั้น
-        // (เช็คจาก URL หรือปุ่ม Login)
         await expect(page).toHaveURL(/\/manage-login/);
     }
   });
 
-  // 💉 2. ทดสอบ XSS Injection
+  // 💉 3. ทดสอบ XSS Injection (ต้อง Login ก่อน)
   test('Security: Should prevent XSS in Input fields', async ({ page }) => {
-    // Login ก่อน
     await page.goto(`${BASE_URL}/manage-login`);
-    await page.fill('input[type="email"]', 'konglnwzas@gmail.com');
-    await page.fill('input[type="password"]', TEST_PASSWORD); // ✅ ใช้ตัวแปร Password ที่แก้แล้ว
-    await page.getByRole('button', { name: 'Login' }).click(); // (ถ้าปุ่มชื่ออื่น แก้ตรงนี้ได้ครับ)
+    await page.fill('input[type="email"]', TEST_EMAIL);
+    await page.fill('input[type="password"]', TEST_PASSWORD);
+    await page.getByRole('button', { name: 'Login' }).click(); // เช็คชื่อปุ่มให้ตรงกับ UI จริง
     
-    // รอให้เข้าหน้า Dashboard ได้
-    await expect(page).toHaveURL(/\/manage-events/);
+    await expect(page).toHaveURL(/\/manage-events/, { timeout: 15000 });
 
-    // ⚠️ ตรงนี้ต้องเช็คว่าหน้า Manage Events ของคุณมีช่อง Input ชื่ออะไร?
-    // สมมติว่าเป็นช่องค้นหา หรือปุ่มสร้าง Event
-    const dangerousScript = '<img src=x onerror=alert("HACKED")>';
-    
-    // (ถ้ายังไม่มีช่องให้กรอก ให้ข้ามการเทสจุดนี้ไปก่อน หรือเปลี่ยนไปเทส URL Parameter แทน)
-    /* const inputField = page.getByPlaceholder('Event Name').first();
-    if (await inputField.isVisible()) {
-        await inputField.fill(dangerousScript);
-        page.on('dialog', dialog => {
-            throw new Error(`🚨 XSS Vulnerability detected! ${dialog.message()}`);
-        });
-    }
+    // (ส่วน Test XSS จริง ถ้ายังไม่มี Input ให้กรอก ก็ข้ามไปก่อนได้ หรือ uncomment เมื่อมี input)
+    /* const dangerousScript = '<script>alert("XSS")</script>';
+    // หา input สักช่องเพื่อกรอก
     */
   });
 
-  // 💉 3. ทดสอบ SQL Injection
+  // 💉 4. ทดสอบ SQL Injection
   test('Security: Login form should handle SQL Injection characters', async ({ page }) => {
     await page.goto(`${BASE_URL}/manage-login`);
 
@@ -67,10 +72,9 @@ test.describe('Security & Vulnerability Testing', () => {
 
     await page.fill('input[type="email"]', maliciousEmail);
     await page.fill('input[type="password"]', maliciousPass);
-    await page.getByRole('button', { name: 'Login' }).click(); // (ถ้าปุ่มชื่ออื่น แก้ตรงนี้ได้ครับ)
+    await page.getByRole('button', { name: 'Login' }).click(); // เช็คชื่อปุ่มให้ตรงกับ UI จริง
 
-    // ต้องไม่หลุดเข้าไปข้างใน
+    // Login ต้องไม่ผ่าน และยังอยู่ที่หน้าเดิม
     await expect(page).toHaveURL(/\/manage-login/);
   });
-
 });

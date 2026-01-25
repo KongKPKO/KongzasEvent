@@ -1,6 +1,7 @@
 import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
 import { Home, ShoppingBag, Users } from 'lucide-react';
 import { useArtist } from '../../hooks/useArtist';
+import CallingNotification from '../../components/CallingNotification';
 
 const CustomerLayout = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -19,6 +20,16 @@ const CustomerLayout = () => {
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0 font-sans">
        {/* Mobile-first wrapper */}
        <div className="max-w-md mx-auto min-h-screen bg-white shadow-xl overflow-hidden relative">
+
+         {/* ✅ แปะ component นี้ไว้ตรงไหนก็ได้ (เพราะมัน position fixed) */}
+       {artist && (
+         <CallingNotification 
+            artistId={artist.id} 
+            slug={artist.slug} 
+            broadcastMessage={artist.broadcast_message}
+         />
+       )}
+
           <Outlet context={{ artist }} />
           
           {/* Bottom Nav for Mobile */}

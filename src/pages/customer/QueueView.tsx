@@ -377,9 +377,14 @@ const QueueView = () => {
   
   // Strict UI Check: Booth must be OPEN
   const isBoothOpen = activeEvent?.is_booth_open;
+  
+  // NOTE: artist prop from useArtistRealtime now contains is_queue_open
+  const isQueueOpen = displayArtist?.is_queue_open ?? true; // Default to true if undefined
+
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 animate-fade-in flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl">
+       
        {/* Offline Indicator */}
        {!isConnected && (
          <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
@@ -448,33 +453,50 @@ const QueueView = () => {
               </div>
            ) : (
               <div className="w-full flex-1 flex flex-col justify-center">
-                 <div className="bg-white p-6 rounded-3xl shadow-lg border border-white text-center mb-4">
-                    <div className="w-16 h-16 bg-pink-50 text-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                       <span className="material-icons-outlined text-3xl">confirmation_number</span>
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">
-                       {activeEvent && isBoothOpen ? "Join the Queue" : (eventStatusMessage || "Booth Closed")}
-                    </h3>
-                    <p className="text-gray-500 text-xs leading-relaxed px-4">
-                       {activeEvent && isBoothOpen
-                          ? "Get a number and wait for your turn." 
-                          : (eventStatusMessage === "Today's event has been cancelled." 
-                                ? "This event has been cancelled."
-                                : "Queue is currently closed.")}
-                    </p>
-                 </div>
-                 <Button 
-                    onClick={handleGetTicket} 
-                    disabled={!activeEvent || !isBoothOpen || loading}
-                    className={`w-full py-4 text-base shadow-lg font-bold rounded-xl transition-transform active:scale-95 ${
-                       activeEvent && isBoothOpen
-                        ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-200 text-white' 
-                        : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
-                    }`}
-                 >
-                    {activeEvent && isBoothOpen ? "Get Ticket" : (eventStatusMessage || "Booth Closed")}
-                 </Button>
-              </div>
+                  <div className="bg-white p-6 rounded-3xl shadow-lg border border-white text-center mb-4">
+                     {/* Dynamic Icon based on Status */}
+                     <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                        !isQueueOpen ? 'bg-red-50 text-red-500' : 'bg-pink-50 text-pink-500'
+                     }`}>
+                        <span className="material-icons-outlined text-3xl">
+                           {!isQueueOpen ? 'block' : 'confirmation_number'}
+                        </span>
+                     </div>
+                     
+                     <h3 className="text-lg font-bold text-gray-900 mb-1">
+                        {!isQueueOpen 
+                           ? "Queuing is closed"
+                           : (activeEvent && isBoothOpen ? "Join the Queue" : (eventStatusMessage || "Booth Closed"))
+                        }
+                     </h3>
+                     
+                     <p className="text-gray-500 text-xs leading-relaxed px-4">
+                        {!isQueueOpen 
+                           ? "Due to high traffic, we are temporarily pausing the queue. Please wait for the reopening."
+                           : (activeEvent && isBoothOpen
+                              ? "Get a number and wait for your turn." 
+                              : (eventStatusMessage === "Today's event has been cancelled." 
+                                    ? "This event has been cancelled."
+                                    : "Queue is currently closed."))
+                        }
+                     </p>
+                  </div>
+                  
+                  {/* Hide Button if Queue is Closed (Paused) */}
+                  {isQueueOpen && (
+                     <Button 
+                        onClick={handleGetTicket} 
+                        disabled={!activeEvent || !isBoothOpen || loading}
+                        className={`w-full py-4 text-base shadow-lg font-bold rounded-xl transition-transform active:scale-95 ${
+                           activeEvent && isBoothOpen
+                           ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-200 text-white' 
+                           : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
+                        }`}
+                     >
+                        {activeEvent && isBoothOpen ? "Get Ticket" : (eventStatusMessage || "Booth Closed")}
+                     </Button>
+                  )}
+               </div>
            )}
        </div>
     </div>

@@ -80,7 +80,27 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
       // Endpoint: https://ik.imagekit.io/kongzas
       // Path: /Avatar/{artistId}/{timestamp}.webp
       // Transformation: force 400x400 square crop
-      const finalUrl = `https://ik.imagekit.io/kongzas/Avatar/${filePath}?tr=w-400,h-400,fo-auto`;
+      // const finalUrl = `https://ik.imagekit.io/kongzas/Avatar/${filePath}?tr=w-400,h-400,fo-auto`;
+
+      // 1. สร้าง URL แบบตรงๆ จาก Supabase ก่อน (เพื่อเอามาเช็ค)
+      const { data: { publicUrl } } = supabase.storage
+        .from('Avatar') // หรือชื่อ Bucket ที่คุณใช้
+        .getPublicUrl(filePath);
+
+      // 2. สร้างตัวแปร finalUrl รอไว้
+      let finalUrl = publicUrl;
+
+      // 3. เช็คว่า "ไม่ใช่" Localhost ใช่ไหม? (ถ้าไม่ใช่ Local ค่อยใช้ ImageKit)
+      const isLocal = publicUrl.includes('localhost') || publicUrl.includes('127.0.0.1');
+
+      if (!isLocal) {
+        // ✅ Production: ใช้ ImageKit
+        finalUrl = `https://ik.imagekit.io/kongzas/Avatar/${filePath}?tr=w-400,h-400,fo-auto`;
+      } else {
+        // 🏠 Local Docker: ใช้ publicUrl เดิม (ไม่ต้องทำอะไรเพิ่ม)
+        console.log('Using Local Docker URL (Bypass ImageKit):', finalUrl);
+      }
+      // หลังจากนี้ก็เอา finalUrl ไป save ลง Database ตามเดิม
 
       setPreviewUrl(finalUrl);
       onUploadComplete(finalUrl);

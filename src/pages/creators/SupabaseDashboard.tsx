@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { Button } from '../../components/ui';
-import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck } from 'lucide-react';
+import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck, X, PauseCircle } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface QueueItem {
@@ -45,6 +45,8 @@ const SupabaseDashboard = () => {
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isBoothActive, setIsBoothActive] = useState(false);
+  const [isQueueOpen, setIsQueueOpen] = useState(true); // Default true
+
 
   const handleLogout = async () => {
       await supabase.auth.signOut();
@@ -79,7 +81,7 @@ const SupabaseDashboard = () => {
       // Fetch artist status
       const { data: artistData } = await supabase
         .from('artists')
-        .select('broadcast_message, display_name, image_url')
+        .select('broadcast_message, display_name, image_url, is_queue_open')
         .eq('id', user.id)
         .single();
       
@@ -88,6 +90,7 @@ const SupabaseDashboard = () => {
          // @ts-ignore
          if (artistData.display_name) setArtistName(artistData.display_name);
          if (artistData.image_url) setArtistAvatar(artistData.image_url);
+         setIsQueueOpen(artistData.is_queue_open ?? true);
       }
 
       const { data: eventsData } = await supabase
@@ -215,6 +218,25 @@ const SupabaseDashboard = () => {
           console.error('Error updating booth status:', error);
           setIsBoothActive(!newStatus); // Revert on error
           alert('Failed to update booth status');
+      }
+  };
+
+  const handleToggleQueue = async () => {
+      const newStatus = !isQueueOpen;
+      setIsQueueOpen(newStatus); // Optimistic
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+         .from('artists')
+         .update({ is_queue_open: newStatus })
+         .eq('id', user.id);
+
+      if (error) {
+          console.error('Error updating queue status:', error);
+          setIsQueueOpen(!newStatus); // Revert
+          alert('Failed to update queue status');
       }
   };
 
@@ -552,38 +574,89 @@ const SupabaseDashboard = () => {
                            Queue Control
                         </h2>
                         
-                        {/* Broadcast Controls - DROPDOWN */}
+                        {/* Broadcast Controls - PRESETS */}
                         <div className="flex items-center gap-2 mr-4 border-r border-gray-100 pr-4">
-                           <div className="relative">
-                              <select
-                                 value={broadcastMessage || ''}
-                                 onChange={(e) => handleSetBroadcast(e.target.value || null)}
-                                 className={`appearance-none pl-8 pr-8 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-pink-500 ${
-                                    broadcastMessage === 'พักเบรค' ? 'bg-pink-50 text-pink-600 border-pink-200' :
-                                    broadcastMessage === 'ติดธุระด่วน' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                                    broadcastMessage === 'พร้อมเรียกคิว' ? 'bg-green-50 text-green-600 border-green-200' :
-                                    'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+{/* Preset Buttons */}
+                           <div className="flex gap-1.5">
+                              {/* 1. Break (Pink) */}
+                              <button
+                                 onClick={() => handleSetBroadcast("Break time")}
+                                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                                    broadcastMessage === "Break time" 
+                                    ? "bg-pink-100 text-pink-700 border-pink-200 ring-2 ring-pink-500 ring-offset-1" 
+                                    : "bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200"
                                  }`}
+                                 title="พักเบรค"
                               >
-                                 <option value="">Status: Normal</option>
-                                 <option value="พักเบรค">Status: Break</option>
-                                 <option value="ติดธุระด่วน">Status: Busy</option>
-                                 <option value="พร้อมเรียกคิว">Status: Ready</option>
-                              </select>
-                              
-                              <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                 {broadcastMessage === 'พักเบรค' ? <Coffee size={14} className="text-pink-500" /> :
-                                  broadcastMessage === 'ติดธุระด่วน' ? <AlertCircle size={14} className="text-orange-500" /> :
-                                  broadcastMessage === 'พร้อมเรียกคิว' ? <UserCheck size={14} className="text-green-500" /> :
-                                  <Bell size={14} className="text-gray-400" />}
-                              </div>
+                                 <Coffee size={14} />
+                                 <span className="hidden xl:inline">พักเบรค</span>
+                              </button>
+
+                              {/* 2. Urgent (Orange) */}
+                              <button
+                                 onClick={() => handleSetBroadcast("Urgent matter, sorry for the inconvenience")}
+                                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                                    broadcastMessage === "Urgent matter, sorry for the inconvenience" 
+                                    ? "bg-orange-100 text-orange-700 border-orange-200 ring-2 ring-orange-500 ring-offset-1" 
+                                    : "bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200"
+                                 }`}
+                                 title="ติดธุระ"
+                              >
+                                 <AlertCircle size={14} />
+                                 <span className="hidden xl:inline">ติดธุระ</span>
+                              </button>
+
+                              {/* 3. Stop Queue (Gray) - แก้ข้อความให้มีคำว่า Closed/Stop */}
+                              <button
+                                 onClick={() => handleSetBroadcast("Queue closed temporarily")}
+                                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${
+                                    broadcastMessage === "Queue closed temporarily" 
+                                    ? "bg-gray-100 text-gray-700 border-gray-200 ring-2 ring-gray-400 ring-offset-1" 
+                                    : "bg-gray-50 text-gray-700 hover:bg-gray-100 border-gray-200"
+                                 }`}
+                                 title="หยุดรับคิว"
+                              >
+                                 {/* ใช้ PauseCircle แทน RotateCcw */}
+                                 <PauseCircle size={14} /> 
+                                 <span className="hidden xl:inline">หยุดรับคิว</span>
+                              </button>
                            </div>
+                           
+                           {/* Clear Button */}
+                           {broadcastMessage && (
+                              <button 
+                                 onClick={() => handleSetBroadcast(null)}
+                                 className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-400 transition-colors"
+                                 title="Clear Message"
+                              >
+                                 <X size={14} />
+                              </button>
+                           )}
+                        </div>
+
+                        {/* Queue Status Toggle (Global) */}
+                        <div className="flex items-center gap-2 mr-4 border-r border-gray-100 pr-4">
+                           <span className={`text-[10px] font-bold uppercase tracking-wider ${isQueueOpen ? 'text-green-600' : 'text-red-500'}`}>
+                              {isQueueOpen ? 'RECEIVING QUEUE' : 'QUEUE PAUSED'}
+                           </span>
+                           <button 
+                              onClick={handleToggleQueue}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                 isQueueOpen ? 'bg-green-500 focus:ring-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 focus:ring-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
+                              }`}
+                           >
+                              <span
+                                 className={`${
+                                    isQueueOpen ? 'translate-x-4' : 'translate-x-1'
+                                 } inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200`}
+                              />
+                           </button>
                         </div>
 
                         {/* Booth Status Toggle */}
                         <div className="flex items-center gap-2">
                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-600' : 'text-gray-400'}`}>
-                              {isBoothActive ? 'Open' : 'Closed'}
+                              {isBoothActive ? 'Booth Open' : 'Booth Closed'}
                            </span>
                            <button 
                               onClick={handleToggleBooth}

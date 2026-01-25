@@ -1,5 +1,4 @@
 import { ReactNode } from 'react';
-import StickyBanner from './StickyBanner';
 import { User } from 'lucide-react';
 
 interface CustomerHeaderProps {
@@ -14,7 +13,6 @@ interface CustomerHeaderProps {
 const CustomerHeader = ({ artistId, title, avatarUrl, avatarDisplay, children, className = "", transparent = false }: CustomerHeaderProps & { transparent?: boolean }) => {
   return (
     <div className={`sticky top-0 z-30 transition-all ${transparent ? '' : 'bg-white/95 backdrop-blur-sm shadow-sm'} ${className}`}>
-      <StickyBanner artistId={artistId} />
       {/* Added pt-8 for "Move Down" fix (12-16px more breathing room), pb-3 for spacing */}
       <div className="pt-8 pb-3 px-6 text-center w-full max-w-md mx-auto">
          

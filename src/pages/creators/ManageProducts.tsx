@@ -3,7 +3,6 @@ import { supabase } from '../../supabaseClient';
 import { Button, Card } from '../../components/ui';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
-import StickyBanner from '../../components/StickyBanner';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -483,7 +482,6 @@ const ManageProducts = () => {
 
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
-         {artistId && <StickyBanner artistId={artistId} />}
          {/* Simple Header */}
          {/* New Unified Header */}
          <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm">

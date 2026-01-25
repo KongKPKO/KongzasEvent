@@ -39,6 +39,7 @@ jobs:
       # หมายเหตุ: ต้องมี folder 'supabase' ในโปรเจกต์ถึงจะ start ได้
       - name: Start Supabase (Local in CI)
         run: |
+          npx supabase stop --no-backup
           npx supabase start -x studio,migra,imgproxy,deno-relay --debug
           # ดึง Anon Key ออกมาเพื่อใช้ในขั้นตอนถัดไป
           ANON_KEY=$(npx supabase status -o json | jq -r .anon_key)

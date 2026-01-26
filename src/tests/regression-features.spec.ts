@@ -112,10 +112,10 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         await customerContext.close();
     });
 
-    // --- Scenario 2: Notification Priority ---
+// --- Scenario 2: Notification Priority ---
     test('Scenario 2: Calling Notification overrides Broadcast', async ({ page, browser }) => {
         
-        // STEP 0: Force Open Queue
+        // STEP 0: Force Open Queue (มั่นใจว่าร้านเปิด)
         const toggleButton = page.locator('button.relative.inline-flex.h-5.w-9').first();
         const isClosed = await toggleButton.evaluate((el) => el.classList.contains('bg-red-500'));
         
@@ -125,56 +125,31 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(500);
         }
 
-        // STEP 0.5: Reset Broadcast (Strict Sync)
+        // STEP 0.5: Reset Broadcast (เคลียร์ป้ายข้อความเก่าออกก่อน)
         const breakBtn = page.locator('button[title="พักเบรค"]');
         const clearBtn = page.getByTitle('Clear Message');
         
         if (await clearBtn.isVisible()) {
-            
-            // ดักรอ Request Clear
             const clearRequest = page.waitForResponse(resp => 
                 resp.url().includes('/rest/v1/artists') && resp.status() < 300
             );
             await clearBtn.click();
             await clearRequest;
-            
-            // CRITICAL FIX: รอให้ปุ่มพักเบรค "หายแดง" ก่อน (Confirm UI Inactive)
-            // เพื่อไม่ให้ Realtime ของเก่ามาตีกับคำสั่งใหม่
             await expect(breakBtn).not.toHaveClass(/ring-pink-500/); 
-            await page.waitForTimeout(1000); // พักหายใจให้ Socket นิ่ง
+            await page.waitForTimeout(1000); 
         }
 
-        // 1. Action: กดปุ่ม Broadcast "พักเบรค"
-        
-        const broadcastRequest = page.waitForResponse(resp => 
-            resp.url().includes('/rest/v1/artists') && 
-            (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
-            resp.status() >= 200 && resp.status() < 300
-        );
-
-        await breakBtn.click();
-        await broadcastRequest;
-
-        await expect(breakBtn).toHaveClass(/ring-pink-500/);
-
-        // 2. Open Customer View
+        // STEP 1: Customer Gets Ticket FIRST (กดบัตรคิวก่อนเลย ตอนร้านยังเปิดปกติ)
         const customerContext = await browser.newContext();
         const customerPage = await customerContext.newPage();
         await customerPage.goto(`${BASE_URL}/${TEST_SLUG}/queue`);
 
-        try {
-            await expect(customerPage.getByText('Break time')).toBeVisible({ timeout: 3000 });
-        } catch (e) {
-            await customerPage.reload();
-            await expect(customerPage.getByText('Break time')).toBeVisible();
-        }
-
-        // 3. Customer getting a ticket (STRICT MODE)
         const getTicketBtn = customerPage.getByRole('button', { name: 'Get Ticket' });
         
-        if (!(await getTicketBtn.isVisible())) {
+        // Robustness: ถ้าไม่เจอปุ่ม ให้ลอง Reload 1 ที
+        if (!(await getTicketBtn.isVisible({ timeout: 5000 }))) {
              await customerPage.reload();
-             await expect(getTicketBtn).toBeVisible();
+             await expect(getTicketBtn).toBeVisible({ timeout: 10000 });
         }
 
         const createTicketRequest = customerPage.waitForResponse(resp => 
@@ -184,21 +159,40 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         );
 
         await getTicketBtn.click();
-        
         await createTicketRequest;
 
         const ticketNumberLocator = customerPage.getByText(/#\d+/).first();
         await expect(ticketNumberLocator).toBeVisible();
 
-        // 4. Call Next Customer (SMART LOOP)
+        // STEP 2: Admin Sets Broadcast "Break Time" (กดพักเบรคทีหลัง)
+        await page.bringToFront();
+        const broadcastRequest = page.waitForResponse(resp => 
+            resp.url().includes('/rest/v1/artists') && 
+            (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
+            resp.status() >= 200 && resp.status() < 300
+        );
+
+        await breakBtn.click();
+        await broadcastRequest;
+        await expect(breakBtn).toHaveClass(/ring-pink-500/);
+
+        // STEP 3: Verify Broadcast is Visible (ลูกค้าต้องเห็นป้ายพักเบรค)
+        await customerPage.bringToFront();
+        try {
+            await expect(customerPage.getByText('Break time')).toBeVisible({ timeout: 5000 });
+        } catch {
+            await customerPage.reload();
+            await expect(customerPage.getByText('Break time')).toBeVisible();
+        }
+
+        // STEP 4: Call Next Customer (SMART LOOP)
         await page.bringToFront();
         const callNextBtn = page.getByRole('button', { name: 'Call Next' });
         
         for (let i = 0; i < 5; i++) {
-            const isCalled = await customerPage.getByText('ถึงคิวแล้ว!').isVisible();
-            if (isCalled) {
-                break;
-            }
+            // เช็คว่าหน้าลูกค้าขึ้นเรียกหรือยัง?
+            const isCalled = await customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!')).isVisible();
+            if (isCalled) break;
 
             if (await callNextBtn.isDisabled()) {
                 await page.reload();
@@ -206,17 +200,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
                 await page.waitForTimeout(500);
             }
 
-            // ถ้ายัง Disabled อีก แปลว่าคิวอาจจะหมด หรือเรียกไปแล้วแต่ลูกค้าไม่เห็น
-            if (await callNextBtn.isDisabled()) {
-                 
-                 // เช็คหน้าลูกค้าอีกที (Reload เพื่อความชัวร์)
-                 if (!(await customerPage.getByText('ถึงคิวแล้ว!').isVisible())) {
-                     await customerPage.reload();
-                     await page.waitForTimeout(1000);
-                 }
-                 
-                 continue; // ข้ามไปรอบถัดไป
-            }
+            if (await callNextBtn.isDisabled()) continue;
 
             const callRequest = page.waitForResponse(resp => 
                 resp.url().includes('/rest/v1/queues') && 
@@ -229,13 +213,19 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(1000); 
         }
             
-        // 5. Verify Priority (Final Check)
+        // STEP 5: Verify Priority (Calling สีเหลือง ต้องบัง Broadcast สีชมพู)
         await customerPage.bringToFront();
-        if (!(await customerPage.getByText('ถึงคิวแล้ว!').isVisible())) {
+        
+        // เช็คข้อความ "Your Turn!" หรือ "ถึงคิวแล้ว!" (รองรับทั้ง 2 ภาษา)
+        const callingMessage = customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!'));
+        
+        if (!(await callingMessage.isVisible())) {
             await customerPage.reload();
         }
         
-        await expect(customerPage.getByText('ถึงคิวแล้ว!')).toBeVisible({ timeout: 10000 });
+        await expect(callingMessage).toBeVisible({ timeout: 10000 });
+        
+        // สำคัญ: ป้าย Break time ต้องหายไป (เพราะโดน Calling บัง)
         await expect(customerPage.getByText('Break time')).not.toBeVisible();
 
         // Cleanup

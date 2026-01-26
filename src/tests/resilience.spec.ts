@@ -13,6 +13,52 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SUPABASE_API_PATTERN = '**/rest/v1/**'; 
 
+test.beforeAll(async () => {
+      console.log('⚡️ Resilience Test: Seeding Data...');
+      
+      // 1. Auth & User Setup (Robust)
+      let userId = '';
+      const { data: signUpData } = await supabase.auth.signUp({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+      });
+      if (signUpData.user) userId = signUpData.user.id;
+      else {
+          const { data: signInData } = await supabase.auth.signInWithPassword({
+              email: TEST_EMAIL,
+              password: TEST_PASSWORD,
+          });
+          if (signInData.user) userId = signInData.user.id;
+      }
+
+      if (userId) {
+          // 2. Artist Setup (Force Slug 'test1' & Open Queue)
+          await supabase.from('artists').upsert({
+              id: userId,
+              email: TEST_EMAIL,
+              slug: 'test1', // ✅ บังคับ Slug
+              display_name: 'Resilience Test Artist',
+              is_queue_open: true, // ✅ บังคับเปิดคิว
+              updated_at: new Date().toISOString()
+          });
+
+          // 3. Event Setup (Timezone Safe)
+          const today = new Date().toISOString().split('T')[0];
+          await supabase.from('events').delete().eq('artist_id', userId); // ลบอันเก่ากันตีกัน
+
+          await supabase.from('events').insert({
+              artist_id: userId,
+              event_name: 'Resilience Chaos Event',
+              start_date: today + ' 00:00:00', // ✅ เริ่มเที่ยงคืน
+              end_date: today + ' 23:59:59',
+              status: 'Confirmed',
+              is_booth_open: true, // เปิดบูธเพื่อให้เทส Customer View ได้
+              location: 'Resilience Lab'
+          });
+          console.log('✅ Data seeded successfully for Resilience Test');
+      }
+  });
+
 test.describe('Resilience & Chaos Testing', () => {
 
   // ✅ SETUP: สร้าง User + Artist + Event ให้ครบก่อนเริ่ม

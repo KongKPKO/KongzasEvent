@@ -7,7 +7,7 @@ const TEST_PASSWORD = process.env.TEST_PASSWORD || 'SupaF@irytail1';
 const BASE_URL = 'http://localhost:5173';
 const TEST_SLUG = 'test1'; 
 
-// Supabase Config for Test Setup
+// Supabase Config
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -15,24 +15,32 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 test.describe('Regression Features: Queue Control & Notifications', () => {
 
     const setupTestEvent = async () => {
-        // 1. หา User หรือ สร้างใหม่ถ้าไม่มี (Robust Auth)
-        const { data: { users } } = await supabase.auth.admin.listUsers();
-        let user = users?.find(u => u.email === TEST_EMAIL);
-        
-        if (!user) {
-             const { data: newUser } = await supabase.auth.admin.createUser({
-                 email: TEST_EMAIL,
-                 password: TEST_PASSWORD,
-                 email_confirm: true
-             });
-             user = newUser.user ?? undefined;
+        let userId = '';
+
+        const { data: signUpData } = await supabase.auth.signUp({
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD,
+        });
+
+        if (signUpData.user) {
+            userId = signUpData.user.id;
+        } else {
+            // 2. ถ้า Sign Up ไม่ได้ (เพราะมี User แล้ว) ให้ Sign In แทนเพื่อเอา ID
+            const { data: signInData } = await supabase.auth.signInWithPassword({
+                email: TEST_EMAIL,
+                password: TEST_PASSWORD,
+            });
+            
+            if (signInData.user) {
+                userId = signInData.user.id;
+            }
         }
 
-        if (!user) throw new Error("Critical: Failed to find or create test user");
+        if (!userId) throw new Error("Critical: Failed to find or create test user via SignUp/SignIn");
 
-        // 2. FORCE Artist Setup (บังคับให้มี Slug เป็น 'test1' ชัวร์ๆ)
+        // 2. FORCE Artist Setup
         await supabase.from('artists').upsert({
-            id: user.id,
+            id: userId,
             email: TEST_EMAIL,
             slug: TEST_SLUG, 
             display_name: 'Regression Artist',
@@ -40,17 +48,15 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             updated_at: new Date().toISOString()
         });
 
-        // 3. จัดการ Event (Timezone Safe)
+        // 3. จัดการ Event (เริ่มเที่ยงคืน Timezone Safe)
         const today = new Date().toISOString().split('T')[0]; 
         
-        // ลบ Event เก่าทิ้งก่อน กันตีกัน
-        await supabase.from('events').delete().eq('artist_id', user.id);
+        await supabase.from('events').delete().eq('artist_id', userId);
 
-        // สร้าง Event ใหม่ เริ่มเที่ยงคืน (00:00:00) เพื่อให้ครอบคลุมทุก Timezone (UTC/Local)
         const { data: newEvent } = await supabase.from('events').insert({
-            artist_id: user.id,
+            artist_id: userId,
             event_name: 'E2E Automated Test Event',
-            start_date: today + ' 00:00:00', // ✅ สำคัญมาก: เริ่มเที่ยงคืน
+            start_date: today + ' 00:00:00', // ✅ เริ่มเที่ยงคืน
             end_date: today + ' 23:59:59',
             status: 'Confirmed',
             is_booth_open: true,
@@ -78,10 +84,8 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
 
     // --- Scenario 1: Pause Queue Functionality ---
     test('Scenario 1: Pause Queue changes Customer UI', async ({ page, browser }) => {
-        
         const toggleButton = page.locator('button.relative.inline-flex.h-5.w-9').first();
         
-        // Ensure queue is OPEN initially
         const isClosed = await toggleButton.evaluate((el) => el.classList.contains('bg-red-500'));
         if (isClosed) {
             await toggleButton.click();
@@ -89,7 +93,6 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(500);
         }
 
-        // Toggle OFF (Pause)
         const pauseRequest = page.waitForResponse(resp => 
             resp.url().includes('/rest/v1/artists') && 
             (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
@@ -102,7 +105,6 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         await expect(toggleButton).toHaveClass(/bg-red-500/); 
         await expect(page.getByText('QUEUE PAUSED')).toBeVisible();
 
-        // Check Customer View
         const customerContext = await browser.newContext();
         const customerPage = await customerContext.newPage();
         await customerPage.goto(`${BASE_URL}/${TEST_SLUG}/queue`);
@@ -116,7 +118,6 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         
         await expect(customerPage.getByRole('button', { name: 'Get Ticket' })).not.toBeVisible();
 
-        // Reset to OPEN
         await page.bringToFront();
         await toggleButton.click();
         await expect(toggleButton).toHaveClass(/bg-green-500/);
@@ -127,7 +128,6 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
     // --- Scenario 2: Notification Priority (Fixed Flow) ---
     test('Scenario 2: Calling Notification overrides Broadcast', async ({ page, browser }) => {
         
-        // STEP 0: Force Open Queue (Admin Side)
         const toggleButton = page.locator('button.relative.inline-flex.h-5.w-9').first();
         const isClosed = await toggleButton.evaluate((el) => el.classList.contains('bg-red-500'));
         if (isClosed) {
@@ -136,7 +136,6 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(500);
         }
 
-        // STEP 0.5: Reset Broadcast (Clear old messages)
         const breakBtn = page.locator('button[title="พักเบรค"]');
         const clearBtn = page.getByTitle('Clear Message');
         if (await clearBtn.isVisible()) {
@@ -149,21 +148,17 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(1000); 
         }
 
-        // ✅ STEP 1: Customer Gets Ticket FIRST (While Shop is Open)
+        // ✅ STEP 1: Customer Gets Ticket FIRST
         const customerContext = await browser.newContext();
         const customerPage = await customerContext.newPage();
         
-        // ไปที่หน้า Queue
         await customerPage.goto(`${BASE_URL}/${TEST_SLUG}/queue`);
-
-        // รอ Network Idle (มั่นใจว่าโหลดข้อมูลเสร็จ)
         await customerPage.waitForLoadState('networkidle');
 
         const getTicketBtn = customerPage.getByRole('button', { name: 'Get Ticket' });
         
-        // Robust Check: ถ้าไม่เจอปุ่ม ให้ Reload 1 ที
         if (!(await getTicketBtn.isVisible({ timeout: 5000 }))) {
-             console.log('⚠️ Get Ticket Button not found immediately. Reloading...');
+             console.log('⚠️ Get Ticket Button not found. Reloading...');
              await customerPage.reload();
              await customerPage.waitForLoadState('networkidle');
              await expect(getTicketBtn).toBeVisible({ timeout: 10000 });
@@ -181,7 +176,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         const ticketNumberLocator = customerPage.getByText(/#\d+/).first();
         await expect(ticketNumberLocator).toBeVisible();
 
-        // ✅ STEP 2: Admin Sets "Break Time" (After Ticket is Taken)
+        // ✅ STEP 2: Admin Sets "Break Time"
         await page.bringToFront();
         const broadcastRequest = page.waitForResponse(resp => 
             resp.url().includes('/rest/v1/artists') && 
@@ -193,7 +188,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         await broadcastRequest;
         await expect(breakBtn).toHaveClass(/ring-pink-500/);
 
-        // ✅ STEP 3: Verify Broadcast is Visible (Customer sees Pink Banner)
+        // ✅ STEP 3: Verify Broadcast
         await customerPage.bringToFront();
         try {
             await expect(customerPage.getByText('Break time')).toBeVisible({ timeout: 5000 });
@@ -206,14 +201,12 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         await page.bringToFront();
         const callNextBtn = page.getByRole('button', { name: 'Call Next' });
         
-        // Smart Loop to ensure call happens
         for (let i = 0; i < 5; i++) {
-            // เช็คว่าลูกค้าโดนเรียกหรือยัง (รองรับทั้งไทยและอังกฤษ)
             const isCalled = await customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!')).isVisible();
             if (isCalled) break;
 
             if (await callNextBtn.isDisabled()) {
-                await page.reload(); // รีเฟรชหน้า Admin เผื่อ State ค้าง
+                await page.reload(); 
                 await expect(page.getByText('Queue Control')).toBeVisible();
                 await page.waitForTimeout(500);
             }
@@ -231,18 +224,14 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await page.waitForTimeout(1000); 
         }
             
-        // ✅ STEP 5: Verify Priority (Yellow Calling Banner > Pink Break Banner)
+        // ✅ STEP 5: Verify Priority
         await customerPage.bringToFront();
         
         const callingMessage = customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!'));
-        
         if (!(await callingMessage.isVisible())) {
             await customerPage.reload();
         }
-        
         await expect(callingMessage).toBeVisible({ timeout: 10000 });
-        
-        // สำคัญ: ป้าย Break time ต้องหายไป (เพราะโดน Calling บัง)
         await expect(customerPage.getByText('Break time')).not.toBeVisible();
 
         // Cleanup

@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
-// ⏳ Timeout รวม 60 วิ
 test.setTimeout(60000);
 
 const TEST_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
@@ -10,7 +9,6 @@ const BASE_URL = 'http://localhost:5173';
 const TEST_SLUG = 'test1';
 const ARTIST_NAME = 'Global Flow Artist';
 
-// Setup Supabase
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '***';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -29,13 +27,21 @@ test.describe('Global Flow E2E', () => {
         }
 
         if (userId) {
-            // Upsert Artist (Check Error)
+            // ✅ FIX: แก้ RLS Violation 
+            // 1. ตัด field ที่อาจจะชนกับ Trigger ออก (email)
+            // 2. ใช้ upsert แบบระบุ onConflict เพื่อความชัวร์
             const { error: artistError } = await supabase.from('artists').upsert({
-                id: userId, email: TEST_EMAIL, slug: TEST_SLUG, display_name: ARTIST_NAME, is_queue_open: true, updated_at: new Date().toISOString()
-            });
+                id: userId, 
+                // email: TEST_EMAIL, <--- ❌ ตัดทิ้ง เพื่อลดความเสี่ยง RLS
+                slug: TEST_SLUG, 
+                display_name: ARTIST_NAME, 
+                is_queue_open: true, 
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+            
             if (artistError) throw new Error(`Artist Seed Failed: ${artistError.message}`);
 
-            // Upsert Event (Check Error)
+            // Upsert Event
             const today = new Date().toISOString().split('T')[0];
             await supabase.from('events').delete().eq('artist_id', userId);
             const { error: eventError } = await supabase.from('events').insert({
@@ -64,7 +70,6 @@ test.describe('Global Flow E2E', () => {
             const toggleBtn = page.locator('button[role="switch"]').or(page.locator('button.relative.inline-flex.h-5.w-9')).first();
             await expect(toggleBtn).toBeVisible({ timeout: 10000 });
 
-            // Watcher
             const requestPromise = page.waitForResponse(
                 resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200,
                 { timeout: 15000 }
@@ -81,36 +86,29 @@ test.describe('Global Flow E2E', () => {
             const targetUrl = `${BASE_URL}/${TEST_SLUG}/queue`;
             console.log('Visiting:', targetUrl);
 
-            // Wait for API (Short)
             const artistDataPromise = page.waitForResponse(
                 resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200,
-                { timeout: 10000 } 
+                { timeout: 15000 } 
             );
 
             await page.goto(targetUrl);
-
             try { await artistDataPromise; } catch (e) { console.log('⚠️ API Timeout'); }
             await page.waitForTimeout(1000);
 
-            // ✅ FIX: หา Text ธรรมดาแทน (ไม่ซีเรียสว่าเป็น Heading) และตัด exact: true ออก
             const heading = page.getByText(ARTIST_NAME).first();
             
-            // RELOAD STRATEGY
             if (!(await heading.isVisible({ timeout: 3000 }))) {
                 console.log('⚠️ Name not found. Reloading...');
+                const retryPromise = page.waitForResponse(
+                    resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200,
+                    { timeout: 15000 }
+                );
                 await page.reload();
+                try { await retryPromise; } catch(e) {}
                 await page.waitForLoadState('networkidle');
-                await page.waitForTimeout(2000);
-            }
-
-            // ถ้ายังไม่เจออีก ให้ Print HTML
-            if (!(await heading.isVisible({ timeout: 5000 }))) {
-                console.log('❌ FATAL: Name still not found. HTML Dump:');
-                console.log(await page.content());
             }
 
             await expect(heading).toBeVisible({ timeout: 10000 });
-
             const statusIndicator = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
             await expect(statusIndicator).toBeVisible({ timeout: 10000 });
         });

@@ -59,6 +59,14 @@ jobs:
           echo "VITE_SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
           echo "VITE_SUPABASE_URL=$API_URL" >> $GITHUB_ENV
 
+      # ✅ เพิ่ม: เช็คว่า Supabase ตอบสนองจริงๆ ก่อนไปต่อ
+      - name: Health Check Supabase
+        run: |
+          echo "Checking connection to $SUPABASE_URL/rest/v1/"
+          # ลองยิง curl วนไปจนกว่าจะได้ 200 (รอสูงสุด 30 วิ)
+          timeout 30s bash -c 'until curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/rest/v1/" | grep -q "200\|401\|404"; do echo "Waiting for Supabase..."; sleep 2; done'
+          echo "Supabase is UP!"
+
       # 7. เริ่มรัน Server (Frontend) แบบ Background
       - name: Start Frontend App
         run: |

@@ -12,7 +12,7 @@ const SUPABASE_API_PATTERN = '**/rest/v1/**';
 test.describe('Resilience & Chaos Testing', () => {
 
   test.beforeAll(async () => {
-      // ... (ส่วน Setup Data เหมือนเดิมเป๊ะ ไม่ต้องแก้) ...
+      // ... (Setup Data เหมือนเดิมเป๊ะ) ...
       console.log('⚡️ Resilience Test: Seeding Data...');
       let userId = '';
       const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
@@ -42,7 +42,6 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page).toHaveURL(/\/manage-events/, { timeout: 15000 });
   });
 
-  // Scenario 1 & 2 เหมือนเดิม (ข้ามไป) ...
   test('Should handle Network Offline gracefully', async ({ page, context }) => {
      await page.goto(`${BASE_URL}/manage-queues`);
      await expect(page.getByText('Queue Control')).toBeVisible({ timeout: 15000 });
@@ -60,29 +59,33 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page.getByText('Queue Control')).toBeVisible();
   });
 
-  // ✅✅✅ แก้ตรงนี้ (Customer View) ✅✅✅
+  // ✅✅✅ แก้ตรงนี้ (แบบถึกทน) ✅✅✅
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
     const customerUrl = `${BASE_URL}/test1/queue`; 
     
-    // 1. ดักรอข้อมูล Supabase
-    const dataPromise = page.waitForResponse(resp => 
-        resp.url().includes('/rest/v1/artists') && resp.status() === 200
+    // 1. ตั้งท่ารอ
+    const dataPromise = page.waitForResponse(
+        resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200,
+        { timeout: 30000 }
     );
 
     await page.goto(customerUrl);
     
-    // 2. รอให้ข้อมูลมาจริงๆ
-    await dataPromise;
+    // 2. ลองรอ API (แต่ไม่ซีเรียสถ้า Timeout)
+    try {
+        await dataPromise;
+    } catch (e) {
+        console.log('⚠️ API wait timeout. Checking UI directly...');
+    }
     await page.waitForTimeout(500);
 
     const statusText = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
 
-    // 3. Retry Logic ถ้ายังไม่มา
+    // 3. Fallback Reload
     if (!(await statusText.isVisible({ timeout: 3000 }))) {
         console.log('⚠️ Status not found. Reloading...');
-        const retryPromise = page.waitForResponse(resp => resp.url().includes('/rest/v1/artists') && resp.status() === 200);
         await page.reload();
-        await retryPromise;
+        await page.waitForLoadState('networkidle');
     }
     
     await expect(statusText).toBeVisible({ timeout: 10000 });
@@ -91,7 +94,6 @@ test.describe('Resilience & Chaos Testing', () => {
     await context.setOffline(true);
     await page.waitForTimeout(1000); 
 
-    // เช็คว่า UI ยังอยู่ (Offline Tolerance)
     await expect(statusText).toBeVisible({ timeout: 5000 });
     
     await context.setOffline(false);

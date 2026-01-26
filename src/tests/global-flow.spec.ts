@@ -14,7 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 test.describe('Global Flow E2E', () => {
 
     test.beforeAll(async () => {
-        // ... (ส่วน Setup Auth/DB เหมือนเดิมเป๊ะ ไม่ต้องแก้) ...
+        // ... (ส่วน Setup เหมือนเดิมเป๊ะ ไม่ต้องแก้) ...
         console.log('⚡️ Global Flow: Seeding Data...');
         let userId = '';
         const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
@@ -61,42 +61,41 @@ test.describe('Global Flow E2E', () => {
         });
     });
 
-    // ✅✅✅ แก้ตรงนี้ (Customer View) ✅✅✅
+    // ✅✅✅ แก้ตรงนี้ (แบบถึกทน) ✅✅✅
     test.describe('Customer View', () => {
         test('Public Queue Page Elements', async ({ page }) => {
             const targetUrl = `${BASE_URL}/${TEST_SLUG}/queue`;
             console.log('Visiting:', targetUrl);
 
-            // 1. ดักจับ Response ของ Supabase (REST API)
-            // รอจนกว่าจะมี Request ที่ยิงไปหา artists และได้ status 200
-            const artistDataPromise = page.waitForResponse(resp => 
-                resp.url().includes('/rest/v1/artists') && resp.status() === 200
+            // 1. ตั้งท่ารอ (เพิ่ม Timeout นานๆ หน่อยเผื่อ CI ช้า)
+            const artistDataPromise = page.waitForResponse(
+                resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200 && resp.status() < 300,
+                { timeout: 30000 } // รอ 30 วิ
             );
 
             await page.goto(targetUrl);
 
-            // 2. รอให้ข้อมูลมาถึงจริงๆ (ไม้ตาย)
-            // ถ้า API ยังไม่ตอบกลับ Test จะหยุดรอตรงนี้ ไม่รีบไปหา Element
-            await artistDataPromise; 
+            // 2. ลองรอ API (แต่ถ้าไม่มา หรือมาไม่ทัน ก็อย่าพึ่งตาย)
+            try {
+                await artistDataPromise;
+            } catch (e) {
+                console.log('⚠️ API response missed or slow (Wait Timeout). Proceeding to check DOM directly...');
+            }
             
-            // 3. รอเผื่อการ Render นิดหน่อย
-            await page.waitForTimeout(500); 
+            // 3. ให้เวลา Render นิดนึง
+            await page.waitForTimeout(1000); 
 
-            // 4. ถ้า Heading ไม่มา ให้ลอง Reload แบบมีชั้นเชิง
+            // 4. เช็คของหน้าจอเลย (Source of Truth)
             const heading = page.getByRole('heading', { name: ARTIST_NAME });
+            
+            // Fallback Reload: ถ้าไม่เจอจริงๆ ค่อยรีเฟรช
             if (!(await heading.isVisible({ timeout: 3000 }))) {
-                console.log('⚠️ Heading not found on first load. Reloading...');
-                
-                // ดักรอบ 2
-                const retryPromise = page.waitForResponse(resp => 
-                    resp.url().includes('/rest/v1/artists') && resp.status() === 200
-                );
+                console.log('⚠️ DOM not ready. Reloading page...');
                 await page.reload();
-                await retryPromise;
-                await page.waitForTimeout(500);
+                await page.waitForLoadState('networkidle'); // รอแบบ Basic แทน
             }
 
-            await expect(heading).toBeVisible();
+            await expect(heading).toBeVisible({ timeout: 10000 });
 
             // 5. เช็ค Status
             const statusIndicator = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();

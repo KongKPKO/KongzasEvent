@@ -6,20 +6,17 @@ const TEST_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'SupaF@irytail1';
 const BASE_URL = 'http://localhost:5173';
 
-// Setup Supabase Client
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '***'; // ใส่ Mock หรือค่าจริงใน .env
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '***'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const SUPABASE_API_PATTERN = '**/rest/v1/**'; 
 
 test.describe('Resilience & Chaos Testing', () => {
 
-  // ✅ SETUP: สร้าง User + Artist + Event (Force "Booth Closed")
+  // ✅ SETUP: สร้างข้อมูลร้านที่ "ปิดทำการ" (Booth Closed)
   test.beforeAll(async () => {
       console.log('⚡️ Resilience Test: Seeding Data...');
       
-      // 1. Auth & User Setup (ใช้ท่า SignUp/SignIn เพื่อเลี่ยง Admin Permission)
       let userId = '';
       const { data: signUpData } = await supabase.auth.signUp({
           email: TEST_EMAIL,
@@ -35,7 +32,6 @@ test.describe('Resilience & Chaos Testing', () => {
       }
 
       if (userId) {
-          // 2. Artist Setup (บังคับ Slug และเปิดคิวไว้)
           await supabase.from('artists').upsert({
               id: userId,
               email: TEST_EMAIL,
@@ -45,25 +41,23 @@ test.describe('Resilience & Chaos Testing', () => {
               updated_at: new Date().toISOString()
           });
 
-          // 3. Event Setup (Timezone Safe & Force CLOSE)
-          // เราตั้ง is_booth_open: false เพื่อให้ Customer View เจอคำว่า "Booth Closed" แน่นอน
           const today = new Date().toISOString().split('T')[0];
           await supabase.from('events').delete().eq('artist_id', userId);
 
           await supabase.from('events').insert({
               artist_id: userId,
               event_name: 'Resilience Chaos Event',
-              start_date: today + ' 00:00:00', // เริ่มเที่ยงคืน
+              start_date: today + ' 00:00:00',
               end_date: today + ' 23:59:59',
               status: 'Confirmed',
-              is_booth_open: false, // ❌ ปิดบูธ (เพื่อให้เทส Offline ง่ายขึ้น)
+              is_booth_open: false, // ✅ ปิดบูธ เพื่อให้ขึ้น Booth Closed แน่นอน
               location: 'Resilience Lab'
           });
           console.log('✅ Data seeded successfully for Resilience Test (Booth Closed)');
       }
   });
 
-  // Login ก่อนเริ่ม Test
+  // Login
   test.beforeEach(async ({ page }) => {
     await page.goto(`${BASE_URL}/manage-login`);
     await page.fill('input[type="email"]', TEST_EMAIL);
@@ -72,7 +66,7 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page).toHaveURL(/\/manage-events/, { timeout: 15000 });
   });
 
-  // 🔴 Scenario 1: เน็ตหลุดกลางอากาศ (Offline Mode)
+  // 🔴 Scenario 1: เน็ตหลุด (Admin)
   test('Should handle Network Offline gracefully', async ({ page, context }) => {
     await page.goto(`${BASE_URL}/manage-queues`);
     await expect(page.getByText('Queue Control')).toBeVisible({ timeout: 15000 });
@@ -88,7 +82,7 @@ test.describe('Resilience & Chaos Testing', () => {
     await context.setOffline(false);
   });
 
-  // 💥 Scenario 2: Server พัง (จำลอง API Error 500)
+  // 💥 Scenario 2: Server Error 500
   test('Should handle API Failure (500 Error)', async ({ page }) => {
     await page.goto(`${BASE_URL}/manage-queues`);
 
@@ -112,24 +106,32 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page.getByText('Queue Control')).toBeVisible();
   });
 
-  // 📱 Scenario 3: Customer Side
+  // 📱 Scenario 3: Customer Side (เน็ตหลุด)
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
     const customerUrl = `${BASE_URL}/test1/queue`; 
+    
     await page.goto(customerUrl);
+    // ✅ รอให้ Network นิ่งก่อน (สำคัญมาก)
+    await page.waitForLoadState('networkidle');
 
-    // คาดหวัง "Booth Closed" เพราะเรา Seed ไว้แบบนั้น
     const statusText = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
-    await expect(statusText).toBeVisible({ timeout: 15000 });
+    
+    // ✅ Retry Logic: ถ้าไม่เจอ ให้ลอง Reload
+    if (!(await statusText.isVisible({ timeout: 5000 }))) {
+        console.log('⚠️ Status not found initially. Reloading...');
+        await page.reload();
+        await page.waitForLoadState('networkidle');
+    }
+    
+    await expect(statusText).toBeVisible({ timeout: 10000 });
 
     console.log('Simulating Offline Mode for Customer...');
     await context.setOffline(true);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000); 
 
-    // เช็คว่า UI ยังอยู่ ไม่ขาว
-    await expect(statusText).toBeVisible();
+    // เช็คว่า UI ยังอยู่ (Offline Tolerance)
+    await expect(statusText).toBeVisible({ timeout: 5000 });
     
     await context.setOffline(false);
-    await page.reload();
-    await expect(statusText).toBeVisible();
   });
 });

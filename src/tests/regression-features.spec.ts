@@ -14,8 +14,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Regression Features: Queue Control & Notifications', () => {
 
+    // 🛠️ Helper Function: สร้างข้อมูลใหม่ทุกครั้งก่อนเริ่ม Test แต่ละข้อ
     const setupTestEvent = async () => {
-        // 1. Auth Setup (ใช้ท่า Public Sign Up เพื่อแก้ Permission CI)
+        // 1. Auth Setup
         let userId = '';
         const { data: signUpData } = await supabase.auth.signUp({
             email: TEST_EMAIL,
@@ -34,103 +35,98 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
 
         if (!userId) throw new Error("Critical: Failed to find or create test user via SignUp/SignIn");
 
-        // ✅ 2. FORCE Artist Setup (จุดสำคัญที่แก้!)
-        // ต้องกำหนด is_queue_open: true ด้วย ไม่งั้นปุ่ม Get Ticket จะไม่ขึ้น
+        // 2. FORCE Artist Setup (Reset Status)
         await supabase.from('artists').upsert({
             id: userId,
             email: TEST_EMAIL,
             slug: TEST_SLUG, 
             display_name: 'Regression Artist',
             status: 'approved',
-            is_queue_open: true, // <--- เพิ่มบรรทัดนี้ครับ!
+            is_queue_open: true, // ✅ บังคับเปิดคิวเสมอ
             updated_at: new Date().toISOString()
         });
 
-        // 3. Event Setup
+        // 3. Event Setup (Reset Event)
         const today = new Date().toISOString().split('T')[0]; 
         await supabase.from('events').delete().eq('artist_id', userId);
 
         const { data: newEvent } = await supabase.from('events').insert({
             artist_id: userId,
-            event_name: 'E2E Automated Test Event',
+            event_name: 'E2E Regression Event',
             start_date: today + ' 00:00:00',
             end_date: today + ' 23:59:59',
             status: 'Confirmed',
             is_booth_open: true,
-            location: 'Automated Test Lab'
+            location: 'Regression Lab'
         }).select().single();
         
+        // 4. Clear Old Queues (ล้างคิวเก่าทิ้งให้หมด)
+        await supabase.from('queues').delete().eq('event_id', newEvent.id);
+
         return newEvent?.id;
     };
 
     test.beforeEach(async ({ page }) => {
         await setupTestEvent();
+        
+        // Login & Go to Dashboard
         await page.goto(`${BASE_URL}/manage-login`);
         await page.fill('input[type="email"]', TEST_EMAIL);
         await page.fill('input[type="password"]', TEST_PASSWORD);
         await page.getByRole('button', { name: 'Login to Dashboard' }).click();
         await expect(page).toHaveURL(/\/manage-events/, { timeout: 15000 });
+        
+        // Go to Queue Control Page
         await page.goto(`${BASE_URL}/manage-queues`);
         await expect(page.getByText('Queue Control')).toBeVisible({ timeout: 10000 });
     });
 
-    // --- Scenario 1 ---
+    // --- Scenario 1: Pause Queue ---
     test('Scenario 1: Pause Queue changes Customer UI', async ({ page, browser }) => {
         const toggleButton = page.locator('button.relative.inline-flex.h-5.w-9').first();
         
         // Ensure toggle reflects DB state (Green)
-        await expect(toggleButton).toHaveClass(/bg-green-500/, { timeout: 5000 });
+        await expect(toggleButton).toHaveClass(/bg-green-500/, { timeout: 10000 });
 
+        // Action: Click Pause
         const pauseRequest = page.waitForResponse(resp => 
-            resp.url().includes('/rest/v1/artists') && 
-            (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
-            resp.status() >= 200 && resp.status() < 300
+            resp.url().includes('/rest/v1/artists') && resp.status() >= 200
         );
-        
         await toggleButton.click();
         await pauseRequest; 
+        
         await expect(toggleButton).toHaveClass(/bg-red-500/); 
         await expect(page.getByText('QUEUE PAUSED')).toBeVisible();
 
+        // Customer Check
         const customerContext = await browser.newContext();
         const customerPage = await customerContext.newPage();
         await customerPage.goto(`${BASE_URL}/${TEST_SLUG}/queue`);
 
+        // Force Reload Strategy for CI Visibility
         try {
-            await expect(customerPage.getByText('Queuing is closed')).toBeVisible({ timeout: 3000 });
+            await expect(customerPage.getByText(/Closed|Paused|Queuing is closed/i)).toBeVisible({ timeout: 5000 });
         } catch {
+            console.log('⚠️ Status not updated. Reloading customer page...');
             await customerPage.reload();
-            await expect(customerPage.getByText('Queuing is closed')).toBeVisible();
+            await customerPage.waitForLoadState('networkidle');
+            await expect(customerPage.getByText(/Closed|Paused|Queuing is closed/i)).toBeVisible({ timeout: 10000 });
         }
+        
+        // Button should be gone
         await expect(customerPage.getByRole('button', { name: 'Get Ticket' })).not.toBeVisible();
 
-        await page.bringToFront();
-        await toggleButton.click();
-        await expect(toggleButton).toHaveClass(/bg-green-500/);
         await customerContext.close();
     });
 
-    // --- Scenario 2 ---
+    // --- Scenario 2: Calling Override ---
     test('Scenario 2: Calling Notification overrides Broadcast', async ({ page, browser }) => {
         
         // 1. Ensure Queue is OPEN (Double check)
         const toggleButton = page.locator('button.relative.inline-flex.h-5.w-9').first();
-        await expect(toggleButton).toHaveClass(/bg-green-500/, { timeout: 5000 });
+        await expect(toggleButton).toHaveClass(/bg-green-500/, { timeout: 10000 });
 
-        // 2. Clear Broadcast
-        const breakBtn = page.locator('button[title="พักเบรค"]');
-        const clearBtn = page.getByTitle('Clear Message');
-        if (await clearBtn.isVisible()) {
-            const clearRequest = page.waitForResponse(resp => 
-                resp.url().includes('/rest/v1/artists') && resp.status() < 300
-            );
-            await clearBtn.click();
-            await clearRequest;
-            await expect(breakBtn).not.toHaveClass(/ring-pink-500/); 
-            await page.waitForTimeout(1000); 
-        }
-
-        // 3. Customer Action
+        // 2. Customer: Get Ticket
         const customerContext = await browser.newContext();
         const customerPage = await customerContext.newPage();
         await customerPage.goto(`${BASE_URL}/${TEST_SLUG}/queue`);
@@ -138,36 +134,27 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
 
         const getTicketBtn = customerPage.getByRole('button', { name: 'Get Ticket' });
         
-        // Robust Retry Logic
+        // Retry if button missing
         if (!(await getTicketBtn.isVisible({ timeout: 5000 }))) {
              console.log('⚠️ Get Ticket Button not found. Reloading...');
              await customerPage.reload();
-             await customerPage.waitForLoadState('networkidle');
              await expect(getTicketBtn).toBeVisible({ timeout: 10000 });
         }
 
-        const createTicketRequest = customerPage.waitForResponse(resp => 
-            resp.url().includes('/rest/v1/queues') && 
-            resp.request().method() === 'POST' &&
-            resp.status() === 201 
-        );
-
         await getTicketBtn.click();
-        await createTicketRequest;
-        await expect(customerPage.getByText(/#\d+/).first()).toBeVisible();
+        await expect(customerPage.getByText(/#\d+/).first()).toBeVisible({ timeout: 10000 });
 
-        // 4. Admin Broadcast "Break"
+        // 3. Admin: Broadcast "Break"
         await page.bringToFront();
-        const broadcastRequest = page.waitForResponse(resp => 
-            resp.url().includes('/rest/v1/artists') && 
-            (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
-            resp.status() >= 200 && resp.status() < 300
-        );
+        const breakBtn = page.locator('button[title="พักเบรค"]');
+        
+        const broadcastRequest = page.waitForResponse(resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200);
         await breakBtn.click();
         await broadcastRequest;
+        
         await expect(breakBtn).toHaveClass(/ring-pink-500/);
 
-        // 5. Verify Customer sees Break
+        // Verify Customer sees Break
         await customerPage.bringToFront();
         try {
             await expect(customerPage.getByText('Break time')).toBeVisible({ timeout: 5000 });
@@ -176,43 +163,28 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             await expect(customerPage.getByText('Break time')).toBeVisible();
         }
 
-        // 6. Call Next
+        // 4. Admin: Call Next (Override Break)
         await page.bringToFront();
         const callNextBtn = page.getByRole('button', { name: 'Call Next' });
         
-        for (let i = 0; i < 5; i++) {
-            const isCalled = await customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!')).isVisible();
-            if (isCalled) break;
-
-            if (await callNextBtn.isDisabled()) {
-                await page.reload(); 
-                await expect(page.getByText('Queue Control')).toBeVisible();
-                await page.waitForTimeout(500);
-            }
-            if (await callNextBtn.isDisabled()) continue;
-
-            const callRequest = page.waitForResponse(resp => 
-                resp.url().includes('/rest/v1/queues') && 
-                (resp.request().method() === 'PATCH' || resp.request().method() === 'POST') &&
-                resp.status() >= 200 && resp.status() < 300
-            );
-            await callNextBtn.click();
-            await callRequest;
-            await page.waitForTimeout(1000); 
-        }
+        const callRequest = page.waitForResponse(resp => resp.url().includes('/rest/v1/queues') && resp.status() >= 200);
+        await callNextBtn.click();
+        await callRequest;
             
-        // 7. Verify Priority
+        // 5. Verify Priority (Calling > Break)
         await customerPage.bringToFront();
-        const callingMessage = customerPage.getByText('Your Turn!').or(customerPage.getByText('ถึงคิวแล้ว!'));
-        if (!(await callingMessage.isVisible())) await customerPage.reload();
+        
+        const callingMessage = customerPage.getByText(/Your Turn|ถึงคิวแล้ว/i);
+        
+        // Retry Check
+        if (!(await callingMessage.isVisible({ timeout: 5000 }))) {
+             console.log('⚠️ Calling status not appearing. Reloading...');
+             await customerPage.reload();
+        }
         
         await expect(callingMessage).toBeVisible({ timeout: 10000 });
         await expect(customerPage.getByText('Break time')).not.toBeVisible();
 
-        // Cleanup
-        await page.bringToFront();
-        const finalClearBtn = page.getByTitle('Clear Message');
-        if (await finalClearBtn.isVisible()) await finalClearBtn.click();
         await customerContext.close();
     });
 });

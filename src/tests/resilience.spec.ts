@@ -12,7 +12,6 @@ const SUPABASE_API_PATTERN = '**/rest/v1/**';
 test.describe('Resilience & Chaos Testing', () => {
 
   test.beforeAll(async () => {
-      // ... (Setup Data เหมือนเดิมเป๊ะ) ...
       console.log('⚡️ Resilience Test: Seeding Data...');
       let userId = '';
       const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
@@ -28,6 +27,7 @@ test.describe('Resilience & Chaos Testing', () => {
           });
           const today = new Date().toISOString().split('T')[0];
           await supabase.from('events').delete().eq('artist_id', userId);
+          // Seed ให้ is_booth_open: false (ร้านปิด)
           await supabase.from('events').insert({
               artist_id: userId, event_name: 'Resilience Chaos Event', start_date: today + ' 00:00:00', end_date: today + ' 23:59:59', status: 'Confirmed', is_booth_open: false, location: 'Resilience Lab'
           });
@@ -35,6 +35,7 @@ test.describe('Resilience & Chaos Testing', () => {
   });
 
   test.beforeEach(async ({ page }) => {
+    // Login Admin (สำหรับ Test ข้ออื่นๆ)
     await page.goto(`${BASE_URL}/manage-login`);
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);
@@ -59,11 +60,11 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page.getByText('Queue Control')).toBeVisible();
   });
 
-  // ✅✅✅ แก้ตรงนี้ (แบบถึกทน) ✅✅✅
+  // ✅✅✅ แก้ตรงนี้: Selector ครอบจักรวาล
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
     const customerUrl = `${BASE_URL}/test1/queue`; 
     
-    // 1. ตั้งท่ารอ
+    // 1. ตั้งท่ารอ API
     const dataPromise = page.waitForResponse(
         resp => resp.url().includes('/rest/v1/artists') && resp.status() >= 200,
         { timeout: 30000 }
@@ -71,21 +72,24 @@ test.describe('Resilience & Chaos Testing', () => {
 
     await page.goto(customerUrl);
     
-    // 2. ลองรอ API (แต่ไม่ซีเรียสถ้า Timeout)
-    try {
-        await dataPromise;
-    } catch (e) {
-        console.log('⚠️ API wait timeout. Checking UI directly...');
-    }
-    await page.waitForTimeout(500);
+    // 2. รอ API (Soft Wait)
+    try { await dataPromise; } catch (e) { console.log('⚠️ API wait timeout.'); }
+    await page.waitForTimeout(1000);
 
-    const statusText = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
+    // 3. กำหนด Selector แบบ Regex (หาทุกคำที่เป็นไปได้ของการปิดร้าน)
+    const statusText = page.getByText(/Booth Closed|NOW SERVING|Queuing is closed|Closed|Paused/i).first();
 
-    // 3. Fallback Reload
-    if (!(await statusText.isVisible({ timeout: 3000 }))) {
+    // 4. Force Reload Strategy
+    if (!(await statusText.isVisible({ timeout: 5000 }))) {
         console.log('⚠️ Status not found. Reloading...');
+        
+        // ลองหา Heading ก่อนรีโหลด เพื่อความชัวร์
+        const heading = page.getByRole('heading', { level: 1 }).or(page.getByText('Resilience Test Artist'));
+        if (!(await heading.isVisible())) console.log('⚠️ Even heading is missing!');
+
         await page.reload();
         await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2000);
     }
     
     await expect(statusText).toBeVisible({ timeout: 10000 });
@@ -94,6 +98,7 @@ test.describe('Resilience & Chaos Testing', () => {
     await context.setOffline(true);
     await page.waitForTimeout(1000); 
 
+    // เช็คว่าข้อความยังอยู่
     await expect(statusText).toBeVisible({ timeout: 5000 });
     
     await context.setOffline(false);

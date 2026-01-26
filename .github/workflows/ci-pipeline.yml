@@ -36,16 +36,24 @@ jobs:
         run: npx playwright install --with-deps
 
       # 6. จำลอง Supabase ขึ้นมา (ใช้ Supabase CLI)
-      # หมายเหตุ: ต้องมี folder 'supabase' ในโปรเจกต์ถึงจะ start ได้
+      # ✅ แก้ไข: เพิ่มการ export ตัวแปร VITE_... เพื่อให้ Client มองเห็น
       - name: Start Supabase (Local in CI)
         run: |
           npx supabase stop --no-backup
-          npx supabase start -x studio,migra,imgproxy,deno-relay --debug
-          # ดึง Anon Key ออกมาเพื่อใช้ในขั้นตอนถัดไป
+          npx supabase start -x studio,migra,imgproxy,deno-relay
+
+          # ดึง Anon Key และ URL จาก Local Supabase
           ANON_KEY=$(npx supabase status -o json | jq -r .anon_key)
           API_URL=$(npx supabase status -o json | jq -r .api_url)
+
+          # Export สำหรับ K6 (ชื่อเดิม)
           echo "SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
           echo "SUPABASE_URL=$API_URL" >> $GITHUB_ENV
+
+          # Export สำหรับ Playwright & Frontend (ชื่อใหม่ที่มี VITE_)
+          echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
+          echo "VITE_SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
+          echo "VITE_SUPABASE_URL=$API_URL" >> $GITHUB_ENV
 
       # 7. เริ่มรัน Server (Frontend) แบบ Background
       - name: Start Frontend App
@@ -57,8 +65,10 @@ jobs:
       - name: 🧪 Run Playwright Tests (Functional & Security)
         run: npx playwright test
         env:
-          # ใส่รหัสผ่าน Test Login ไว้ใน GitHub Secrets หรือใส่ตรงนี้ถ้าเป็น Mock
+          # ใส่รหัสผ่าน Test Login (ยังคงต้องใช้จาก Secrets)
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          # ใส่ Email เผื่อไว้ (ถ้าใน code ไม่ได้ hardcode)
+          TEST_EMAIL: "konglnwzas@gmail.com"
 
       # 9. รัน Load/Soak Test (K6)
       - name: 🔥 Run K6 Soak Test (Backend Performance)

@@ -39,8 +39,8 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         const { data: newEvent } = await supabase.from('events').insert({
             artist_id: user.id,
             event_name: 'E2E Automated Test Event',
-            start_date: today + ' 09:00:00',
-            end_date: today + ' 18:00:00',
+            start_date: today + ' 00:00:00',
+            end_date: today + ' 23:59:59',
             status: 'Confirmed',
             is_booth_open: true,
             location: 'Automated Test Lab'

@@ -9,7 +9,7 @@ const TEST_SLUG = 'test1';
 
 // Supabase Config
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg'; 
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '***'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Regression Features: Queue Control & Notifications', () => {
@@ -36,7 +36,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
         if (!userId) throw new Error("Critical: Failed to find or create test user via SignUp/SignIn");
 
         // 2. FORCE Artist Setup (Reset Status)
-        await supabase.from('artists').upsert({
+        const { error: artistError } = await supabase.from('artists').upsert({
             id: userId,
             email: TEST_EMAIL,
             slug: TEST_SLUG, 
@@ -45,12 +45,14 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             is_queue_open: true, // ✅ บังคับเปิดคิวเสมอ
             updated_at: new Date().toISOString()
         });
+        if (artistError) throw new Error(`Artist Upsert Failed: ${artistError.message}`);
 
         // 3. Event Setup (Reset Event)
         const today = new Date().toISOString().split('T')[0]; 
         await supabase.from('events').delete().eq('artist_id', userId);
 
-        const { data: newEvent } = await supabase.from('events').insert({
+        // ✅ FIX: เช็ค Error จากการ Insert Event
+        const { data: newEvent, error: insertError } = await supabase.from('events').insert({
             artist_id: userId,
             event_name: 'E2E Regression Event',
             start_date: today + ' 00:00:00',
@@ -59,11 +61,17 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
             is_booth_open: true,
             location: 'Regression Lab'
         }).select().single();
+
+        if (insertError || !newEvent) {
+            console.error("🚨 Insert Event Error details:", insertError);
+            throw new Error(`Event Insert Failed: ${insertError?.message || 'Unknown error'}`);
+        }
         
         // 4. Clear Old Queues (ล้างคิวเก่าทิ้งให้หมด)
+        // ถึงตรงนี้ newEvent ต้องมีค่าแน่นอนแล้ว
         await supabase.from('queues').delete().eq('event_id', newEvent.id);
 
-        return newEvent?.id;
+        return newEvent.id;
     };
 
     test.beforeEach(async ({ page }) => {

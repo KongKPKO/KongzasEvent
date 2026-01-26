@@ -25,7 +25,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
                  password: TEST_PASSWORD,
                  email_confirm: true
              });
-             user = newUser.user;
+             user = newUser.user ?? undefined;
         }
 
         if (!user) throw new Error("Critical: Failed to find or create test user");

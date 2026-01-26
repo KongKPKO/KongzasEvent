@@ -35,22 +35,26 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
-      # 6. จำลอง Supabase ขึ้นมา (ใช้ Supabase CLI)
-      # ✅ แก้ไข: เพิ่มการ export ตัวแปร VITE_... เพื่อให้ Client มองเห็น
+      # 6. จำลอง Supabase ขึ้นมา (Local in CI)
       - name: Start Supabase (Local in CI)
         run: |
           npx supabase stop --no-backup
           npx supabase start -x studio,migra,imgproxy,deno-relay
 
-          # ดึง Anon Key และ URL จาก Local Supabase
+          # ดึง Anon Key (อันนี้ต้องดึง เพราะเปลี่ยนทุกครั้ง)
           ANON_KEY=$(npx supabase status -o json | jq -r .anon_key)
-          API_URL=$(npx supabase status -o json | jq -r .api_url)
 
-          # Export สำหรับ K6 (ชื่อเดิม)
+          # ✅ แก้ไข: Hardcode URL ไปเลยเพื่อความชัวร์ (เพราะ Local ยังไงก็ port นี้)
+          API_URL="http://127.0.0.1:54321"
+
+          echo "Supabase Started with Key: ${ANON_KEY:0:5}..."
+          echo "Supabase URL: $API_URL"
+
+          # Export Environment Variables
           echo "SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
           echo "SUPABASE_URL=$API_URL" >> $GITHUB_ENV
 
-          # Export สำหรับ Playwright & Frontend (ชื่อใหม่ที่มี VITE_)
+          # Export VITE_ สำหรับ Frontend และ Playwright
           echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
           echo "VITE_SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
           echo "VITE_SUPABASE_URL=$API_URL" >> $GITHUB_ENV

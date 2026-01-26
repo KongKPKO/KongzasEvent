@@ -8,15 +8,18 @@ const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '***'; // ใส่ Mock หรือค่าจริงใน .env
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SUPABASE_API_PATTERN = '**/rest/v1/**'; 
 
-test.beforeAll(async () => {
+test.describe('Resilience & Chaos Testing', () => {
+
+  // ✅ SETUP: สร้าง User + Artist + Event (Force "Booth Closed")
+  test.beforeAll(async () => {
       console.log('⚡️ Resilience Test: Seeding Data...');
       
-      // 1. Auth & User Setup (Robust)
+      // 1. Auth & User Setup (ใช้ท่า SignUp/SignIn เพื่อเลี่ยง Admin Permission)
       let userId = '';
       const { data: signUpData } = await supabase.auth.signUp({
           email: TEST_EMAIL,
@@ -32,78 +35,31 @@ test.beforeAll(async () => {
       }
 
       if (userId) {
-          // 2. Artist Setup (Force Slug 'test1' & Open Queue)
+          // 2. Artist Setup (บังคับ Slug และเปิดคิวไว้)
           await supabase.from('artists').upsert({
               id: userId,
               email: TEST_EMAIL,
-              slug: 'test1', // ✅ บังคับ Slug
+              slug: 'test1',
               display_name: 'Resilience Test Artist',
-              is_queue_open: true, // ✅ บังคับเปิดคิว
+              is_queue_open: true,
               updated_at: new Date().toISOString()
           });
 
-          // 3. Event Setup (Timezone Safe)
+          // 3. Event Setup (Timezone Safe & Force CLOSE)
+          // เราตั้ง is_booth_open: false เพื่อให้ Customer View เจอคำว่า "Booth Closed" แน่นอน
           const today = new Date().toISOString().split('T')[0];
-          await supabase.from('events').delete().eq('artist_id', userId); // ลบอันเก่ากันตีกัน
+          await supabase.from('events').delete().eq('artist_id', userId);
 
           await supabase.from('events').insert({
               artist_id: userId,
               event_name: 'Resilience Chaos Event',
-              start_date: today + ' 00:00:00', // ✅ เริ่มเที่ยงคืน
+              start_date: today + ' 00:00:00', // เริ่มเที่ยงคืน
               end_date: today + ' 23:59:59',
               status: 'Confirmed',
-              is_booth_open: true, // เปิดบูธเพื่อให้เทส Customer View ได้
+              is_booth_open: false, // ❌ ปิดบูธ (เพื่อให้เทส Offline ง่ายขึ้น)
               location: 'Resilience Lab'
           });
-          console.log('✅ Data seeded successfully for Resilience Test');
-      }
-  });
-
-test.describe('Resilience & Chaos Testing', () => {
-
-  // ✅ SETUP: สร้าง User + Artist + Event ให้ครบก่อนเริ่ม
-  test.beforeAll(async () => {
-      console.log('⚡️ Resilience Test: Seeding Data...');
-      
-      // 1.1 สร้าง User (Auth)
-      const { data: authData } = await supabase.auth.signUp({
-          email: TEST_EMAIL,
-          password: TEST_PASSWORD,
-      });
-      const userId = authData.user?.id;
-
-      if (userId) {
-          // 1.2 สร้าง Artist Profile (Database)
-          const { error: artistError } = await supabase.from('artists').upsert({
-              id: userId,
-              email: TEST_EMAIL,
-              slug: 'test1', // slug ต้องตรงกับที่ Customer View เรียกใช้
-              display_name: 'Resilience Test Artist',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-
-          if (artistError) console.error('❌ Failed to seed artist:', artistError.message);
-
-          // 1.3 สร้าง Event (เพื่อให้หน้า Customer มีข้อมูลแสดง)
-          // เช็คก่อนว่ามี Event หรือยัง ถ้าไม่มีค่อยสร้าง
-          const { data: events } = await supabase.from('events').select('id').eq('artist_id', userId);
-          
-          if (!events || events.length === 0) {
-              await supabase.from('events').insert({
-                  artist_id: userId,
-                  event_name: 'Resilience Chaos Event',
-                  start_date: new Date().toISOString(),
-                  end_date: new Date(Date.now() + 86400000).toISOString(), // จบพรุ่งนี้
-                  is_booth_open: false, // ตั้งเป็นปิด เพื่อให้เจอคำว่า "Booth Closed"
-                  status: 'Confirmed'
-              });
-              console.log('✅ Event seeded successfully.');
-          } else {
-              // ถ้ามีอยู่แล้ว ให้ Force Update เป็นปิดบูธ เพื่อให้ตรงกับ Test Case
-              await supabase.from('events').update({ is_booth_open: false }).eq('artist_id', userId);
-              console.log('ℹ️ Event exists, forced status to Booth Closed.');
-          }
+          console.log('✅ Data seeded successfully for Resilience Test (Booth Closed)');
       }
   });
 
@@ -158,14 +114,11 @@ test.describe('Resilience & Chaos Testing', () => {
 
   // 📱 Scenario 3: Customer Side
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
-    // ใช้ slug 'test1' ที่เรา seed ไว้
     const customerUrl = `${BASE_URL}/test1/queue`; 
     await page.goto(customerUrl);
 
-    // เพิ่ม Timeout 15000 (15วิ) ตามคำแนะนำของ Github Actions เพื่อความชัวร์
+    // คาดหวัง "Booth Closed" เพราะเรา Seed ไว้แบบนั้น
     const statusText = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
-    
-    // รอให้โหลดเสร็จจริงๆ
     await expect(statusText).toBeVisible({ timeout: 15000 });
 
     console.log('Simulating Offline Mode for Customer...');

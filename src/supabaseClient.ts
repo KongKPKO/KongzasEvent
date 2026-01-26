@@ -1,19 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Retrieve credentials from environment variables
-// Make sure to create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_KEY
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.warn("Supabase credentials missing! Please check your .env file.");
-}
-
-const isValidUrl = (url: string) => {
-  try { return Boolean(new URL(url)); } catch (e) { return false; }
+// ฟังก์ชันดึงค่า Config แบบ Hybrid (รองรับทั้ง Vite และ Node.js/Playwright)
+const getEnv = (key: string) => {
+  // 1. ลองดึงจาก Vite (Browser)
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  // 2. ถ้าไม่มี ให้ลองดึงจาก Node.js (Playwright/Server)
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key];
+  }
+  return '';
 };
 
-const finalUrl = isValidUrl(supabaseUrl || '') ? supabaseUrl! : 'https://placeholder.supabase.co';
-const finalKey = supabaseKey || 'placeholder';
+// ใช้ getEnv ดึงค่าแทนการเรียกตรงๆ
+const supabaseUrl = getEnv('VITE_SUPABASE_URL');
+const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_KEY');
 
-export const supabase = createClient(finalUrl, finalKey);
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('⚠️ Missing Supabase URL or Key. Check your .env file or CI secrets.');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey);

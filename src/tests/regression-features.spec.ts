@@ -32,18 +32,36 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
 
         if (!userId) throw new Error("Critical: Failed to find or create test user via SignUp/SignIn");
 
-        // ✅ FIX 1: ตัด status ออก และใช้ upsert แบบระวัง
-        // (เอา email ออกด้วย เพราะปกติ Supabase จะ sync email เอง การยัดซ้ำอาจติด RLS)
-        const { error: artistError } = await supabase.from('artists').upsert({
-            id: userId,
-            slug: TEST_SLUG, 
-            display_name: 'Regression Artist',
-            // status: 'approved', <--- ❌ ลบตัวปัญหาทิ้ง!
-            is_queue_open: true,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'id' }); // ย้ำว่าถ้า ID ชนกันให้ Update
+        // ✅ FIX: เปลี่ยนจาก Upsert เป็น UPDATE อย่างเดียว (เพื่อหลบ Trigger RLS)
+        // เราจะ Retry สัก 3 รอบ เผื่อ Trigger ทำงานช้า (ในกรณี User ใหม่)
+        let artistUpdated = false;
+        for (let i = 0; i < 5; i++) {
+            const { error: updateError, data } = await supabase.from('artists').update({
+                slug: TEST_SLUG, 
+                display_name: 'Regression Artist',
+                is_queue_open: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', userId).select(); // ต้อง select เพื่อดูว่ามี row ถูก update ไหม
 
-        if (artistError) throw new Error(`Artist Upsert Failed: ${artistError.message}`);
+            if (!updateError && data && data.length > 0) {
+                artistUpdated = true;
+                break;
+            }
+            // ถ้า Update ไม่เจอ row (Trigger ยังไม่มา) ให้รอแป๊บนึง
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        if (!artistUpdated) {
+            // ถ้าสุดวิสัยจริงๆ ค่อยลอง Insert (กรณีไม่มี Trigger)
+            const { error: insertError } = await supabase.from('artists').insert({
+                id: userId,
+                slug: TEST_SLUG, 
+                display_name: 'Regression Artist',
+                is_queue_open: true,
+                updated_at: new Date().toISOString()
+            });
+            if (insertError) throw new Error(`Artist Setup Failed (Update & Insert): ${insertError.message}`);
+        }
 
         // 3. Event Setup
         const today = new Date().toISOString().split('T')[0]; 

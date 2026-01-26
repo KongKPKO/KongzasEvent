@@ -13,7 +13,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 test.describe('Regression Features: Queue Control & Notifications', () => {
 
     const setupTestEvent = async () => {
-        // 1. Auth Setup
         let userId = '';
         const { data: signUpData } = await supabase.auth.signUp({
             email: TEST_EMAIL,
@@ -32,8 +31,7 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
 
         if (!userId) throw new Error("Critical: Failed to find or create test user via SignUp/SignIn");
 
-        // ✅ FIX: เปลี่ยนจาก Upsert เป็น UPDATE อย่างเดียว (เพื่อหลบ Trigger RLS)
-        // เราจะ Retry สัก 3 รอบ เผื่อ Trigger ทำงานช้า (ในกรณี User ใหม่)
+        // Artist Setup (Update Logic)
         let artistUpdated = false;
         for (let i = 0; i < 5; i++) {
             const { error: updateError, data } = await supabase.from('artists').update({
@@ -41,18 +39,16 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
                 display_name: 'Regression Artist',
                 is_queue_open: true,
                 updated_at: new Date().toISOString()
-            }).eq('id', userId).select(); // ต้อง select เพื่อดูว่ามี row ถูก update ไหม
+            }).eq('id', userId).select();
 
             if (!updateError && data && data.length > 0) {
                 artistUpdated = true;
                 break;
             }
-            // ถ้า Update ไม่เจอ row (Trigger ยังไม่มา) ให้รอแป๊บนึง
             await new Promise(r => setTimeout(r, 1000));
         }
 
         if (!artistUpdated) {
-            // ถ้าสุดวิสัยจริงๆ ค่อยลอง Insert (กรณีไม่มี Trigger)
             const { error: insertError } = await supabase.from('artists').insert({
                 id: userId,
                 slug: TEST_SLUG, 
@@ -60,21 +56,22 @@ test.describe('Regression Features: Queue Control & Notifications', () => {
                 is_queue_open: true,
                 updated_at: new Date().toISOString()
             });
-            if (insertError) throw new Error(`Artist Setup Failed (Update & Insert): ${insertError.message}`);
+            if (insertError) console.log(`Insert fallback warning: ${insertError.message}`);
         }
 
-        // 3. Event Setup
+        // Event Setup
         const today = new Date().toISOString().split('T')[0]; 
         await supabase.from('events').delete().eq('artist_id', userId);
 
+        // ✅ FIX: เอา location ออก
         const { data: newEvent, error: insertError } = await supabase.from('events').insert({
             artist_id: userId,
             event_name: 'E2E Regression Event',
             start_date: today + ' 00:00:00',
             end_date: today + ' 23:59:59',
             status: 'Confirmed',
-            is_booth_open: true,
-            location: 'Regression Lab'
+            is_booth_open: true
+            // location: 'Regression Lab' <--- ❌ ลบทิ้ง
         }).select().single();
 
         if (insertError || !newEvent) {

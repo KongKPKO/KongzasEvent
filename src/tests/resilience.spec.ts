@@ -22,20 +22,47 @@ test.describe('Resilience & Chaos Testing', () => {
       }
 
       if (userId) {
-          await supabase.from('artists').upsert({
-              id: userId, email: TEST_EMAIL, slug: 'test1', display_name: 'Resilience Test Artist', is_queue_open: true, updated_at: new Date().toISOString()
-          });
+          // ✅ FIX 1: แก้ RLS - ใช้ Update ก่อน Insert (เหมือนไฟล์อื่น)
+          let artistUpdated = false;
+          for (let i = 0; i < 3; i++) {
+              const { error: updateError, data } = await supabase.from('artists').update({
+                  slug: 'test1', 
+                  display_name: 'Resilience Test Artist', 
+                  is_queue_open: true, 
+                  updated_at: new Date().toISOString()
+              }).eq('id', userId).select();
+
+              if (!updateError && data && data.length > 0) {
+                  artistUpdated = true;
+                  break;
+              }
+              await new Promise(r => setTimeout(r, 1000));
+          }
+
+          if (!artistUpdated) {
+              await supabase.from('artists').insert({
+                  id: userId, email: TEST_EMAIL, slug: 'test1', display_name: 'Resilience Test Artist', is_queue_open: true, updated_at: new Date().toISOString()
+              });
+          }
+
           const today = new Date().toISOString().split('T')[0];
           await supabase.from('events').delete().eq('artist_id', userId);
-          // Seed ให้ is_booth_open: false (ร้านปิด)
+          
+          // ✅ FIX 2: เอา location ออก (กันตาย)
           await supabase.from('events').insert({
-              artist_id: userId, event_name: 'Resilience Chaos Event', start_date: today + ' 00:00:00', end_date: today + ' 23:59:59', status: 'Confirmed', is_booth_open: false, location: 'Resilience Lab'
+              artist_id: userId, 
+              event_name: 'Resilience Chaos Event', 
+              start_date: today + ' 00:00:00', 
+              end_date: today + ' 23:59:59', 
+              status: 'Confirmed', 
+              is_booth_open: false // ร้านปิด
+              // location: 'Resilience Lab' <--- ❌ เอาออกตามระเบียบ
           });
       }
   });
 
   test.beforeEach(async ({ page }) => {
-    // Login Admin (สำหรับ Test ข้ออื่นๆ)
+    // Login Admin
     await page.goto(`${BASE_URL}/manage-login`);
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);
@@ -60,7 +87,6 @@ test.describe('Resilience & Chaos Testing', () => {
     await expect(page.getByText('Queue Control')).toBeVisible();
   });
 
-  // ✅✅✅ แก้ตรงนี้: Selector ครอบจักรวาล
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
     const customerUrl = `${BASE_URL}/test1/queue`; 
     
@@ -72,21 +98,15 @@ test.describe('Resilience & Chaos Testing', () => {
 
     await page.goto(customerUrl);
     
-    // 2. รอ API (Soft Wait)
     try { await dataPromise; } catch (e) { console.log('⚠️ API wait timeout.'); }
     await page.waitForTimeout(1000);
 
-    // 3. กำหนด Selector แบบ Regex (หาทุกคำที่เป็นไปได้ของการปิดร้าน)
+    // Selector แบบ Regex ครอบจักรวาล
     const statusText = page.getByText(/Booth Closed|NOW SERVING|Queuing is closed|Closed|Paused/i).first();
 
-    // 4. Force Reload Strategy
+    // Retry Logic
     if (!(await statusText.isVisible({ timeout: 5000 }))) {
         console.log('⚠️ Status not found. Reloading...');
-        
-        // ลองหา Heading ก่อนรีโหลด เพื่อความชัวร์
-        const heading = page.getByRole('heading', { level: 1 }).or(page.getByText('Resilience Test Artist'));
-        if (!(await heading.isVisible())) console.log('⚠️ Even heading is missing!');
-
         await page.reload();
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(2000);
@@ -98,7 +118,6 @@ test.describe('Resilience & Chaos Testing', () => {
     await context.setOffline(true);
     await page.waitForTimeout(1000); 
 
-    // เช็คว่าข้อความยังอยู่
     await expect(statusText).toBeVisible({ timeout: 5000 });
     
     await context.setOffline(false);

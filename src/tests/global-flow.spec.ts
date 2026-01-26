@@ -27,7 +27,7 @@ test.describe('Global Flow E2E', () => {
         }
 
         if (userId) {
-            // ✅ FIX: เปลี่ยนจาก Upsert เป็น UPDATE พร้อม Retry (3 ครั้ง)
+            // Upsert Artist (Update Logic)
             let artistUpdated = false;
             for (let i = 0; i < 3; i++) {
                 const { error: updateError, data } = await supabase.from('artists').update({
@@ -41,10 +41,9 @@ test.describe('Global Flow E2E', () => {
                     artistUpdated = true;
                     break;
                 }
-                await new Promise(r => setTimeout(r, 1000)); // รอ Trigger 1 วิ
+                await new Promise(r => setTimeout(r, 1000));
             }
 
-            // ถ้า Trigger ไม่ทำงานจริงๆ ค่อยลอง Insert เอง
             if (!artistUpdated) {
                 const { error: insertError } = await supabase.from('artists').insert({
                     id: userId,
@@ -53,15 +52,24 @@ test.describe('Global Flow E2E', () => {
                     is_queue_open: true, 
                     updated_at: new Date().toISOString()
                 });
-                if (insertError) console.log(`Note: Insert fallback failed (maybe RLS block): ${insertError.message}`);
+                if (insertError) console.log(`Note: Insert fallback failed: ${insertError.message}`);
             }
 
             // Upsert Event
             const today = new Date().toISOString().split('T')[0];
             await supabase.from('events').delete().eq('artist_id', userId);
+            
+            // ✅ FIX: เอา location ออก
             const { error: eventError } = await supabase.from('events').insert({
-                artist_id: userId, event_name: 'Global Flow Event', start_date: today + ' 00:00:00', end_date: today + ' 23:59:59', status: 'Confirmed', is_booth_open: true, location: 'Global Lab'
+                artist_id: userId, 
+                event_name: 'Global Flow Event', 
+                start_date: today + ' 00:00:00', 
+                end_date: today + ' 23:59:59', 
+                status: 'Confirmed', 
+                is_booth_open: true
+                // location: 'Global Lab' <--- ❌ ลบทิ้งตัวปัญหา
             });
+            
             if (eventError) throw new Error(`Event Seed Failed: ${eventError.message}`);
 
             console.log('✅ Data Verified in DB. Ready to test.');

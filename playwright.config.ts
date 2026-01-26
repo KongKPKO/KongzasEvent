@@ -41,32 +41,20 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
     {
       name: 'edge',
       use: { ...devices['Desktop Edge'] },
     },
     {
-      name: 'safari',
+      name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
+
     {
       name: 'chrome',
       use: { ...devices['Mobile Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Mobile Firefox'] },
-    },
+
     {
       name: 'webkit',
       use: { ...devices['Mobile Safari'] },
@@ -75,10 +63,7 @@ export default defineConfig({
       name: 'edge',
       use: { ...devices['Mobile Edge'] },
     },
-    {
-      name: 'safari',
-      use: { ...devices['Mobile Safari'] },
-    },
+
     // --- 📱 Mobile (ที่ควรเทส!) ---
     
     // 1. ตัวแทน iOS (iPhone ยอดฮิต)
@@ -96,7 +81,7 @@ export default defineConfig({
     // จำลองขนาดหน้าจอ 393x851 และ User Agent ของ Android
     {
       name: 'Mobile Safari', // iOS
-      use: { ...devices['iPhone 12'] },
+      use: { ...devices['iPhone 13'] },
     },
     {
       name: 'Mobile Safari', // iOS

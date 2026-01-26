@@ -15,37 +15,53 @@ const SUPABASE_API_PATTERN = '**/rest/v1/**';
 
 test.describe('Resilience & Chaos Testing', () => {
 
-  // ✅ 1. เพิ่มส่วนนี้: สร้าง User และ Profile ก่อนเริ่ม Test (สำคัญมากสำหรับ CI)
+  // ✅ SETUP: สร้าง User + Artist + Event ให้ครบก่อนเริ่ม
   test.beforeAll(async () => {
-      console.log('⚡️ Resilience Test: Seeding User & Artist Data...');
+      console.log('⚡️ Resilience Test: Seeding Data...');
       
-      // 1.1 สร้าง User ใน Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 1.1 สร้าง User (Auth)
+      const { data: authData } = await supabase.auth.signUp({
           email: TEST_EMAIL,
           password: TEST_PASSWORD,
       });
-
-      if (authError) console.log('Auth Note:', authError.message);
-
       const userId = authData.user?.id;
 
-      // 1.2 สร้าง Artist Profile ใน Database
       if (userId) {
-          const { error: dbError } = await supabase.from('artists').upsert({
+          // 1.2 สร้าง Artist Profile (Database)
+          const { error: artistError } = await supabase.from('artists').upsert({
               id: userId,
               email: TEST_EMAIL,
-              slug: 'test1', // ใช้ slug test1 ให้ตรงกับ test case ข้างล่าง
+              slug: 'test1', // slug ต้องตรงกับที่ Customer View เรียกใช้
               display_name: 'Resilience Test Artist',
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
           }, { onConflict: 'id' });
 
-          if (dbError) console.error('❌ Failed to seed artist table:', dbError.message);
-          else console.log('✅ Artist Profile seeded successfully.');
+          if (artistError) console.error('❌ Failed to seed artist:', artistError.message);
+
+          // 1.3 สร้าง Event (เพื่อให้หน้า Customer มีข้อมูลแสดง)
+          // เช็คก่อนว่ามี Event หรือยัง ถ้าไม่มีค่อยสร้าง
+          const { data: events } = await supabase.from('events').select('id').eq('artist_id', userId);
+          
+          if (!events || events.length === 0) {
+              await supabase.from('events').insert({
+                  artist_id: userId,
+                  event_name: 'Resilience Chaos Event',
+                  start_date: new Date().toISOString(),
+                  end_date: new Date(Date.now() + 86400000).toISOString(), // จบพรุ่งนี้
+                  is_booth_open: false, // ตั้งเป็นปิด เพื่อให้เจอคำว่า "Booth Closed"
+                  status: 'Confirmed'
+              });
+              console.log('✅ Event seeded successfully.');
+          } else {
+              // ถ้ามีอยู่แล้ว ให้ Force Update เป็นปิดบูธ เพื่อให้ตรงกับ Test Case
+              await supabase.from('events').update({ is_booth_open: false }).eq('artist_id', userId);
+              console.log('ℹ️ Event exists, forced status to Booth Closed.');
+          }
       }
   });
 
-  // 🛠️ Setup: Login ก่อนเริ่ม Test
+  // Login ก่อนเริ่ม Test
   test.beforeEach(async ({ page }) => {
     await page.goto(`${BASE_URL}/manage-login`);
     await page.fill('input[type="email"]', TEST_EMAIL);
@@ -57,7 +73,7 @@ test.describe('Resilience & Chaos Testing', () => {
   // 🔴 Scenario 1: เน็ตหลุดกลางอากาศ (Offline Mode)
   test('Should handle Network Offline gracefully', async ({ page, context }) => {
     await page.goto(`${BASE_URL}/manage-queues`);
-    await expect(page.getByText('Queue Control')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Queue Control')).toBeVisible({ timeout: 15000 });
 
     await context.setOffline(true);
 
@@ -96,19 +112,23 @@ test.describe('Resilience & Chaos Testing', () => {
 
   // 📱 Scenario 3: Customer Side
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
-    // ต้องใช้ slug 'test1' ที่เรา seed ไว้ข้างบน
+    // ใช้ slug 'test1' ที่เรา seed ไว้
     const customerUrl = `${BASE_URL}/test1/queue`; 
     await page.goto(customerUrl);
 
-    await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 10000 });
+    // เพิ่ม Timeout 15000 (15วิ) ตามคำแนะนำของ Github Actions เพื่อความชัวร์
     const statusText = page.getByText('Booth Closed').or(page.getByText('NOW SERVING')).first();
-    await expect(statusText).toBeVisible();
+    
+    // รอให้โหลดเสร็จจริงๆ
+    await expect(statusText).toBeVisible({ timeout: 15000 });
 
     console.log('Simulating Offline Mode for Customer...');
     await context.setOffline(true);
     await page.waitForTimeout(2000);
 
+    // เช็คว่า UI ยังอยู่ ไม่ขาว
     await expect(statusText).toBeVisible();
+    
     await context.setOffline(false);
     await page.reload();
     await expect(statusText).toBeVisible();

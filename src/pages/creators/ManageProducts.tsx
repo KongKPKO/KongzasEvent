@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button, Card } from '../../components/ui';
 import { Link, useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown, Receipt } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -503,6 +503,10 @@ const ManageProducts = () => {
                <Link to="/manage-queues" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
                   <History size={20} />
                   <span>Queue</span>
+               </Link>
+               <Link to="/manage-orders" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
+                  <Receipt size={20} />
+                  <span>POS</span>
                </Link>
                <div className="h-6 w-px bg-gray-200 mx-2"></div>
                <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">

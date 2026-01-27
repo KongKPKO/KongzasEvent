@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { Button } from '../../components/ui';
-import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck, X, PauseCircle } from 'lucide-react';
+import { LayoutDashboard, List, History, BarChart2, Bell, CheckCircle, RotateCcw, Play, Ticket, Coffee, AlertCircle, UserCheck, X, PauseCircle, Receipt } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface QueueItem {
@@ -535,6 +535,10 @@ const SupabaseDashboard = () => {
                <History size={20} />
                <span>Queue</span>
             </Link>
+            <Link to="/manage-orders" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-orders' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
+               <Receipt size={20} />
+               <span>POS</span>
+            </Link>
             <div className="h-6 w-px bg-gray-200 mx-2"></div>
  
              {/* Avatar in Header */}
@@ -676,8 +680,8 @@ const SupabaseDashboard = () => {
                      {/* Active Event Display */}
                      {selectedEventId && (
                         <div className="mb-3 bg-pink-50/50 border border-pink-100 rounded p-1.5 text-center">
-                           <div className="text-[9px] font-bold text-pink-400 uppercase tracking-wider mb-0.5">Active Event</div>
-                           <div className="font-bold text-xs text-gray-900 leading-tight">{events.find(e => e.id === selectedEventId)?.event_name}</div>
+                           <div className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-0.5">Active Event</div> 
+                           <div className="font-bold text-s text-gray-900 leading-tight">{events.find(e => e.id === selectedEventId)?.event_name}</div>
                         </div>
                      )}
 

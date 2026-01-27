@@ -12,6 +12,8 @@ import QueueView from './pages/customer/QueueView';
 import ManageProducts from './pages/creators/ManageProducts';
 import ManageArtist from './pages/creators/ManageArtist';
 import ManageQueue from './pages/creators/SupabaseDashboard';
+import ManageOrders from './pages/creators/ManageOrders';
+import OrderHistory from './pages/creators/OrderHistory';
 
 // Auth & Layout
 import Login from './pages/Login';
@@ -64,6 +66,15 @@ function App() {
             path="/manage-events" 
             element={session ? <ManageArtist /> : <Navigate to="/manage-login" replace />} 
           />
+          <Route 
+            path="/manage-events/:eventId/history" 
+            element={<OrderHistory />} 
+          />
+          <Route 
+            path="/manage-orders" 
+            element={session ? <ManageOrders /> : <Navigate to="/manage-login" replace />} 
+          />
+      
 
           {/* Root Redirect */}
           <Route path="/" element={<Navigate to="/manage-login" replace />} />

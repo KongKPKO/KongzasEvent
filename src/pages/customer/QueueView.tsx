@@ -140,7 +140,7 @@ const QueueView = () => {
       // Realtime Queue Updates (Keep local subscription for Queue data)
       const channel = supabase
         .channel(`public:queues:${activeEvent.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'queues', filter: `event_id=eq.${activeEvent.id}` }, (payload) => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'queues', filter: `event_id=eq.${activeEvent.id}` }, (payload: any) => {
              // If "Now Serving" updates or "My Ticket" updates
              fetchNowServing(activeEvent.id);
              
@@ -216,6 +216,10 @@ const QueueView = () => {
         if (data) {
            localStorage.setItem(`ticket_id_${displayArtist.id}`, data.id);
            setMyTicket(data);
+        }
+
+        if (data) {
+            localStorage.setItem('myQueueId', data.id);
         }
 
      } catch (err) {

@@ -12,7 +12,7 @@ interface CallingNotificationProps {
 const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcastMessage }: CallingNotificationProps) => {
   const navigate = useNavigate();
   const [isCalling, setIsCalling] = useState(false);
-  const [ticketNumber, setTicketNumber] = useState<number | null>(null);
+  const [ticketNumber, setTicketNumber] = useState<string | null>(null);
   const [ticketId, setTicketId] = useState<string | null>(null);
   
   // State สำหรับเก็บข้อความ Broadcast
@@ -33,13 +33,20 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     };
     fetchBroadcast();
 
-    // 1.2 ดึงสถานะ Ticket ตัวเอง
-    const storedTicketId = localStorage.getItem(`ticket_id_${artistId}`);
+    // 1.2 ดึงสถานะ Ticket ตัวเองจาก LocalStorage
+    const storedTicketId = localStorage.getItem('myQueueId');
+    
     if (storedTicketId) {
       setTicketId(storedTicketId);
       const fetchTicketStatus = async () => {
-        const { data } = await supabase.from('queues').select('status, queue_number').eq('id', storedTicketId).single();
-        if (data && data.status === 'calling') {
+        const { data } = await supabase
+            .from('queues')
+            .select('status, queue_number')
+            .eq('id', storedTicketId)
+            .single();
+            
+        // รองรับทั้ง serving และ calling
+        if (data && (data.status === 'serving' || data.status === 'calling')) {
           setIsCalling(true);
           setTicketNumber(data.queue_number);
         }
@@ -54,13 +61,15 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     
     // ฟัง Ticket ของเรา
     if (ticketId) {
-       ticketChannel = supabase.channel(`my-ticket:${ticketId}`)
+       ticketChannel = supabase.channel(`my-ticket-notification:${ticketId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${ticketId}` }, (payload) => {
-            if (payload.new.status === 'calling') {
+            // เช็คสถานะเรียกล่าสุด
+            if (payload.new.status === 'serving' || payload.new.status === 'calling') {
               setIsCalling(true);
               setTicketNumber(payload.new.queue_number);
               if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
+              // ถ้าสถานะเปลี่ยนเป็น complete/cancelled ให้ปิดแจ้งเตือน
               setIsCalling(false);
             }
         })
@@ -68,7 +77,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     }
 
     // ฟัง Broadcast ส่วนกลาง
-    const broadcastChannel = supabase.channel(`artist-broadcast:${artistId}`)
+    const broadcastChannel = supabase.channel(`artist-broadcast-notification:${artistId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${artistId}` }, (payload) => {
           setBroadcastMessage(payload.new.broadcast_message);
       })
@@ -83,7 +92,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
 
   // 🎨 RENDER LOGIC
   
-  // Priority 1: Calling (เปลี่ยนเป็นภาษาอังกฤษตามที่ขอ)
+  // Priority 1: Calling Notification
   if (isCalling) {
     return (
       <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
@@ -95,7 +104,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
             <div className="bg-white/90 p-2 rounded-full shadow-sm animate-pulse flex-shrink-0">
               <Bell size={18} className="text-yellow-600 fill-yellow-600" />
             </div>
-            {/* 👇 ปรับ Text ตรงนี้ */}
+            
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <span className="font-black text-sm text-yellow-950 uppercase tracking-wide leading-tight">
                 Your Turn!
@@ -113,7 +122,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     );
   }
 
-  // Priority 2: Broadcast
+  // Priority 2: Broadcast Message
   if (broadcastMessage) {
     const msg = broadcastMessage.toLowerCase();
     

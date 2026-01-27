@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Calendar, User, MapPin, Ticket, Trash2, Plus, X, BarChart2, LayoutDashboard, List, History } from 'lucide-react';
+// ✅ FIX: แยกบรรทัด Import และเพิ่ม Icons ที่ต้องใช้ให้ครบ
+import { 
+  Trash2, Plus, Calendar, MapPin, FileText, 
+  BarChart2, X, User, LayoutDashboard, List, History, Receipt, Ticket 
+} from 'lucide-react'; 
 import { Button } from '../../components/ui';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
@@ -34,6 +38,8 @@ interface Event {
 
 const ManageArtist = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Move hook call to top level
+  
   const [artist, setArtist] = useState<Artist | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,14 +101,10 @@ const ManageArtist = () => {
       }
     };
 
-
-
     fetchData();
 
     return () => { isMounted = false; };
   }, []);
-
-  const location = useLocation();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -265,33 +267,28 @@ const ManageArtist = () => {
             const cancelled = queues.filter(q => q.status === 'missed').length; // User Cancelled
             const expired = queues.filter(q => q.status === 'expired').length;   // System Expired
             
-            // 2. Calc Averages (Only for Served/Relevant tickets to avoid skew)
+            // 2. Calc Averages
             let totalWaitTime = 0;
             let waitCount = 0;
             let totalServiceTime = 0;
             let serviceCount = 0;
 
             queues.forEach(q => {
-               // Wait Time: Created -> Arrived (served_at)
-               // Fallback: If no served_at (legacy), rely on called_at if reasonable, or exclude.
-               // We prefer served_at for accuracy.
                if (q.created_at && (q.served_at || q.called_at)) {
                   const endTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
                   const wait = (endTime - new Date(q.created_at).getTime()) / 60000;
                   
-                  if (wait > 0 && wait < 600) { // Filter outliers > 10 hours
+                  if (wait > 0 && wait < 600) { 
                      totalWaitTime += wait;
                      waitCount++;
                   }
                }
 
-               // Service Time: Arrived (served_at) -> Completed (completed_at)
-               // Only for completed tickets
                if (q.status === 'complete' && q.completed_at && (q.served_at || q.called_at)) {
                    const startTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
                    const service = (new Date(q.completed_at).getTime() - startTime) / 60000;
                    
-                   if (service > 0 && service < 300) { // Filter outliers > 5 hours
+                   if (service > 0 && service < 300) { 
                        totalServiceTime += service;
                        serviceCount++;
                    }
@@ -343,6 +340,10 @@ const ManageArtist = () => {
                 <History size={20} />
                 <span>Queue</span>
              </Link>
+             <Link to="/manage-orders" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-orders' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
+                <Receipt size={20} />
+                <span>POS</span>
+             </Link>
              <div className="h-6 w-px bg-gray-200 mx-2"></div>
               <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
                  Log Out
@@ -350,7 +351,7 @@ const ManageArtist = () => {
           </div>
        </nav>
 
-      {/* Main Content - iPad Optimized (1180px Fit) */}
+      {/* Main Content */}
       <div className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">
         
         {/* Header */}
@@ -358,10 +359,6 @@ const ManageArtist = () => {
            <div>
               <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
               <p className="text-sm md:text-base text-pink-600 font-bold">{artist.display_name}</p>
-           </div>
-           
-           <div className="flex items-center gap-3">
-              {/* Status Badge Removed */}
            </div>
         </header>
 
@@ -409,7 +406,7 @@ const ManageArtist = () => {
 
                <div className="h-px bg-gray-100 my-0.5"></div>
 
-               {/* Socials - Single Column Compact */}
+               {/* Socials */}
                <div className="space-y-1">
                   <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-0.5">Social Links</h3>
                   <div className="flex flex-col gap-1">
@@ -475,7 +472,7 @@ const ManageArtist = () => {
                             </tr>
                          </thead>
                          <tbody className="divide-y divide-gray-50">
-                            {events.map((evt, idx) => (
+                            {events.map((evt) => (
                                <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
                                   <td className="px-6 py-4">
                                      <div className="flex flex-col">
@@ -485,7 +482,6 @@ const ManageArtist = () => {
                                         <span className="text-[10px] text-gray-400 font-medium">
                                            {new Date(evt.start_date).getFullYear()}
                                         </span>
-                                        {idx === 0 && <span className="text-[9px] font-bold text-[#ff4d94] mt-1 uppercase tracking-wider">Next Up</span>}
                                      </div>
                                   </td>
                                   <td className="px-6 py-4">
@@ -516,10 +512,20 @@ const ManageArtist = () => {
                                         <button 
                                           onClick={() => handleOpenStats(evt)}
                                           className="text-gray-400 hover:text-pink-600 hover:bg-pink-50 p-1.5 rounded-md transition-colors"
-                                          title="View Stats"
+                                          title="View Queue Stats"
                                         >
-                                           <BarChart2 size={16} />
+                                           <BarChart2 size={20} />
                                         </button>
+                                        
+                                        {/* ✅ BUTTON: Sales History */}
+                                        <button 
+                                          onClick={() => navigate(`/manage-events/${evt.id}/history`)}
+                                          className="text-gray-400 hover:text-green-600 hover:bg-green-50 p-1.5 rounded-md transition-colors"
+                                          title="View Sales History"
+                                        >
+                                           <FileText size={20} />
+                                        </button>
+
                                         <button 
                                           onClick={() => handleOpenModal(evt)}
                                           className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors"
@@ -530,7 +536,7 @@ const ManageArtist = () => {
                                           onClick={() => handleEventDelete(evt.id)}
                                           className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors"
                                         >
-                                           <Trash2 size={16} />
+                                           <Trash2 size={20} />
                                         </button>
                                       </div>
                                    </td>

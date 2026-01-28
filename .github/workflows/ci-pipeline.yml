@@ -23,7 +23,7 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      # 3. ติดตั้ง K6
+      # 3. ติดตั้ง K6 (สำหรับ Load Test)
       - name: Setup K6
         uses: grafana/setup-k6-action@v1
 
@@ -35,59 +35,42 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
-      # 6. จำลอง Supabase ขึ้นมา (Local in CI)
-      - name: Start Supabase (Local in CI)
-        run: |
-          npx supabase stop --no-backup
-          npx supabase start -x studio,migra,imgproxy,deno-relay
+      # ❌ ลบ Step "Start Supabase (Local in CI)" ทิ้งไปเลย
+      # เพราะเราจะใช้ Supabase ของจริงผ่าน Secrets แทน เพื่อให้มี User A/B ให้เทส
 
-          # ดึง Anon Key (อันนี้ต้องดึง เพราะเปลี่ยนทุกครั้ง)
-          ANON_KEY=$(npx supabase status -o json | jq -r .anon_key)
-
-          # ✅ แก้ไข: Hardcode URL ไปเลยเพื่อความชัวร์ (เพราะ Local ยังไงก็ port นี้)
-          API_URL="http://127.0.0.1:54321"
-
-          echo "Supabase Started with Key: ${ANON_KEY:0:5}..."
-          echo "Supabase URL: $API_URL"
-
-          # Export Environment Variables
-          echo "SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
-          echo "SUPABASE_URL=$API_URL" >> $GITHUB_ENV
-
-          # Export VITE_ สำหรับ Frontend และ Playwright
-          echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
-          echo "VITE_SUPABASE_KEY=$ANON_KEY" >> $GITHUB_ENV
-          echo "VITE_SUPABASE_URL=$API_URL" >> $GITHUB_ENV
-
-      # ✅ เพิ่ม: เช็คว่า Supabase ตอบสนองจริงๆ ก่อนไปต่อ
-      - name: Health Check Supabase
-        run: |
-          echo "Checking connection to $SUPABASE_URL/rest/v1/"
-          # ลองยิง curl วนไปจนกว่าจะได้ 200 (รอสูงสุด 30 วิ)
-          timeout 30s bash -c 'until curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/rest/v1/" | grep -q "200\|401\|404"; do echo "Waiting for Supabase..."; sleep 2; done'
-          echo "Supabase is UP!"
-
-      # 7. เริ่มรัน Server (Frontend) แบบ Background
+      # 6. เริ่มรัน Server (Frontend) แบบ Background
+      # ต้องส่ง ENV เข้าไปให้ Frontend รู้จักด้วย ว่าต่อ Supabase ตัวไหน
       - name: Start Frontend App
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_KEY }} # ใช้ชื่อตัวแปรตามที่ Project ใช้
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }} # กันเหนียวเผื่อบางจุดเรียกใช้อันนี้
         run: |
           npm run dev -- --host &
           npx wait-on tcp:5173 # รอจนกว่า port 5173 จะพร้อมใช้งาน
 
-      # 8. รัน Functional Test & Security Test (Playwright)
+      # 7. รัน Functional Test & Security Test (Playwright)
       - name: 🧪 Run Playwright Tests (Functional & Security)
         run: npx playwright test
         env:
-          # ใส่รหัสผ่าน Test Login (ยังคงต้องใช้จาก Secrets)
-          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
-          # ใส่ Email เผื่อไว้ (ถ้าใน code ไม่ได้ hardcode)
-          TEST_EMAIL: "konglnwzas@gmail.com"
+          # ENV หลักสำหรับ Playwright
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
 
-      # 9. รัน Load/Soak Test (K6)
+          # Credential ของ User A (Artist หลัก)
+          TEST_USER_A_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
+          TEST_USER_A_PASS: ${{ secrets.TEST_USER_A_PASS }}
+
+          # Credential ของ User B (คนนอก เอาไว้เทส Security)
+          TEST_USER_B_EMAIL: ${{ vars.TEST_USER_B_EMAIL }}
+          TEST_USER_B_PASS: ${{ secrets.TEST_USER_B_PASS }}
+
+      # 8. รัน Load/Soak Test (K6)
       - name: 🔥 Run K6 Soak Test (Backend Performance)
-        # ส่งค่า Key ที่ได้จากขั้นตอนที่ 6 เข้าไปใน K6
-        run: k6 run -e SUPABASE_KEY=$SUPABASE_KEY -e SUPABASE_URL=$SUPABASE_URL src/tests/api-soak-test.js
+        # ส่งค่า Key เข้าไปใน K6 script
+        run: k6 run -e SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} -e SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }} src/tests/api-soak-test.js
 
-      # 10. เก็บผลเทสไว้ดู (Artifacts)
+      # 9. เก็บผลเทสไว้ดู (Artifacts)
       - name: Upload Test Report
         if: always()
         uses: actions/upload-artifact@v4

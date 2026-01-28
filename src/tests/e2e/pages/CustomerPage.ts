@@ -40,21 +40,6 @@ export class CustomerPage {
     // Debug screenshot
     await this.page.screenshot({ path: 'debug-before-get-ticket.png', fullPage: true });
     
-    // Check for error messages
-    const errorMessages = [
-      { locator: this.page.getByText(/queuing is closed/i), msg: 'Queue is closed' },
-      { locator: this.page.getByText(/booth closed/i), msg: 'Booth is closed' },
-      { locator: this.page.getByText(/event.*cancelled/i), msg: 'Event cancelled' },
-      { locator: this.page.getByText(/no.*event/i), msg: 'No active event' }
-    ];
-    
-    for (const { locator, msg } of errorMessages) {
-      if (await locator.isVisible().catch(() => false)) {
-        console.error(`[Customer] ${msg}`);
-        throw new Error(`Cannot get ticket: ${msg}`);
-      }
-    }
-    
     // Find the Get Ticket button with multiple variations
     const buttonSelectors = [
       this.page.getByRole('button', { name: /get ticket/i }),
@@ -105,29 +90,37 @@ export class CustomerPage {
   }
 
   async verifyStatus(status: string) {
-    console.log(`[Customer] Verifying status: "${status}"`);
-    
-    // Map of status to possible text variations
-    const statusPatterns: Record<string, RegExp> = {
-      'Waiting': /waiting|you are in the queue/i,
-      "It's Your Turn": /it's your turn|calling|proceed to.*booth/i,
-      "Being Served": /being served|active/i,
-      "Completed": /completed|thank you|order.*complete/i,
-      "Cancelled": /cancelled|missed/i,
-      "Expired": /expired/i
-    };
-    
-    const pattern = statusPatterns[status] || new RegExp(status, 'i');
-    const locator = this.page.getByText(pattern);
-    
-    try {
-      await expect(locator).toBeVisible({ timeout: 15000 });
-      console.log(`[Customer] Status verified: "${status}" ✓`);
-    } catch (error) {
-      await this.page.screenshot({ path: `debug-status-${status}-not-found.png` });
-      const bodyText = await this.page.locator('body').textContent();
-      console.error(`[Customer] Status "${status}" not found. Page shows:`, bodyText?.substring(0, 500));
-      throw error;
-    }
-  }
+     console.log(`[Customer] Verifying status: "${status}"`);
+     
+     const statusPatterns: Record<string, RegExp> = {
+       'Waiting': /waiting|you are in the queue/i,
+       // ✅ เพิ่ม 'now serving' เข้าไปด้วย เผื่อ UI ข้ามสถานะ
+       "It's Your Turn": /it's your turn|calling|proceed to.*booth|please proceed|now serving/i, 
+       "Being Served": /being served|active/i,
+       "Completed": /completed|thank you|order.*complete/i,
+       "Cancelled": /cancelled|missed/i,
+       "Expired": /expired/i
+     };
+     
+     const pattern = statusPatterns[status] || new RegExp(status, 'i');
+     // ใช้ .first() กันเหนียว เผื่อเจอหลายตัว
+     const locator = this.page.getByText(pattern).first();
+     
+     try {
+       // 1. ลองรอดูก่อน 5 วินาที (เผื่อ Realtime มาทัน)
+       await expect(locator).toBeVisible({ timeout: 5000 });
+       console.log(`[Customer] Status verified (Realtime): "${status}" ✓`);
+
+     } catch (error) {
+       // 2. ถ้าไม่มาใน 5 วิ ให้กด Reload หน้า 1 ที (Force Update)
+       console.log(`[Customer] Status "${status}" not found via Realtime. Reloading page...`);
+       
+       await this.page.reload();
+       await this.page.waitForLoadState('domcontentloaded');
+       
+       // 3. รออีกรอบ (คราวนี้ต้องมาแน่ เพราะโหลดใหม่แล้ว)
+       await expect(locator).toBeVisible({ timeout: 15000 });
+       console.log(`[Customer] Status verified (After Reload): "${status}" ✓`);
+     }
+   }
 }

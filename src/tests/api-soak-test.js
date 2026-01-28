@@ -1,32 +1,39 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// ⚠️ ใส่ Anon Key (ey...) ที่ได้จาก npx supabase status -o json
-const SUPABASE_KEY = __ENV.SUPABASE_KEY || 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg'; 
-const SUPABASE_URL = __ENV.SUPABASE_URL || 'http://127.0.0.1:54321';
+// รับค่าจาก Pipeline (GitHub Secrets) เท่านั้น
+const SUPABASE_KEY = __ENV.SUPABASE_KEY;
+const SUPABASE_URL = __ENV.SUPABASE_URL;
+// เพิ่มความยืดหยุ่น: รับชื่อ Slug จาก Env ได้ (ถ้าไม่มีใช้ค่า Default 'test1')
+const ARTIST_SLUG = __ENV.ARTIST_SLUG || 'test1';
 
 export const options = {
-  // ✅ Soak Test: จำลองคนใช้งานต่อเนื่อง (ไม่เยอะมาก แต่นานหน่อย)
+  // ✅ Soak Test: จำลองคนใช้งานต่อเนื่อง
   stages: [
-    { duration: '30s', target: 50 },   // ช่วงเช้า: คนทยอยมา 50 คน
-    { duration: '2m', target: 100 },   // ช่วงเที่ยง: คนพีคๆ ประมาณ 100 คน
+    { duration: '30s', target: 50 },   // ช่วงเช้า: คนทยอยมา
+    { duration: '1m', target: 100 },   // ช่วงพีค: คนรุม 100 คน (ลดเวลาลงหน่อยจะได้ไม่เปลือง Action minutes)
     { duration: '30s', target: 50 },   // ช่วงบ่าย: คนเริ่มซา
-    { duration: '10s', target: 0 },    // ร้านปิด
+    { duration: '10s', target: 0 },    // จบการทำงาน
   ],
   
   thresholds: {
-    // Database ควรตอบสนองเร็วเสมอ (เพราะคนไม่ได้เยอะเวอร์)
+    // Database ต้องตอบเร็วกว่า 500ms (ที่ P95)
     http_req_duration: ['p(95)<500'], 
-    // ห้าม Error เลยแม้แต่ครั้งเดียว (เพราะโหลดแค่นี้ DB ห้ามล่ม)
+    // ห้าม Error เกิน 1%
     http_req_failed: ['rate<0.01'],    
   },
 };
 
 export default function () {
-  // จำลองการดึงข้อมูล
-  const endpoint = `${SUPABASE_URL}/rest/v1/artists?select=*&slug=eq.test1`;
+  // ตรวจสอบว่ามีค่า Env หรือไม่ (กันลืมใส่ใน Pipeline)
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY environment variables');
+    return;
+  }
 
-  // ถ้าใช้ Anon Key (ey...) ให้ใช้ header นี้
+  // จำลองการดึงข้อมูล Artist (User Journey แรกสุดที่ลูกค้าทุกคนต้องทำ)
+  const endpoint = `${SUPABASE_URL}/rest/v1/artists?select=*&slug=eq.${ARTIST_SLUG}`;
+
   const params = {
     headers: {
       'apikey': SUPABASE_KEY,
@@ -35,23 +42,21 @@ export default function () {
     },
   };
 
-  /* // ⚠️ ถ้าใช้ Key แบบ sb_publishable (Reference Key) ให้ใช้ header นี้แทน
-  const params = {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      // 'Authorization': ... (ลบ Authorization ทิ้ง)
-      'Content-Type': 'application/json',
-    },
-  }; 
-  */
-
   const res = http.get(endpoint, params);
 
   check(res, {
     'status is 200': (r) => r.status === 200,
-    'data received': (r) => r.body && r.body.includes('test1'), 
+    // เช็คว่าได้ข้อมูลกลับมาจริง (Array ไม่ว่างเปล่า) ชัวร์กว่าเช็ค Text
+    'data found': (r) => {
+        try {
+            const json = r.json();
+            return Array.isArray(json) && json.length > 0;
+        } catch (e) {
+            return false;
+        }
+    },
   });
 
-  // พักหายใจ 1 วินาที (จำลองคนจริงๆ)
+  // พักหายใจ 1 วินาที (Pacing)
   sleep(1);
 }

@@ -38,20 +38,23 @@ const QueueView = () => {
   const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // DERIVED STATE: Syncs instantly with Realtime Hook (No useEffect delay)
-  // Logic matches SupabaseDashboard: Find today's events, Sort by start time, Pick first CONFIRMED event.
+  // DERIVED STATE: Syncs instantly with Realtime Hook
+  // ✅ FIX: Match Admin Panel logic - filter by end_date >= now, sort DESCENDING (get LATEST)
   const activeEvent = (() => {
-      const todayStr = currentDate;
-      const todaysEvents = events.filter(event => {
-          const start = event.start_date.substring(0, 10);
-          const end = event.end_date.substring(0, 10);
-          return todayStr >= start && todayStr <= end;
-      });
-      // Sort earliest first
-      todaysEvents.sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+      const now = new Date().toISOString();
       
-      // Return first Confirmed event (ignores Cancelled events unless no confirmed exists)
-      return todaysEvents.find(e => e.status === 'Confirmed') || null;
+      // Filter: must be Confirmed AND not ended (end_date >= now)
+      const validEvents = events.filter(event => {
+          const isConfirmed = event.status === 'Confirmed';
+          const isNotEnded = event.end_date >= now;
+          return isConfirmed && isNotEnded;
+      });
+      
+      // Sort: DESCENDING by start_date (get the LATEST started event)
+      validEvents.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+      
+      // Return first (latest) event
+      return validEvents[0] || null;
   })();
 
   // Derived Status Message

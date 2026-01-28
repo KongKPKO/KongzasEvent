@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-// ✅ FIX: แยกบรรทัด Import และเพิ่ม Icons ที่ต้องใช้ให้ครบ
 import { 
   Trash2, Plus, Calendar, MapPin, FileText, 
-  BarChart2, X, User, LayoutDashboard, List, History, Receipt, Ticket 
+  BarChart2, X, User, Ticket 
 } from 'lucide-react'; 
 import { Button } from '../../components/ui';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
+import AdminHeader from '../../components/AdminHeader';
 
 interface Artist {
   id: string;
@@ -38,7 +38,6 @@ interface Event {
 
 const ManageArtist = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // Move hook call to top level
   
   const [artist, setArtist] = useState<Artist | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -106,10 +105,7 @@ const ManageArtist = () => {
     return () => { isMounted = false; };
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/manage-login'); // Redirect to login page immediately
-  };
+
 
   // --- Profile Actions ---
 
@@ -319,37 +315,8 @@ const ManageArtist = () => {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
        
-       {/* New Unified Header */}
-       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
-             <div className="bg-pink-500 text-white p-1.5 rounded-lg font-bold">K</div>
-             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-600">Kongzas</span>
-          </div>
-          
-          <div className="flex items-center gap-6">
-
-             <Link to="/manage-events" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-events' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
-                <LayoutDashboard size={20} />
-                <span>Home</span>
-             </Link>
-             <Link to="/manage-products" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-products' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
-                <List size={20} />
-                <span>Menu</span>
-             </Link>
-             <Link to="/manage-queues" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-queues' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
-                <History size={20} />
-                <span>Queue</span>
-             </Link>
-             <Link to="/manage-orders" className={`transition-colors flex flex-col items-center text-xs font-medium gap-1 ${location.pathname === '/manage-orders' ? 'text-pink-500' : 'text-gray-500 hover:text-pink-500'}`}>
-                <Receipt size={20} />
-                <span>POS</span>
-             </Link>
-             <div className="h-6 w-px bg-gray-200 mx-2"></div>
-              <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
-                 Log Out
-              </Button>
-          </div>
-       </nav>
+       {/* ✅ Unified Admin Header */}
+       <AdminHeader activePage="events" />
 
       {/* Main Content */}
       <div className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">

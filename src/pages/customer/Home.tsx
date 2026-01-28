@@ -33,12 +33,14 @@ const Home = () => {
   // Early return if no artist data
   if (!displayArtist) return <div className="p-10 text-center text-gray-400">Loading Artist Profile...</div>;
   
-  // Derive Booth Status: Check if ANY valid event is currently open AND valid for today
+  // ✅ FIX: Match Admin Panel logic - filter by end_date >= now
+  const now = new Date().toISOString();
+  
+  // Derive Booth Status: Check if ANY valid event is currently open AND not ended
   const activeOpenEvent = events.find(e => {
-       const start = e.start_date.substring(0, 10);
-       const end = e.end_date.substring(0, 10);
        const isOpen = e.is_booth_open && e.status === 'Confirmed';
-       return isOpen && currentDate >= start && currentDate <= end;
+       const isNotEnded = e.end_date >= now;
+       return isOpen && isNotEnded;
   });
   // Strict Event-Based Logic: Only Open if a specific Event is Open.
   // Legacy "Artist Active" switch is ignored for Booth Status to prevent desync.
@@ -70,8 +72,12 @@ const Home = () => {
     { icon: <Mail size={20} />, url: displayArtist.email ? `mailto:${displayArtist.email}` : '', label: 'Email', hoverClass: 'hover:bg-[#ea4335]' },
   ].filter(link => link.url);
 
-  // 3. Auto-set Next Up Logic
-  const nextUpEventId = events.find(e => e.status !== 'Cancelled')?.id;
+  // 3. Auto-set Next Up Logic: Pick the first NON-CANCELLED event that hasn't ended
+  // Sort by start_date descending to get the LATEST started event (matches admin)
+  const sortedValidEvents = events
+    .filter(e => e.status !== 'Cancelled' && e.end_date >= now)
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  const nextUpEventId = sortedValidEvents[0]?.id;
 
   return (
     <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">

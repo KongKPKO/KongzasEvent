@@ -14,6 +14,7 @@ import ManageArtist from './pages/creators/ManageArtist';
 import ManageQueue from './pages/creators/SupabaseDashboard';
 import ManageOrders from './pages/creators/ManageOrders';
 import OrderHistory from './pages/creators/OrderHistory';
+import ManageCombined from './pages/ManageCombined';
 
 // Auth & Layout
 import Login from './pages/Login';
@@ -73,6 +74,10 @@ function App() {
           <Route 
             path="/manage-orders" 
             element={session ? <ManageOrders /> : <Navigate to="/manage-login" replace />} 
+          />
+          <Route 
+            path="/manage-pos-queues" 
+            element={session ? <ManageCombined /> : <Navigate to="/manage-login" replace />} 
           />
       
 

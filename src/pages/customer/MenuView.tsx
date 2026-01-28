@@ -42,6 +42,7 @@ const MenuView = () => {
   const [submitting, setSubmitting] = useState(false);
   const [isOrderSent, setIsOrderSent] = useState(false);
   const [sentOrderId, setSentOrderId] = useState<string | null>(null);
+  const [isOrderCompleted, setIsOrderCompleted] = useState(false);  // ✅ NEW: Track order completion
 
   // --- 1. Derived Data ---
   const uniqueCategories = useMemo(() => {
@@ -154,12 +155,15 @@ const handleConfirmOrder = async () => {
 
     setSubmitting(true);
     try {
-        // 1. ดึง Event (เหมือนเดิม)
+        // 1. ✅ FIX: Match Admin Panel logic - filter by artist_id, end_date >= now, descending sort
+        const now = new Date().toISOString();
         const { data: events } = await supabase
             .from('events')
             .select('id')
+            .eq('artist_id', displayArtist.id)  // ✅ Must be this artist's event
             .eq('status', 'Confirmed')
-            .order('start_date', { ascending: false })
+            .gte('end_date', now)  // ✅ Must not be ended
+            .order('start_date', { ascending: false })  // ✅ Get LATEST started event
             .limit(1);
 
         const event = events?.[0];
@@ -230,6 +234,34 @@ const handleConfirmOrder = async () => {
       }
   };
 
+  // ✅ NEW: Realtime listener for order completion
+  useEffect(() => {
+      if (!sentOrderId) return;
+
+      const channel = supabase
+          .channel(`order-status-${sentOrderId}`)
+          .on('postgres_changes', 
+              { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${sentOrderId}` }, 
+              (payload: any) => {
+                  console.log('[Menu] Order update received:', payload.new?.status);
+                  if (payload.new?.status === 'completed') {
+                      setIsOrderCompleted(true);
+                  }
+              }
+          )
+          .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+  }, [sentOrderId]);
+
+  // Helper to reset order state
+  const handleCloseCompletedOrder = () => {
+      setCart({});
+      setIsOrderSent(false);
+      setSentOrderId(null);
+      setIsOrderCompleted(false);
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-400">Loading menu...</div>;
 
   return (
@@ -264,7 +296,7 @@ const handleConfirmOrder = async () => {
         {/* Right Side: Queue Badge (Position Absolute ขวาบน) */}
         <div className={`absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
             <Ticket size={14} />
-            <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Walk-in'}</span>
+            <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
         </div>
     </div>
 
@@ -362,10 +394,38 @@ const handleConfirmOrder = async () => {
                     )}
                     <div className="p-2 px-3 flex items-center gap-3 bg-white/95 backdrop-blur-sm h-14">
                         {isOrderSent ? (
-                            <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-50 px-2 py-1 rounded-lg">
-                                <div className="flex items-center gap-2"><CheckCircle size={20} className="text-green-600" /><div><div className="text-xs font-black text-green-800">ORDER SENT!</div><div className="text-[10px] text-green-600">Wait for queue.</div></div></div>
-                                <button onClick={handleCancelOrder} disabled={submitting} className="bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm hover:bg-red-50 flex items-center gap-1"><Trash2 size={12} /> Cancel</button>
-                            </div>
+                            isOrderCompleted ? (
+                                // ✅ ORDER COMPLETED UI
+                                <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-100 px-3 py-2 rounded-lg border border-green-200">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle size={22} className="text-green-600" />
+                                        <div>
+                                            <div className="text-sm font-black text-green-800">Order Completed!</div>
+                                            <div className="text-[10px] text-green-600">Thank you for your purchase.</div>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={handleCloseCompletedOrder} 
+                                        className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 flex items-center gap-1"
+                                    >
+                                        <X size={14} /> Close
+                                    </button>
+                                </div>
+                            ) : (
+                                // ORDER SENT (waiting)
+                                <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-50 px-2 py-1 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle size={20} className="text-green-600" />
+                                        <div>
+                                            <div className="text-xs font-black text-green-800">ORDER SENT!</div>
+                                            <div className="text-[10px] text-green-600">Wait for queue.</div>
+                                        </div>
+                                    </div>
+                                    <button onClick={handleCancelOrder} disabled={submitting} className="bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm hover:bg-red-50 flex items-center gap-1">
+                                        <Trash2 size={12} /> Cancel
+                                    </button>
+                                </div>
+                            )
                         ) : (
                             <>
                                 <div onClick={() => setIsCartOpen(!isCartOpen)} className="flex-1 cursor-pointer flex flex-col justify-center">

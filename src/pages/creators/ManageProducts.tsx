@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button, Card } from '../../components/ui';
-import { Link, useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, LayoutDashboard, List, History, Search, ArrowUpDown, ChevronDown, Receipt } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import AdminHeader from '../../components/AdminHeader';
 
 interface Product {
   id: string;
@@ -112,11 +113,6 @@ const ManageProducts = () => {
    useEffect(() => {
       fetchProducts();
    }, []);
-
-   const handleLogout = async () => {
-      await supabase.auth.signOut();
-      navigate('/manage-login'); // Redirect to login page immediately
-   };
 
    const getProductImageUrl = (dbValue: string, width: number = 400) => {
       if (!dbValue) return '';
@@ -482,41 +478,11 @@ const ManageProducts = () => {
 
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
-         {/* Simple Header */}
-         {/* New Unified Header */}
-         <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-2">
-               <div className="bg-pink-500 text-white p-1.5 rounded-lg font-bold">K</div>
-               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-600">Kongzas</span>
-            </div>
-            
-            <div className="flex items-center gap-6">
-
-               <Link to="/manage-events" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
-                  <LayoutDashboard size={20} />
-                  <span>Home</span>
-               </Link>
-               <Link to="/manage-products" className="text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
-                  <List size={20} />
-                  <span>Menu</span>
-               </Link>
-               <Link to="/manage-queues" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
-                  <History size={20} />
-                  <span>Queue</span>
-               </Link>
-               <Link to="/manage-orders" className="text-gray-500 hover:text-pink-500 transition-colors flex flex-col items-center text-xs font-medium gap-1">
-                  <Receipt size={20} />
-                  <span>POS</span>
-               </Link>
-               <div className="h-6 w-px bg-gray-200 mx-2"></div>
-               <Button onClick={handleLogout} variant="ghost" className="text-gray-500 hover:text-red-500">
-                  Log Out
-               </Button>
-            </div>
-         </nav>
+         {/* ✅ NEW: Unified Admin Header */}
+         <AdminHeader activePage="menu" />
          
-         {/* Page Title Wrapper for Layout Cleanup */}
-         <div className="max-w-5xl mx-auto px-6 pt-2 mb-2">
+         {/* Page Title Wrapper */}
+         <div className="max-w-5xl mx-auto px-6 pt-4 mb-2">
             <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage Products</h1>
             <p className="text-sm text-pink-600 font-bold">{artistName}</p>
          </div>

@@ -7,7 +7,7 @@ import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
-import { formatPrice, getCurrencyOptions, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
+import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
 
 interface Product {
   id: string;

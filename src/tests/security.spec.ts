@@ -35,7 +35,7 @@ test.describe('Security & Vulnerability Testing', () => {
                 userId = signInData.user.id;
             } else {
                 console.error('   - Auth Failed:', signUpError || signInError);
-                throw new Error('Failed to seed user');
+                throw new Error(`Failed to seed user: ${(signUpError || signInError)?.message}`);
             }
         }
         

@@ -11,37 +11,59 @@ const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPA
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Security & Vulnerability Testing', () => {
+  // Increase timeout to 2 minutes for slow seeding/auth
+  test.setTimeout(120000);
 
   test.beforeAll(async () => {
-        console.log('🛡️ Security Test: Seeding User & Artist Data...');
+        console.log('🛡️ Security Test: Setup started...');
+        console.log('   - SUPABASE_URL:', SUPABASE_URL);
+        
         // 1. Ensure User Exists
         let userId = '';
-        const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
-        if (signUpData.user) userId = signUpData.user.id;
-        else {
-            const { data: signInData } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
-            if (signInData.user) userId = signInData.user.id;
+        console.log('   - Attempting SignUp...');
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
+        
+        if (signUpData.user) {
+            console.log('   - SignUp Success');
+            userId = signUpData.user.id;
+        } else {
+            console.log('   - SignUp skipped/failed, attempting SignIn...');
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
+            
+            if (signInData.user) {
+                console.log('   - SignIn Success');
+                userId = signInData.user.id;
+            } else {
+                console.error('   - Auth Failed:', signUpError || signInError);
+                throw new Error('Failed to seed user');
+            }
         }
         
         // 2. Upsert Artist Data
         if (userId) {
-             await supabase.from('artists').upsert({
+             console.log('   - Seeding Artist Data...');
+             const { error: artistError } = await supabase.from('artists').upsert({
                 id: userId,
                 email: TEST_EMAIL,
                 slug: 'test-security', 
                 display_name: 'Security Test Artist',
                 updated_at: new Date().toISOString()
             }, { onConflict: 'id' });
+            
+            if (artistError) console.error('   - Artist Seed Error:', artistError);
+            else console.log('   - Artist Data Seeded');
         }
-  });
+  }, 60000);
+
 
   // 🔒 1. ทดสอบ Unauthenticated Access (แก้ Route ให้ตรงปัจจุบัน)
   test('Security: Should block access to Protected Routes without Login', async ({ page, context }) => {
+    // Force clear session
     await page.goto(BASE_URL);
+    await page.evaluate(() => localStorage.clear());
     await context.clearCookies();
-    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
 
-    // ✅ FIX: เปลี่ยนเป็น Route ที่มีอยู่จริงใน App.tsx
     const protectedRoutes = [
         '/manage-pos-queues', 
         '/manage-events', 
@@ -51,18 +73,25 @@ test.describe('Security & Vulnerability Testing', () => {
     for (const route of protectedRoutes) {
         console.log(`Testing unauthorized access to: ${route}`);
         await page.goto(`${BASE_URL}${route}`);
-        // ต้องเด้งกลับไปหน้า Login
+        
+        // Check for redirection to login
+        // Use waitForURL to be more robust
         await expect(page).toHaveURL(/\/manage-login/);
     }
   });
 
   // 💉 2. ทดสอบ XSS Prevention (React auto-escaping)
   test('Security: Should prevent XSS by rendering as plain text', async ({ page }) => {
-    // Login First
+    // Login First - Ensure fresh state
     await page.goto(`${BASE_URL}/manage-login`);
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);
     await page.getByRole('button', { name: /Login/i }).click();
+    
+    // Wait for dashboard
     await expect(page.getByRole('button', { name: 'Events', exact: true }))
       .toBeVisible({ timeout: 20000 });
   
@@ -106,10 +135,7 @@ test.describe('Security & Vulnerability Testing', () => {
     await page.screenshot({ path: 'debug-xss-product.png', fullPage: true });
     
     // ✅ ตรวจสอบว่า XSS payload ถูก render เป็น TEXT ธรรมดา
-    // React จะ escape HTML โดยอัตโนมัติ ทำให้ <img> แสดงเป็น text
     const productVisible = await page.getByText(maliciousName).isVisible().catch(() => false);
-    
-    // ตรวจสอบเพิ่มเติมว่าไม่มี <img> tag จริงๆ ถูกสร้างขึ้นมา
     const imgElements = await page.locator('img[src="x"]').count();
     
     // Cleanup: ลบ product ทดสอบ
@@ -118,20 +144,20 @@ test.describe('Security & Vulnerability Testing', () => {
       .eq('name', maliciousName);
     
     // Assert
-    expect(imgElements).toBe(0); // ต้องไม่มี img tag ที่มี src="x" (XSS blocked)
+    expect(imgElements).toBe(0); 
     
-    // ถ้าเจอข้อความ น่าจะแสดงว่า React escape ถูกต้อง
-    // แต่ถ้าไม่เจอก็ไม่เป็นไร ขอแค่ไม่มี <img src="x"> ก็พอ
     if (productVisible) {
       console.log('✅ XSS Prevention: Malicious text rendered safely');
     }
-    
     console.log('✅ XSS Prevention Test PASSED: No executable script tags found');
   });
 
   // 💉 3. ทดสอบ SQL Injection
   test('Security: Login form should handle SQL Injection characters', async ({ page }) => {
+    // Ensure fresh login page
     await page.goto(`${BASE_URL}/manage-login`);
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
 
     const maliciousEmail = "' OR '1'='1";
     const maliciousPass = "' OR '1'='1";
@@ -141,11 +167,8 @@ test.describe('Security & Vulnerability Testing', () => {
     await page.getByRole('button', { name: /Login/i }).click(); 
 
     // Login ต้องไม่ผ่าน และยังอยู่ที่หน้าเดิม (หรือมี Error แจ้ง)
-    // เช็คว่าไม่ได้เด้งไปหน้า Dashboard
     await expect(page).not.toHaveURL(/\/manage-pos-queues/);
     await expect(page).not.toHaveURL(/\/manage-events/);
-    
-    // เช็คว่ายังอยู่หน้า Login
     await expect(page).toHaveURL(/\/manage-login/);
   });
 });

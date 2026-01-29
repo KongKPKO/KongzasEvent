@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button, Card } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
+import { formatPrice, getCurrencyOptions, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
 
 interface Product {
   id: string;
@@ -16,6 +17,7 @@ interface Product {
   description?: string;
   category?: string;
   status?: 'enable' | 'disable' | 'soldout';
+  currency?: string;  // ✅ NEW: Currency code
 }
 
 const ManageProducts = () => {
@@ -31,12 +33,14 @@ const ManageProducts = () => {
    const [description, setDescription] = useState('');
    const [category, setCategory] = useState(''); // Default
    const [status, setStatus] = useState('enable'); // Default
+   const [currency, setCurrency] = useState(DEFAULT_CURRENCY); // ✅ NEW: Currency state
    const [file, setFile] = useState<File | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    
    // Filter & Sort State
    const [searchQuery, setSearchQuery] = useState('');
    const [selectedCategory, setSelectedCategory] = useState('All');
+   const [selectedCurrency, setSelectedCurrency] = useState('All'); // ✅ NEW: Currency filter
    const [sortOption, setSortOption] = useState('name_asc');
 
    // Edit Modal State
@@ -63,11 +67,54 @@ const ManageProducts = () => {
 
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
+   
+   // ✅ NEW: Unique currencies from products for filter
+   const uniqueCurrencies = ['All', ...Array.from(new Set(products.map(p => p.currency || DEFAULT_CURRENCY))).sort()];
+
+   // ✅ NEW: Check for mixed enabled currencies
+   const enabledProducts = products.filter(p => p.status === 'enable');
+   const enabledCurrencies = Array.from(new Set(enabledProducts.map(p => p.currency || DEFAULT_CURRENCY)));
+   const hasMixedCurrencies = enabledCurrencies.length > 1;
+
+   // ✅ NEW: Fix Mixed Currencies (Batch Update)
+   const handleSwitchAll = async (targetCurrency: string) => {
+      if (!confirm(`Enable ONLY ${targetCurrency} products and disable others?`)) return;
+      
+      setLoading(true);
+      try {
+         const { data: { user } } = await supabase.auth.getUser();
+         if (!user) throw new Error('Not authenticated');
+
+         // 1. Enable targets
+         await supabase
+            .from('products')
+            .update({ status: 'enable' })
+            .eq('artist_id', user.id)
+            .eq('currency', targetCurrency)
+            .neq('status', 'soldout'); // Keep soldout as soldout? Or enable? 'enable' usually resets soldout. Let's assume enable all means reset soldout too? Or just enable disabled ones. Safe to just set 'enable'.
+
+         // 2. Disable others
+         await supabase
+            .from('products')
+            .update({ status: 'disable' })
+            .eq('artist_id', user.id)
+            .neq('currency', targetCurrency);
+         
+         await fetchProducts();
+         alert(`Switched active currency to ${targetCurrency}`);
+      } catch (error: any) {
+         console.error(error);
+         alert('Failed to switch currency');
+      } finally {
+         setLoading(false);
+      }
+   };
 
    const filteredProducts = products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesCurrency = selectedCurrency === 'All' || (product.currency || DEFAULT_CURRENCY) === selectedCurrency; // ✅ NEW
+      return matchesSearch && matchesCategory && matchesCurrency;
    }).sort((a, b) => {
       if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
       if (sortOption === 'price_asc') return a.price - b.price;
@@ -213,6 +260,7 @@ const ManageProducts = () => {
                description,
                category,
                status,
+               currency,  // ✅ NEW: Save currency
                image_url: filePath // Store relative path
             }]);
 
@@ -224,6 +272,7 @@ const ManageProducts = () => {
          setDescription('');
          setCategory('');
          setStatus('enable');
+         setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
          
@@ -272,6 +321,7 @@ const ManageProducts = () => {
       setDescription(product.description || '');
       setCategory(product.category || '');
       setStatus(product.status || 'enable');
+      setCurrency(product.currency || DEFAULT_CURRENCY);  // ✅ NEW: Load product currency
       setEditFile(null);
       setIsEditModalOpen(true);
    };
@@ -339,6 +389,7 @@ const ManageProducts = () => {
                description,
                category,
                status,
+               currency,  // ✅ NEW: Update currency
                image_url: imageUrl
             })
             .eq('id', editingProduct.id);
@@ -352,10 +403,9 @@ const ManageProducts = () => {
          setName('');
          setPrice('');
          setDescription('');
-         setPrice('');
-         setDescription('');
          setCategory('');
          setStatus('enable');
+         setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
          
          await fetchProducts();
          alert('Product updated successfully!');
@@ -413,6 +463,9 @@ const ManageProducts = () => {
                const priceRaw = sanitizedRow.price || sanitizedRow.Price || sanitizedRow.PRICE;
                const category = sanitizedRow.category || sanitizedRow.Category || sanitizedRow.CATEGORY;
                const description = sanitizedRow.description || sanitizedRow.Description || sanitizedRow.DESCRIPTION;
+               // ✅ FIX: Read currency from CSV
+               const currencyRaw = sanitizedRow.currency || sanitizedRow.Currency || sanitizedRow.CURRENCY;
+               const status = sanitizedRow.status || sanitizedRow.Status || sanitizedRow.STATUS;
 
                // Validate required fields
                if (!name || !priceRaw) {
@@ -432,12 +485,26 @@ const ManageProducts = () => {
                   return;
                }
 
+               // ✅ FIX: Validate and use currency from CSV (default to THB if missing)
+               const validCurrencies = Object.keys(CURRENCIES);
+               const currency = currencyRaw && validCurrencies.includes(currencyRaw.toUpperCase()) 
+                  ? currencyRaw.toUpperCase() 
+                  : DEFAULT_CURRENCY;
+               
+               // Validate status
+               const validStatuses = ['enable', 'disable', 'soldout'];
+               const productStatus = status && validStatuses.includes(status.toLowerCase())
+                  ? status.toLowerCase()
+                  : 'enable';
+
                validItems.push({
                   artist_id: user.id,
                   name: name,
                   price: price,
+                  currency: currency, // ✅ FIX: Now uses currency from CSV
                   category: category || 'Other',
                   description: description || '',
+                  status: productStatus,
                   image_url: ''
                });
             });
@@ -508,7 +575,7 @@ const ManageProducts = () => {
                         type="button"
                         onClick={() => csvInputRef.current?.click()}
                         disabled={uploading}
-                        className="bg-[#ff4d94] hover:bg-[#ff3385] text-white py-1.5 px-3 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
+                        className="bg-[#d63384] hover:bg-[#ff3385] text-white py-1.5 px-3 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
                      >
                         {uploading ? <Loader className="animate-spin" size={14} /> : <FileText size={14} />}
                         {uploading ? 'Uploading...' : 'Upload File'}
@@ -516,88 +583,111 @@ const ManageProducts = () => {
                   </div>
                </div>
                
-               <form onSubmit={handleAddProduct} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                  <div className="lg:col-span-1 space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product Name</label>
-                     <input 
-                        type="text" 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                        placeholder="e.g. Iced Latte"
-                        required
-                     />
-                  </div>
-                  
-                  <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Price (THB)</label>
-                     <input 
-                        type="number" 
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                        placeholder="0.00"
-                        min="0"
-                        step="0.01"
-                        required
-                     />
-                  </div>
-
-                  <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category</label>
-                     <input
-                        list="category-suggestions"
-                        type="text"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                        placeholder="Select or type..."
-                     />
-                     <datalist id="category-suggestions">
-                        {allCategorySuggestions.map(cat => (
-                           <option key={cat} value={cat} />
-                        ))}
-                     </datalist>
-                  </div>
-
-                  <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Status</label>
-                     <select
-                        value={status}
-                        onChange={(e) => setStatus(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm font-semibold rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
-                     >
-                        <option value="enable">Enable</option>
-                        <option value="disable">Disable</option>
-                        <option value="soldout">Sold Out</option>
-                     </select>
-                  </div>
-
-                  <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image</label>
-                     <div className="relative">
+               <form onSubmit={handleAddProduct} className="space-y-4">
+                  {/* Row 1: Product Name | Price & Currency | Category */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product Name</label>
                         <input 
-                           type="file" 
-                           ref={fileInputRef}
-                           onChange={handleFileChange}
-                           className="hidden"
-                           id="file-upload"
-                           accept="image/png, image/jpeg"
+                           type="text" 
+                           value={name}
+                           onChange={(e) => setName(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                           placeholder="e.g. Iced Latte"
+                           required
                         />
-                        <label 
-                           htmlFor="file-upload" 
-                           className={`w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
-                        >
-                           <Upload size={14} className="mr-2" />
-                           <span className="truncate text-xs font-medium">
-                              {compressing ? 'Compressing...' : (file ? file.name : 'Choose Image')}
-                           </span>
-                        </label>
                      </div>
-                     {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
+                     
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                           <Coins size={12} /> Price & Currency
+                        </label>
+                        <div className="flex gap-2">
+                           <input 
+                              type="number" 
+                              value={price}
+                              onChange={(e) => setPrice(e.target.value)}
+                              className="flex-1 min-w-0 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                              required
+                           />
+                           <select
+                              value={currency}
+                              onChange={(e) => setCurrency(e.target.value)}
+                              className="w-24 shrink-0 px-2 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white cursor-pointer"
+                              aria-label="Currency"
+                           >
+                              {Object.entries(CURRENCIES).map(([code, info]) => (
+                                 <option key={code} value={code}>{info.symbol} {code}</option>
+                              ))}
+                           </select>
+                        </div>
+                     </div>
+
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category</label>
+                        <input
+                           list="category-suggestions"
+                           type="text"
+                           value={category}
+                           onChange={(e) => setCategory(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                           placeholder="Select or type..."
+                        />
+                        <datalist id="category-suggestions">
+                           {allCategorySuggestions.map(cat => (
+                              <option key={cat} value={cat} />
+                           ))}
+                        </datalist>
+                     </div>
                   </div>
 
-                  <div className="lg:col-span-4 space-y-1">
+                  {/* Row 2: Image | Status */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image</label>
+                        <div className="relative">
+                           <input 
+                              type="file" 
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              className="hidden"
+                              id="file-upload"
+                              accept="image/png, image/jpeg"
+                           />
+                           <label 
+                              htmlFor="file-upload" 
+                              className={`w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
+                           >
+                              <Upload size={14} className="mr-2" />
+                              <span className="truncate text-xs font-medium">
+                                 {compressing ? 'Compressing...' : (file ? file.name : 'Choose Image')}
+                              </span>
+                           </label>
+                        </div>
+                        {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
+                     </div>
+
+                     <div className="space-y-1">
+                        <label htmlFor="product-status" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                        <select
+                           id="product-status"
+                           value={status}
+                           onChange={(e) => setStatus(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
+                           aria-label="Product status"
+                        >
+                           <option value="enable">Enable</option>
+                           <option value="disable">Disable</option>
+                           <option value="soldout">Sold Out</option>
+                        </select>
+                     </div>
+                  </div>
+
+                  {/* Row 3: Description */}
+                  <div className="space-y-1">
                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
                         Description 
                         <span className="text-[10px] text-gray-400 ml-2 font-normal">({description.length}/200)</span>
@@ -605,12 +695,13 @@ const ManageProducts = () => {
                      <textarea 
                         value={description}
                         onChange={(e) => setDescription(e.target.value.slice(0, 200))}
-                        className="w-full px-3 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all h-16 resize-none"
+                        className="w-full px-3 py-1.5 text-sm text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all h-16 resize-none"
                         placeholder="Brief description..."
                      />
                   </div>
 
-                  <div className="lg:col-span-4 flex justify-end">
+
+                  <div className="flex justify-end">
                      <Button 
                         type="submit" 
                         disabled={uploading}
@@ -622,6 +713,39 @@ const ManageProducts = () => {
 
                </form>
             </div>
+
+            {/* ✅ NEW: Mixed Currency Warning */}
+            {hasMixedCurrencies && (
+               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in shadow-sm">
+                  <div className="flex items-start gap-3">
+                     <div className="p-2 bg-amber-100 rounded-full text-amber-600 shrink-0">
+                        <AlertTriangle size={20} />
+                     </div>
+                     <div>
+                        <h3 className="text-sm font-bold text-amber-800">Multiple Currencies Enabled</h3>
+                        <p className="text-xs text-amber-600 mt-1">
+                           You have products enabled in multiple currencies ({enabledCurrencies.join(', ')}). 
+                           <br/>Please enable only one currency to avoid issues.
+                        </p>
+                     </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 bg-white p-1.5 rounded-lg border border-amber-100 shadow-sm">
+                     <span className="text-xs font-bold text-gray-500 pl-2">Enable Only:</span>
+                     <select 
+                        className="text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded px-2 py-1 focus:outline-none cursor-pointer hover:bg-amber-100 transition-colors"
+                        onChange={(e) => {
+                           if (e.target.value) handleSwitchAll(e.target.value);
+                        }}
+                        value=""
+                     >
+                        <option value="" disabled>Select Currency...</option>
+                        {enabledCurrencies.map(c => (
+                           <option key={c} value={c}>{c}</option>
+                        ))}
+                     </select>
+                  </div>
+               </div>
+            )}
 
             {/* FILTER & SORT SECTION */}
             <div className="mb-8 space-y-4">
@@ -671,6 +795,28 @@ const ManageProducts = () => {
                      </button>
                   ))}
                </div>
+               
+               {/* ✅ NEW: Currency Filter Chips */}
+               {uniqueCurrencies.length > 2 && (
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider self-center mr-1 flex items-center gap-1">
+                        <Coins size={12} /> Currency:
+                     </span>
+                     {uniqueCurrencies.map(curr => (
+                        <button
+                           key={curr}
+                           onClick={() => setSelectedCurrency(curr)}
+                           className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                              selectedCurrency === curr 
+                                 ? 'bg-amber-500 text-white shadow-md shadow-amber-200' 
+                                 : 'bg-white border border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-500'
+                           }`}
+                        >
+                           {curr === 'All' ? 'All' : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}
+                        </button>
+                     ))}
+                  </div>
+               )}
             </div>
 
             {/* PRODUCT LIST */}
@@ -719,7 +865,7 @@ const ManageProducts = () => {
                         <div className="p-1.5 flex flex-col h-full">
                            <div className="flex justify-between items-start mb-2">
                               <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2">{product.name}</h3>
-                              <span className="text-pink-600 font-bold text-sm shrink-0">฿{product.price}</span>
+                              <span className="text-pink-600 font-bold text-sm shrink-0">{formatPrice(product.price, product.currency)}</span>
                            </div>
                            
                            {product.category && (
@@ -779,17 +925,31 @@ const ManageProducts = () => {
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Price (THB) *</label>
-                           <input 
-                              type="number" 
-                              value={price}
-                              onChange={(e) => setPrice(e.target.value)}
-                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="0.00"
-                              min="0"
-                              step="0.01"
-                              required
-                           />
+                           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                              <Coins size={14} /> Price & Currency *
+                           </label>
+                           <div className="flex gap-2">
+                              <input 
+                                 type="number" 
+                                 value={price}
+                                 onChange={(e) => setPrice(e.target.value)}
+                                 className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                                 placeholder="0.00"
+                                 min="0"
+                                 step="0.01"
+                                 required
+                              />
+                              <select
+                                 value={currency}
+                                 onChange={(e) => setCurrency(e.target.value)}
+                                 className="w-28 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white font-bold cursor-pointer"
+                                 aria-label="Currency"
+                              >
+                                 {Object.entries(CURRENCIES).map(([code, info]) => (
+                                    <option key={code} value={code}>{info.symbol} {code}</option>
+                                 ))}
+                              </select>
+                           </div>
                         </div>
 
                         <div>
@@ -885,7 +1045,7 @@ const ManageProducts = () => {
                         <Button 
                            type="submit" 
                            disabled={uploading}
-                           className="bg-[#ff4d94] hover:bg-[#ff3385] text-white py-2 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
+                           className="bg-[#d63384] hover:bg-[#ff3385] text-white py-2 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
                         >
                            {uploading ? <Loader className="animate-spin mx-auto" size={20} /> : 'Save Changes'}
                         </Button>

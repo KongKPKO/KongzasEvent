@@ -26,25 +26,27 @@
 -- USING ( bucket_id = 'Avatar' AND name LIKE (auth.uid() || '/%') )
 -- WITH CHECK ( bucket_id = 'Avatar' AND name LIKE (auth.uid() || '/%') );
 
--- 1. เช็คชัวร์ว่ามีช่องเก็บ URL รูปไหม (ถ้าไม่มีให้สร้างเพิ่ม)
-ALTER TABLE public.artists 
-ADD COLUMN IF NOT EXISTS image_url text;
+-- -- 1. เช็คชัวร์ว่ามีช่องเก็บ URL รูปไหม (ถ้าไม่มีให้สร้างเพิ่ม)
+-- ALTER TABLE public.artists 
+-- ADD COLUMN IF NOT EXISTS image_url text;
 
--- 2. ล้างกฎการแก้ไขเก่าที่อาจจะเขียนผิด
-DROP POLICY IF EXISTS "Owner_Update_Artist" ON public.artists;
-DROP POLICY IF EXISTS "Enable update for authenticated users only" ON public.artists;
-DROP POLICY IF EXISTS "Artist can update own profile" ON public.artists;
+-- -- 2. ล้างกฎการแก้ไขเก่าที่อาจจะเขียนผิด
+-- DROP POLICY IF EXISTS "Owner_Update_Artist" ON public.artists;
+-- DROP POLICY IF EXISTS "Enable update for authenticated users only" ON public.artists;
+-- DROP POLICY IF EXISTS "Artist can update own profile" ON public.artists;
 
--- 3. สร้างกฎใหม่: "อนุญาตให้เจ้าของร้าน แก้ไขข้อมูลร้านตัวเองได้ทุกช่อง"
-CREATE POLICY "Owner_Update_Artist"
-ON public.artists
-FOR UPDATE
-TO authenticated
-USING (auth.uid() = id)
-WITH CHECK (auth.uid() = id);
+-- -- 3. สร้างกฎใหม่: "อนุญาตให้เจ้าของร้าน แก้ไขข้อมูลร้านตัวเองได้ทุกช่อง"
+-- CREATE POLICY "Owner_Update_Artist"
+-- ON public.artists
+-- FOR UPDATE
+-- TO authenticated
+-- USING (auth.uid() = id)
+-- WITH CHECK (auth.uid() = id);
 
--- 4. บังคับเปิดระบบความปลอดภัย (เผื่อใครเผลอปิด)
-ALTER TABLE public.artists ENABLE ROW LEVEL SECURITY;
+-- -- 4. บังคับเปิดระบบความปลอดภัย (เผื่อใครเผลอปิด)
+-- ALTER TABLE public.artists ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE artists 
-ADD COLUMN IF NOT EXISTS is_queue_open BOOLEAN DEFAULT true;
+-- ALTER TABLE artists 
+-- ADD COLUMN IF NOT EXISTS is_queue_open BOOLEAN DEFAULT true;
+
+ALTER TABLE orders ADD COLUMN currency VARCHAR(3) DEFAULT 'THB';

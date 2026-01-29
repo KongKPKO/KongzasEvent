@@ -2,8 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useOutletContext, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
-import { ShoppingBag, Plus, Minus, Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket } from 'lucide-react'; // เพิ่ม icon Ticket
+import { ShoppingBag, Plus, Minus, Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { formatPrice } from '../../utils/currency';
 
 interface Product {
   id: string;
@@ -13,6 +14,7 @@ interface Product {
   description?: string;
   category?: string;
   status?: 'enable' | 'disable' | 'soldout';
+  currency?: string;  // ✅ NEW: Currency code
 }
 
 const MenuView = () => {
@@ -27,8 +29,13 @@ const MenuView = () => {
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState<Record<string, number>>({});
-  const [userQueueNumber, setUserQueueNumber] = useState<string | null>(null); // ✅ เก็บเลขคิวของลูกค้า
+  
+  // Cart State - Initialize from localStorage
+  const [cart, setCart] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem(`cart_${contextArtist?.id}`);
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [userQueueNumber, setUserQueueNumber] = useState<string | null>(null);
   
   // UI States
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -38,11 +45,17 @@ const MenuView = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [sortOption, setSortOption] = useState('name_asc');
 
-  // Order Submission State
+  // Order Submission State - Initialize from localStorage
   const [submitting, setSubmitting] = useState(false);
-  const [isOrderSent, setIsOrderSent] = useState(false);
-  const [sentOrderId, setSentOrderId] = useState<string | null>(null);
-  const [isOrderCompleted, setIsOrderCompleted] = useState(false);  // ✅ NEW: Track order completion
+  const [isOrderSent, setIsOrderSent] = useState<boolean>(() => {
+    return localStorage.getItem(`orderSent_${contextArtist?.id}`) === 'true';
+  });
+  const [sentOrderId, setSentOrderId] = useState<string | null>(() => {
+    return localStorage.getItem(`sentOrderId_${contextArtist?.id}`) || null;
+  });
+  const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
+    return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
+  });
 
   // --- 1. Derived Data ---
   const uniqueCategories = useMemo(() => {
@@ -66,24 +79,50 @@ const MenuView = () => {
 
   const totalItems = useMemo(() => Object.values(cart).reduce((sum, qty) => sum + qty, 0), [cart]);
   const totalPrice = useMemo(() => products.reduce((sum, p) => sum + (p.price * (cart[p.id] || 0)), 0), [products, cart]);
+  
+  // ✅ NEW: Get currency from first cart item for totals display
+  const cartCurrency = useMemo(() => {
+    const firstProductId = Object.keys(cart).find(id => cart[id] > 0);
+    const firstProduct = firstProductId ? products.find(p => p.id === firstProductId) : null;
+    return firstProduct?.currency;
+  }, [cart, products]);
+
+  // --- Persist cart to localStorage ---
+  useEffect(() => {
+    if (contextArtist?.id) {
+      localStorage.setItem(`cart_${contextArtist.id}`, JSON.stringify(cart));
+    }
+  }, [cart, contextArtist?.id]);
+
+  // --- Persist order states to localStorage ---
+  useEffect(() => {
+    if (contextArtist?.id) {
+      localStorage.setItem(`orderSent_${contextArtist.id}`, isOrderSent.toString());
+      localStorage.setItem(`sentOrderId_${contextArtist.id}`, sentOrderId || '');
+      localStorage.setItem(`orderCompleted_${contextArtist.id}`, isOrderCompleted.toString());
+    }
+  }, [isOrderSent, sentOrderId, isOrderCompleted, contextArtist?.id]);
 
   // --- 2. Fetch Data ---
   useEffect(() => {
     const initData = async () => {
         setLoading(true);
         
-        // 2.1 ✅ ตรวจสอบคิวของลูกค้าจาก LocalStorage
-        const localQueueId = localStorage.getItem('myQueueId');
+        // 2.1 ✅ ตรวจสอบคิวของลูกค้าจาก LocalStorage (FIX: Scoped to Artist)
+        const localQueueId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
         if (localQueueId) {
             const { data: queueData } = await supabase
                 .from('queues')
-                .select('queue_number')
+                .select('queue_number, status')
                 .eq('id', localQueueId)
                 .single();
             
-            if (queueData) {
+            // Only show queue number if status is active
+            if (queueData && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
                 setUserQueueNumber(queueData.queue_number);
                 console.log("Customer is Queue:", queueData.queue_number);
+            } else {
+               setUserQueueNumber(null);
             }
         }
 
@@ -144,14 +183,14 @@ const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
     // ✅ FIX 1: เช็คก่อนเลยว่ามีคิวไหม? ถ้าไม่มี ไล่ไปหน้า Queue ทันที
-    const localQueueId = localStorage.getItem('myQueueId');
+    const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
     if (!localQueueId) {
         alert("Please get a queue ticket first!\nกรุณากดรับบัตรคิวที่เมนู 'Queue' ด้านล่างก่อนสั่งอาหารครับ");
         navigate(`/${displayArtist?.slug}/queue`); // ดีดไปหน้า Queue
         return; // จบการทำงาน ไม่ให้สั่ง
     }
 
-    if (!confirm(`Confirm order for ${totalItems} items (฿${totalPrice.toLocaleString()})?`)) return;
+    if (!confirm(`Confirm order for ${totalItems} items (${formatPrice(totalPrice, cartCurrency)})?`)) return;
 
     setSubmitting(true);
     try {
@@ -186,6 +225,7 @@ const handleConfirmOrder = async () => {
             queue_id: localQueueId, // ✅ ใส่ ID คิวไปเลย (ไม่ต้อง || null แล้ว เพราะดักไว้ข้างบนแล้ว)
             status: 'confirmed',
             total_price: totalPrice,
+            currency: cartCurrency || 'THB', // ✅ NEW: Save currency
             payment_method: null
         }).select().single();
 
@@ -225,8 +265,20 @@ const handleConfirmOrder = async () => {
       try {
           const { error } = await supabase.from('orders').delete().eq('id', sentOrderId);
           if (error) throw error;
+          
+          // Reset all states
+          setCart({});
           setIsOrderSent(false);
           setSentOrderId(null);
+          setIsOrderCompleted(false);
+          
+          // Clear localStorage
+          if (contextArtist?.id) {
+            localStorage.removeItem(`cart_${contextArtist.id}`);
+            localStorage.removeItem(`orderSent_${contextArtist.id}`);
+            localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
+            localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
+          }
       } catch (err: any) {
           alert('Failed to cancel: ' + err.message);
       } finally {
@@ -254,12 +306,43 @@ const handleConfirmOrder = async () => {
       return () => { supabase.removeChannel(channel); };
   }, [sentOrderId]);
 
-  // Helper to reset order state
+  // ✅ NEW: Realtime listener for Queue Status (To clear badge when completed)
+  useEffect(() => {
+     const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+     if (!localQueueId || !displayArtist?.id) return;
+
+     const channel = supabase
+         .channel(`menu-queue-status-${localQueueId}`)
+         .on('postgres_changes', 
+             { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${localQueueId}` }, 
+             (payload: any) => {
+                 const newStatus = payload.new?.status;
+                 if (['complete', 'missed', 'expired'].includes(newStatus)) {
+                    setUserQueueNumber(null); // Clear badge
+                 } else if (payload.new?.queue_number) {
+                    setUserQueueNumber(payload.new.queue_number);
+                 }
+             }
+         )
+         .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+  }, [displayArtist?.id]);
+
+  // Helper to reset order state - Clear all localStorage and state
   const handleCloseCompletedOrder = () => {
       setCart({});
       setIsOrderSent(false);
       setSentOrderId(null);
       setIsOrderCompleted(false);
+      
+      // Clear localStorage
+      if (contextArtist?.id) {
+        localStorage.removeItem(`cart_${contextArtist.id}`);
+        localStorage.removeItem(`orderSent_${contextArtist.id}`);
+        localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
+        localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
+      }
   };
 
   if (loading) return <div className="p-8 text-center text-gray-400">Loading menu...</div>;
@@ -344,7 +427,7 @@ const handleConfirmOrder = async () => {
                         {product.description && <p className="text-[10px] text-gray-400 line-clamp-1 mt-0.5">{product.description}</p>}
                      </div>
                      <div className="flex flex-col gap-1.5">
-                        <div className="text-pink-600 font-extrabold text-sm">฿{product.price}</div>
+                        <div className="text-pink-600 font-extrabold text-sm">{formatPrice(product.price, product.currency)}</div>
                         {qty === 0 ? (
                            <button onClick={() => product.status !== 'soldout' && updateQuantity(product.id, 1)} disabled={product.status === 'soldout' || isOrderSent} className={`w-full rounded-md py-1 flex items-center justify-center gap-1 text-[10px] font-bold transition-all ${product.status === 'soldout' || isOrderSent ? 'bg-gray-100 text-gray-400' : 'bg-gray-900 text-white active:scale-95'}`}><ShoppingBag size={10} /> ADD</button>
                         ) : (
@@ -363,7 +446,7 @@ const handleConfirmOrder = async () => {
        </div>
 
         {/* --- CONFIRM ORDER BAR --- */}
-        {totalItems > 0 && (
+        {(totalItems > 0 || isOrderSent) && (
             <>
                 {isCartOpen && !isOrderSent && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] animate-fade-in max-w-md mx-auto" onClick={() => setIsCartOpen(false)} />
@@ -383,7 +466,7 @@ const handleConfirmOrder = async () => {
                                         <div key={id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
                                             <div className="flex items-center gap-2 overflow-hidden">
                                                 <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
-                                                <div className="min-w-0"><div className="font-bold text-xs text-gray-800 truncate">{product.name}</div><div className="text-[10px] text-gray-500">฿{product.price} / unit</div></div>
+                                                <div className="min-w-0"><div className="font-bold text-xs text-gray-800 truncate">{product.name}</div><div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / unit</div></div>
                                             </div>
                                             <div className="font-bold text-xs w-10 text-right text-pink-600">x {qty}</div>
                                         </div>
@@ -430,7 +513,7 @@ const handleConfirmOrder = async () => {
                             <>
                                 <div onClick={() => setIsCartOpen(!isCartOpen)} className="flex-1 cursor-pointer flex flex-col justify-center">
                                     <div className="flex items-center gap-1 text-gray-400 text-[9px] font-bold uppercase tracking-wider"><span>TOTAL</span>{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="animate-bounce"/>}</div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">฿{totalPrice.toLocaleString()}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} items</span></div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(totalPrice, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} items</span></div>
                                 </div>
                                 <button onClick={handleConfirmOrder} disabled={submitting} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-lg shadow-pink-200 active:scale-95 transition-all disabled:opacity-70 disabled:scale-100 flex items-center gap-1.5 h-10">{submitting ? 'Sending...' : (<><span>Confirm</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
                             </>

@@ -221,10 +221,6 @@ const QueueView = () => {
            setMyTicket(data);
         }
 
-        if (data) {
-            localStorage.setItem('myQueueId', data.id);
-        }
-
      } catch (err) {
         console.error("handleGetTicket Exception:", err);
         alert('Failed to get ticket. Please try again.');
@@ -444,9 +440,10 @@ const QueueView = () => {
                  <div className="flex flex-col gap-2 w-full animate-fade-in-up delay-100 mt-auto">
                      <Button 
                         onClick={handleRefresh} 
-                        className="w-full bg-[#ff4d94] hover:bg-pink-600 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
+                        className="w-full bg-[#d63384] hover:bg-pink-700 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
+                        aria-label="Refresh queue status"
                      >
-                        <RefreshCcw size={16} /> Refresh Status
+                        <RefreshCcw size={16} aria-hidden="true" /> Refresh Status
                      </Button>
                      
                      <button 

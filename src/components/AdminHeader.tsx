@@ -36,7 +36,7 @@ export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProp
             {/* Left: Brand + Event Badge */}
             <div className="flex items-center gap-2">
                 <div className="bg-pink-500 text-white p-1.5 rounded-md font-bold text-sm">K</div>
-                <span className="font-bold text-gray-800">Kongzas <span className="text-pink-500">Workspace</span></span>
+                <span className="font-bold text-gray-800">Kongzas <span className="text-pink-600">Workspace</span></span>
                 
                 {/* Active Event Badge */}
                 {activeEvent && (
@@ -65,11 +65,12 @@ export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProp
                             onClick={() => navigate(item.path)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                 isActive
-                                    ? 'bg-pink-50 text-pink-600 border border-pink-200'
-                                    : 'text-gray-500 hover:text-pink-500 hover:bg-gray-50'
+                                    ? 'bg-pink-50 text-pink-700 border border-pink-200'
+                                    : 'text-gray-600 hover:text-pink-600 hover:bg-gray-50'
                             }`}
+                            aria-label={item.label}
                         >
-                            <Icon size={14} />
+                            <Icon size={14} aria-hidden="true" />
                             <span className="hidden sm:inline">{item.label}</span>
                         </button>
                     );
@@ -79,9 +80,10 @@ export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProp
                 
                 <button 
                     onClick={handleLogout} 
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-red-500 hover:bg-red-50 flex items-center gap-1.5 transition-all"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-1.5 transition-all"
+                    aria-label="Logout"
                 >
-                    <LogOut size={14} />
+                    <LogOut size={14} aria-hidden="true" />
                     <span className="hidden sm:inline">Logout</span>
                 </button>
             </div>

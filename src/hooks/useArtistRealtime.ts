@@ -47,7 +47,7 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
         const todayStr = new Date().toLocaleDateString('en-CA');
         
 const [artistRes, eventsRes] = await Promise.all([
-           supabase.from('artists').select('id, display_name, bio, image_url, broadcast_message, is_queue_open').eq('id', artistId).single(),
+           supabase.from('artists').select('id, display_name, bio, image_url, broadcast_message, is_queue_open, x_url, facebook_url, ig_url, tiktok_url, email').eq('id', artistId).single(),
            // Filter strictly by date string to prevent timezone dropouts
            supabase.from('events').select('id, event_name, start_date, end_date, location_name, entrance_fee, transit_info, status, is_booth_open')
              .eq('artist_id', artistId)

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, CheckCircle } from 'lucide-react';
+import { formatPrice } from '../../utils/currency';
 
 // --- TYPES ---
 interface Product {
@@ -12,6 +13,7 @@ interface Product {
     is_out_of_stock: boolean;
     status: string;
     category: string | null;
+    currency?: string;  // ✅ NEW: Currency code
 }
 interface CartItem { product: Product; quantity: number; notes?: string; }
 
@@ -224,6 +226,24 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         }, 100);
                     }
                 )
+                .on(
+                    'postgres_changes',
+                    { 
+                        event: 'DELETE', 
+                        schema: 'public', 
+                        table: 'orders'
+                    },
+                    (payload) => {
+                        // When order is deleted (e.g., customer cancelled from MenuView)
+                        // Check if it matches current order and clear cart
+                        console.log('[POS] Order DELETE detected:', payload.old);
+                        if (currentOrderIdRef.current && payload.old?.id === currentOrderIdRef.current) {
+                            console.log('[POS] Current order was cancelled by customer, clearing cart');
+                            setCart([]);
+                            setCurrentOrderId(null);
+                        }
+                    }
+                )
                 .subscribe();
         }
 
@@ -300,6 +320,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                     queue_id: selectedQueueId,
                     status: 'completed',
                     total_price: totalPrice,
+                    currency: cart[0]?.product.currency || 'THB', // ✅ NEW: Save currency
                     payment_method: method,
                 }).select('id').single();
 
@@ -313,7 +334,8 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 
                 const { error } = await supabase.from('orders').update({ 
                     status: 'completed', 
-                    total_price: totalPrice, 
+                    total_price: totalPrice,
+                    currency: cart[0]?.product.currency || 'THB', // ✅ NEW: Update currency
                     payment_method: method,
                     event_id: activeEvent.id
                 }).eq('id', orderId);
@@ -371,14 +393,14 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
             {/* ✅ NEW: Horizontal Tabs Header for Customer Selection */}
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
-                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Customer</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                         {/* Walk-in Tab (Always First) */}
                         <button
                             onClick={onClearQueue}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
                                 !selectedQueueId 
-                                    ? 'bg-pink-500 text-white shadow-md shadow-pink-200' 
+                                    ? 'bg-pink-600 text-white shadow-md shadow-pink-200' 
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
@@ -395,7 +417,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                     onClick={() => onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) })}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
                                         isSelected 
-                                            ? 'bg-pink-500 text-white shadow-md shadow-pink-200' 
+                                            ? 'bg-pink-600 text-white shadow-md shadow-pink-200' 
                                             : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
                                     }`}
                                 >
@@ -407,7 +429,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
 
                         {/* Empty state hint */}
                         {servingQueues.length === 0 && (
-                            <div className="text-xs text-gray-400 italic px-2">No queues serving</div>
+                            <div className="text-xs text-gray-500 italic px-2">No queues serving</div>
                         )}
                     </div>
                 </div>
@@ -422,7 +444,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         <div className="flex items-center gap-3">
                             {selectedQueueId ? (
                                 <>
-                                    <span className="inline-flex items-center gap-2 bg-pink-500 text-white px-3 py-1 rounded-full shadow-sm">
+                                    <span className="inline-flex items-center gap-2 bg-pink-600 text-white px-3 py-1 rounded-full shadow-sm">
                                         <span className="text-xs font-bold">Queue</span>
                                         <span className="text-lg font-black">#{selectedQueueNumber}</span>
                                     </span>
@@ -440,7 +462,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         
                         {activeEvent && (
                             <div className="text-right">
-                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Event</div>
+                                <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Event</div>
                                 <div className="text-xs font-bold text-pink-600 max-w-[150px] truncate" title={activeEvent.event_name}>
                                     {activeEvent.event_name}
                                 </div>
@@ -453,9 +475,9 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
             <div className="flex-1 flex overflow-hidden">
                 {/* LEFT: Cart */}
                 <div className="w-[280px] bg-white border-r border-pink-100 flex flex-col shrink-0">
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2" tabIndex={0} role="region" aria-label="Shopping cart">
                         {cart.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-300 opacity-80">
+                            <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80">
                                 <span className="text-4xl mb-2">🛒</span>
                                 <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
                             </div>
@@ -472,23 +494,23 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Img'; }}
                                                 />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400">No Img</div>
+                                                <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-500">No Img</div>
                                             )}
                                         </div>
                                         <div className="flex flex-col truncate">
                                             <span className="font-bold text-xs text-gray-800 truncate block max-w-[100px]" title={item.product.name}>{item.product.name}</span>
-                                            <span className="text-[10px] text-gray-400">฿{item.product.price}</span>
+                                            <span className="text-[10px] text-gray-500">{formatPrice(item.product.price, item.product.currency)}</span>
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-end gap-0.5 ml-1">
-                                        <span className="font-bold text-pink-600 text-xs">฿{(item.product.price * item.quantity).toLocaleString()}</span>
+                                        <span className="font-bold text-pink-600 text-xs">{formatPrice(item.product.price * item.quantity, item.product.currency)}</span>
                                         <div className="flex items-center gap-1">
                                             <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-5">
-                                                <button onClick={() => decreaseQuantity(item.product.id)} className="w-5 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[10px]">-</button>
+                                                <button onClick={() => decreaseQuantity(item.product.id)} className="w-5 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[10px]" aria-label={`Decrease quantity of ${item.product.name}`}>-</button>
                                                 <span className="min-w-[16px] text-center font-bold text-gray-700 text-[10px]">{item.quantity}</span>
-                                                <button onClick={() => addToCart(item.product)} className="w-5 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[10px]">+</button>
+                                                <button onClick={() => addToCart(item.product)} className="w-5 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[10px]" aria-label={`Increase quantity of ${item.product.name}`}>+</button>
                                             </div>
-                                            <button onClick={() => removeFromCart(item.product.id)} className="text-[9px] text-gray-400 hover:text-red-500">✕</button>
+                                            <button onClick={() => removeFromCart(item.product.id)} className="text-[9px] text-gray-500 hover:text-red-500" aria-label={`Remove ${item.product.name} from cart`}>✕</button>
                                         </div>
                                     </div>
                                 </div>
@@ -500,7 +522,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                     <div className="p-3 border-t border-pink-100 bg-white shrink-0">
                         <div className="flex justify-between items-baseline mb-2">
                             <span className="text-gray-500 font-medium text-sm">Total</span>
-                            <span className="text-2xl font-extrabold text-gray-900">฿{totalPrice.toLocaleString()}</span>
+                            <span className="text-2xl font-extrabold text-gray-900">{formatPrice(totalPrice, cart[0]?.product.currency)}</span>
                         </div>
                         
                         {!activeEvent && (
@@ -514,7 +536,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                             onClick={() => setIsPaymentModalOpen(true)}
                             className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
                         >
-                            {loading ? 'Processing...' : !activeEvent ? 'Event Ended' : 'Charge ฿' + totalPrice.toLocaleString()}
+                            {loading ? 'Processing...' : !activeEvent ? 'Event Ended' : 'Charge ' + formatPrice(totalPrice, cart[0]?.product.currency)}
                         </button>
                     </div>
                 </div>
@@ -526,15 +548,17 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         <div className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Search..."
+                                placeholder="Search products..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 text-sm"
+                                aria-label="Search products"
                             />
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value as SortType)}
                                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer font-medium"
+                                aria-label="Sort products by"
                             >
                                 <option value="name">Name</option>
                                 <option value="price_low">Price ↑</option>
@@ -546,7 +570,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                 <button
                                     key={cat}
                                     onClick={() => setSelectedCategory(cat)}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-pink-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                                 >
                                     {cat}
                                 </button>
@@ -555,9 +579,9 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                     </div>
 
                     {/* Product Grid */}
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto p-4" tabIndex={0} role="region" aria-label="Product grid">
                         {filteredProducts.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><p>No products found.</p></div>
+                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                                 {filteredProducts.map((product) => (
@@ -574,11 +598,11 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
                                                 />
-                                            ) : (<div className="w-full h-full flex items-center justify-center text-xl text-gray-300">📷</div>)}
+                                            ) : (<div className="w-full h-full flex items-center justify-center text-xl text-gray-500">📷</div>)}
                                         </div>
                                         <div className="p-2 flex flex-col justify-between flex-1">
                                             <h3 className="font-bold text-gray-800 truncate text-xs" title={product.name}>{product.name}</h3>
-                                            <p className="text-pink-500 font-extrabold text-sm mt-0.5">฿{product.price}</p>
+                                            <p className="text-pink-600 font-extrabold text-sm mt-0.5">{formatPrice(product.price, product.currency)}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -593,7 +617,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
                         <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Confirm Payment</h3>
-                        <p className="text-gray-500 text-center mb-6">Amount: <span className="text-pink-600 font-bold">฿{totalPrice.toLocaleString()}</span></p>
+                        <p className="text-gray-500 text-center mb-6">Amount: <span className="text-pink-600 font-bold">{formatPrice(totalPrice, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
@@ -612,7 +636,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         </div>
                         <button
                             onClick={() => setIsPaymentModalOpen(false)}
-                            className="w-full py-3 text-gray-400 font-bold hover:bg-gray-50 hover:text-gray-600 rounded-xl transition-colors"
+                            className="w-full py-3 text-gray-500 font-bold hover:bg-gray-50 hover:text-gray-600 rounded-xl transition-colors"
                         >
                             CANCEL
                         </button>

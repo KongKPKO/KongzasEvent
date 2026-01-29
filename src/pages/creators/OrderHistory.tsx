@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, DollarSign, CreditCard, ShoppingBag, FileText, LayoutList } from 'lucide-react';
+import { formatPrice } from '../../utils/currency'; // ✅ NEW
 
 interface OrderItem {
     quantity: number;
@@ -21,6 +22,7 @@ interface Order {
     queue_id: string | null;
     queues: { queue_number: string } | null;
     order_items: OrderItem[];
+    currency: string; // ✅ NEW
 }
 
 interface EventInfo {
@@ -137,7 +139,8 @@ export default function EventHistory() {
                             <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600"><DollarSign size={20} /></div>
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Revenue</span>
                         </div>
-                        <div className="text-3xl font-black text-gray-800">฿{summary.totalRevenue.toLocaleString()}</div>
+                        {/* ✅ FIX: Use currency from first order or default */}
+                        <div className="text-3xl font-black text-gray-800">{formatPrice(summary.totalRevenue, orders[0]?.currency || 'THB')}</div>
                         <div className="text-xs text-gray-400 mt-1 font-medium">{summary.totalOrders} completed orders</div>
                     </div>
 
@@ -146,7 +149,7 @@ export default function EventHistory() {
                             <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600"><DollarSign size={20} /></div>
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cash</span>
                         </div>
-                        <div className="text-3xl font-black text-gray-800">฿{summary.cashTotal.toLocaleString()}</div>
+                        <div className="text-3xl font-black text-gray-800">{formatPrice(summary.cashTotal, orders[0]?.currency || 'THB')}</div>
                         <div className="text-xs text-gray-400 mt-1 font-medium">{summary.cashOrders} completed cash method</div>
                     </div>
 
@@ -155,7 +158,7 @@ export default function EventHistory() {
                             <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><CreditCard size={20} /></div>
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Transfer</span>
                         </div>
-                        <div className="text-3xl font-black text-gray-800">฿{summary.transferTotal.toLocaleString()}</div>
+                        <div className="text-3xl font-black text-gray-800">{formatPrice(summary.transferTotal, orders[0]?.currency || 'THB')}</div>
                         <div className="text-xs text-gray-400 mt-1 font-medium">{summary.transferOrders} completed transfer method</div>
                     </div>
                 </div>
@@ -171,7 +174,7 @@ export default function EventHistory() {
                                         <div className="text-sm font-bold text-gray-700 truncate">{prod.name}</div>
                                         <div className="text-[10px] text-gray-400 font-medium">Sold: {prod.qty} units</div>
                                     </div>
-                                    <div className="font-bold text-gray-800 text-sm">฿{prod.total.toLocaleString()}</div>
+                                    <div className="font-bold text-gray-800 text-sm">{formatPrice(prod.total, orders[0]?.currency || 'THB')}</div>
                                 </div>
                             ))}
                             {summary.topProducts.length === 0 && <div className="text-center text-gray-400 text-sm py-4">No sales yet</div>}
@@ -231,7 +234,7 @@ export default function EventHistory() {
                                             </td>
                                             
                                             <td className="px-4 py-3 text-right font-black text-gray-800 text-sm whitespace-nowrap">
-                                                ฿{order.total_price.toLocaleString()}
+                                                {formatPrice(order.total_price, order.currency)}
                                             </td>
                                             
                                             <td className="px-4 py-3 text-right whitespace-nowrap">

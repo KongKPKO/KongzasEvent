@@ -225,8 +225,9 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                             ? "bg-gray-200 text-gray-700 border-gray-300 ring-2 ring-gray-500 ring-offset-1"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200"
                             }`}
+                        aria-label="Stop queue temporarily"
                     >
-                        <PauseCircle size={14} />
+                        <PauseCircle size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">หยุดรับคิว</span>
                     </button>
                     <button
@@ -235,8 +236,9 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                             ? "bg-pink-100 text-pink-700 border-pink-200 ring-2 ring-pink-500 ring-offset-1"
                             : "bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200"
                             }`}
+                        aria-label="Set break time message"
                     >
-                        <Coffee size={14} />
+                        <Coffee size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">พักเบรค</span>
                     </button>
                     <button
@@ -245,14 +247,15 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                             ? "bg-orange-100 text-orange-700 border-orange-200 ring-2 ring-orange-500 ring-offset-1"
                             : "bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200"
                             }`}
+                        aria-label="Set urgent message"
                     >
-                        <AlertCircle size={14} />
+                        <AlertCircle size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">ติดธุระ</span>
                     </button>
                     {broadcastMessage && (
                         <button
                             onClick={() => handleSetBroadcast(null)}
-                            className="p-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-600 transition-colors flex items-center gap-1"
+                            className="p-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-700 transition-colors flex items-center gap-1"
                             title="Clear message & Re-open queue"
                         >
                             <X size={14} />
@@ -265,12 +268,15 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                 <div className="flex items-center gap-4 text-[10px]">
 
                     <div className="flex items-center gap-2">
-                        <span className={`font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-600' : 'text-gray-400'}`}>
+                        <span className={`font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-700' : 'text-gray-500'}`}>
                             {isBoothActive ? 'BOOTH OPEN' : 'BOOTH CLOSED'}
                         </span>
                         <button
                             onClick={handleToggleBooth}
                             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isBoothActive ? 'bg-green-500' : 'bg-gray-300'}`}
+                            aria-label={isBoothActive ? 'Close booth' : 'Open booth'}
+                            role="switch"
+                            aria-checked={isBoothActive}
                         >
                             <span className={`${isBoothActive ? 'translate-x-4' : 'translate-x-1'} inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform`} />
                         </button>
@@ -280,7 +286,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                 {/* Active Event Badge */}
                 {activeEvent && (
                     <div className="mt-3 bg-pink-50/50 border border-pink-100 rounded p-1.5 text-center">
-                        <div className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-0.5">Active Event</div>
+                        <div className="text-xs font-bold text-pink-700 uppercase tracking-wider mb-0.5">Active Event</div>
                         <div className="font-bold text-sm text-gray-900 leading-tight">{activeEvent.event_name}</div>
                     </div>
                 )}
@@ -294,15 +300,15 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
             {/* Stats Row */}
             <div className="grid grid-cols-3 gap-2 p-3 text-center border-b border-gray-100 bg-gray-50/50 shrink-0">
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-400 uppercase">Total</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">Total</div>
                     <div className="mt-0.5 text-xl font-black text-gray-900">{totalInQueue}</div>
                 </div>
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-400 uppercase">Next</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">Next</div>
                     <div className="mt-0.5 text-xl font-black text-pink-500">#{nextTicket ? nextTicket.queue_number : '-'}</div>
                 </div>
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-400 uppercase">Waiting</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">Waiting</div>
                     <div className="mt-0.5 text-xl font-black text-gray-900">{waitingTickets.length}</div>
                 </div>
             </div>
@@ -312,7 +318,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                 <Button
                     onClick={handleCallNext}
                     disabled={!nextTicket}
-                    className={`w-full py-3 text-base rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${!nextTicket ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-200'}`}
+                    className={`w-full py-3 text-base rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${!nextTicket ? 'bg-gray-100 text-gray-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-200'}`}
                 >
                     <Play size={18} fill="currentColor" />
                     <span className="font-black">Call Next {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>
@@ -320,7 +326,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3" tabIndex={0} role="region" aria-label="Queue list">
                 {/* Calling Section */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                     <div className="p-3">
@@ -347,7 +353,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                                 ))}
                             </div>
                         ) : (
-                            <div className="flex-1 flex items-center justify-center text-gray-300 text-[10px] py-4 italic border border-dashed border-gray-100 rounded-md">
+                            <div className="flex-1 flex items-center justify-center text-gray-500 text-[10px] py-4 italic border border-dashed border-gray-100 rounded-md">
                                 Empty
                             </div>
                         )}
@@ -375,7 +381,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                                                 <p className="text-[11px] font-bold text-gray-800 leading-none">
                                                     {idx === 0 ? 'Next' : 'Wait'}
                                                 </p>
-                                                <p className="text-[9px] text-gray-400 leading-none mt-0.5">
+                                                <p className="text-[9px] text-gray-500 leading-none mt-0.5">
                                                     {t.created_at ? formatElapsedTime(t.created_at) : 'Queued'}
                                                 </p>
                                             </div>
@@ -384,7 +390,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                                 ))}
                             </ul>
                         ) : (
-                            <div className="p-4 text-center text-gray-400 text-[10px]">Queue is empty</div>
+                            <div className="p-4 text-center text-gray-500 text-[10px]">Queue is empty</div>
                         )}
                     </div>
                 </div>
@@ -405,7 +411,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                                     <li key={t.id} className="px-3 py-1 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-bold text-red-400">#{t.queue_number}</span>
-                                            <span className="text-[9px] text-gray-400">
+                                            <span className="text-[9px] text-gray-500">
                                                 {t.status === 'expired' ? 'Expired' : 'Cancelled'}
                                             </span>
                                         </div>

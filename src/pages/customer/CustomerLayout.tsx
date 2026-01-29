@@ -35,26 +35,29 @@ const CustomerLayout = () => {
           {/* Bottom Nav for Mobile */}
           {/* Bottom Nav for Mobile */}
           {/* Bottom Nav for Mobile */}
-          <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 flex justify-around items-end pb-6 h-20 z-50 text-[11px] font-bold tracking-tight">
+          <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-100 flex justify-around items-end pb-6 h-20 z-50 text-[11px] font-bold tracking-tight" aria-label="Main navigation">
              <Link 
                to={`/${slug}/home`} 
-               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/home') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/home') ? 'text-[#d63384]' : 'text-slate-600'}`}
+               aria-label="Home"
              >
-                <Home size={22} strokeWidth={location.pathname.endsWith('/home') ? 2.5 : 2} />
+                <Home size={22} strokeWidth={location.pathname.endsWith('/home') ? 2.5 : 2} aria-hidden="true" />
                 Home
              </Link>
              <Link 
                to={`/${slug}/menu`} 
-               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/menu') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/menu') ? 'text-[#d63384]' : 'text-slate-600'}`}
+               aria-label="Merchandise"
              >
-                <ShoppingBag size={22} strokeWidth={location.pathname.endsWith('/menu') ? 2.5 : 2} />
+                <ShoppingBag size={22} strokeWidth={location.pathname.endsWith('/menu') ? 2.5 : 2} aria-hidden="true" />
                 Merchandise
              </Link>
              <Link 
                to={`/${slug}/queue`} 
-               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-[#ff4d94]' : 'text-slate-400'}`}
+               className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-[#d63384]' : 'text-slate-600'}`}
+               aria-label="Queue"
              >
-                <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} />
+                <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} aria-hidden="true" />
                 Queue
              </Link>
           </nav>

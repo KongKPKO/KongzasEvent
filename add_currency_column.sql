@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN currency VARCHAR(3) DEFAULT 'THB';

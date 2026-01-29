@@ -33,7 +33,7 @@ interface Event {
   transit_info: string;
   start_date: string;
   end_date: string;
-  status: 'Confirmed' | 'Cancelled';
+  status: 'Confirmed' | 'Cancelled' | 'Ended';
 }
 
 const ManageArtist = () => {
@@ -53,6 +53,10 @@ const ManageArtist = () => {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [summaryStats, setSummaryStats] = useState<any>(null);
   const [loadingStats, setLoadingStats] = useState(false);
+
+  // Filter State
+  const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
+  const [filterYear, setFilterYear] = useState<number | 'all'>('all');
 
   useEffect(() => {
     let isMounted = true;
@@ -90,7 +94,33 @@ const ManageArtist = () => {
           if (eventError) throw eventError;
 
           if (isMounted) {
-            setEvents(eventData || []);
+            // Auto-update events that have passed end_date to 'Ended'
+            const now = new Date();
+            const updatedEvents = (eventData || []).map((evt: Event) => {
+              if (evt.status === 'Confirmed' && new Date(evt.end_date) < now) {
+                return { ...evt, status: 'Ended' as const };
+              }
+              return evt;
+            });
+
+            // Update in database for events that need to be marked as Ended
+            const endedEventIds = updatedEvents
+              .filter((evt: Event, idx: number) => 
+                eventData && eventData[idx]?.status === 'Confirmed' && evt.status === 'Ended'
+              )
+              .map((evt: Event) => evt.id);
+
+            if (endedEventIds.length > 0) {
+              supabase
+                .from('events')
+                .update({ status: 'Ended' })
+                .in('id', endedEventIds)
+                .then(({ error }) => {
+                  if (error) console.error('Error updating ended events:', error);
+                });
+            }
+
+            setEvents(updatedEvents);
           }
         }
       } catch (error) {
@@ -334,7 +364,7 @@ const ManageArtist = () => {
           {/* --- LEFT COL: Profile Settings --- */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-auto self-start">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
-               <User className="text-[#ff4d94]" size={16} />
+               <User className="text-[#d63384]" size={16} />
                <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
             </div>
             
@@ -399,7 +429,7 @@ const ManageArtist = () => {
                <Button 
                  onClick={handleProfileSave} 
                  disabled={isSaving}
-                 className="w-full mt-1 bg-[#ff4d94] hover:bg-[#e63e80] text-white font-bold h-9 text-xs rounded shadow-md shadow-pink-200 active:scale-95 transition-all"
+                 className="w-full mt-1 bg-[#d63384] hover:bg-[#e63e80] text-white font-bold h-9 text-xs rounded shadow-md shadow-pink-200 active:scale-95 transition-all"
                >
                  {isSaving ? 'Saving...' : 'Save Updates'}
                </Button>
@@ -407,19 +437,77 @@ const ManageArtist = () => {
           </div>
 
 
-          {/* --- RIGHT COL: Event Management --- */}
+           {/* --- RIGHT COL: Event Management --- */}
           <div className="lg:col-span-2 space-y-6">
              
              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[600px] flex flex-col">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                   <div className="flex items-center gap-2">
-                     <Calendar className="text-[#ff4d94]" size={20} />
-                     <h2 className="font-bold text-lg text-slate-800">Event Management</h2>
-                     <span className="bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full text-xs font-bold">{events.length}</span>
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+                   {/* Header Row */}
+                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="text-[#d63384]" size={20} />
+                        <h2 className="font-bold text-lg text-slate-800">Event Management</h2>
+                        <span className="bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full text-xs font-bold">{events.length}</span>
+                      </div>
+                      <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-9 shadow-sm flex items-center gap-2">
+                         <Plus size={14} /> Add Event
+                      </Button>
                    </div>
-                   <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-9 shadow-sm flex items-center gap-2">
-                      <Plus size={14} /> Add Event
-                   </Button>
+
+                   {/* Filter Row */}
+                   <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter:</span>
+                      
+                      {/* Month Filter */}
+                      <select
+                        value={filterMonth}
+                        onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                        className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        aria-label="Filter by month"
+                      >
+                        <option value="all">All Months</option>
+                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => (
+                          <option key={month} value={idx}>{month}</option>
+                        ))}
+                      </select>
+
+                      {/* Year Filter */}
+                      <select
+                        value={filterYear}
+                        onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                        className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        aria-label="Filter by year"
+                      >
+                        <option value="all">All Years</option>
+                        {(() => {
+                          const years = [...new Set(events.map(e => new Date(e.start_date).getFullYear()))].sort((a, b) => b - a);
+                          if (years.length === 0) years.push(new Date().getFullYear());
+                          return years.map(year => (
+                            <option key={year} value={year}>{year}</option>
+                          ));
+                        })()}
+                      </select>
+
+                      {/* Clear Filters */}
+                      {(filterMonth !== 'all' || filterYear !== 'all') && (
+                        <button
+                          onClick={() => { setFilterMonth('all'); setFilterYear('all'); }}
+                          className="text-xs text-pink-600 hover:text-pink-700 font-semibold underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+
+                      {/* Filtered Count */}
+                      <span className="ml-auto text-xs text-gray-400 font-medium">
+                        Showing {events.filter(evt => {
+                          const eventDate = new Date(evt.start_date);
+                          const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
+                          const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
+                          return matchMonth && matchYear;
+                        }).length} of {events.length}
+                      </span>
+                   </div>
                 </div>
 
                 <div className="p-0 flex-1 overflow-x-auto">
@@ -439,7 +527,14 @@ const ManageArtist = () => {
                             </tr>
                          </thead>
                          <tbody className="divide-y divide-gray-50">
-                            {events.map((evt) => (
+                            {events
+                              .filter(evt => {
+                                const eventDate = new Date(evt.start_date);
+                                const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
+                                const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
+                                return matchMonth && matchYear;
+                              })
+                              .map((evt) => (
                                <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
                                   <td className="px-6 py-4">
                                      <div className="flex flex-col">
@@ -454,7 +549,11 @@ const ManageArtist = () => {
                                   <td className="px-6 py-4">
                                      <div className="font-bold text-slate-900 text-sm">{evt.event_name}</div>
                                      <div className="flex items-center gap-3 mt-1">
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                          evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 
+                                          evt.status === 'Ended' ? 'bg-gray-100 text-gray-500' : 
+                                          'bg-green-100 text-green-600'
+                                        }`}>
                                            {evt.status}
                                         </span>
 
@@ -475,7 +574,7 @@ const ManageArtist = () => {
                                      </div>
                                   </td>
                                   <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center justify-end gap-2 transition-opacity">
                                         <button 
                                           onClick={() => handleOpenStats(evt)}
                                           className="text-gray-400 hover:text-pink-600 hover:bg-pink-50 p-1.5 rounded-md transition-colors"
@@ -535,9 +634,10 @@ const ManageArtist = () => {
                   <div className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
                      <div className="space-y-1 flex-1">
                         <label className="font-bold text-xs uppercase text-gray-400">Status</label>
-                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="w-full bg-white border border-gray-200 rounded-md p-2 text-sm font-semibold focus:border-pink-500 outline-none">
+                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="w-full bg-white border border-gray-200 rounded-md p-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label="Event status">
                            <option value="Confirmed">Confirmed</option>
                            <option value="Cancelled">Cancelled</option>
+                           <option value="Ended">Ended</option>
                         </select>
                      </div>
                   </div>
@@ -597,7 +697,7 @@ const ManageArtist = () => {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                   <div className="flex items-center gap-2">
-                     <BarChart2 className="text-[#ff4d94]" size={20} />
+                     <BarChart2 className="text-[#d63384]" size={20} />
                      <div>
                         <h3 className="font-bold text-lg text-slate-800">Performance Summary</h3>
                         <p className="text-xs text-gray-400 font-medium">{currentEvent.event_name}</p>

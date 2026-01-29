@@ -154,7 +154,7 @@ const Home = () => {
 
                    {/* Next Up Badge */}
                    {isNextUp && !isCancelled && (
-                     <div className="absolute top-0 right-0 bg-[#ff4d94] text-white text-[10px] font-bold px-3 py-1 rounded-bl-2xl z-10">
+                     <div className="absolute top-0 right-0 bg-[#d63384] text-white text-[10px] font-bold px-3 py-1 rounded-bl-2xl z-10">
                         NEXT UP
                      </div>
                    )}
@@ -162,18 +162,18 @@ const Home = () => {
                    <div className={`flex items-start gap-4 ${isCancelled ? 'opacity-50' : ''}`}>
                       <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border shrink-0
                         ${isNextUp && !isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
-                         <span className={`text-[10px] font-bold uppercase ${isNextUp && !isCancelled ? 'text-[#ff4d94]' : 'text-gray-400'}`}>{month}</span>
+                         <span className={`text-[10px] font-bold uppercase ${isNextUp && !isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
                          <span className="text-2xl font-black text-gray-900 leading-none">{day}</span>
                       </div>
 
                       <div className="flex-1 space-y-2 pt-0.5">
                          <h4 className="font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h4>
                          <div className="space-y-1.5 text-gray-500 text-xs font-medium">
-                            <div className="flex items-start gap-2"><MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{event.location_name}</span></div>
+                            <div className="flex items-start gap-2"><MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{event.location_name}</span></div>
 
-                            {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{event.entrance_fee}</span></div>}
-                            {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}
-                            <div className="flex items-center gap-2"><Calendar size={14} className={isCancelled ? 'text-gray-400' : 'text-[#ff4d94]'} /><span>{formatDateRange(event.start_date, event.end_date)}</span></div>
+                            {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{event.entrance_fee}</span></div>}
+                            {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}
+                            <div className="flex items-center gap-2"><Calendar size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{formatDateRange(event.start_date, event.end_date)}</span></div>
                          </div>
                       </div>
                    </div>
@@ -193,7 +193,7 @@ const Home = () => {
         </div>
         <div className="flex justify-center items-center gap-6 mb-4">
            {socialLinks.map((link, i) => (
-              <a key={i} href={link.url} target="_blank" rel="noreferrer" className="text-black hover:text-[#ff4d94] hover:scale-110 transition-all">
+              <a key={i} href={link.url} target="_blank" rel="noreferrer" className="text-black hover:text-[#d63384] hover:scale-110 transition-all">
                  {link.icon}
               </a>
            ))}

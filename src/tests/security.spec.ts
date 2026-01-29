@@ -15,6 +15,7 @@ test.describe('Security & Vulnerability Testing', () => {
   test.setTimeout(120000);
 
   test.beforeAll(async () => {
+        test.setTimeout(60000);
         console.log('🛡️ Security Test: Setup started...');
         console.log('   - SUPABASE_URL:', SUPABASE_URL);
         
@@ -53,7 +54,7 @@ test.describe('Security & Vulnerability Testing', () => {
             if (artistError) console.error('   - Artist Seed Error:', artistError);
             else console.log('   - Artist Data Seeded');
         }
-  }, 60000);
+  });
 
 
   // 🔒 1. ทดสอบ Unauthenticated Access (แก้ Route ให้ตรงปัจจุบัน)

@@ -58,8 +58,21 @@ export class CustomerPage {
     
     if (!ticketButton) {
       console.error('[Customer] Get Ticket button not found');
+      
+      // Check for common blocking states
+      if (await this.page.getByText('Loading...').isVisible()) {
+          throw new Error('Get Ticket failed: Page is stuck Loading...');
+      }
+      if (await this.page.getByText(/Booth Closed|Queue is currently closed/i).isVisible()) {
+          const msg = await this.page.getByText(/Booth Closed|Queue is currently closed/i).innerText();
+          throw new Error(`Get Ticket failed: Queue is invalid (${msg})`);
+      }
+
+      // Dump content for debug
       const bodyText = await this.page.locator('body').textContent();
       console.log('[Customer] Page content:', bodyText?.substring(0, 500));
+      await this.page.screenshot({ path: 'debug-customer-no-ticket-btn.png' });
+      
       throw new Error('Get Ticket button not found on page');
     }
     

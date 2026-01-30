@@ -40,6 +40,9 @@ export default function ManageCombined() {
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
 
+    // Mobile specific state
+    const [activeTab, setActiveTab] = useState<'queue' | 'pos'>('queue');
+
     // Refs for stable callbacks
     const activeEventIdRef = useRef<string | null>(null);
 
@@ -205,11 +208,40 @@ export default function ManageCombined() {
             {/* ✅ Unified Admin Header */}
             <AdminHeader activePage="pos" activeEvent={activeEvent} />
 
+            {/* 📱 Mobile Tab Switcher */}
+            <div className="md:hidden flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0">
+                <button 
+                    onClick={() => setActiveTab('queue')}
+                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                        activeTab === 'queue' 
+                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                >
+                    Queue Control
+                </button>
+                <button 
+                    onClick={() => setActiveTab('pos')}
+                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                        activeTab === 'pos' 
+                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                >
+                    POS / Order
+                </button>
+            </div>
+
             {/* MAIN CONTENT (Split View) */}
             <div className="flex flex-1 overflow-hidden">
                 
-                {/* LEFT PANEL: Queue Management (35%) */}
-                <div className="w-[35%] min-w-[320px] max-w-[400px] border-r border-gray-200 bg-white flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+                {/* LEFT PANEL: Queue Management (35%) - Hidden on mobile unless queue tab active */}
+                <div className={`
+                    ${activeTab === 'queue' ? 'flex' : 'hidden'} 
+                    md:flex w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px] 
+                    border-r border-gray-200 bg-white flex-col z-10 
+                    shadow-[4px_0_24px_rgba(0,0,0,0.02)]
+                `}>
                     <QueuePanel 
                         activeEvent={activeEvent}
                         queues={otherQueues}  /* ✅ PASSED: waiting, calling, missed only */
@@ -221,8 +253,11 @@ export default function ManageCombined() {
                     />
                 </div>
 
-                {/* RIGHT PANEL: POS & Orders (65%) */}
-                <div className="flex-1 bg-gray-50 flex flex-col min-w-0">
+                {/* RIGHT PANEL: POS & Orders (65%) - Hidden on mobile unless pos tab active */}
+                <div className={`
+                    ${activeTab === 'pos' ? 'flex' : 'hidden'} 
+                    md:flex flex-1 bg-gray-50 flex-col min-w-0
+                `}>
                     <PosPanel 
                         activeEvent={activeEvent}
                         servingQueues={servingQueues}  /* ✅ PASSED: serving only */

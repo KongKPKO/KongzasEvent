@@ -33,8 +33,8 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     };
     fetchBroadcast();
 
-    // 1.2 ดึงสถานะ Ticket ตัวเองจาก LocalStorage
-    const storedTicketId = localStorage.getItem('myQueueId');
+    // 1.2 ดึงสถานะ Ticket ตัวเองจาก LocalStorage (Namespaced by Artist ID)
+    const storedTicketId = localStorage.getItem(`ticket_id_${artistId}`);
     
     if (storedTicketId) {
       setTicketId(storedTicketId);

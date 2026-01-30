@@ -472,9 +472,9 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                 {/* LEFT: Cart */}
-                <div className="w-[280px] bg-white border-r border-pink-100 flex flex-col shrink-0">
+                <div className="w-full h-[40%] md:h-full md:w-[280px] bg-white border-b md:border-b-0 md:border-r border-pink-100 flex flex-col shrink-0 order-1 md:order-1">
                     <div className="flex-1 overflow-y-auto p-3 space-y-2" tabIndex={0} role="region" aria-label="Shopping cart">
                         {cart.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80">
@@ -542,7 +542,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 </div>
 
                 {/* RIGHT: Product Grid */}
-                <div className="flex-1 flex flex-col min-w-0 bg-gray-50/50">
+                <div className="flex-1 flex flex-col min-w-0 bg-gray-50/50 order-2 md:order-2">
                     {/* Search & Filter */}
                     <div className="bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
                         <div className="flex gap-2">
@@ -583,14 +583,14 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            <div className="grid grid-cols-4 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-2">
                                 {filteredProducts.map((product) => (
                                     <div
                                         key={product.id}
                                         onClick={() => addToCart(product)}
-                                        className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 group flex flex-col"
+                                        className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-95 group flex flex-col gap-1 p-0"
                                     >
-                                        <div className="h-20 bg-gray-100 relative overflow-hidden">
+                                        <div className="w-full aspect-square bg-gray-100 relative overflow-hidden shrink-0">
                                             {product.image_url ? (
                                                 <img
                                                     src={getProductImage(product.image_url)}
@@ -598,11 +598,13 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
                                                 />
-                                            ) : (<div className="w-full h-full flex items-center justify-center text-xl text-gray-500">📷</div>)}
+                                            ) : (<div className="w-full h-full flex items-center justify-center text-xs text-gray-500">📷</div>)}
                                         </div>
-                                        <div className="p-2 flex flex-col justify-between flex-1">
-                                            <h3 className="font-bold text-gray-800 truncate text-xs" title={product.name}>{product.name}</h3>
-                                            <p className="text-pink-600 font-extrabold text-sm mt-0.5">{formatPrice(product.price, product.currency)}</p>
+                                        <div className="flex flex-col px-1 pb-1 justify-between flex-1 min-w-0">
+                                            <div className="flex flex-col justify-between items-start w-full">
+                                                <h3 className="font-bold text-gray-800 truncate text-[10px] w-full mb-0.5" title={product.name}>{product.name}</h3>
+                                                <p className="text-pink-600 font-extrabold text-[10px]">{formatPrice(product.price, product.currency)}</p>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
 export const TEST_CONFIG = {
-  ADMIN_EMAIL: process.env.TEST_EMAIL || 'konglnwzas@gmail.com',
-  ADMIN_PASSWORD: process.env.TEST_PASSWORD || 'SupaF@irytail1',
-  ARTIST_SLUG: process.env.TEST_SLUG || 'test1',
+  ADMIN_EMAIL: process.env.TEST_EMAIL || 'kongphop.testy@gmail.com',
+  ADMIN_PASSWORD: process.env.TEST_PASSWORD || 'Test112233',
+  ARTIST_SLUG: process.env.TEST_SLUG || 'testy',
   SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321',
   SUPABASE_KEY: process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || ''
 };
@@ -54,6 +54,7 @@ export async function seedTestData(userId: string) {
       image_url: 'https://placehold.co/100x100',
       currency: 'THB'
   });
+
 
   return { eventName, productName };
 }

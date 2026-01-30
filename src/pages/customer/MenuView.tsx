@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useOutletContext, useNavigate, useLocation } from 'react-router-dom';
+import { useOutletContext, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import { ShoppingBag, Plus, Minus, Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket } from 'lucide-react';
@@ -26,6 +26,7 @@ const MenuView = () => {
   const displayArtist = artist || contextArtist;
   const navigate = useNavigate();
   const location = useLocation();
+  const { slug } = useParams();
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,6 +156,28 @@ const MenuView = () => {
     }
   }, [displayArtist?.id]);
 
+  // ✅ NEW: Realtime Cart Cleanup - Remove sold out/disabled items automatically
+  useEffect(() => {
+    if (Object.keys(cart).length === 0) return;
+
+    const itemsToRemove = Object.keys(cart).filter(id => {
+        const product = products.find(p => p.id === id);
+        // Remove if product not found (deleted) or status is not 'enable'
+        return !product || product.status !== 'enable';
+    });
+
+    if (itemsToRemove.length > 0) {
+        setCart(prev => {
+            const next = { ...prev };
+            itemsToRemove.forEach(id => delete next[id]);
+            return next;
+        });
+        
+        const removedNames = itemsToRemove.map(id => products.find(p => p.id === id)?.name || 'Unknown Item');
+        alert(`The following items in your cart are no longer available and have been removed:\n- ${removedNames.join('\n- ')}`);
+    }
+  }, [products]); // Run whenever products list updates (via realtime)
+
   // --- 3. Helpers ---
   const getProductImageUrl = (dbValue: string, width: number = 400) => {
     if (!dbValue) return '';
@@ -179,61 +202,97 @@ const MenuView = () => {
   };
 
   // --- 4. Confirm Order Logic ---
-const handleConfirmOrder = async () => {
+  const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
-    // ✅ FIX 1: เช็คก่อนเลยว่ามีคิวไหม? ถ้าไม่มี ไล่ไปหน้า Queue ทันที
+    // 1. Check Local Queue ID presence
     const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
     if (!localQueueId) {
-        alert("Please get a queue ticket first!\nกรุณากดรับบัตรคิวที่เมนู 'Queue' ด้านล่างก่อนสั่งอาหารครับ");
-        navigate(`/${displayArtist?.slug}/queue`); // ดีดไปหน้า Queue
-        return; // จบการทำงาน ไม่ให้สั่ง
+        alert("Please get a queue ticket first!\nกรุณารับบัตรคิวก่อนกด Confirm รายการ.");
+        navigate(`/${displayArtist?.slug || slug}/queue`); 
+        return; 
     }
 
     if (!confirm(`Confirm order for ${totalItems} items (${formatPrice(totalPrice, cartCurrency)})?`)) return;
 
     setSubmitting(true);
     try {
-        // 1. ✅ FIX: Match Admin Panel logic - filter by artist_id, end_date >= now, descending sort
-        const now = new Date().toISOString();
-        const { data: events } = await supabase
-            .from('events')
-            .select('id')
-            .eq('artist_id', displayArtist.id)  // ✅ Must be this artist's event
-            .eq('status', 'Confirmed')
-            .gte('end_date', now)  // ✅ Must not be ended
-            .order('start_date', { ascending: false })  // ✅ Get LATEST started event
-            .limit(1);
-
-        const event = events?.[0];
-        if (!event) throw new Error("Shop is currently closed (No Active Event).");
-
-        // 2. เช็คสถานะคิว (เหมือนเดิม แต่ตอนนี้มั่นใจแล้วว่า localQueueId มีค่าแน่นอน)
-        const { data: queueData } = await supabase
+        // 2. Validate Queue Status (Server Check - Strict)
+        const { data: queueData, error: queueError } = await supabase
             .from('queues')
             .select('status')
             .eq('id', localQueueId)
             .single();
 
-        if (queueData && ['cancelled', 'missed', 'expired'].includes(queueData.status)) {
-            throw new Error(`Your queue is ${queueData.status}. Please get a new ticket.`);
+        if (queueError || !queueData) {
+             throw new Error("Queue ticket not found. Please queue again.");
+        }
+        // Allow only active queues
+        if (!['waiting', 'calling', 'serving', 'in_progress'].includes(queueData.status)) {
+             // If completed/cancelled, force clear and redirect
+             localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
+             alert(`Your queue ticket is ${queueData.status} (expired/completed).\nPlease get a new ticket.`);
+             navigate(`/${displayArtist?.slug || slug}/queue`);
+             return;
         }
 
-        // 3. Create Order
+        // 3. Validate Shop/Event Status
+        const now = new Date().toISOString();
+        const { data: events } = await supabase
+            .from('events')
+            .select('id')
+            .eq('artist_id', displayArtist.id)
+            .eq('status', 'Confirmed')
+            .gte('end_date', now)
+            .order('start_date', { ascending: false })
+            .limit(1);
+
+        const event = events?.[0];
+        if (!event) throw new Error("Shop is currently closed (No Active Event).");
+
+        // 4. Validate Products (Race Condition Check)
+        // Fetch latest status of items in cart
+        const cartItemIds = Object.keys(cart);
+        const { data: latestProducts } = await supabase
+            .from('products')
+            .select('id, status, price, name')
+            .in('id', cartItemIds);
+            
+        const validCartItems: Record<string, number> = {};
+        const invalidItemNames: string[] = [];
+        let newTotalPrice = 0;
+
+        cartItemIds.forEach(id => {
+            const product = latestProducts?.find(p => p.id === id);
+            if (product && product.status === 'enable') {
+                validCartItems[id] = cart[id];
+                newTotalPrice += product.price * cart[id];
+            } else {
+                invalidItemNames.push(product?.name || 'Unknown Item');
+            }
+        });
+
+        // If ALL items are invalid
+        if (Object.keys(validCartItems).length === 0) {
+            setCart({}); // Clear cart as they are all sold out
+            throw new Error(`All items in your cart are now Sold Out:\n- ${invalidItemNames.join('\n- ')}`);
+        }
+
+        // 5. Create Order (with valid items only)
         const { data: order, error: orderError } = await supabase.from('orders').insert({
             event_id: event.id,
-            queue_id: localQueueId, // ✅ ใส่ ID คิวไปเลย (ไม่ต้อง || null แล้ว เพราะดักไว้ข้างบนแล้ว)
+            queue_id: localQueueId,
             status: 'confirmed',
-            total_price: totalPrice,
-            currency: cartCurrency || 'THB', // ✅ NEW: Save currency
+            total_price: newTotalPrice, // Use recalculated price
+            currency: cartCurrency || 'THB',
             payment_method: null
         }).select().single();
 
         if (orderError) throw orderError;
 
-        // 4. Create Items (เหมือนเดิม)
-        const itemsToInsert = Object.entries(cart).map(([productId, qty]) => {
-            const product = products.find(p => p.id === productId);
+        // 6. Create Items
+        const itemsToInsert = Object.entries(validCartItems).map(([productId, qty]) => {
+            const product = latestProducts?.find(p => p.id === productId); 
             return {
                 order_id: order.id,
                 product_id: productId,
@@ -244,10 +303,30 @@ const handleConfirmOrder = async () => {
         });
 
         await supabase.from('order_items').insert(itemsToInsert);
+        
+        // Notify if some items were removed
+        if (invalidItemNames.length > 0) {
+            alert(`✅ Order placed successfully!\n\n⚠️ However, the following items were sold out and removed from your order:\n- ${invalidItemNames.join('\n- ')}`);
+            // Update cart to match what was actually ordered (or clear it? Usually clear it creates empty cart)
+            // But strict logic says "clear ordered items". 
+            // Since we ordered validItems, we should clear everything.
+            // The invalid items are also effectively "dealt with" (user notified).
+            setCart({});
+        } else {
+            // Normal success (all items ordered)
+            setIsCartOpen(false);
+            // We don't need alert here if we just change UI state to 'Order Sent'
+            // But maybe a small toast? The UI changes to "ORDER SENT" so that's enough feedback.
+        }
 
         setSentOrderId(order.id);
         setIsOrderSent(true);
         setIsCartOpen(false);
+
+        // Also clean invalid items from cart state if we didn't clear all
+        if (invalidItemNames.length > 0) {
+             setCart({});
+        }
 
     } catch (err: any) {
         alert('Failed: ' + err.message);

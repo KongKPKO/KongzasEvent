@@ -50,32 +50,27 @@
 -- create policy "Public Access OrderItems" on order_items for all using (true) with check (true);
 
 
--- -- lot#2
--- -- 1. เคลียร์ Policy เก่าออกก่อน (กันซ้ำ)
--- drop policy if exists "Public Access Orders" on orders;
--- drop policy if exists "Public Access OrderItems" on order_items;
--- drop policy if exists "Allow All Orders" on orders;
--- drop policy if exists "Allow All OrderItems" on order_items;
+-- lot#2
+-- 1. เคลียร์ Policy เก่าออกก่อน (กันซ้ำ)
+drop policy if exists "Public Access Orders" on orders;
+drop policy if exists "Public Access OrderItems" on order_items;
+drop policy if exists "Allow All Orders" on orders;
+drop policy if exists "Allow All OrderItems" on order_items;
 
--- -- 2. เปิดสิทธิ์ Orders ให้ทุกคน (Read / Write / Update)
--- alter table orders enable row level security;
--- create policy "Allow All Orders"
--- on orders for all
--- using (true)
--- with check (true);
+-- 2. เปิดสิทธิ์ Orders ให้ทุกคน (Read / Write / Update)
+alter table orders enable row level security;
+create policy "Allow All Orders"
+on orders for all
+using (true)
+with check (true);
 
--- -- 3. เปิดสิทธิ์ Order Items ให้ทุกคน
--- alter table order_items enable row level security;
--- create policy "Allow All OrderItems"
--- on order_items for all
--- using (true)
--- with check (true);
+-- 3. เปิดสิทธิ์ Order Items ให้ทุกคน
+alter table order_items enable row level security;
+create policy "Allow All OrderItems"
+on order_items for all
+using (true)
+with check (true);
 
--- -- 4. (เผื่อไว้) เปิดสิทธิ์ Realtime
--- alter publication supabase_realtime add table orders;
--- alter publication supabase_realtime add table order_items;
-
-
--- ล้างออเดอร์ทั้งหมดทิ้งก่อน เพื่อเริ่มเทสใหม่
-DELETE FROM order_items;
-DELETE FROM orders;
+-- 4. (เผื่อไว้) เปิดสิทธิ์ Realtime
+alter publication supabase_realtime add table orders;
+alter publication supabase_realtime add table order_items;

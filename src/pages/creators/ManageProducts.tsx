@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Button, Card } from '../../components/ui';
+import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
 import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle } from 'lucide-react';
 import Papa from 'papaparse';
@@ -549,21 +549,21 @@ const ManageProducts = () => {
          <AdminHeader activePage="menu" />
          
          {/* Page Title Wrapper */}
-         <div className="max-w-5xl mx-auto px-6 pt-4 mb-2">
+         <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
             <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage Products</h1>
             <p className="text-sm text-pink-600 font-bold">{artistName}</p>
          </div>
 
-         <main className="max-w-5xl mx-auto px-6 pb-12">
+         <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
             
             {/* ADD PRODUCT FORM */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 animate-fade-in">
-               <div className="flex items-center justify-between mb-4">
+               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                   <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                      <Plus className="text-pink-500" size={18} />
                      Add New Item
                   </h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-end md:self-auto">
                      <input 
                         type="file" 
                         ref={csvInputRef}
@@ -602,12 +602,12 @@ const ManageProducts = () => {
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
                            <Coins size={12} /> Price & Currency
                         </label>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col md:flex-row gap-2">
                            <input 
                               type="number" 
                               value={price}
                               onChange={(e) => setPrice(e.target.value)}
-                              className="flex-1 min-w-0 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                              className="flex-1 w-full min-w-0 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
                               placeholder="0.00"
                               min="0"
                               step="0.01"
@@ -616,7 +616,7 @@ const ManageProducts = () => {
                            <select
                               value={currency}
                               onChange={(e) => setCurrency(e.target.value)}
-                              className="w-24 shrink-0 px-2 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white cursor-pointer"
+                              className="w-full md:w-24 shrink-0 px-2 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white cursor-pointer"
                               aria-label="Currency"
                            >
                               {Object.entries(CURRENCIES).map(([code, info]) => (
@@ -661,8 +661,8 @@ const ManageProducts = () => {
                               htmlFor="file-upload" 
                               className={`w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
                            >
-                              <Upload size={14} className="mr-2" />
-                              <span className="truncate text-xs font-medium">
+                              <Upload size={14} className="mr-2 shrink-0" />
+                              <span className="truncate text-xs font-medium max-w-[200px] md:max-w-none">
                                  {compressing ? 'Compressing...' : (file ? file.name : 'Choose Image')}
                               </span>
                            </label>
@@ -825,64 +825,122 @@ const ManageProducts = () => {
             {loading ? (
                <div className="text-center py-12 text-gray-400">Loading products...</div>
             ) : filteredProducts.length > 0 ? (
-               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                  {filteredProducts.map(product => (
-                     <Card key={product.id} className="overflow-hidden border border-gray-100 shadow-sm group hover:shadow-md transition-shadow">
-                        <div className="aspect-square bg-gray-100 relative overflow-hidden">
-                           <img 
-                              src={getProductImageUrl(product.image_url, 400)} 
-                              alt={product.name}
-                              loading="lazy"
-                              decoding="async"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 bg-gray-200"
-                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Image'; }}
-                           />
-                           {product.status === 'disable' && (
-                              <div className="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
-                                 <span className="text-white font-black text-sm tracking-wider border-2 border-white px-2 py-1 rotate-[-12deg]">DISABLED</span>
-                              </div>
-                           )}
-                           {product.status === 'soldout' && (
-                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                 <span className="text-red-500 font-black text-sm tracking-wider border-2 border-red-500 px-2 py-1 rotate-[-12deg]">SOLD OUT</span>
-                              </div>
-                           )}
-                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                              <Button 
-                                 onClick={() => handleEditClick(product)}
-                                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-full p-2 h-auto w-auto"
-                              >
-                                 <Edit2 size={20} />
-                              </Button>
-                              <Button 
-                                 onClick={() => handleDeleteProduct(product.id, product.image_url)}
-                                 className="bg-red-500 hover:bg-red-600 text-white rounded-full p-2 h-auto w-auto"
-                              >
-                                 <Trash2 size={20} />
-                              </Button>
-                           </div>
-                        </div>
-                        <div className="p-1.5 flex flex-col h-full">
-                           <div className="flex justify-between items-start mb-2">
-                              <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2">{product.name}</h3>
-                              <span className="text-pink-600 font-bold text-sm shrink-0">{formatPrice(product.price, product.currency)}</span>
+               <>
+                  {/* MOBILE VIEW: List/Cards (<768px) */}
+                  <div className="flex flex-col gap-3 md:hidden">
+                     {filteredProducts.map(product => (
+                        <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row h-28 group relative">
+                           {/* Image */}
+                           <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
+                              <img 
+                                 src={getProductImageUrl(product.image_url, 400)} 
+                                 alt={product.name}
+                                 className="w-full h-full object-cover"
+                                 loading="lazy"
+                              />
+                              {(product.status === 'disable' || product.status === 'soldout') && (
+                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                    <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
+                                       product.status === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
+                                    }`}>
+                                       {product.status === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
+                                    </span>
+                                 </div>
+                              )}
                            </div>
                            
-                           {product.category && (
-                              <span className="inline-block px-2 py-0.5 bg-pink-50 text-pink-600 text-[10px] font-bold uppercase tracking-wider rounded-md self-start mb-2">
-                                 {product.category}
-                              </span>
-                           )}
-
-                           {product.description && (
-                              <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-4">
-                                 {product.description}
-                              </p>
-                           )}
+                           {/* Content */}
+                           <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
+                              <div>
+                                 <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
+                                 <div className="mt-1 flex items-baseline gap-2">
+                                    <span className="text-pink-600 font-black text-sm">{formatPrice(product.price, product.currency)}</span>
+                                    {product.category && (
+                                       <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] font-bold uppercase rounded">
+                                          {product.category}
+                                       </span>
+                                    )}
+                                 </div>
+                              </div>
+                              
+                              {/* Mobile Actions (Always Visible) */}
+                              <div className="absolute bottom-2 right-2 flex gap-2">
+                                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="text-gray-400 hover:text-blue-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Edit2 size={14}/></button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.image_url); }} className="text-gray-400 hover:text-red-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Trash2 size={14}/></button>
+                              </div>
+                           </div>
                         </div>
-                     </Card>
-                  ))}
-               </div>
+                     ))}
+                  </div>
+
+                  {/* DESKTOP VIEW: Table (>=768px) */}
+                  <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+                     <table className="w-full text-left border-collapse">
+                        <thead>
+                           <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                              <th className="px-6 py-4 font-bold w-[40%]">Product</th>
+                              <th className="px-6 py-4 font-bold">Category</th>
+                              <th className="px-6 py-4 font-bold">Price</th>
+                              <th className="px-6 py-4 font-bold">Status</th>
+                              <th className="px-6 py-4 font-bold text-right">Actions</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                           {filteredProducts.map(product => (
+                              <tr key={product.id} className="hover:bg-gray-50/50 transition-colors group">
+                                 <td className="px-6 py-4">
+                                    <div className="flex items-center gap-4">
+                                       <div className="w-12 h-12 rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
+                                          <img 
+                                             src={getProductImageUrl(product.image_url, 100)} 
+                                             alt={product.name}
+                                             className="w-full h-full object-cover"
+                                          />
+                                          {product.status === 'soldout' && <div className="absolute inset-0 bg-black/50" />}
+                                       </div>
+                                       <div>
+                                          <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
+                                          {product.description && <p className="text-xs text-gray-400 line-clamp-1 max-w-[240px]">{product.description}</p>}
+                                       </div>
+                                    </div>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600">
+                                       {product.category || 'Other'}
+                                    </span>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                    <span className="font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                    {product.status === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}
+                                    {product.status === 'disable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Disabled</span>}
+                                    {product.status === 'soldout' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">Sold Out</span>}
+                                 </td>
+                                 <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                       <button 
+                                          onClick={() => handleEditClick(product)}
+                                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          title="Edit"
+                                       >
+                                          <Edit2 size={18} />
+                                       </button>
+                                       <button 
+                                          onClick={() => handleDeleteProduct(product.id, product.image_url)}
+                                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete"
+                                       >
+                                          <Trash2 size={18} />
+                                       </button>
+                                    </div>
+                                 </td>
+                              </tr>
+                           ))}
+                        </tbody>
+                     </table>
+                  </div>
+               </>
             ) : (
                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
                   <span className="material-icons-outlined text-4xl text-gray-300 mb-2">restaurant_menu</span>

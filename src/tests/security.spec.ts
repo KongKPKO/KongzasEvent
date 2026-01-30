@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
-const TEST_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
-const TEST_PASSWORD = process.env.TEST_PASSWORD || 'SupaF@irytail1';
+const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'konglnwzas@gmail.com';
+const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'SupaF@irytail1';
 const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client
@@ -22,14 +22,14 @@ test.describe('Security & Vulnerability Testing', () => {
         // 1. Ensure User Exists
         let userId = '';
         console.log('   - Attempting SignUp...');
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
         
         if (signUpData.user) {
             console.log('   - SignUp Success');
             userId = signUpData.user.id;
         } else {
             console.log('   - SignUp skipped/failed, attempting SignIn...');
-            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
             
             if (signInData.user) {
                 console.log('   - SignIn Success');
@@ -45,7 +45,7 @@ test.describe('Security & Vulnerability Testing', () => {
              console.log('   - Seeding Artist Data...');
              const { error: artistError } = await supabase.from('artists').upsert({
                 id: userId,
-                email: TEST_EMAIL,
+                email: TEST_USER_Y_EMAIL,
                 slug: 'test-security', 
                 display_name: 'Security Test Artist',
                 updated_at: new Date().toISOString()
@@ -88,8 +88,8 @@ test.describe('Security & Vulnerability Testing', () => {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
 
-    await page.fill('input[type="email"]', TEST_EMAIL);
-    await page.fill('input[type="password"]', TEST_PASSWORD);
+    await page.fill('input[type="email"]', TEST_USER_Y_EMAIL);
+    await page.fill('input[type="password"]', TEST_USER_Y_PASS);
     await page.getByRole('button', { name: /Login/i }).click();
     
     // Wait for dashboard
@@ -100,7 +100,7 @@ test.describe('Security & Vulnerability Testing', () => {
     
     // ✅ สร้าง product ผ่าน Supabase โดยตรง (reliable กว่า UI)
     const { data: { user } } = await supabase.auth.signInWithPassword({
-      email: TEST_EMAIL, password: TEST_PASSWORD
+      email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS
     });
     
     if (!user) throw new Error('Cannot auth for XSS test');

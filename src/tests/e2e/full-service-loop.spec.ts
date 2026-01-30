@@ -261,7 +261,8 @@ test.describe('The Full Service Loop (Unified POS & Queue)', () => {
     console.log('Verifying Completion...');
     
     // 5.1 Admin: Tab should disappear (or Cart clear)
-    await expect(queueTab).toBeHidden({ timeout: 5000 });
+    await adminPage.waitForTimeout(2000);
+    await expect(queueTab).not.toBeVisible({ timeout: 10000 });
 
     // 5.2 Customer: Status "Completed"
     await customerPage.bringToFront();

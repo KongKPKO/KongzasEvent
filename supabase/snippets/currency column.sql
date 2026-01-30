@@ -1,15 +1,15 @@
--- 1. เพิ่ม currency ให้ตาราง products
--- กำหนด Default เป็น 'THB' เพื่อให้ข้อมูลเก่าไม่พัง
-ALTER TABLE products 
-ADD COLUMN currency text NOT NULL DEFAULT 'THB';
+-- -- 1. เพิ่ม currency ให้ตาราง products
+-- -- กำหนด Default เป็น 'THB' เพื่อให้ข้อมูลเก่าไม่พัง
+-- ALTER TABLE products 
+-- ADD COLUMN currency text NOT NULL DEFAULT 'THB';
 
--- 2. เพิ่ม currency ให้ตาราง orders
-ALTER TABLE orders 
-ADD COLUMN currency text NOT NULL DEFAULT 'THB';
+-- -- 2. เพิ่ม currency ให้ตาราง orders
+-- ALTER TABLE orders 
+-- ADD COLUMN currency text NOT NULL DEFAULT 'THB';
 
--- 3. เพิ่ม currency ให้ตาราง order_items
-ALTER TABLE order_items 
-ADD COLUMN currency text NOT NULL DEFAULT 'THB';
+-- -- 3. เพิ่ม currency ให้ตาราง order_items
+-- ALTER TABLE order_items 
+-- ADD COLUMN currency text NOT NULL DEFAULT 'THB';
 
 -- 1. สร้างฟังก์ชันสำหรับตรวจสอบสกุลเงิน
 CREATE OR REPLACE FUNCTION check_active_currency_consistency()

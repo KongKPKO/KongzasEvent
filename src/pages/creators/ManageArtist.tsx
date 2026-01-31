@@ -232,6 +232,23 @@ const ManageArtist = () => {
         ...currentEvent,
         artist_id: artist.id,
       };
+
+      // --- Fix: Timezone & End of Day Logic ---
+      if (currentEvent.start_date) {
+         eventPayload.start_date = new Date(currentEvent.start_date).toISOString();
+      }
+
+      if (currentEvent.end_date) {
+         const endDateObj = new Date(currentEvent.end_date);
+         
+         // If time is exactly 00:00 (user didn't pick a time), set to 23:59:59
+         if (endDateObj.getHours() === 0 && endDateObj.getMinutes() === 0) {
+            endDateObj.setHours(23, 59, 59, 999);
+         }
+         
+         eventPayload.end_date = endDateObj.toISOString();
+      }
+      // ----------------------------------------
       // Remove id if it's undefined (new event) to let DB generate it
       if (!isEditingEvent) delete eventPayload.id;
 

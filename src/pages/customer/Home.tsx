@@ -59,6 +59,12 @@ const Home = () => {
     const startDate = new Date(start);
     const endDate = new Date(end);
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+    
+    // Fix: If same day, show only one date
+    if (startDate.toDateString() === endDate.toDateString()) {
+       return `${startDate.toLocaleDateString('en-GB', options)}, ${startDate.getFullYear()}`;
+    }
+
     return `${startDate.toLocaleDateString('en-GB', options)} - ${endDate.toLocaleDateString('en-GB', options)}, ${endDate.getFullYear()}`;
   };
 

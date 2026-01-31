@@ -21,14 +21,13 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className =
             <div className="flex justify-center mb-3">
                {avatarUrl ? (
                   <img 
-                     // Optimization: Use smaller image size (150x150 covers 128px rendering well enough, prompt asked for 100 but 128 is actual css size)
-                     // User prompt asked specifically for "tr=w-100,h-100". I will use that but strictly it might be slightly blurry if rendered at 128px. 
-                     // However, prompt claimed displayed size is ~46x46. I will trust the user's LCP analysis.
-                     // I'll append/replace the transformation param.
-                     src={avatarUrl.includes('?') ? `${avatarUrl}&tr=w-100,h-100` : `${avatarUrl}?tr=w-100,h-100`} 
+                     // Optimization: Use 256x256 for 2x density on 128px display + Fetch Priority High
+                     src={avatarUrl.includes('?') ? `${avatarUrl}&tr=w-256,h-256` : `${avatarUrl}?tr=w-256,h-256`} 
                      alt={title} 
                      width="128"
                      height="128"
+                     // @ts-ignore - fetchPriority is standard now but Typescript might lag
+                     fetchPriority="high"
                      className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md bg-gray-100"
                   />
                ) : (

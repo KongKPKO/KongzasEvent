@@ -488,13 +488,28 @@ const MenuView = () => {
 
        {/* --- MENU GRID --- */}
        <div className="pt-[115px] px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto">
-          {filteredProducts.map(product => {
+          {filteredProducts.map((product, index) => {
             const qty = cart[product.id] || 0;
+            const isFirst = index === 0;
+
             return (
                <div key={product.id} className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full border border-gray-100 transition-all ${qty > 0 ? 'ring-2 ring-pink-500' : ''}`}>
                   <div className="aspect-square bg-gray-100 relative w-full overflow-hidden">
                      {product.image_url ? (
-                        <img src={getProductImageUrl(product.image_url, 400)} alt={product.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }} />
+                        <img 
+                           // Optimization: 300px width (sufficient for 2-column layout), q-80 is handled by helper
+                           src={getProductImageUrl(product.image_url, 300)} 
+                           alt={product.name} 
+                           // LCP Optimization: Prioritize the first image
+                           loading={isFirst ? "eager" : "lazy"}
+                           // @ts-ignore
+                           fetchPriority={isFirst ? "high" : "auto"}
+                           // Layout Stability: Explicit dimensions matching aspect-square (1:1)
+                           width="300"
+                           height="300"
+                           className="w-full h-full object-cover" 
+                           onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }} 
+                        />
                      ) : (<div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>)}
                      {product.status === 'soldout' && (
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"><span className="text-white font-bold border-2 px-2 py-1 rotate-[-12deg] text-xs">SOLD OUT</span></div>

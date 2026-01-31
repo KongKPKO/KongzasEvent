@@ -27,8 +27,34 @@ function App() {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
+
+      if (event === "PASSWORD_RECOVERY") {
+        console.log("Recovery session detected. Prompting for new password.");
+
+        // Use native prompt for a quick fix UI
+        const newPassword = window.prompt("Security Alert: Please set your new password immediately.");
+
+        if (newPassword && newPassword.trim().length > 0) {
+            try {
+              const { error } = await supabase.auth.updateUser({ password: newPassword });
+              if (error) throw error;
+
+              alert("Success! Your password has been changed. You are now logged in.");
+              window.location.href = "/"; // Ensure they are on a safe page
+
+            } catch (error: any) {
+              alert("Error changing password: " + error.message);
+              // Optional: sign them out if it failed for security
+              // supabase.auth.signOut();
+            }
+        } else {
+           // Handle case where user cancelled prompt
+           alert("Password change cancelled. For security, please try the reset link again when ready.");
+           await supabase.auth.signOut();
+        }
+      }
     });
 
     return () => subscription.unsubscribe();

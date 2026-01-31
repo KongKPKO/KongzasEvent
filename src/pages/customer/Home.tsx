@@ -17,12 +17,12 @@ const Home = () => {
   const currentDate = useMidnightTick();
 
   // 1. Unified Realtime Hook
-  const { artist: contextArtist } = useOutletContext<{ artist: any }>(); // Keep basic context for ID
+  const { artist: contextArtist } = useOutletContext<{ artist: any }>(); 
   const { artist, events, isConnected, refresh } = useArtistRealtime({ 
     artistId: contextArtist?.id 
   });
   
-  // Use local artist state from Hook, fallback to context for initial render to prevent flash
+  // Use local artist state from Hook, fallback to context for initial render
   const displayArtist = artist || contextArtist;
   
   // Midnight Refresh Effect
@@ -33,17 +33,24 @@ const Home = () => {
   // Early return if no artist data
   if (!displayArtist) return <div className="p-10 text-center text-gray-400">Loading Artist Profile...</div>;
   
-  // ✅ FIX: Match Admin Panel logic - filter by end_date >= now
   const now = new Date().toISOString();
   
+  // --- 🎯 LOGIC FILTER: จัดการการแสดงผลตรงนี้ครับ ---
+  // กฎ: 1. ยังไม่หมดเวลา (end_date >= now)
+  //     2. สถานะต้องเป็น Confirmed หรือ Cancelled เท่านั้น (Ended จะถูกดีดออก)
+  const visibleEvents = events.filter(e => {
+     const isNotExpired = e.end_date >= now;
+     const isShowStatus = e.status === 'Confirmed' || e.status === 'Cancelled';
+     return isNotExpired && isShowStatus;
+  });
+
   // Derive Booth Status: Check if ANY valid event is currently open AND not ended
   const activeOpenEvent = events.find(e => {
-       const isOpen = e.is_booth_open && e.status === 'Confirmed';
+       const isOpen = e.is_booth_open && e.status === 'Confirmed'; // Booth เปิดได้ต้อง Confirmed เท่านั้น
        const isNotEnded = e.end_date >= now;
        return isOpen && isNotEnded;
   });
-  // Strict Event-Based Logic: Only Open if a specific Event is Open.
-  // Legacy "Artist Active" switch is ignored for Booth Status to prevent desync.
+  
   const isBoothActive = !!activeOpenEvent;
 
   // 2. Helper Functions
@@ -60,15 +67,12 @@ const Home = () => {
     const endDate = new Date(end);
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
     
-    // Fix: If same day, show only one date
     if (startDate.toDateString() === endDate.toDateString()) {
        return `${startDate.toLocaleDateString('en-GB', options)}, ${startDate.getFullYear()}`;
     }
 
     return `${startDate.toLocaleDateString('en-GB', options)} - ${endDate.toLocaleDateString('en-GB', options)}, ${endDate.getFullYear()}`;
   };
-
-
 
   const socialLinks = [
     { icon: <XIcon size={20} />, url: displayArtist.x_url, label: 'X', hoverClass: 'hover:bg-black' },
@@ -78,11 +82,14 @@ const Home = () => {
     { icon: <Mail size={20} />, url: displayArtist.email ? `mailto:${displayArtist.email}` : '', label: 'Email', hoverClass: 'hover:bg-[#ea4335]' },
   ].filter(link => link.url);
 
-  // 3. Auto-set Next Up Logic: Pick the first NON-CANCELLED event that hasn't ended
-  // Sort by start_date descending to get the LATEST started event (matches admin)
-  const sortedValidEvents = events
-    .filter(e => e.status !== 'Cancelled' && e.end_date >= now)
-    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  // 3. Auto-set Next Up Logic: Pick the first NON-CANCELLED event
+  // ใช้ visibleEvents มาหา Next Up เลย จะได้สอดคล้องกัน
+  const sortedValidEvents = visibleEvents
+    .filter(e => e.status !== 'Cancelled') // Next Up ต้องไม่เอา Cancelled
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()); // (อันนี้ Logic เดิมคุณพี่ Sort มากไปน้อย หรือ น้อยไปมาก ลองเช็คดูนะครับ ปกติ Next event น่าจะเรียงตามเวลาใกล้สุด)
+    // *หมายเหตุ:* ปกติถ้าจะหา "งานถัดไป" ควร sort ascending (น้อยไปมาก) นะครับ
+    // แต่ถ้า code เดิมใช้ได้ดีแล้วผมคงไว้ตามเดิมครับ
+
   const nextUpEventId = sortedValidEvents[0]?.id;
 
   return (
@@ -130,10 +137,12 @@ const Home = () => {
       <div className="flex-1 px-4 mt-2">
         <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2 px-1">Next Events</h3>
         <div className="space-y-3 mb-4">
-          {events.length === 0 ? (
+          {/* 🚨 เปลี่ยนจาก events.length เป็น visibleEvents.length */}
+          {visibleEvents.length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm font-medium">No upcoming events</div>
           ) : (
-            events.map((event) => {
+            // 🚨 เปลี่ยนจาก events.map เป็น visibleEvents.map
+            visibleEvents.map((event) => {
               const { month, day } = getBoxDate(event.start_date);
               const isNextUp = event.id === nextUpEventId;
               const isCancelled = event.status === 'Cancelled';

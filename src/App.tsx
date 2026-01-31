@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 
-// Customer Pages
+// Customer Pages (Keep these eager or lazy? Request implies focusing on "heavy" pages, usually Admin)
+// But to separate bundles effectively, lazy loading everything is often best practice or at least the heavy customer ones.
+// The prompt says: "Identify heavy 'backend' or admin-facing routes... Change the static imports for these pages to use React.lazy()"
+// Let's lazy load the heavy Admin pages first as requested.
+
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
 import MenuView from './pages/customer/MenuView';
 import QueueView from './pages/customer/QueueView';
 
-// Creator Pages
-import ManageProducts from './pages/creators/ManageProducts';
-import ManageArtist from './pages/creators/ManageArtist';
-import OrderHistory from './pages/creators/OrderHistory';
-import ManageCombined from './pages/ManageCombined';
+// Creator Pages - Lazy Load
+const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
+const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
+const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
+const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 // Auth & Layout
 import ManageLogin from './pages/ManageLogin';
@@ -67,6 +71,7 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
+        <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading application...</div>}>
         <Routes>
           {/* Login Page */}
           <Route path="/manage-login" element={<ManageLogin />} />
@@ -100,6 +105,7 @@ function App() {
              <Route index element={<CustomerHome />} />
           </Route>
         </Routes>
+        </Suspense>
       </div>
     </Router>
   );

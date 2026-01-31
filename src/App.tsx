@@ -9,7 +9,7 @@ import { supabase } from './supabaseClient';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
-import MenuView from './pages/customer/MenuView';
+const MenuView = lazy(() => import('./pages/customer/MenuView'));
 import QueueView from './pages/customer/QueueView';
 
 // Creator Pages - Lazy Load

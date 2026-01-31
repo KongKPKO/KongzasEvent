@@ -21,8 +21,14 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className =
             <div className="flex justify-center mb-3">
                {avatarUrl ? (
                   <img 
-                     src={avatarUrl} 
+                     // Optimization: Use smaller image size (150x150 covers 128px rendering well enough, prompt asked for 100 but 128 is actual css size)
+                     // User prompt asked specifically for "tr=w-100,h-100". I will use that but strictly it might be slightly blurry if rendered at 128px. 
+                     // However, prompt claimed displayed size is ~46x46. I will trust the user's LCP analysis.
+                     // I'll append/replace the transformation param.
+                     src={avatarUrl.includes('?') ? `${avatarUrl}&tr=w-100,h-100` : `${avatarUrl}?tr=w-100,h-100`} 
                      alt={title} 
+                     width="128"
+                     height="128"
                      className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md bg-gray-100"
                   />
                ) : (
@@ -39,8 +45,10 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className =
              {avatarDisplay === 'inline' && (
                 avatarUrl ? (
                    <img 
-                     src={avatarUrl} 
+                     src={avatarUrl.includes('?') ? `${avatarUrl}&tr=w-100,h-100` : `${avatarUrl}?tr=w-100,h-100`} 
                      alt={title} 
+                     width="40"
+                     height="40"
                      className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm bg-gray-100 shrink-0"
                    />
                 ) : (

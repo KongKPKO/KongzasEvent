@@ -209,7 +209,7 @@ export default function ManageCombined() {
             <AdminHeader activePage="pos" activeEvent={activeEvent} />
 
             {/* 📱 Mobile Tab Switcher */}
-            <div className="md:hidden flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0">
+            <div className="md:hidden flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
                 <button 
                     onClick={() => setActiveTab('queue')}
                     className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
@@ -227,6 +227,7 @@ export default function ManageCombined() {
                             ? 'bg-pink-50 text-pink-600 border border-pink-200' 
                             : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
+                    data-testid="pos-tab"
                 >
                     POS / Order
                 </button>
@@ -257,7 +258,7 @@ export default function ManageCombined() {
                 <div className={`
                     ${activeTab === 'pos' ? 'flex' : 'hidden'} 
                     md:flex flex-1 bg-gray-50 flex-col min-w-0
-                `}>
+                `} data-testid="pos-pane">
                     <PosPanel 
                         activeEvent={activeEvent}
                         servingQueues={servingQueues}  /* ✅ PASSED: serving only */

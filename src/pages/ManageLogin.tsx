@@ -50,7 +50,7 @@ const ManageLogin = () => {
         <Card className="p-8 shadow-xl border-gray-100 bg-white">
           <h2 className="text-xl font-bold mb-6 text-gray-800 flex items-center gap-2">
             <KeyRound className="text-green-600" />
-            Artist Login
+            Creator Login
           </h2>
 
           {errorMsg && (

@@ -5,11 +5,11 @@ export class CustomerPage {
   constructor(private page: Page) {}
 
   async goto(artistSlug: string) {
-    console.log(`[Customer] Navigating to /${artistSlug}`);
+    console.log(`[Customer] Navigating to /${artistSlug}/queue`);
     
     try {
       // Navigate with less strict load state
-      await this.page.goto(`/${artistSlug}`, {
+      await this.page.goto(`/${artistSlug}/queue`, {
         waitUntil: 'domcontentloaded', // แทน 'networkidle'
         timeout: 30000
       });
@@ -25,7 +25,7 @@ export class CustomerPage {
       console.log('[Customer] Page ready ✓');
       
     } catch (error) {
-      console.error(`[Customer] Failed to load /${artistSlug}:`, error);
+      console.error(`[Customer] Failed to load /${artistSlug}/queue:`, error);
       await this.page.screenshot({ path: 'debug-customer-goto-failed.png' });
       throw error;
     }

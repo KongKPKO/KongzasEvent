@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 
-const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'konglnwzas@gmail.com';
-const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'SupaF@irytail1';
+const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'kongphop.testy@gmail.com';
+const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'Test112233';
 const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client

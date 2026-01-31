@@ -149,6 +149,7 @@ const ManageProducts = () => {
          .from('products')
          .select('*')
          .eq('artist_id', user.id)
+         .is('deleted_at', null)
          .order('created_at', { ascending: false });
 
       if (!error && data) {
@@ -287,24 +288,19 @@ const ManageProducts = () => {
       }
    };
 
-   const handleDeleteProduct = async (id: string, imageUrl: string) => {
+   const handleDeleteProduct = async (id: string) => {
       if (!confirm('Are you sure you want to delete this product?')) return;
 
       try {
-         // 1. Delete from DB
+         // 1. Soft Delete (Update deleted_at)
          const { error: dbError } = await supabase
             .from('products')
-            .delete()
+            .update({ deleted_at: new Date().toISOString() })
             .eq('id', id);
 
          if (dbError) throw dbError;
 
-         // 2. Delete from Storage (Optional but good practice)
-         let path = imageUrl;
-         if (imageUrl.includes('Menu/')) {
-            path = imageUrl.split('Menu/')[1];
-         }
-         await supabase.storage.from('Menu').remove([path]);
+         // Note: We do NOT delete the image from storage to preserve history for past orders.
 
          await fetchProducts();
 
@@ -313,6 +309,7 @@ const ManageProducts = () => {
          alert('Failed to delete product');
       }
    };
+
 
    const handleEditClick = (product: Product) => {
       setEditingProduct(product);
@@ -866,7 +863,7 @@ const ManageProducts = () => {
                               {/* Mobile Actions (Always Visible) */}
                               <div className="absolute bottom-2 right-2 flex gap-2">
                                   <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="text-gray-400 hover:text-blue-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Edit2 size={14}/></button>
-                                  <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.image_url); }} className="text-gray-400 hover:text-red-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Trash2 size={14}/></button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id); }} className="text-gray-400 hover:text-red-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Trash2 size={14}/></button>
                               </div>
                            </div>
                         </div>
@@ -927,7 +924,7 @@ const ManageProducts = () => {
                                           <Edit2 size={18} />
                                        </button>
                                        <button 
-                                          onClick={() => handleDeleteProduct(product.id, product.image_url)}
+                                          onClick={() => handleDeleteProduct(product.id)}
                                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                           title="Delete"
                                        >

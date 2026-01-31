@@ -441,29 +441,29 @@ const MenuView = () => {
       {/* --- 🌟 1. FIXED HEADER AREA (Fix Layout Overflow) --- */}
       <div className="fixed top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-200 w-full max-w-md">
          
-         {/* Row 1: Shop Name & Queue Badge (จัดกึ่งกลาง) */}
-         <div className="flex items-center justify-center px-4 py-3 border-b border-gray-100/50 bg-white gap-3 relative">
+         {/* Row 1: Shop Name & Queue Badge (Left Aligned with standard Flexbox) */}
+         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100/50 bg-white gap-3">
             
-            {/* Center: Logo & Name */}
-            <div className="flex items-center">
+            {/* Left: Avatar & Name */}
+            <div className="flex items-center flex-1 min-w-0 mr-2">
                   {displayArtist?.image_url && (
                      <img 
                         src={displayArtist.image_url} 
                         alt="Logo" 
-                        className="w-9 h-9 rounded-full mr-3 object-cover shadow-sm border border-gray-100"
+                        className="w-10 h-10 rounded-full shrink-0 mr-3 object-cover shadow-sm border border-gray-100"
                      />
                   )}
-                  <h1 className="text-xl font-black text-pink-500 tracking-tight whitespace-nowrap">
+                  <h1 className="text-xl font-black text-pink-500 tracking-tight truncate">
                      {displayArtist?.display_name || 'Menu'}
                   </h1>
             </div>
         
-        {/* Right Side: Queue Badge (Position Absolute ขวาบน) */}
-        <div className={`absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-            <Ticket size={14} />
-            <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
-        </div>
-    </div>
+            {/* Right Side: Queue Badge */}
+            <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+               <Ticket size={14} />
+               <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
+            </div>
+         </div>
 
             {/* Search & Sort */}
             <div className="px-3 py-1.5 flex gap-2">

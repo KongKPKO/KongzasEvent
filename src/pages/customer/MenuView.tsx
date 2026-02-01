@@ -20,6 +20,9 @@ interface Product {
   currency?: string;  // ✅ NEW: Currency code
 }
 
+type CartItems = Record<string, number>;
+type CartItemNames = Record<string, string>;
+
 const MenuView = () => {
   const { artist: contextArtist } = useOutletContext<{ artist: any }>();
   const { artist, isConnected } = useArtistRealtime({ 
@@ -33,12 +36,27 @@ const MenuView = () => {
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   
   // Cart State - Initialize from localStorage
-  const [cart, setCart] = useState<Record<string, number>>(() => {
+  const readStoredCart = () => {
     const saved = localStorage.getItem(`cart_${contextArtist?.id}`);
-    return saved ? JSON.parse(saved) : {};
-  });
+    if (!saved) return { items: {}, names: {} };
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        if ('items' in parsed || 'names' in parsed) {
+          return { items: parsed.items || {}, names: parsed.names || {} };
+        }
+        return { items: parsed as CartItems, names: {} };
+      }
+    } catch {
+      return { items: {}, names: {} };
+    }
+    return { items: {}, names: {} };
+  };
+  const [cart, setCart] = useState<CartItems>(() => readStoredCart().items);
+  const [cartItemNames, setCartItemNames] = useState<CartItemNames>(() => readStoredCart().names);
   const [userQueueNumber, setUserQueueNumber] = useState<string | null>(null);
   
   // UI States
@@ -60,6 +78,11 @@ const MenuView = () => {
   const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
     return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
   });
+
+  const clearCart = () => {
+    setCart({});
+    setCartItemNames({});
+  };
 
   // --- 1. Derived Data ---
   const uniqueCategories = useMemo(() => {
@@ -94,9 +117,9 @@ const MenuView = () => {
   // --- Persist cart to localStorage ---
   useEffect(() => {
     if (contextArtist?.id) {
-      localStorage.setItem(`cart_${contextArtist.id}`, JSON.stringify(cart));
+      localStorage.setItem(`cart_${contextArtist.id}`, JSON.stringify({ items: cart, names: cartItemNames }));
     }
-  }, [cart, contextArtist?.id]);
+  }, [cart, cartItemNames, contextArtist?.id]);
 
   // --- Persist order states to localStorage ---
   useEffect(() => {
@@ -111,6 +134,7 @@ const MenuView = () => {
   useEffect(() => {
     const initData = async () => {
         setLoading(true);
+        setProductsLoaded(false);
         
         // 2.1 ✅ ตรวจสอบคิวของลูกค้าจาก LocalStorage (FIX: Scoped to Artist)
         const localQueueId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
@@ -139,6 +163,7 @@ const MenuView = () => {
 
         if (!error && data) {
             setProducts(data);
+            setProductsLoaded(true);
         }
         setLoading(false);
     };
@@ -161,6 +186,7 @@ const MenuView = () => {
 
   // ✅ NEW: Realtime Cart Cleanup - Remove sold out/disabled items automatically
   useEffect(() => {
+    if (loading || !productsLoaded) return;
     if (Object.keys(cart).length === 0) return;
 
     const itemsToRemove = Object.keys(cart).filter(id => {
@@ -175,11 +201,16 @@ const MenuView = () => {
             itemsToRemove.forEach(id => delete next[id]);
             return next;
         });
+        setCartItemNames(prev => {
+            const next = { ...prev };
+            itemsToRemove.forEach(id => delete next[id]);
+            return next;
+        });
         
-        const removedNames = itemsToRemove.map(id => products.find(p => p.id === id)?.name || 'Unknown Item');
+        const removedNames = itemsToRemove.map(id => products.find(p => p.id === id)?.name || cartItemNames[id] || 'Unknown Item');
         alert(`The following items in your cart are no longer available and have been removed:\n- ${removedNames.join('\n- ')}`);
     }
-  }, [products]); // Run whenever products list updates (via realtime)
+  }, [cart, cartItemNames, loading, products, productsLoaded]); // Run whenever products list updates (via realtime)
 
   // --- 3. Helpers ---
   const getProductImageUrl = (dbValue: string, width: number = 400) => {
@@ -193,13 +224,22 @@ const MenuView = () => {
     return getOptimizedImageUrl(data.publicUrl, width);
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
+  const updateQuantity = (productId: string, delta: number, productName?: string) => {
     if (isOrderSent) return;
     setCart(prev => {
       const current = prev[productId] || 0;
       const next = Math.max(0, current + delta);
       const newCart = { ...prev, [productId]: next };
       if (next === 0) delete newCart[productId];
+      setCartItemNames(prevNames => {
+        const nextNames = { ...prevNames };
+        if (next === 0) {
+          delete nextNames[productId];
+          return nextNames;
+        }
+        if (productName) nextNames[productId] = productName;
+        return nextNames;
+      });
       return newCart;
     });
   };
@@ -271,13 +311,13 @@ const MenuView = () => {
                 validCartItems[id] = cart[id];
                 newTotalPrice += product.price * cart[id];
             } else {
-                invalidItemNames.push(product?.name || 'Unknown Item');
+                invalidItemNames.push(product?.name || cartItemNames[id] || 'Unknown Item');
             }
         });
 
         // If ALL items are invalid
         if (Object.keys(validCartItems).length === 0) {
-            setCart({}); // Clear cart as they are all sold out
+            clearCart(); // Clear cart as they are all sold out
             throw new Error(`All items in your cart are now Sold Out:\n- ${invalidItemNames.join('\n- ')}`);
         }
 
@@ -314,7 +354,7 @@ const MenuView = () => {
             // But strict logic says "clear ordered items". 
             // Since we ordered validItems, we should clear everything.
             // The invalid items are also effectively "dealt with" (user notified).
-            setCart({});
+            clearCart();
         } else {
             // Normal success (all items ordered)
             setIsCartOpen(false);
@@ -328,7 +368,7 @@ const MenuView = () => {
 
         // Also clean invalid items from cart state if we didn't clear all
         if (invalidItemNames.length > 0) {
-             setCart({});
+             clearCart();
         }
 
     } catch (err: any) {
@@ -349,7 +389,7 @@ const MenuView = () => {
           if (error) throw error;
           
           // Reset all states
-          setCart({});
+          clearCart();
           setIsOrderSent(false);
           setSentOrderId(null);
           setIsOrderCompleted(false);
@@ -413,7 +453,7 @@ const MenuView = () => {
 
   // Helper to reset order state - Clear all localStorage and state
   const handleCloseCompletedOrder = () => {
-      setCart({});
+      clearCart();
       setIsOrderSent(false);
       setSentOrderId(null);
       setIsOrderCompleted(false);

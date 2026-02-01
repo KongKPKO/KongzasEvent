@@ -220,8 +220,8 @@ const ManageArtist = () => {
   };
 
   const handleEventSave = async () => {
-    if (!artist || !currentEvent.event_name || !currentEvent.start_date || !currentEvent.end_date) {
-      alert("Please fill in required fields (Name, Start Date, End Date)");
+    if (!artist || !currentEvent.event_name || !currentEvent.start_date) {
+      alert("Please fill in required fields (Name, Start Date)");
       return;
     }
 
@@ -238,16 +238,18 @@ const ManageArtist = () => {
          eventPayload.start_date = new Date(currentEvent.start_date).toISOString();
       }
 
-      if (currentEvent.end_date) {
-         const endDateObj = new Date(currentEvent.end_date);
-         
+      const startDateObj = new Date(currentEvent.start_date);
+      let endDateObj = currentEvent.end_date ? new Date(currentEvent.end_date) : null;
+      const endIsInvalid = !endDateObj || Number.isNaN(endDateObj.getTime());
+      if (endIsInvalid || endDateObj.getTime() <= startDateObj.getTime()) {
+         endDateObj = new Date(startDateObj);
+         endDateObj.setHours(23, 59, 59, 999);
+      } else if (endDateObj.getHours() === 0 && endDateObj.getMinutes() === 0) {
          // If time is exactly 00:00 (user didn't pick a time), set to 23:59:59
-         if (endDateObj.getHours() === 0 && endDateObj.getMinutes() === 0) {
-            endDateObj.setHours(23, 59, 59, 999);
-         }
-         
-         eventPayload.end_date = endDateObj.toISOString();
+         endDateObj.setHours(23, 59, 59, 999);
       }
+
+      eventPayload.end_date = endDateObj.toISOString();
       // ----------------------------------------
       // Remove id if it's undefined (new event) to let DB generate it
       if (!isEditingEvent) delete eventPayload.id;

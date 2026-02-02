@@ -286,6 +286,7 @@ const MenuView = () => {
             .select('id')
             .eq('artist_id', displayArtist.id)
             .eq('status', 'Confirmed')
+            .lte('start_date', now)
             .gte('end_date', now)
             .order('start_date', { ascending: false })
             .limit(1);

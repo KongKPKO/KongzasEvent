@@ -43,8 +43,9 @@ const Home = () => {
   // Derive Booth Status: Check if ANY valid event is currently open AND not ended
   const activeOpenEvent = events.find(e => {
        const isOpen = e.is_booth_open && e.status === 'Confirmed'; // Booth เปิดได้ต้อง Confirmed เท่านั้น
+       const isStarted = e.start_date <= now;
        const isNotEnded = e.end_date >= now;
-       return isOpen && isNotEnded;
+       return isOpen && isStarted && isNotEnded;
   });
   
   const isBoothActive = !!activeOpenEvent;

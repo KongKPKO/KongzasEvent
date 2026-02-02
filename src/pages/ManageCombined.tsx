@@ -71,6 +71,7 @@ export default function ManageCombined() {
                 .select('*')
                 .eq('artist_id', user.id)  // ✅ CRITICAL: Only this artist's events
                 .eq('status', 'Confirmed')
+                .lte('start_date', now)
                 .gte('end_date', now)
                 .order('start_date', { ascending: false })
                 .limit(1)

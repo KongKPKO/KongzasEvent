@@ -46,8 +46,9 @@ const QueueView = () => {
       // Filter: must be Confirmed AND not ended (end_date >= now)
       const validEvents = events.filter(event => {
           const isConfirmed = event.status === 'Confirmed';
+          const isStarted = event.start_date <= now;
           const isNotEnded = event.end_date >= now;
-          return isConfirmed && isNotEnded;
+          return isConfirmed && isStarted && isNotEnded;
       });
       
       // Sort: DESCENDING by start_date (get the LATEST started event)

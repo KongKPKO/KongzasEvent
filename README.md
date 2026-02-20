@@ -91,7 +91,14 @@ Useful commands:
 ```
 npx playwright test
 npx playwright show-report
+npm run test:api:smoke
 ```
+
+API smoke (`npm run test:api:smoke`) checks:
+- Auth health endpoint
+- REST read endpoint
+- Storage bucket readiness
+- Storage upload to `Menu` bucket
 
 ## Known Caveats & Mitigations
 Mobile POS Tab Activation
@@ -154,6 +161,7 @@ Run tests:
 ```
 npx playwright test
 npx playwright show-report
+npm run test:api:smoke
 ```
 
 ## License

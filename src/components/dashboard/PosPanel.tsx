@@ -3,21 +3,24 @@ import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, CheckCircle } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
+import type { ActorContext } from '../../types/access';
 
-// --- TYPES ---
 interface Product {
     id: string;
     name: string;
     price: number;
     image_url: string | null;
-    is_out_of_stock: boolean;
     status: string;
     category: string | null;
-    currency?: string;  // ✅ NEW: Currency code
+    currency?: string;
+    stock_total?: number | null;
+    stock_reserved?: number;
+    stock_sold?: number;
+    is_unlimited?: boolean;
 }
+
 interface CartItem { product: Product; quantity: number; notes?: string; }
 
-// ✅ SHARED TYPE: Active Event (from parent)
 interface ActiveEvent {
     id: string;
     event_name: string;
@@ -27,7 +30,6 @@ interface ActiveEvent {
     status: string;
 }
 
-// ✅ SHARED TYPE: Queue Item (from parent)
 interface QueueItem {
     id: string;
     artist_id: string;
@@ -42,97 +44,103 @@ interface QueueItem {
 
 type SortType = 'name' | 'price_low' | 'price_high';
 
-// --- PROPS ---
 interface POSPanelProps {
     activeEvent: ActiveEvent | null;
-    servingQueues: QueueItem[];  // ✅ NEW: Serving queues from parent
+    servingQueues: QueueItem[];
     selectedQueueId: string | null;
     selectedQueueNumber: string | null;
-    onSelectQueue: (queue: { id: string; queue_number: string }) => void;  // ✅ NEW: Tab selection
+    actorContext: ActorContext;
+    canUsePos: boolean;
+    onSelectQueue: (queue: { id: string; queue_number: string }) => void;
     onClearQueue: () => void;
 }
 
-export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, selectedQueueNumber, onSelectQueue, onClearQueue }: POSPanelProps) {
+export default function POSPanel({
+    activeEvent,
+    servingQueues,
+    selectedQueueId,
+    selectedQueueNumber,
+    actorContext,
+    canUsePos,
+    onSelectQueue,
+    onClearQueue,
+}: POSPanelProps) {
     const [products, setProducts] = useState<Product[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
 
-    // REFS to prevent stale closures and infinite loops
     const selectedQueueIdRef = useRef<string | null>(null);
-    const currentOrderIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
     const isFetchingRef = useRef(false);
 
-    // Search, Filter & Sort
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [sortBy, setSortBy] = useState<SortType>('name');
 
-    // Keep refs in sync with state
     useEffect(() => {
         selectedQueueIdRef.current = selectedQueueId;
     }, [selectedQueueId]);
 
     useEffect(() => {
-        currentOrderIdRef.current = currentOrderId;
-    }, [currentOrderId]);
-
-    useEffect(() => {
         productsRef.current = products;
     }, [products]);
 
-    // --- FETCH PRODUCTS (with artist_id filter for multi-tenant isolation) ---
+    const getAvailableUnits = (product: Product) => {
+        if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+        const total = product.stock_total || 0;
+        const reserved = product.stock_reserved || 0;
+        const sold = product.stock_sold || 0;
+        return Math.max(0, total - reserved - sold);
+    };
+
     const fetchProducts = useCallback(async () => {
-        // 🔐 SECURITY: Must get current user first
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            console.warn('[POS] No authenticated user for products fetch');
+        if (!canUsePos) {
             setProducts([]);
             return;
         }
 
-        // 🔐 SECURITY: Filter by artist_id to prevent data leakage
         const { data } = await supabase
             .from('products')
-            .select('*')
-            .eq('artist_id', user.id)  // ✅ CRITICAL: Only this artist's products
+            .select('id, name, price, image_url, status, category, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .eq('artist_id', actorContext.artist_id)
             .eq('status', 'enable')
+            .is('deleted_at', null)
             .order('name');
-        
-        if (data) {
-            console.log('[POS] Loaded products for artist:', user.id, 'count:', data.length);
-            setProducts(data);
-        }
-    }, []);
 
-    // --- 1. FETCH PRODUCTS + Static Realtime (runs once on mount) ---
+        if (data) setProducts(data);
+    }, [actorContext.artist_id, canUsePos]);
+
     useEffect(() => {
         fetchProducts();
 
-        const channel = supabase.channel('pos-panel-products')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchProducts)
+        if (!canUsePos) return;
+
+        const channel = supabase
+            .channel(`pos-panel-products-${actorContext.artist_id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${actorContext.artist_id}` }, fetchProducts)
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
-    }, [fetchProducts]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchProducts, actorContext.artist_id, canUsePos]);
 
-    // --- 2. STABLE FETCH ORDER FUNCTION ---
     const fetchCurrentOrder = useCallback(async () => {
+        if (!canUsePos || !activeEvent) return;
         if (isFetchingRef.current) return;
-        
-        isFetchingRef.current = true;
 
+        isFetchingRef.current = true;
         const targetQueueId = selectedQueueIdRef.current;
-        
         setLoading(true);
-        console.log('[POS] Fetching order for Queue:', targetQueueId);
 
         try {
-            let query = supabase.from('orders')
-                .select('id, status, queue_id, event_id')
-                .neq('status', 'completed');
+            let query = supabase
+                .from('orders')
+                .select('id, status, queue_id, event_id, order_items(product_id, quantity, notes)')
+                .in('status', ['draft', 'confirmed'])
+                .eq('event_id', activeEvent.id);
 
             if (targetQueueId) {
                 query = query.eq('queue_id', targetQueueId);
@@ -151,99 +159,71 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
             }
 
             if (error) {
-                console.error("Error fetching order:", error);
-                isFetchingRef.current = false;
+                console.error('[POS] Error fetching order:', error);
                 setLoading(false);
+                isFetchingRef.current = false;
                 return;
             }
 
-            if (order) {
-                console.log('[POS] Found existing order:', order.id, 'for event:', order.event_id);
-                setCurrentOrderId(order.id);
-                
-                const { data: items } = await supabase.from('order_items').select('*').eq('order_id', order.id);
-
-                if (selectedQueueIdRef.current !== targetQueueId) {
-                    isFetchingRef.current = false;
-                    return;
-                }
-
-                const currentProducts = productsRef.current;
-                if (items && currentProducts.length > 0) {
-                    const newCart: CartItem[] = items.map(item => {
-                        const prod = currentProducts.find(p => p.id === item.product_id);
-                        return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
-                    }).filter(Boolean) as CartItem[];
-
-                    setCart(newCart);
-                } else {
-                    setCart([]);
-                }
-            } else {
-                console.log('[POS] No existing order found for this queue/event');
+            if (!order) {
                 setCurrentOrderId(null);
+                setCart([]);
+                return;
+            }
+
+            setCurrentOrderId(order.id);
+
+            const currentProducts = productsRef.current;
+            const items = Array.isArray((order as any).order_items) ? (order as any).order_items : [];
+
+            if (items.length > 0 && currentProducts.length > 0) {
+                const newCart: CartItem[] = items
+                    .map((item: { product_id: string; quantity: number; notes?: string }) => {
+                        const prod = currentProducts.find((p) => p.id === item.product_id);
+                        return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
+                    })
+                    .filter(Boolean) as CartItem[];
+                setCart(newCart);
+            } else {
                 setCart([]);
             }
         } catch (err) {
-            console.error("Critical Error:", err);
+            console.error('[POS] Critical fetch order error:', err);
         } finally {
             isFetchingRef.current = false;
             if (selectedQueueIdRef.current === targetQueueId) {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [activeEvent?.id, canUsePos]);
 
-    // --- 3. REACT TO selectedQueueId OR activeEvent CHANGES ---
     useEffect(() => {
         setCart([]);
         setCurrentOrderId(null);
         setLoading(false);
         isFetchingRef.current = false;
 
-        if (activeEvent) {
+        if (activeEvent && canUsePos) {
             fetchCurrentOrder();
         }
 
         let orderChannel: RealtimeChannel | null = null;
 
-        if (selectedQueueId) {
+        if (selectedQueueId && canUsePos) {
             const channelName = `pos-orders-${selectedQueueId}-${Date.now()}`;
-            
-            orderChannel = supabase.channel(channelName)
-                .on(
-                    'postgres_changes',
-                    { 
-                        event: 'INSERT', 
-                        schema: 'public', 
-                        table: 'orders', 
-                        filter: `queue_id=eq.${selectedQueueId}` 
-                    },
-                    (payload) => {
-                        console.log('[POS] New order INSERT detected:', payload.new);
-                        setTimeout(() => {
-                            fetchCurrentOrder();
-                        }, 100);
-                    }
-                )
-                .on(
-                    'postgres_changes',
-                    { 
-                        event: 'DELETE', 
-                        schema: 'public', 
-                        table: 'orders'
-                    },
-                    (payload) => {
-                        // When order is deleted (e.g., customer cancelled from MenuView)
-                        // Check if it matches current order and clear cart
-                        console.log('[POS] Order DELETE detected:', payload.old);
-                        if (currentOrderIdRef.current && payload.old?.id === currentOrderIdRef.current) {
-                            console.log('[POS] Current order was cancelled by customer, clearing cart');
+            orderChannel = supabase
+                .channel(channelName)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `queue_id=eq.${selectedQueueId}` }, (payload) => {
+                    if (payload.eventType === 'UPDATE') {
+                        const nextStatus = (payload.new as { status?: string }).status;
+                        if (nextStatus === 'cancelled' || nextStatus === 'completed') {
                             setCart([]);
                             setCurrentOrderId(null);
+                            return;
                         }
                     }
-                )
+                    fetchCurrentOrder();
+                })
                 .subscribe();
         }
 
@@ -252,155 +232,161 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 supabase.removeChannel(orderChannel);
             }
         };
-    }, [selectedQueueId, activeEvent, fetchCurrentOrder]);
+    }, [selectedQueueId, activeEvent?.id, fetchCurrentOrder, canUsePos]);
 
-    // --- 4. DISPLAY LOGIC ---
     const categories = useMemo(() => {
-        const cats = products.map(p => p.category).filter(Boolean) as string[];
+        const cats = products.map((p) => p.category).filter(Boolean) as string[];
         return ['All', ...new Set(cats)];
     }, [products]);
 
     const filteredProducts = useMemo(() => {
-        let result = products.filter(product => {
-            const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-            return matchesSearch && matchesCategory;
-        });
-        return result.sort((a, b) => {
-            if (sortBy === 'price_low') return a.price - b.price;
-            if (sortBy === 'price_high') return b.price - a.price;
-            return a.name.localeCompare(b.name);
-        });
+        const result = products
+            .filter((product) => {
+                const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+                const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
+                const inStock = getAvailableUnits(product) > 0;
+                return matchesSearch && matchesCategory && inStock;
+            })
+            .sort((a, b) => {
+                if (sortBy === 'price_low') return a.price - b.price;
+                if (sortBy === 'price_high') return b.price - a.price;
+                return a.name.localeCompare(b.name);
+            });
+
+        return result;
     }, [products, searchQuery, selectedCategory, sortBy]);
 
-    // --- 5. HELPERS ---
     const getProductImage = (path: string | null) => {
         if (!path) return '';
         if (path.startsWith('http') || path.startsWith('blob:')) return path;
-        return `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/Menu/${path}`;
+        const { data } = supabase.storage.from('Menu').getPublicUrl(path);
+        return data.publicUrl;
     };
 
     const addToCart = (product: Product) => {
-        setCart(prev => {
-            const existing = prev.find(item => item.product.id === product.id);
-            if (existing) return prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+        if (!canUsePos) return;
+
+        setCart((prev) => {
+            const existing = prev.find((item) => item.product.id === product.id);
+            const currentQty = existing?.quantity || 0;
+            const available = getAvailableUnits(product);
+            if (!Number.isFinite(available)) {
+                if (existing) return prev.map((item) => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+                return [...prev, { product, quantity: 1 }];
+            }
+
+            if (currentQty + 1 > available) return prev;
+            if (existing) return prev.map((item) => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
             return [...prev, { product, quantity: 1 }];
         });
     };
 
     const decreaseQuantity = (productId: string) => {
-        setCart(prev => prev.map(item => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item).filter(item => item.quantity > 0));
+        setCart((prev) => prev
+            .map((item) => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
+            .filter((item) => item.quantity > 0));
     };
 
     const removeFromCart = (productId: string) => {
-        setCart(prev => prev.filter(item => item.product.id !== productId));
+        setCart((prev) => prev.filter((item) => item.product.id !== productId));
     };
 
     const totalPrice = useMemo(() => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [cart]);
 
-    // --- 6. PAYMENT HANDLER ---
+    const buildItemPayload = () => cart.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        notes: item.notes || '',
+    }));
+
     const handlePayment = async (method: 'cash' | 'transfer') => {
+        if (!canUsePos) {
+            alert('You do not have POS permission.');
+            return;
+        }
         if (!activeEvent) {
             alert('Cannot process payment: No active event.');
+            return;
+        }
+        if (cart.length === 0) {
+            alert('Cart is empty.');
             return;
         }
 
         setLoading(true);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
+            const payloadItems = buildItemPayload();
+            if (currentOrderId) {
+                const { error: syncError } = await supabase.rpc('sync_customer_order_items_with_stock', {
+                    p_order_id: currentOrderId,
+                    p_items: payloadItems,
+                });
+                if (syncError) throw syncError;
 
-            let orderId = currentOrderId;
+                const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
+                    p_order_id: currentOrderId,
+                    p_payment_method: method,
+                });
+                if (completeError) throw completeError;
+            } else if (selectedQueueId) {
+                const { data: createdOrderId, error: createError } = await supabase.rpc('create_customer_order_with_stock', {
+                    p_queue_id: selectedQueueId,
+                    p_items: payloadItems,
+                });
+                if (createError) throw createError;
 
-            if (!orderId) {
-                // ✅ FIX: Removed artist_id - orders table uses event_id to link to artist
-                const { data: order, error } = await supabase.from('orders').insert({
-                    event_id: activeEvent.id,
-                    queue_id: selectedQueueId,
-                    status: 'completed',
-                    total_price: totalPrice,
-                    currency: cart[0]?.product.currency || 'THB', // ✅ NEW: Save currency
-                    payment_method: method,
-                }).select('id').single();
-
-                if (error) {
-                    console.error('[Payment] INSERT error:', error);
-                    throw error;
-                }
-                orderId = order.id;
+                const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
+                const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
+                    p_order_id: orderId,
+                    p_payment_method: method,
+                });
+                if (completeError) throw completeError;
             } else {
-                console.log('[Payment] Adopting order', orderId, 'into event:', activeEvent.id);
-                
-                const { error } = await supabase.from('orders').update({ 
-                    status: 'completed', 
-                    total_price: totalPrice,
-                    currency: cart[0]?.product.currency || 'THB', // ✅ NEW: Update currency
-                    payment_method: method,
-                    event_id: activeEvent.id
-                }).eq('id', orderId);
-                
-                if (error) {
-                    console.error('[Payment] UPDATE error:', error);
-                    throw error;
-                }
+                const { error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
+                    p_event_id: activeEvent.id,
+                    p_items: payloadItems,
+                    p_payment_method: method,
+                });
+                if (walkinError) throw walkinError;
             }
 
-            await supabase.from('order_items').delete().eq('order_id', orderId);
-            
-            const itemsToInsert = cart.map(item => ({
-                order_id: orderId,
-                product_id: item.product.id,
-                quantity: item.quantity,
-                price_per_unit: item.product.price,
-                notes: item.notes || ''
-            }));
-            
-            if (itemsToInsert.length > 0) {
-                await supabase.from('order_items').insert(itemsToInsert);
-            }
-
-            if (selectedQueueId) {
-                const { error: queueError } = await supabase
-                    .from('queues')
-                    .update({ status: 'complete' }) 
-                    .eq('id', selectedQueueId);
-                
-                if (queueError) {
-                    console.error('[Payment] Queue update error:', queueError);
-                    throw queueError;
-                }
-            }
-
-            console.log('[Payment] Success:', method.toUpperCase());
-            
-            setCart([]); 
+            setCart([]);
             setCurrentOrderId(null);
             setIsPaymentModalOpen(false);
             onClearQueue();
-
+            await fetchProducts();
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            console.error('[Payment] Full error:', err);
+            console.error('[Payment] error:', err);
             alert('Error: ' + errorMessage);
         } finally {
             setLoading(false);
         }
     };
 
+    if (!canUsePos) {
+        return (
+            <div className="h-full flex items-center justify-center p-6">
+                <div className="max-w-md w-full bg-white border border-gray-200 rounded-xl p-6 text-center">
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">POS Access Restricted</h3>
+                    <p className="text-sm text-gray-600">Your account role is queue-only. You can manage queue flow but cannot charge orders.</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* ✅ NEW: Horizontal Tabs Header for Customer Selection */}
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                        {/* Walk-in Tab (Always First) */}
                         <button
                             onClick={onClearQueue}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
-                                !selectedQueueId 
-                                    ? 'bg-pink-600 text-white shadow-md shadow-pink-200' 
+                                !selectedQueueId
+                                    ? 'bg-pink-600 text-white shadow-md shadow-pink-200'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
@@ -408,16 +394,15 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                             <span>Walk-in</span>
                         </button>
 
-                        {/* Serving Queue Tabs */}
-                        {servingQueues.map(queue => {
+                        {servingQueues.map((queue) => {
                             const isSelected = selectedQueueId === queue.id;
                             return (
                                 <button
                                     key={queue.id}
                                     onClick={() => onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) })}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
-                                        isSelected 
-                                            ? 'bg-pink-600 text-white shadow-md shadow-pink-200' 
+                                        isSelected
+                                            ? 'bg-pink-600 text-white shadow-md shadow-pink-200'
                                             : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
                                     }`}
                                 >
@@ -427,17 +412,15 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                             );
                         })}
 
-                        {/* Empty state hint */}
                         {servingQueues.length === 0 && (
                             <div className="text-xs text-gray-500 italic px-2">No queues serving</div>
                         )}
                     </div>
                 </div>
 
-                {/* Current Selection Indicator */}
                 <div className={`px-4 py-2 border-t transition-colors ${
-                    selectedQueueId 
-                        ? 'bg-gradient-to-r from-pink-50 to-rose-50 border-pink-100' 
+                    selectedQueueId
+                        ? 'bg-gradient-to-r from-pink-50 to-rose-50 border-pink-100'
                         : 'bg-gray-50/50 border-gray-100'
                 }`}>
                     <div className="flex justify-between items-center">
@@ -459,7 +442,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                                 <span className="text-lg font-extrabold text-gray-700">Walk-in Customer</span>
                             )}
                         </div>
-                        
+
                         {activeEvent && (
                             <div className="text-right">
                                 <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Event</div>
@@ -473,7 +456,6 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                {/* LEFT: Cart */}
                 <div className="w-full h-[40%] md:h-full md:w-[280px] bg-white border-b md:border-b-0 md:border-r border-pink-100 flex flex-col shrink-0 order-1 md:order-1">
                     <div className="flex-1 overflow-y-auto p-3 space-y-2" tabIndex={0} role="region" aria-label="Shopping cart">
                         {cart.length === 0 ? (
@@ -518,19 +500,18 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         )}
                     </div>
 
-                    {/* Total & Charge */}
                     <div className="p-3 border-t border-pink-100 bg-white shrink-0">
                         <div className="flex justify-between items-baseline mb-2">
                             <span className="text-gray-500 font-medium text-sm">Total</span>
                             <span className="text-2xl font-extrabold text-gray-900">{formatPrice(totalPrice, cart[0]?.product.currency)}</span>
                         </div>
-                        
+
                         {!activeEvent && (
                             <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600 font-bold text-center">
                                 ⚠️ No Active Event / Event Ended
                             </div>
                         )}
-                        
+
                         <button
                             disabled={cart.length === 0 || loading || !activeEvent}
                             onClick={() => setIsPaymentModalOpen(true)}
@@ -541,9 +522,7 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                     </div>
                 </div>
 
-                {/* RIGHT: Product Grid */}
                 <div className="flex-1 flex flex-col min-w-0 bg-gray-50/50 order-2 md:order-2">
-                    {/* Search & Filter */}
                     <div className="bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
                         <div className="flex gap-2">
                             <input
@@ -578,7 +557,6 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         </div>
                     </div>
 
-                    {/* Product Grid */}
                     <div className="flex-1 overflow-y-auto p-4" tabIndex={0} role="region" aria-label="Product grid">
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
@@ -614,7 +592,6 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                 </div>
             </div>
 
-            {/* Payment Modal */}
             {isPaymentModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
@@ -638,9 +615,9 @@ export default function POSPanel({ activeEvent, servingQueues, selectedQueueId, 
                         </div>
                         <button
                             onClick={() => setIsPaymentModalOpen(false)}
-                            className="w-full py-3 text-gray-500 font-bold hover:bg-gray-50 hover:text-gray-600 rounded-xl transition-colors"
+                            className="w-full py-2 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
                         >
-                            CANCEL
+                            Cancel
                         </button>
                     </div>
                 </div>

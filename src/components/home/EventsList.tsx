@@ -7,7 +7,8 @@ interface Event {
     event_name: string;
     start_date: string;
     end_date: string;
-    location_name: string;
+    location?: string | null;
+    booth_detail?: string | null;
     entrance_fee?: string;
     transit_info?: string;
     status: string;
@@ -89,7 +90,16 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                       <div className="flex-1 space-y-2 pt-0.5">
                          <h4 className="font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h4>
                          <div className="space-y-1.5 text-gray-500 text-xs font-medium">
-                            <div className="flex items-start gap-2"><MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{event.location_name}</span></div>
+                            <div className="flex items-start gap-2">
+                              <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
+                              <span>{event.location || '-'}</span>
+                            </div>
+                            {event.booth_detail && (
+                              <div className="flex items-start gap-2">
+                                <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
+                                <span>Booth: {event.booth_detail}</span>
+                              </div>
+                            )}
 
                             {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{event.entrance_fee}</span></div>}
                             {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}

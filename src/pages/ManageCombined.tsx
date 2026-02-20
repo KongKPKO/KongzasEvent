@@ -4,8 +4,9 @@ import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
 import { Loader2 } from 'lucide-react';
+import type { ActorContext } from '../types/access';
+import { canUsePos } from '../types/access';
 
-// --- SHARED TYPE: Active Event ---
 export interface ActiveEvent {
     id: string;
     event_name: string;
@@ -15,7 +16,6 @@ export interface ActiveEvent {
     status: string;
 }
 
-// --- SHARED TYPE: Queue Item ---
 export interface QueueItem {
     id: string;
     artist_id: string;
@@ -23,53 +23,38 @@ export interface QueueItem {
     queue_number: number;
     status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued';
     last_updated_at: string;
+    called_at?: string;
     created_at?: string;
     served_at?: string;
     completed_at?: string;
 }
 
-export default function ManageCombined() {
-    // ✅ SINGLE SOURCE OF TRUTH: Active Event
+interface ManageCombinedProps {
+    actorContext: ActorContext;
+}
+
+export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [eventLoading, setEventLoading] = useState(true);
-    
-    // ✅ LIFTED STATE: Queues now managed here (passed to children)
     const [queues, setQueues] = useState<QueueItem[]>([]);
-    
-    // Shared state to connect both panels
+
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
-
-    // Mobile specific state
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>('queue');
 
-    // Refs for stable callbacks
     const activeEventIdRef = useRef<string | null>(null);
 
-    // Keep ref in sync
     useEffect(() => {
         activeEventIdRef.current = activeEvent?.id || null;
     }, [activeEvent]);
 
-    // ✅ FETCH ACTIVE EVENT (with artist_id filter for multi-tenant isolation)
     const fetchActiveEvent = useCallback(async () => {
         try {
-            // 🔐 SECURITY: Must get current user first
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                console.warn('[ManageCombined] No authenticated user');
-                setActiveEvent(null);
-                setEventLoading(false);
-                return;
-            }
-
             const now = new Date().toISOString();
-            
-            // 🔐 SECURITY: Filter by artist_id to prevent data leakage
             const { data, error } = await supabase
                 .from('events')
-                .select('*')
-                .eq('artist_id', user.id)  // ✅ CRITICAL: Only this artist's events
+                .select('id, event_name, start_date, end_date, is_booth_open, status')
+                .eq('artist_id', actorContext.artist_id)
                 .eq('status', 'Confirmed')
                 .lte('start_date', now)
                 .gte('end_date', now)
@@ -80,12 +65,8 @@ export default function ManageCombined() {
             if (error) {
                 console.error('[ManageCombined] Error fetching active event:', error);
                 setActiveEvent(null);
-            } else if (data) {
-                console.log('[ManageCombined] Active event loaded:', data.event_name);
-                setActiveEvent(data as ActiveEvent);
             } else {
-                console.log('[ManageCombined] No active event found for this artist');
-                setActiveEvent(null);
+                setActiveEvent((data as ActiveEvent) || null);
             }
         } catch (err) {
             console.error('[ManageCombined] Error fetching active event:', err);
@@ -93,9 +74,8 @@ export default function ManageCombined() {
         } finally {
             setEventLoading(false);
         }
-    }, []);
+    }, [actorContext.artist_id]);
 
-    // ✅ FETCH QUEUES (lifted from QueuePanel)
     const fetchQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
         if (!eventId) {
@@ -103,37 +83,68 @@ export default function ManageCombined() {
             return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        console.log('[ManageCombined] Fetching queues for event:', eventId);
         const { data, error } = await supabase
             .from('queues')
-            .select('*')
-            .eq('artist_id', user.id)
+            .select('id, artist_id, event_id, queue_number, status, called_at, last_updated_at, created_at, served_at, completed_at')
+            .eq('artist_id', actorContext.artist_id)
             .eq('event_id', eventId)
-            .order('id', { ascending: true });
+            .order('queue_number', { ascending: true });
 
         if (!error && data) {
             setQueues(data);
         }
-    }, []);
+    }, [actorContext.artist_id]);
 
-    // ✅ Initial fetch + realtime subscriptions
+    const expireStaleCallingQueues = useCallback(async () => {
+        const eventId = activeEventIdRef.current;
+        if (!eventId) return;
+
+        const staleThresholdMs = Date.now() - (30 * 60 * 1000);
+        const { data, error } = await supabase
+            .from('queues')
+            .select('id, called_at, last_updated_at')
+            .eq('artist_id', actorContext.artist_id)
+            .eq('event_id', eventId)
+            .eq('status', 'calling');
+
+        if (error || !data || data.length === 0) return;
+
+        const staleIds = data
+            .filter((ticket) => {
+                const sourceTime = ticket.called_at || ticket.last_updated_at;
+                const sourceMs = new Date(sourceTime).getTime();
+                return Number.isFinite(sourceMs) && sourceMs <= staleThresholdMs;
+            })
+            .map((ticket) => ticket.id);
+
+        if (staleIds.length === 0) return;
+
+        const { error: updateError } = await supabase
+            .from('queues')
+            .update({
+                status: 'expired',
+                last_updated_at: new Date().toISOString(),
+            })
+            .in('id', staleIds)
+            .eq('status', 'calling');
+
+        if (updateError) {
+            console.error('[ManageCombined] Failed to expire stale calling queues:', updateError);
+        }
+    }, [actorContext.artist_id]);
+
     useEffect(() => {
         fetchActiveEvent();
 
-        const channel = supabase.channel('manage-combined-events')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
-                console.log('[ManageCombined] Event change detected, refetching...');
+        const channel = supabase.channel(`manage-combined-events-${actorContext.artist_id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `artist_id=eq.${actorContext.artist_id}` }, () => {
                 fetchActiveEvent();
             })
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [fetchActiveEvent]);
+    }, [fetchActiveEvent, actorContext.artist_id]);
 
-    // ✅ Fetch queues when activeEvent changes
     useEffect(() => {
         if (activeEvent) {
             fetchQueues();
@@ -142,59 +153,56 @@ export default function ManageCombined() {
         }
     }, [activeEvent?.id, fetchQueues]);
 
-    // ✅ Realtime subscription for QUEUES (lifted from QueuePanel)
     useEffect(() => {
-        let channel: ReturnType<typeof supabase.channel> | null = null;
+        if (!activeEvent?.id) return;
 
-        const setupQueueRealtime = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+        expireStaleCallingQueues();
+        const timer = setInterval(() => {
+            expireStaleCallingQueues();
+        }, 30_000);
 
-            channel = supabase
-                .channel(`manage-combined-queues-${user.id}`)
-                .on(
-                    'postgres_changes',
-                    { event: '*', schema: 'public', table: 'queues', filter: `artist_id=eq.${user.id}` },
-                    (payload) => {
-                        if (payload.eventType === 'INSERT') {
-                            const newTicket = payload.new as QueueItem;
-                            setQueues((prev) => {
-                                if (prev.find(q => q.id === newTicket.id)) return prev;
-                                return [...prev, newTicket];
-                            });
-                        } else if (payload.eventType === 'UPDATE') {
-                            const updatedTicket = payload.new as QueueItem;
-                            setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
-                        } else if (payload.eventType === 'DELETE') {
-                            const deletedId = (payload.old as QueueItem).id;
-                            setQueues((prev) => prev.filter(q => q.id !== deletedId));
-                        }
+        return () => clearInterval(timer);
+    }, [activeEvent?.id, expireStaleCallingQueues]);
+
+    useEffect(() => {
+        if (!activeEvent?.id) return;
+
+        const channel = supabase
+            .channel(`manage-combined-queues-${actorContext.artist_id}-${activeEvent.id}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'queues', filter: `event_id=eq.${activeEvent.id}` },
+                (payload) => {
+                    if (payload.eventType === 'INSERT') {
+                        const newTicket = payload.new as QueueItem;
+                        setQueues((prev) => {
+                            if (prev.find(q => q.id === newTicket.id)) return prev;
+                            return [...prev, newTicket];
+                        });
+                    } else if (payload.eventType === 'UPDATE') {
+                        const updatedTicket = payload.new as QueueItem;
+                        setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
+                    } else if (payload.eventType === 'DELETE') {
+                        const deletedId = (payload.old as QueueItem).id;
+                        setQueues((prev) => prev.filter(q => q.id !== deletedId));
                     }
-                )
-                .subscribe();
-        };
-
-        setupQueueRealtime();
+                }
+            )
+            .subscribe();
 
         return () => {
-            if (channel) supabase.removeChannel(channel);
+            supabase.removeChannel(channel);
         };
-    }, []);
+    }, [actorContext.artist_id, activeEvent?.id]);
 
-
-
-    // ✅ DERIVED STATE: Filter queues for each panel
     const filteredQueues = activeEvent?.id
         ? queues.filter(q => q.event_id === activeEvent.id)
         : queues;
 
-    // Serving queues go to POS header (RIGHT panel)
     const servingQueues = filteredQueues.filter(q => q.status === 'serving');
-    
-    // Other queues go to QueuePanel (LEFT panel) - waiting, calling, missed
     const otherQueues = filteredQueues.filter(q => q.status !== 'serving');
+    const hasPosPermission = canUsePos(actorContext.role);
 
-    // Loading state
     if (eventLoading) {
         return (
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
@@ -206,65 +214,65 @@ export default function ManageCombined() {
 
     return (
         <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-            {/* ✅ Unified Admin Header */}
-            <AdminHeader activePage="pos" activeEvent={activeEvent} />
+            <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
-            {/* 📱 Mobile Tab Switcher */}
             <div className="md:hidden flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
-                <button 
+                <button
                     onClick={() => setActiveTab('queue')}
                     className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                        activeTab === 'queue' 
-                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
+                        activeTab === 'queue'
+                            ? 'bg-pink-50 text-pink-600 border border-pink-200'
                             : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                 >
                     Queue Control
                 </button>
-                <button 
-                    onClick={() => setActiveTab('pos')}
-                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                        activeTab === 'pos' 
-                            ? 'bg-pink-50 text-pink-600 border border-pink-200' 
-                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                    data-testid="pos-tab"
-                >
-                    POS / Order
-                </button>
+                {hasPosPermission && (
+                    <button
+                        onClick={() => setActiveTab('pos')}
+                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                            activeTab === 'pos'
+                                ? 'bg-pink-50 text-pink-600 border border-pink-200'
+                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                        data-testid="pos-tab"
+                    >
+                        POS / Order
+                    </button>
+                )}
             </div>
 
-            {/* MAIN CONTENT (Split View) */}
             <div className="flex flex-1 overflow-hidden">
-                
-                {/* LEFT PANEL: Queue Management (35%) - Hidden on mobile unless queue tab active */}
                 <div className={`
-                    ${activeTab === 'queue' ? 'flex' : 'hidden'} 
-                    md:flex w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px] 
-                    border-r border-gray-200 bg-white flex-col z-10 
+                    ${activeTab === 'queue' ? 'flex' : 'hidden'}
+                    md:flex w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px]
+                    border-r border-gray-200 bg-white flex-col z-10
                     shadow-[4px_0_24px_rgba(0,0,0,0.02)]
                 `}>
-                    <QueuePanel 
+                    <QueuePanel
                         activeEvent={activeEvent}
-                        queues={otherQueues}  /* ✅ PASSED: waiting, calling, missed only */
+                        queues={otherQueues}
                         selectedQueueId={selectedQueueId}
+                        actorContext={actorContext}
                         onSelectQueue={(queue) => {
                             setSelectedQueueId(queue.id);
                             setSelectedQueueNumber(queue.queue_number);
+                            if (hasPosPermission) setActiveTab('pos');
                         }}
                     />
                 </div>
 
-                {/* RIGHT PANEL: POS & Orders (65%) - Hidden on mobile unless pos tab active */}
                 <div className={`
-                    ${activeTab === 'pos' ? 'flex' : 'hidden'} 
+                    ${activeTab === 'pos' ? 'flex' : 'hidden'}
                     md:flex flex-1 bg-gray-50 flex-col min-w-0
                 `} data-testid="pos-pane">
-                    <PosPanel 
+                    <PosPanel
                         activeEvent={activeEvent}
-                        servingQueues={servingQueues}  /* ✅ PASSED: serving only */
+                        servingQueues={servingQueues}
                         selectedQueueId={selectedQueueId}
                         selectedQueueNumber={selectedQueueNumber}
+                        actorContext={actorContext}
+                        canUsePos={hasPosPermission}
                         onSelectQueue={(queue) => {
                             setSelectedQueueId(queue.id);
                             setSelectedQueueNumber(queue.queue_number);
@@ -275,7 +283,6 @@ export default function ManageCombined() {
                         }}
                     />
                 </div>
-
             </div>
         </div>
     );

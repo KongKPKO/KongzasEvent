@@ -13,6 +13,10 @@ interface Product {
     category?: string;
     status?: 'enable' | 'disable' | 'soldout';
     currency?: string;
+    stock_total?: number | null;
+    stock_reserved?: number;
+    stock_sold?: number;
+    is_unlimited?: boolean;
 }
 
 interface ProductListProps {
@@ -23,6 +27,13 @@ interface ProductListProps {
 }
 
 const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
+    const getAvailableUnits = (product: Product) => {
+        if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+        const total = product.stock_total || 0;
+        const reserved = product.stock_reserved || 0;
+        const sold = product.stock_sold || 0;
+        return Math.max(0, total - reserved - sold);
+    };
 
     const getProductImageUrl = (dbValue: string, width: number = 400) => {
         if (!dbValue) return '';
@@ -40,6 +51,9 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
           {products.map((product, index) => {
             const qty = cart[product.id] || 0;
             const isFirst = index === 0;
+            const availableUnits = getAvailableUnits(product);
+            const outOfStock = availableUnits <= 0;
+            const soldOut = product.status === 'soldout' || outOfStock;
 
             return (
                <div key={product.id} className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full border border-gray-100 transition-all ${qty > 0 ? 'ring-2 ring-pink-500' : ''}`}>
@@ -60,7 +74,7 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }} 
                         />
                      ) : (<div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>)}
-                     {product.status === 'soldout' && (
+                     {soldOut && (
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"><span className="text-white font-bold border-2 px-2 py-1 rotate-[-12deg] text-xs">SOLD OUT</span></div>
                      )}
                   </div>
@@ -71,13 +85,16 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
                      </div>
                      <div className="flex flex-col gap-1.5">
                         <div className="text-pink-600 font-extrabold text-sm">{formatPrice(product.price, product.currency)}</div>
+                        {!product.is_unlimited && (
+                           <div className="text-[9px] text-gray-400">Left: {Math.max(0, availableUnits - qty)}</div>
+                        )}
                         {qty === 0 ? (
-                           <button onClick={() => product.status !== 'soldout' && onUpdateQuantity(product.id, 1, product.name)} disabled={product.status === 'soldout' || isOrderSent} className={`w-full rounded-md py-1 flex items-center justify-center gap-1 text-[10px] font-bold transition-all ${product.status === 'soldout' || isOrderSent ? 'bg-gray-100 text-gray-400' : 'bg-gray-900 text-white active:scale-95'}`}><ShoppingBag size={10} /> ADD</button>
+                           <button onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)} disabled={soldOut || isOrderSent} className={`w-full rounded-md py-1 flex items-center justify-center gap-1 text-[10px] font-bold transition-all ${soldOut || isOrderSent ? 'bg-gray-100 text-gray-400' : 'bg-gray-900 text-white active:scale-95'}`}><ShoppingBag size={10} /> ADD</button>
                         ) : (
                            <div className="flex items-center justify-between bg-pink-50 rounded-md p-0.5 border border-pink-100">
                               <button onClick={() => onUpdateQuantity(product.id, -1, product.name)} className="w-6 h-6 rounded bg-white text-pink-600 flex items-center justify-center shadow-sm"><Minus size={12} /></button>
                               <span className="font-bold text-xs">{qty}</span>
-                              <button onClick={() => onUpdateQuantity(product.id, 1, product.name)} className="w-6 h-6 rounded bg-pink-500 text-white flex items-center justify-center shadow-md"><Plus size={12} /></button>
+                              <button onClick={() => onUpdateQuantity(product.id, 1, product.name)} disabled={!product.is_unlimited && qty >= availableUnits} className="w-6 h-6 rounded bg-pink-500 text-white flex items-center justify-center shadow-md disabled:bg-gray-300 disabled:shadow-none"><Plus size={12} /></button>
                            </div>
                         )}
                      </div>

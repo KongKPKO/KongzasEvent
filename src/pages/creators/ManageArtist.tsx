@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   Trash2, Plus, Calendar, MapPin, FileText, 
@@ -8,6 +8,13 @@ import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
+import { getAuthUserSafe } from '../../utils/auth';
+import {
+  formatDateTimeForInput,
+  getBrowserTimeZone,
+  getEventTimeZoneOptions,
+  parseDateTimeInputInTimeZone,
+} from '../../utils/timezone';
 
 interface Artist {
   id: string;
@@ -26,9 +33,13 @@ interface Event {
   id: string;
   artist_id: string;
   event_name: string;
-  location_name: string;
-  location_detail: string;
-
+  event_timezone?: string | null;
+  location?: string | null;
+  booth_detail?: string | null;
+  queueing_area?: string | null;
+  location_name?: string | null;
+  location_detail?: string | null;
+  booth_number?: string | null;
   entrance_fee: string;
   transit_info: string;
   start_date: string;
@@ -38,6 +49,7 @@ interface Event {
 
 const ManageArtist = () => {
   const navigate = useNavigate();
+  const browserTimeZone = getBrowserTimeZone();
   
   const [artist, setArtist] = useState<Artist | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -48,6 +60,10 @@ const ManageArtist = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEvent, setCurrentEvent] = useState<Partial<Event>>({});
   const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const timeZoneOptions = useMemo(
+    () => getEventTimeZoneOptions(currentEvent.event_timezone || browserTimeZone),
+    [currentEvent.event_timezone, browserTimeZone]
+  );
 
   // Stats Modal State
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
@@ -66,7 +82,7 @@ const ManageArtist = () => {
         if (isMounted) setIsLoading(true);
 
         // 1. Get User
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getAuthUserSafe();
         if (!user) {
            navigate('/manage-login'); // Force redirect
            return;
@@ -75,7 +91,7 @@ const ManageArtist = () => {
         // 2. Fetch Artist by User ID
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
-          .select('*')
+          .select('id, display_name, bio, image_url, x_url, ig_url, facebook_url, tiktok_url, email')
           .eq('id', user.id)
           .single();
 
@@ -87,16 +103,29 @@ const ManageArtist = () => {
           // 2. Fetch Events
           const { data: eventData, error: eventError } = await supabase
             .from('events')
-            .select('*')
+            .select('id, artist_id, event_name, event_timezone, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, start_date, end_date, status')
             .eq('artist_id', artistData.id)
             .order('start_date', { ascending: true });
 
           if (eventError) throw eventError;
 
           if (isMounted) {
+            const normalizedEvents = (eventData || []).map((evt: Event) => {
+              const fallbackLocation = [evt.location_name, evt.location_detail]
+                .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+                .join(', ');
+
+              return {
+                ...evt,
+                event_timezone: evt.event_timezone || browserTimeZone,
+                location: evt.location && evt.location.trim().length > 0 ? evt.location : fallbackLocation,
+                booth_detail: evt.booth_detail && evt.booth_detail.trim().length > 0 ? evt.booth_detail : evt.booth_number
+              };
+            });
+
             // Auto-update events that have passed end_date to 'Ended'
             const now = new Date();
-            const updatedEvents = (eventData || []).map((evt: Event) => {
+            const updatedEvents = normalizedEvents.map((evt: Event) => {
               if (evt.status === 'Confirmed' && new Date(evt.end_date) < now) {
                 return { ...evt, status: 'Ended' as const };
               }
@@ -106,7 +135,7 @@ const ManageArtist = () => {
             // Update in database for events that need to be marked as Ended
             const endedEventIds = updatedEvents
               .filter((evt: Event, idx: number) => 
-                eventData && eventData[idx]?.status === 'Confirmed' && evt.status === 'Ended'
+                normalizedEvents[idx]?.status === 'Confirmed' && evt.status === 'Ended'
               )
               .map((evt: Event) => evt.id);
 
@@ -133,7 +162,7 @@ const ManageArtist = () => {
     fetchData();
 
     return () => { isMounted = false; };
-  }, []);
+  }, [browserTimeZone]);
 
 
 
@@ -196,14 +225,26 @@ const ManageArtist = () => {
 
   const handleOpenModal = (event?: Event) => {
     if (event) {
-      setCurrentEvent(event);
+      const fallbackLocation = [event.location_name, event.location_detail]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .join(', ');
+
+      setCurrentEvent({
+        ...event,
+        event_timezone: event.event_timezone || browserTimeZone,
+        start_date: formatDateTimeForInput(event.start_date, event.event_timezone || browserTimeZone),
+        end_date: formatDateTimeForInput(event.end_date, event.event_timezone || browserTimeZone),
+        location: event.location && event.location.trim().length > 0 ? event.location : fallbackLocation,
+        booth_detail: event.booth_detail && event.booth_detail.trim().length > 0 ? event.booth_detail : event.booth_number
+      });
       setIsEditingEvent(true);
     } else {
       setCurrentEvent({
         event_name: '',
-        location_name: '',
-        location_detail: '',
-
+        event_timezone: browserTimeZone,
+        location: '',
+        booth_detail: '',
+        queueing_area: '',
         entrance_fee: '',
         transit_info: '',
         start_date: '',
@@ -216,7 +257,32 @@ const ManageArtist = () => {
   };
 
   const handleFunctionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setCurrentEvent({ ...currentEvent, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    if (name === 'event_timezone') {
+      const previousTimeZone = currentEvent.event_timezone || browserTimeZone;
+      const nextTimeZone = value || browserTimeZone;
+      const nextEvent = { ...currentEvent, event_timezone: nextTimeZone };
+
+      if (currentEvent.start_date) {
+        const startDate = parseDateTimeInputInTimeZone(currentEvent.start_date, previousTimeZone);
+        if (startDate) {
+          nextEvent.start_date = formatDateTimeForInput(startDate, nextTimeZone);
+        }
+      }
+
+      if (currentEvent.end_date) {
+        const endDate = parseDateTimeInputInTimeZone(currentEvent.end_date, previousTimeZone);
+        if (endDate) {
+          nextEvent.end_date = formatDateTimeForInput(endDate, nextTimeZone);
+        }
+      }
+
+      setCurrentEvent(nextEvent);
+      return;
+    }
+
+    setCurrentEvent({ ...currentEvent, [name]: value });
   };
 
   const handleEventSave = async () => {
@@ -227,30 +293,39 @@ const ManageArtist = () => {
 
     try {
       setIsSaving(true);
+      const eventTimeZone = currentEvent.event_timezone || browserTimeZone;
+      const parsedStart = parseDateTimeInputInTimeZone(currentEvent.start_date || '', eventTimeZone);
+
+      if (!parsedStart) {
+        alert('Invalid start date/time. Please check the selected timezone and date.');
+        return;
+      }
+
+      let parsedEnd = currentEvent.end_date
+        ? parseDateTimeInputInTimeZone(currentEvent.end_date, eventTimeZone)
+        : null;
+
+      if (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
+        const startDatePart = (currentEvent.start_date || '').split('T')[0];
+        const defaultEndInput = `${startDatePart}T23:59`;
+        parsedEnd = parseDateTimeInputInTimeZone(defaultEndInput, eventTimeZone);
+      }
+
+      if (!parsedEnd) {
+        parsedEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+      }
       
       const eventPayload = {
         ...currentEvent,
         artist_id: artist.id,
+        event_timezone: eventTimeZone,
+        start_date: parsedStart.toISOString(),
+        end_date: parsedEnd.toISOString(),
+        location_name: currentEvent.location || '',
+        location_detail: null,
+        booth_number: currentEvent.booth_detail || null
       };
 
-      // --- Fix: Timezone & End of Day Logic ---
-      if (currentEvent.start_date) {
-         eventPayload.start_date = new Date(currentEvent.start_date).toISOString();
-      }
-
-      const startDateObj = new Date(currentEvent.start_date);
-      let endDateObj = currentEvent.end_date ? new Date(currentEvent.end_date) : null;
-      const endIsInvalid = !endDateObj || Number.isNaN(endDateObj.getTime());
-      if (endIsInvalid || endDateObj.getTime() <= startDateObj.getTime()) {
-         endDateObj = new Date(startDateObj);
-         endDateObj.setHours(23, 59, 59, 999);
-      } else if (endDateObj.getHours() === 0 && endDateObj.getMinutes() === 0) {
-         // If time is exactly 00:00 (user didn't pick a time), set to 23:59:59
-         endDateObj.setHours(23, 59, 59, 999);
-      }
-
-      eventPayload.end_date = endDateObj.toISOString();
-      // ----------------------------------------
       // Remove id if it's undefined (new event) to let DB generate it
       if (!isEditingEvent) delete eventPayload.id;
 
@@ -263,10 +338,25 @@ const ManageArtist = () => {
       if (error) throw error;
 
       if (data) {
+        const normalizedData = {
+          ...data,
+          event_timezone: data.event_timezone || browserTimeZone,
+          location:
+            data.location && data.location.trim().length > 0
+              ? data.location
+              : [data.location_name, data.location_detail]
+                  .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+                  .join(', '),
+          booth_detail:
+            data.booth_detail && data.booth_detail.trim().length > 0
+              ? data.booth_detail
+              : data.booth_number,
+        };
+
         if (isEditingEvent) {
-          setEvents(events.map(e => e.id === data.id ? data : e));
+          setEvents(events.map(e => e.id === normalizedData.id ? normalizedData : e));
         } else {
-          setEvents([...events, data].sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()));
+          setEvents([...events, normalizedData].sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()));
         }
         setIsModalOpen(false);
       }
@@ -300,7 +390,7 @@ const ManageArtist = () => {
       try {
          const { data: queues, error } = await supabase
             .from('queues')
-            .select('*')
+            .select('id, status, created_at, called_at, served_at, completed_at')
             .eq('event_id', event.id);
 
          if (error) throw error;
@@ -587,8 +677,8 @@ const ManageArtist = () => {
                                      <div className="flex items-start gap-1.5">
                                         <MapPin size={12} className="shrink-0 mt-0.5 text-pink-400" />
                                         <span>
-                                           {evt.location_name}
-                                           {evt.location_detail && <span className="block text-gray-400 text-[10px]">{evt.location_detail}</span>}
+                                           {evt.location || '-'}
+                                           {evt.booth_detail && <span className="block text-gray-400 text-[10px]">Booth: {evt.booth_detail}</span>}
                                         </span>
                                      </div>
                                   </td>
@@ -666,27 +756,47 @@ const ManageArtist = () => {
                      <input name="event_name" value={currentEvent.event_name} onChange={handleFunctionChange} className="input-field w-full border border-gray-200 rounded-lg p-3 font-semibold focus:ring-pink-500 focus:border-pink-500 outline-none" placeholder="e.g. Cosplay Festival 2026" />
                   </div>
 
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Time Zone *</label>
+                     <select
+                        name="event_timezone"
+                        value={currentEvent.event_timezone || browserTimeZone}
+                        onChange={handleFunctionChange}
+                        className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 bg-white"
+                        aria-label="Event timezone"
+                     >
+                        {timeZoneOptions.map((timeZone) => (
+                           <option key={timeZone.value} value={timeZone.value}>
+                              {timeZone.label}
+                           </option>
+                        ))}
+                     </select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1">
                         <label className="font-bold text-xs uppercase text-gray-400">Start Date *</label>
-                        <input type="datetime-local" name="start_date" value={currentEvent.start_date} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
+                        <input type="datetime-local" name="start_date" value={currentEvent.start_date || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
                      </div>
                      <div className="space-y-1">
                         <label className="font-bold text-xs uppercase text-gray-400">End Date *</label>
-                        <input type="datetime-local" name="end_date" value={currentEvent.end_date} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
-                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-                     <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-400">Location Name</label>
-                        <input name="location_name" value={currentEvent.location_name || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. BITEC Bangna" />
+                        <input type="datetime-local" name="end_date" value={currentEvent.end_date || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
                      </div>
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Location Detail</label>
-                     <input name="location_detail" value={currentEvent.location_detail || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Hall 98, Near Entrance 2" />
+                     <label className="font-bold text-xs uppercase text-gray-400">Location</label>
+                     <input name="location" value={currentEvent.location || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. 5th Floor, Siam Paragon" />
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Booth Detail</label>
+                     <input name="booth_detail" value={currentEvent.booth_detail || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Booth A12, Zone Creator Hall" />
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="font-bold text-xs uppercase text-gray-400">Queueing Area</label>
+                     <input name="queueing_area" value={currentEvent.queueing_area || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Queue lane beside Booth A12" />
                   </div>
 
                   <div className="space-y-1">

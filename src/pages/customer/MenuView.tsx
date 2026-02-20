@@ -18,6 +18,10 @@ interface Product {
   category?: string;
   status?: 'enable' | 'disable' | 'soldout';
   currency?: string;  // ✅ NEW: Currency code
+  stock_total?: number | null;
+  stock_reserved?: number;
+  stock_sold?: number;
+  is_unlimited?: boolean;
 }
 
 type CartItems = Record<string, number>;
@@ -84,6 +88,23 @@ const MenuView = () => {
     setCartItemNames({});
   };
 
+  const productById = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const product of products) {
+      map.set(product.id, product);
+    }
+    return map;
+  }, [products]);
+
+  const getAvailableUnits = (product: Product | undefined) => {
+    if (!product) return 0;
+    if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+    const total = product.stock_total || 0;
+    const reserved = product.stock_reserved || 0;
+    const sold = product.stock_sold || 0;
+    return Math.max(0, total - reserved - sold);
+  };
+
   // --- 1. Derived Data ---
   const uniqueCategories = useMemo(() => {
       const cats = products.map(p => p.category || 'Other').filter(Boolean);
@@ -110,9 +131,9 @@ const MenuView = () => {
   // ✅ NEW: Get currency from first cart item for totals display
   const cartCurrency = useMemo(() => {
     const firstProductId = Object.keys(cart).find(id => cart[id] > 0);
-    const firstProduct = firstProductId ? products.find(p => p.id === firstProductId) : null;
+    const firstProduct = firstProductId ? productById.get(firstProductId) : null;
     return firstProduct?.currency;
-  }, [cart, products]);
+  }, [cart, productById]);
 
   // --- Persist cart to localStorage ---
   useEffect(() => {
@@ -157,7 +178,7 @@ const MenuView = () => {
         // 2.2 ดึงสินค้า
         const { data, error } = await supabase
             .from('products')
-            .select('*')
+            .select('id, name, price, image_url, description, category, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
             .eq('artist_id', displayArtist.id)
             .order('created_at', { ascending: false });
 
@@ -190,9 +211,9 @@ const MenuView = () => {
     if (Object.keys(cart).length === 0) return;
 
     const itemsToRemove = Object.keys(cart).filter(id => {
-        const product = products.find(p => p.id === id);
-        // Remove if product not found (deleted) or status is not 'enable'
-        return !product || product.status !== 'enable';
+        const product = productById.get(id);
+        // Remove if product not found (deleted), disabled, or no available stock left
+        return !product || product.status !== 'enable' || getAvailableUnits(product) <= 0;
     });
 
     if (itemsToRemove.length > 0) {
@@ -207,10 +228,10 @@ const MenuView = () => {
             return next;
         });
         
-        const removedNames = itemsToRemove.map(id => products.find(p => p.id === id)?.name || cartItemNames[id] || 'Unknown Item');
+        const removedNames = itemsToRemove.map(id => productById.get(id)?.name || cartItemNames[id] || 'Unknown Item');
         alert(`The following items in your cart are no longer available and have been removed:\n- ${removedNames.join('\n- ')}`);
     }
-  }, [cart, cartItemNames, loading, products, productsLoaded]); // Run whenever products list updates (via realtime)
+  }, [cart, cartItemNames, loading, productById, productsLoaded]); // Run whenever products list updates (via realtime)
 
   // --- 3. Helpers ---
   const getProductImageUrl = (dbValue: string, width: number = 400) => {
@@ -228,7 +249,12 @@ const MenuView = () => {
     if (isOrderSent) return;
     setCart(prev => {
       const current = prev[productId] || 0;
-      const next = Math.max(0, current + delta);
+      const product = productById.get(productId);
+      const available = getAvailableUnits(product);
+      let next = Math.max(0, current + delta);
+      if (delta > 0 && Number.isFinite(available)) {
+        next = Math.min(next, available);
+      }
       const newCart = { ...prev, [productId]: next };
       if (next === 0) delete newCart[productId];
       setCartItemNames(prevNames => {
@@ -279,98 +305,26 @@ const MenuView = () => {
              return;
         }
 
-        // 3. Validate Shop/Event Status
-        const now = new Date().toISOString();
-        const { data: events } = await supabase
-            .from('events')
-            .select('id')
-            .eq('artist_id', displayArtist.id)
-            .eq('status', 'Confirmed')
-            .lte('start_date', now)
-            .gte('end_date', now)
-            .order('start_date', { ascending: false })
-            .limit(1);
+        const itemPayload = Object.entries(cart).map(([productId, qty]) => ({
+            product_id: productId,
+            quantity: qty,
+            notes: ''
+        }));
 
-        const event = events?.[0];
-        if (!event) throw new Error("Shop is currently closed (No Active Event).");
-
-        // 4. Validate Products (Race Condition Check)
-        // Fetch latest status of items in cart
-        const cartItemIds = Object.keys(cart);
-        const { data: latestProducts } = await supabase
-            .from('products')
-            .select('id, status, price, name')
-            .in('id', cartItemIds);
-            
-        const validCartItems: Record<string, number> = {};
-        const invalidItemNames: string[] = [];
-        let newTotalPrice = 0;
-
-        cartItemIds.forEach(id => {
-            const product = latestProducts?.find(p => p.id === id);
-            if (product && product.status === 'enable') {
-                validCartItems[id] = cart[id];
-                newTotalPrice += product.price * cart[id];
-            } else {
-                invalidItemNames.push(product?.name || cartItemNames[id] || 'Unknown Item');
-            }
+        const { data: createdOrderId, error: orderError } = await supabase.rpc('create_customer_order_with_stock', {
+            p_queue_id: localQueueId,
+            p_items: itemPayload
         });
-
-        // If ALL items are invalid
-        if (Object.keys(validCartItems).length === 0) {
-            clearCart(); // Clear cart as they are all sold out
-            throw new Error(`All items in your cart are now Sold Out:\n- ${invalidItemNames.join('\n- ')}`);
-        }
-
-        // 5. Create Order (with valid items only)
-        const { data: order, error: orderError } = await supabase.from('orders').insert({
-            event_id: event.id,
-            queue_id: localQueueId,
-            status: 'confirmed',
-            total_price: newTotalPrice, // Use recalculated price
-            currency: cartCurrency || 'THB',
-            payment_method: null
-        }).select().single();
 
         if (orderError) throw orderError;
 
-        // 6. Create Items
-        const itemsToInsert = Object.entries(validCartItems).map(([productId, qty]) => {
-            const product = latestProducts?.find(p => p.id === productId); 
-            return {
-                order_id: order.id,
-                product_id: productId,
-                quantity: qty,
-                price_per_unit: product?.price || 0,
-                notes: '' 
-            };
-        });
+        const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
+        if (!orderId) throw new Error('Order creation failed');
 
-        await supabase.from('order_items').insert(itemsToInsert);
-        
-        // Notify if some items were removed
-        if (invalidItemNames.length > 0) {
-            alert(`✅ Order placed successfully!\n\n⚠️ However, the following items were sold out and removed from your order:\n- ${invalidItemNames.join('\n- ')}`);
-            // Update cart to match what was actually ordered (or clear it? Usually clear it creates empty cart)
-            // But strict logic says "clear ordered items". 
-            // Since we ordered validItems, we should clear everything.
-            // The invalid items are also effectively "dealt with" (user notified).
-            clearCart();
-        } else {
-            // Normal success (all items ordered)
-            setIsCartOpen(false);
-            // We don't need alert here if we just change UI state to 'Order Sent'
-            // But maybe a small toast? The UI changes to "ORDER SENT" so that's enough feedback.
-        }
-
-        setSentOrderId(order.id);
+        setSentOrderId(orderId);
         setIsOrderSent(true);
         setIsCartOpen(false);
-
-        // Also clean invalid items from cart state if we didn't clear all
-        if (invalidItemNames.length > 0) {
-             clearCart();
-        }
+        clearCart();
 
     } catch (err: any) {
         alert('Failed: ' + err.message);
@@ -386,8 +340,11 @@ const MenuView = () => {
 
       setSubmitting(true);
       try {
-          const { error } = await supabase.from('orders').delete().eq('id', sentOrderId);
+          const { data: cancelled, error } = await supabase.rpc('cancel_customer_order_with_stock_release', {
+            p_order_id: sentOrderId
+          });
           if (error) throw error;
+          if (cancelled === false) throw new Error('Order cannot be cancelled anymore.');
           
           // Reset all states
           clearCart();
@@ -409,9 +366,27 @@ const MenuView = () => {
       }
   };
 
-  // ✅ NEW: Realtime listener for order completion
+  // Keep completion status in sync even when realtime events are missed.
   useEffect(() => {
       if (!sentOrderId) return;
+
+      let isMounted = true;
+
+      const syncCompletionStatus = async () => {
+          const { data, error } = await supabase
+              .from('orders')
+              .select('status')
+              .eq('id', sentOrderId)
+              .maybeSingle();
+
+          if (!isMounted || error || !data) return;
+          if (data.status === 'completed') {
+              setIsOrderCompleted(true);
+          }
+      };
+
+      void syncCompletionStatus();
+      const pollId = window.setInterval(() => { void syncCompletionStatus(); }, 5000);
 
       const channel = supabase
           .channel(`order-status-${sentOrderId}`)
@@ -424,9 +399,17 @@ const MenuView = () => {
                   }
               }
           )
-          .subscribe();
+          .subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                  void syncCompletionStatus();
+              }
+          });
 
-      return () => { supabase.removeChannel(channel); };
+      return () => {
+          isMounted = false;
+          window.clearInterval(pollId);
+          supabase.removeChannel(channel);
+      };
   }, [sentOrderId]);
 
   // ✅ NEW: Realtime listener for Queue Status (To clear badge when completed)
@@ -440,6 +423,9 @@ const MenuView = () => {
              { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${localQueueId}` }, 
              (payload: any) => {
                  const newStatus = payload.new?.status;
+                 if (newStatus === 'complete' && isOrderSent) {
+                    setIsOrderCompleted(true);
+                 }
                  if (['complete', 'missed', 'expired'].includes(newStatus)) {
                     setUserQueueNumber(null); // Clear badge
                  } else if (payload.new?.queue_number) {
@@ -450,7 +436,7 @@ const MenuView = () => {
          .subscribe();
 
       return () => { supabase.removeChannel(channel); };
-  }, [displayArtist?.id]);
+  }, [displayArtist?.id, isOrderSent]);
 
   // Helper to reset order state - Clear all localStorage and state
   const handleCloseCompletedOrder = () => {
@@ -631,4 +617,3 @@ const MenuView = () => {
 };
 
 export default MenuView;
-

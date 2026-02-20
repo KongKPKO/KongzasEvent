@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.github
+coverage
+playwright-report
+test-results
+tmp
+.DS_Store
+.env.local
+.env.production

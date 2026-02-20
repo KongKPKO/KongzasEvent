@@ -8,7 +8,10 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "npx playwright test"
+    "test": "npx playwright test",
+    "test:api:smoke": "bash ./scripts/api-smoke-local.sh",
+    "docker:test:up": "docker compose --env-file .env.docker.test -f docker-compose.test.yml up --build",
+    "docker:test:down": "docker compose -f docker-compose.test.yml down"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",

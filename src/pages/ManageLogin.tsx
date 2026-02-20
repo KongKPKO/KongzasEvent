@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import { Card, Button } from '../components/ui';
 import { KeyRound, Mail, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { fetchActorContext } from '../utils/access';
+import { canAccessOwnerPages, canAccessQueuePages } from '../types/access';
 
 const ManageLogin = () => {
   const navigate = useNavigate();
@@ -13,11 +15,32 @@ const ManageLogin = () => {
 
   // Check if already logged in
   useEffect(() => {
-     supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-           navigate('/manage-events');
+     let isMounted = true;
+
+     const hydrate = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!isMounted || !data.session) return;
+
+        const ctx = await fetchActorContext();
+        if (!isMounted) return;
+
+        if (canAccessOwnerPages(ctx?.role)) {
+          navigate('/manage-events');
+        } else if (canAccessQueuePages(ctx?.role)) {
+          navigate('/manage-pos-queues');
         }
-     });
+      } catch (error) {
+        console.error('[ManageLogin] getSession failed:', error);
+      }
+     };
+
+     void hydrate();
+
+     return () => {
+      isMounted = false;
+     };
   }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -25,17 +48,30 @@ const ManageLogin = () => {
     setLoading(true);
     setErrorMsg(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setErrorMsg(error.message);
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
+
+      const ctx = await fetchActorContext();
+      if (canAccessOwnerPages(ctx?.role)) {
+        navigate('/manage-events');
+      } else if (canAccessQueuePages(ctx?.role)) {
+        navigate('/manage-pos-queues');
+      } else {
+        setErrorMsg('No workspace role assigned for this account.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed';
+      setErrorMsg(message);
+    } finally {
       setLoading(false);
-    } else {
-       // Success! Redirect to Events page
-       navigate('/manage-events');
     }
   };
 

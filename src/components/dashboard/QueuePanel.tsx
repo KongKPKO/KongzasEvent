@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../ui';
+import type { ActorContext } from '../../types/access';
 import { 
     LayoutDashboard, Bell, RotateCcw, Play, 
     Coffee, AlertCircle, PauseCircle, X 
@@ -13,6 +14,7 @@ interface QueueItem {
     event_id?: string;
     queue_number: number;
     status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued';
+    called_at?: string;
     last_updated_at: string;
     created_at?: string;
     served_at?: string;
@@ -34,6 +36,7 @@ interface QueuePanelProps {
     activeEvent: ActiveEvent | null;
     queues: QueueItem[];  // ✅ NOW A PROP (passed from parent, already filtered - no 'serving')
     selectedQueueId: string | null;
+    actorContext: ActorContext;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
 }
 
@@ -52,7 +55,7 @@ const formatElapsedTime = (dateString?: string) => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSelectQueue }: QueuePanelProps) {
+export default function QueuePanel({ activeEvent, queues, selectedQueueId, actorContext, onSelectQueue }: QueuePanelProps) {
     const [isBoothActive, setIsBoothActive] = useState(false);
     const [isQueueOpen, setIsQueueOpen] = useState(true);
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
@@ -67,13 +70,10 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
     // Fetch artist settings on mount
     useEffect(() => {
         const fetchArtistSettings = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
             const { data: artistData } = await supabase
                 .from('artists')
                 .select('broadcast_message, is_queue_open')
-                .eq('id', user.id)
+                .eq('id', actorContext.artist_id)
                 .single();
 
             if (artistData) {
@@ -86,14 +86,11 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
 
         // Realtime for artist settings
         const setupRealtime = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            supabase
-                .channel(`queue-panel-artists-${user.id}`)
+            const channel = supabase
+                .channel(`queue-panel-artists-${actorContext.artist_id}`)
                 .on(
                     'postgres_changes', 
-                    { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${user.id}` }, 
+                    { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${actorContext.artist_id}` }, 
                     (payload) => {
                         const updatedArtist = payload.new as { broadcast_message: string | null; is_queue_open: boolean };
                         setBroadcastMessage(updatedArtist.broadcast_message || null);
@@ -101,10 +98,19 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                     }
                 )
                 .subscribe();
+
+            return channel;
         };
 
-        setupRealtime();
-    }, []);
+        let localChannel: ReturnType<typeof supabase.channel> | null = null;
+        setupRealtime().then((channel) => {
+            localChannel = channel || null;
+        });
+
+        return () => {
+            if (localChannel) supabase.removeChannel(localChannel);
+        };
+    }, [actorContext.artist_id]);
 
     // --- BROADCAST HANDLER (Consolidated with is_queue_open logic) ---
     const handleSetBroadcast = async (msg: string | null) => {
@@ -122,21 +128,10 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
         setBroadcastMessage(newMessage);
         setIsQueueOpen(newQueueOpen);
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            setBroadcastMessage(previousMessage);
-            setIsQueueOpen(previousQueueOpen);
-            return;
-        }
-
-        // Single Supabase call for both fields
-        const { error } = await supabase
-            .from('artists')
-            .update({ 
-                broadcast_message: newMessage,
-                is_queue_open: newQueueOpen 
-            })
-            .eq('id', user.id);
+        const { error } = await supabase.rpc('set_artist_queue_broadcast', {
+            p_artist_id: actorContext.artist_id,
+            p_message: newMessage,
+        });
 
         if (error) {
             console.error('Error updating broadcast/queue status:', error);
@@ -154,10 +149,10 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
         const newStatus = !isBoothActive;
         setIsBoothActive(newStatus);
 
-        const { error } = await supabase
-            .from('events')
-            .update({ is_booth_open: newStatus })
-            .eq('id', activeEvent.id);
+        const { error } = await supabase.rpc('set_booth_open_status', {
+            p_event_id: activeEvent.id,
+            p_is_open: newStatus,
+        });
 
         if (error) {
             console.error('Error updating booth status:', error);
@@ -170,8 +165,14 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
     // --- STATUS UPDATE (triggers parent refetch via onRefreshQueues) ---
     const updateStatus = useCallback(async (id: string, newStatus: string) => {
         const updates: Record<string, unknown> = { status: newStatus, last_updated_at: new Date().toISOString() };
+        if (newStatus === 'calling') updates.called_at = new Date().toISOString();
         if (newStatus === 'serving') updates.served_at = new Date().toISOString();
         if (newStatus === 'complete') updates.completed_at = new Date().toISOString();
+        if (newStatus === 'waiting' || newStatus === 'queued') {
+            updates.called_at = null;
+            updates.served_at = null;
+            updates.completed_at = null;
+        }
 
         const { error } = await supabase
             .from('queues')
@@ -342,7 +343,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, onSel
                                         className={`bg-yellow-50 border rounded-md p-2 flex flex-col items-center text-center ${selectedQueueId === ticket.id ? 'border-pink-400 ring-2 ring-pink-200' : 'border-yellow-100'}`}
                                     >
                                         <div className="text-2xl font-black text-gray-900 leading-none">#{ticket.queue_number}</div>
-                                        <div className="text-[9px] text-gray-500 mb-1.5">{formatElapsedTime(ticket.last_updated_at)} ago</div>
+                                        <div className="text-[9px] text-gray-500 mb-1.5">{formatElapsedTime(ticket.called_at || ticket.last_updated_at)} ago</div>
                                         <Button
                                             onClick={() => handleConfirmArrival(ticket)}
                                             className="w-full bg-pink-500 hover:bg-pink-600 text-white border-none shadow-sm h-7 text-[10px] font-bold tracking-wide rounded"

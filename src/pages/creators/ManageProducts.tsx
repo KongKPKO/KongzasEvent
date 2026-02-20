@@ -8,6 +8,7 @@ import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
+import { getAuthUserSafe } from '../../utils/auth';
 
 interface Product {
   id: string;
@@ -18,6 +19,10 @@ interface Product {
   category?: string;
   status?: 'enable' | 'disable' | 'soldout';
   currency?: string;  // ✅ NEW: Currency code
+  stock_total?: number | null;
+  stock_reserved?: number;
+  stock_sold?: number;
+  is_unlimited?: boolean;
 }
 
 const ManageProducts = () => {
@@ -34,6 +39,8 @@ const ManageProducts = () => {
    const [category, setCategory] = useState(''); // Default
    const [status, setStatus] = useState('enable'); // Default
    const [currency, setCurrency] = useState(DEFAULT_CURRENCY); // ✅ NEW: Currency state
+   const [stockTotal, setStockTotal] = useState('');
+   const [isUnlimited, setIsUnlimited] = useState(true);
    const [file, setFile] = useState<File | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    
@@ -72,7 +79,22 @@ const ManageProducts = () => {
    const uniqueCurrencies = ['All', ...Array.from(new Set(products.map(p => p.currency || DEFAULT_CURRENCY))).sort()];
 
    // ✅ NEW: Check for mixed enabled currencies
-   const enabledProducts = products.filter(p => p.status === 'enable');
+   const getAvailableUnits = (product: Product) => {
+      if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+      const total = product.stock_total || 0;
+      const reserved = product.stock_reserved || 0;
+      const sold = product.stock_sold || 0;
+      return Math.max(0, total - reserved - sold);
+   };
+
+   const getEffectiveStatus = (product: Product): 'enable' | 'disable' | 'soldout' => {
+      if (product.status === 'disable') return 'disable';
+      if (product.status === 'soldout') return 'soldout';
+      if (!product.is_unlimited && getAvailableUnits(product) <= 0) return 'soldout';
+      return 'enable';
+   };
+
+   const enabledProducts = products.filter(p => getEffectiveStatus(p) === 'enable');
    const enabledCurrencies = Array.from(new Set(enabledProducts.map(p => p.currency || DEFAULT_CURRENCY)));
    const hasMixedCurrencies = enabledCurrencies.length > 1;
 
@@ -82,7 +104,7 @@ const ManageProducts = () => {
       
       setLoading(true);
       try {
-         const { data: { user } } = await supabase.auth.getUser();
+         const user = await getAuthUserSafe();
          if (!user) throw new Error('Not authenticated');
 
          // 1. Enable targets
@@ -124,38 +146,41 @@ const ManageProducts = () => {
 
    const fetchProducts = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Fix: Force redirect if no session to prevent "Artist not found" errors
-      if (!user) {
-         navigate('/manage-login'); 
-         return;
+      try {
+         const user = await getAuthUserSafe();
+         
+         // Fix: Force redirect if no session to prevent "Artist not found" errors
+         if (!user) {
+            navigate('/manage-login');
+            return;
+         }
+
+         setArtistId(user.id);
+
+         // Fetch Artist Name
+         const { data: artist } = await supabase
+            .from('artists')
+            .select('display_name')
+            .eq('id', user.id)
+            .single();
+         
+         if (artist) setArtistName(artist.display_name);
+
+         const { data, error } = await supabase
+            .from('products')
+            .select('id, name, price, image_url, description, category, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited, created_at')
+            .eq('artist_id', user.id)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+         if (!error && data) {
+            setProducts(data);
+         }
+      } catch (error) {
+         console.error('[ManageProducts] fetchProducts failed:', error);
+      } finally {
+         setLoading(false);
       }
-
-      setArtistId(user.id);
-
-      // Fetch Artist Name
-      const { data: artist } = await supabase
-         .from('artists')
-         .select('display_name')
-         .eq('id', user.id)
-         .single();
-      
-      if (artist) setArtistName(artist.display_name);
-
-
-
-      const { data, error } = await supabase
-         .from('products')
-         .select('*')
-         .eq('artist_id', user.id)
-         .is('deleted_at', null)
-         .order('created_at', { ascending: false });
-
-      if (!error && data) {
-         setProducts(data);
-      }
-      setLoading(false);
    };
 
    useEffect(() => {
@@ -237,7 +262,7 @@ const ManageProducts = () => {
 
       setUploading(true);
       try {
-         const { data: { user } } = await supabase.auth.getUser();
+         const user = await getAuthUserSafe();
          if (!user) throw new Error('Not authenticated');
 
          // 1. Upload Image
@@ -262,6 +287,8 @@ const ManageProducts = () => {
                category,
                status,
                currency,  // ✅ NEW: Save currency
+               stock_total: isUnlimited ? null : Number(stockTotal || 0),
+               is_unlimited: isUnlimited,
                image_url: filePath // Store relative path
             }]);
 
@@ -274,6 +301,8 @@ const ManageProducts = () => {
          setCategory('');
          setStatus('enable');
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
+         setStockTotal('');
+         setIsUnlimited(true);
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
          
@@ -319,6 +348,8 @@ const ManageProducts = () => {
       setCategory(product.category || '');
       setStatus(product.status || 'enable');
       setCurrency(product.currency || DEFAULT_CURRENCY);  // ✅ NEW: Load product currency
+      setIsUnlimited(product.is_unlimited ?? true);
+      setStockTotal(product.stock_total ? String(product.stock_total) : '');
       setEditFile(null);
       setIsEditModalOpen(true);
    };
@@ -387,6 +418,8 @@ const ManageProducts = () => {
                category,
                status,
                currency,  // ✅ NEW: Update currency
+               stock_total: isUnlimited ? null : Number(stockTotal || 0),
+               is_unlimited: isUnlimited,
                image_url: imageUrl
             })
             .eq('id', editingProduct.id);
@@ -403,6 +436,8 @@ const ManageProducts = () => {
          setCategory('');
          setStatus('enable');
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
+         setStockTotal('');
+         setIsUnlimited(true);
          
          await fetchProducts();
          alert('Product updated successfully!');
@@ -441,7 +476,7 @@ const ManageProducts = () => {
             const validItems: any[] = [];
             const errors: string[] = [];
 
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = await getAuthUserSafe();
             if (!user) {
                alert('Not authenticated');
                return;
@@ -463,6 +498,8 @@ const ManageProducts = () => {
                // ✅ FIX: Read currency from CSV
                const currencyRaw = sanitizedRow.currency || sanitizedRow.Currency || sanitizedRow.CURRENCY;
                const status = sanitizedRow.status || sanitizedRow.Status || sanitizedRow.STATUS;
+               const stockRaw = sanitizedRow.stock ?? sanitizedRow.stock_total ?? sanitizedRow.stocktotal ?? sanitizedRow.qty ?? sanitizedRow.quantity;
+               const unlimitedRaw = sanitizedRow.is_unlimited ?? sanitizedRow.unlimited;
 
                // Validate required fields
                if (!name || !priceRaw) {
@@ -487,6 +524,51 @@ const ManageProducts = () => {
                const currency = currencyRaw && validCurrencies.includes(currencyRaw.toUpperCase()) 
                   ? currencyRaw.toUpperCase() 
                   : DEFAULT_CURRENCY;
+
+               // ✅ NEW: Optional stock columns
+               const parseBoolean = (value: unknown): boolean | null => {
+                  if (value === undefined || value === null || value === '') return null;
+                  const normalized = String(value).trim().toLowerCase();
+                  if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+                  if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+                  return null;
+               };
+
+               const hasStockValue = stockRaw !== undefined && stockRaw !== null && String(stockRaw).trim() !== '';
+               let parsedStock: number | null = null;
+               if (hasStockValue) {
+                  const stockClean = String(stockRaw).replace(/,/g, '');
+                  const stockNumber = Number(stockClean);
+                  if (!Number.isInteger(stockNumber) || stockNumber < 0) {
+                     errors.push(`Row ${index + 2}: Invalid stock value "${stockRaw}" (must be integer >= 0)`);
+                     return;
+                  }
+                  parsedStock = stockNumber;
+               }
+
+               const parsedUnlimited = parseBoolean(unlimitedRaw);
+               if (unlimitedRaw !== undefined && unlimitedRaw !== null && String(unlimitedRaw).trim() !== '' && parsedUnlimited === null) {
+                  errors.push(`Row ${index + 2}: Invalid is_unlimited value "${unlimitedRaw}" (use true/false, 1/0, yes/no)`);
+                  return;
+               }
+
+               let isUnlimitedItem = true;
+               let stockTotalItem: number | null = null;
+
+               if (parsedUnlimited === true) {
+                  isUnlimitedItem = true;
+                  stockTotalItem = null;
+               } else if (parsedUnlimited === false) {
+                  if (parsedStock === null) {
+                     errors.push(`Row ${index + 2}: Missing stock value while is_unlimited is false`);
+                     return;
+                  }
+                  isUnlimitedItem = false;
+                  stockTotalItem = parsedStock;
+               } else if (parsedStock !== null) {
+                  isUnlimitedItem = false;
+                  stockTotalItem = parsedStock;
+               }
                
                // Validate status
                const validStatuses = ['enable', 'disable', 'soldout'];
@@ -502,6 +584,8 @@ const ManageProducts = () => {
                   category: category || 'Other',
                   description: description || '',
                   status: productStatus,
+                  is_unlimited: isUnlimitedItem,
+                  stock_total: stockTotalItem,
                   image_url: ''
                });
             });
@@ -530,7 +614,7 @@ const ManageProducts = () => {
                   setUploading(false);
                }
             } else {
-               alert(`No valid rows found.\n\n${errors.length > 0 ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '') : "Ensure CSV has 'name' and 'price' columns."}`);
+               alert(`No valid rows found.\n\n${errors.length > 0 ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '') : "Ensure CSV has 'name' and 'price' columns (optional: stock, is_unlimited)."}`);
             }
          },
          error: (err: Error) => {
@@ -579,6 +663,9 @@ const ManageProducts = () => {
                      </Button>
                   </div>
                </div>
+               <p className="text-[11px] text-gray-500 -mt-2 mb-3">
+                  CSV columns: <span className="font-semibold">name, price</span> (optional: category, description, currency, status, stock, is_unlimited)
+               </p>
                
                <form onSubmit={handleAddProduct} className="space-y-4">
                   {/* Row 1: Product Name | Price & Currency | Category */}
@@ -641,8 +728,8 @@ const ManageProducts = () => {
                      </div>
                   </div>
 
-                  {/* Row 2: Image | Status */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Row 2: Image | Status | Stock */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      <div className="space-y-1">
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image</label>
                         <div className="relative">
@@ -680,6 +767,29 @@ const ManageProducts = () => {
                            <option value="disable">Disable</option>
                            <option value="soldout">Sold Out</option>
                         </select>
+                     </div>
+
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Stock</label>
+                        <div className="flex items-center gap-2 mb-2">
+                           <input
+                              id="is-unlimited"
+                              type="checkbox"
+                              checked={isUnlimited}
+                              onChange={(e) => setIsUnlimited(e.target.checked)}
+                           />
+                           <label htmlFor="is-unlimited" className="text-xs text-gray-600 font-semibold">Unlimited</label>
+                        </div>
+                        <input
+                           type="number"
+                           value={stockTotal}
+                           onChange={(e) => setStockTotal(e.target.value)}
+                           disabled={isUnlimited}
+                           min="0"
+                           step="1"
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all disabled:bg-gray-100 disabled:text-gray-400"
+                           placeholder={isUnlimited ? 'Unlimited stock' : 'Enter stock quantity'}
+                        />
                      </div>
                   </div>
 
@@ -825,7 +935,9 @@ const ManageProducts = () => {
                <>
                   {/* MOBILE VIEW: List/Cards (<768px) */}
                   <div className="flex flex-col gap-3 md:hidden">
-                     {filteredProducts.map(product => (
+                     {filteredProducts.map(product => {
+                        const effectiveStatus = getEffectiveStatus(product);
+                        return (
                         <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row h-28 group relative">
                            {/* Image */}
                            <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
@@ -834,13 +946,14 @@ const ManageProducts = () => {
                                  alt={product.name}
                                  className="w-full h-full object-cover"
                                  loading="lazy"
+                                 decoding="async"
                               />
-                              {(product.status === 'disable' || product.status === 'soldout') && (
+                              {(effectiveStatus === 'disable' || effectiveStatus === 'soldout') && (
                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                                     <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
-                                       product.status === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
+                                       effectiveStatus === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
                                     }`}>
-                                       {product.status === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
+                                       {effectiveStatus === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
                                     </span>
                                  </div>
                               )}
@@ -858,6 +971,9 @@ const ManageProducts = () => {
                                        </span>
                                     )}
                                  </div>
+                                 <p className="text-[10px] font-semibold text-gray-500 mt-1">
+                                    Stock: {product.is_unlimited ? 'Unlimited' : `${getAvailableUnits(product)} available`}
+                                 </p>
                               </div>
                               
                               {/* Mobile Actions (Always Visible) */}
@@ -867,7 +983,7 @@ const ManageProducts = () => {
                               </div>
                            </div>
                         </div>
-                     ))}
+                     )})}
                   </div>
 
                   {/* DESKTOP VIEW: Table (>=768px) */}
@@ -878,12 +994,15 @@ const ManageProducts = () => {
                               <th className="px-6 py-4 font-bold w-[40%]">Product</th>
                               <th className="px-6 py-4 font-bold">Category</th>
                               <th className="px-6 py-4 font-bold">Price</th>
+                              <th className="px-6 py-4 font-bold">Stock</th>
                               <th className="px-6 py-4 font-bold">Status</th>
                               <th className="px-6 py-4 font-bold text-right">Actions</th>
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                           {filteredProducts.map(product => (
+                           {filteredProducts.map(product => {
+                              const effectiveStatus = getEffectiveStatus(product);
+                              return (
                               <tr key={product.id} className="hover:bg-gray-50/50 transition-colors group">
                                  <td className="px-6 py-4">
                                     <div className="flex items-center gap-4">
@@ -892,8 +1011,10 @@ const ManageProducts = () => {
                                              src={getProductImageUrl(product.image_url, 100)} 
                                              alt={product.name}
                                              className="w-full h-full object-cover"
+                                             loading="lazy"
+                                             decoding="async"
                                           />
-                                          {product.status === 'soldout' && <div className="absolute inset-0 bg-black/50" />}
+                                          {effectiveStatus === 'soldout' && <div className="absolute inset-0 bg-black/50" />}
                                        </div>
                                        <div>
                                           <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
@@ -910,9 +1031,16 @@ const ManageProducts = () => {
                                     <span className="font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
                                  </td>
                                  <td className="px-6 py-4">
-                                    {product.status === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}
-                                    {product.status === 'disable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Disabled</span>}
-                                    {product.status === 'soldout' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">Sold Out</span>}
+                                    <span className="font-semibold text-gray-700 text-sm">
+                                       {product.is_unlimited
+                                          ? 'Unlimited'
+                                          : `${getAvailableUnits(product)} / ${product.stock_total || 0}`}
+                                    </span>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                    {effectiveStatus === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}
+                                    {effectiveStatus === 'disable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Disabled</span>}
+                                    {effectiveStatus === 'soldout' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">Sold Out</span>}
                                  </td>
                                  <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -933,7 +1061,7 @@ const ManageProducts = () => {
                                     </div>
                                  </td>
                               </tr>
-                           ))}
+                           )})}
                         </tbody>
                      </table>
                   </div>
@@ -1055,6 +1183,29 @@ const ManageProducts = () => {
                               <option value="disable">Disable</option>
                               <option value="soldout">Sold Out</option>
                            </select>
+                        </div>
+
+                        <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">Stock</label>
+                           <div className="flex items-center gap-2 mb-2">
+                              <input
+                                 id="edit-is-unlimited"
+                                 type="checkbox"
+                                 checked={isUnlimited}
+                                 onChange={(e) => setIsUnlimited(e.target.checked)}
+                              />
+                              <label htmlFor="edit-is-unlimited" className="text-sm text-gray-600">Unlimited</label>
+                           </div>
+                           <input
+                              type="number"
+                              value={stockTotal}
+                              onChange={(e) => setStockTotal(e.target.value)}
+                              disabled={isUnlimited}
+                              min="0"
+                              step="1"
+                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:text-gray-400"
+                              placeholder={isUnlimited ? 'Unlimited stock' : 'Enter stock quantity'}
+                           />
                         </div>
                      </div>
 

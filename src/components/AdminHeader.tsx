@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Calendar, Coffee, Users, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X } from 'lucide-react';
+import type { ActorRole } from '../types/access';
 
 // --- TYPES ---
 interface ActiveEvent {
@@ -10,23 +11,27 @@ interface ActiveEvent {
 }
 
 type ActivePage = 'events' | 'menu' | 'pos';
+type VisiblePage = ActivePage | 'team';
 
 interface AdminHeaderProps {
-    activePage: ActivePage;
+    activePage: VisiblePage;
     activeEvent?: ActiveEvent | null;
+    actorRole?: ActorRole;
 }
 
 // Navigation Items Config
 const navItems = [
-    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as ActivePage },
-    { path: '/manage-products', label: 'Menu', icon: Coffee, page: 'menu' as ActivePage },
-    { path: '/manage-pos-queues', label: 'POS/Queue', icon: Users, page: 'pos' as ActivePage },
+    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner'] as ActorRole[] },
+    { path: '/manage-products', label: 'Menu', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner'] as ActorRole[] },
+    { path: '/manage-pos-queues', label: 'POS/Queue', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'queue_only', 'queue_pos'] as ActorRole[] },
+    { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[] },
 ];
 
-export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProps) {
+export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner' }: AdminHeaderProps) {
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -58,7 +63,7 @@ export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProp
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-1">
-                {navItems.map((item) => {
+                {filteredNavItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = activePage === item.page || location.pathname === item.path;
                     
@@ -102,7 +107,7 @@ export default function AdminHeader({ activePage, activeEvent }: AdminHeaderProp
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
                 <div className="absolute top-14 left-0 right-0 bg-white border-b border-gray-200 shadow-lg md:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
-                    {navItems.map((item) => {
+                    {filteredNavItems.map((item) => {
                         const Icon = item.icon;
                         const isActive = activePage === item.page || location.pathname === item.path;
                         return (

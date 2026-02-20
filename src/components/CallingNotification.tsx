@@ -14,9 +14,25 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   const [isCalling, setIsCalling] = useState(false);
   const [ticketNumber, setTicketNumber] = useState<string | null>(null);
   const [ticketId, setTicketId] = useState<string | null>(null);
+  const [queueingArea, setQueueingArea] = useState<string | null>(null);
   
   // State สำหรับเก็บข้อความ Broadcast
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(initialBroadcastMessage || null);
+
+  const fetchQueueingArea = async (eventId?: string | null) => {
+    if (!eventId) {
+      setQueueingArea(null);
+      return;
+    }
+
+    const { data } = await supabase
+      .from('events')
+      .select('queueing_area')
+      .eq('id', eventId)
+      .maybeSingle();
+
+    setQueueingArea(data?.queueing_area || null);
+  };
 
   // 1. โหลดข้อมูลเริ่มต้น
   useEffect(() => {
@@ -41,7 +57,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
       const fetchTicketStatus = async () => {
         const { data } = await supabase
             .from('queues')
-            .select('status, queue_number')
+            .select('status, queue_number, event_id')
             .eq('id', storedTicketId)
             .single();
             
@@ -49,6 +65,9 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
         if (data && (data.status === 'serving' || data.status === 'calling')) {
           setIsCalling(true);
           setTicketNumber(data.queue_number);
+          await fetchQueueingArea(data.event_id);
+        } else {
+          setQueueingArea(null);
         }
       };
       fetchTicketStatus();
@@ -67,10 +86,12 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
             if (payload.new.status === 'serving' || payload.new.status === 'calling') {
               setIsCalling(true);
               setTicketNumber(payload.new.queue_number);
+              void fetchQueueingArea(payload.new.event_id);
               if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
               // ถ้าสถานะเปลี่ยนเป็น complete/cancelled ให้ปิดแจ้งเตือน
               setIsCalling(false);
+              setQueueingArea(null);
             }
         })
         .subscribe();
@@ -91,6 +112,10 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
 
 
   // 🎨 RENDER LOGIC
+  const proceedDestination = queueingArea?.trim();
+  const proceedMessage = proceedDestination
+    ? `Please proceed to ${proceedDestination}`
+    : 'Please proceed to the booth!';
   
   // Priority 1: Calling Notification
   if (isCalling) {
@@ -110,7 +135,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
                 Your Turn!
               </span>
               <span className="text-xs font-semibold text-yellow-800 truncate leading-tight">
-                 Queue <span className="font-black text-sm text-yellow-950">#{ticketNumber}</span> Please come to booth!
+                 Queue <span className="font-black text-sm text-yellow-950">#{ticketNumber}</span> {proceedMessage}
               </span>
             </div>
           </div>

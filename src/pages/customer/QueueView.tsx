@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
@@ -36,7 +36,9 @@ const QueueView = () => {
 
   const [myTicket, setMyTicket] = useState<Ticket | null>(null);
   const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
+  const [etaWindow, setEtaWindow] = useState<{ min: number; max: number; peopleAhead: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // DERIVED STATE: Syncs instantly with Realtime Hook
   // ✅ FIX: Match Admin Panel logic - filter by end_date >= now, sort DESCENDING (get LATEST)
@@ -102,6 +104,35 @@ const QueueView = () => {
       setNowServingNumber(callingData ? callingData.queue_number : null);
   };
 
+  const fetchEta = async (eventId: string, queueNumber: number, status: Ticket['status']) => {
+      if (!['waiting', 'calling', 'serving'].includes(status)) {
+          setEtaWindow(null);
+          return;
+      }
+
+      const { data, error } = await supabase.rpc('estimate_queue_eta', {
+          p_event_id: eventId,
+          p_queue_number: queueNumber,
+      });
+
+      if (error) {
+          console.error('ETA fetch error:', error);
+          return;
+      }
+
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result) {
+          setEtaWindow(null);
+          return;
+      }
+
+      setEtaWindow({
+          min: result.eta_min_minutes ?? 0,
+          max: result.eta_max_minutes ?? 0,
+          peopleAhead: result.people_ahead ?? 0,
+      });
+  };
+
   // 2. EFFECT: Fetch Queue Data when Active Event Changes (or on Mount/Refresh)
   useEffect(() => {
       if (!activeEvent) {
@@ -119,7 +150,11 @@ const QueueView = () => {
          // Ticket Verification
          const storedTicketId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
          if (storedTicketId) {
-             const { data: ticket } = await supabase.from('queues').select('*').eq('id', storedTicketId).single();
+             const { data: ticket } = await supabase
+               .from('queues')
+               .select('id, event_id, queue_number, status, created_at')
+               .eq('id', storedTicketId)
+               .single();
              
              if (ticket) {
                  // Check Mismatch
@@ -145,8 +180,13 @@ const QueueView = () => {
       const channel = supabase
         .channel(`public:queues:${activeEvent.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'queues', filter: `event_id=eq.${activeEvent.id}` }, (payload: any) => {
-             // If "Now Serving" updates or "My Ticket" updates
-             fetchNowServing(activeEvent.id);
+             // Coalesce burst updates into one fetch to reduce network pressure.
+             if (nowServingTimerRef.current) {
+                clearTimeout(nowServingTimerRef.current);
+             }
+             nowServingTimerRef.current = setTimeout(() => {
+                fetchNowServing(activeEvent.id);
+             }, 200);
              
              setMyTicket((prev) => {
                  if (prev && (payload.new as Ticket)?.id === prev.id) {
@@ -158,10 +198,22 @@ const QueueView = () => {
         .subscribe();
 
       return () => {
+          if (nowServingTimerRef.current) {
+            clearTimeout(nowServingTimerRef.current);
+            nowServingTimerRef.current = null;
+          }
           supabase.removeChannel(channel);
       };
 
   }, [activeEvent?.id, activeEvent?.is_booth_open, displayArtist.id]);
+
+  useEffect(() => {
+      if (!activeEvent || !myTicket) {
+          setEtaWindow(null);
+          return;
+      }
+      fetchEta(activeEvent.id, myTicket.queue_number, myTicket.status);
+  }, [activeEvent?.id, myTicket?.queue_number, myTicket?.status, nowServingNumber]);
 
 
 
@@ -191,7 +243,7 @@ const QueueView = () => {
            .gte('created_at', startOfDay.toISOString())
            .order('queue_number', { ascending: false })
            .limit(1)
-           .single();
+           .maybeSingle();
 
         if (maxError && maxError.code !== 'PGRST116') {
              console.error("Error fetching max ticket number:", maxError);
@@ -209,7 +261,7 @@ const QueueView = () => {
                queue_number: nextNum,
                status: 'waiting'
            }])
-           .select()
+           .select('id, event_id, queue_number, status, created_at')
            .single();
 
         if (insertError) {
@@ -239,7 +291,11 @@ const QueueView = () => {
     if (activeEvent) {
        await fetchNowServing(activeEvent.id);
        if (myTicket) {
-           const { data } = await supabase.from('queues').select('*').eq('id', myTicket.id).single();
+           const { data } = await supabase
+             .from('queues')
+             .select('id, event_id, queue_number, status, created_at')
+             .eq('id', myTicket.id)
+             .single();
            if (data) setMyTicket(data);
        }
     }
@@ -288,6 +344,8 @@ const QueueView = () => {
       if (!myTicket) return null;
 
       const { status, queue_number } = myTicket;
+      const queueingArea = activeEvent?.queueing_area?.trim();
+      const callingMessage = queueingArea ? `Please proceed to ${queueingArea}` : 'Please proceed to the booth!';
 
       // Configuration for each status
       const config = {
@@ -304,7 +362,7 @@ const QueueView = () => {
               border: 'border-yellow-200',
               badge: { text: "It's Your Turn!", bg: 'bg-yellow-500', color: 'text-white' },
               messageColor: 'text-yellow-800',
-              message: 'Please proceed to the booth!',
+              message: callingMessage,
               subMessage: 'Calling...'
           },
           serving: {
@@ -366,6 +424,12 @@ const QueueView = () => {
               <p className={`font-bold text-lg whitespace-pre-line ${theme.messageColor}`}>
                   {theme.message}
               </p>
+
+              {etaWindow && (status === 'waiting' || status === 'calling' || status === 'serving') && (
+                  <div className="mt-4 text-sm font-semibold text-gray-600">
+                      Estimated wait: {etaWindow.min}-{etaWindow.max} min ({etaWindow.peopleAhead} ahead)
+                  </div>
+              )}
 
               {/* Secondary Message (Calling/Serving) */}
               {(status === 'calling' || status === 'serving') && theme.subMessage && (

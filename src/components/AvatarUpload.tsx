@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
@@ -16,6 +16,10 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
   const [error, setError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setPreviewUrl(currentImageUrl || null);
+  }, [currentImageUrl]);
 
   const handleImageCompression = async (imageFile: File): Promise<File> => {
     // 1. Validation: Allow large raw files (e.g., up to 10MB) to support camera uploads
@@ -64,43 +68,32 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
       setIsUploading(true);
       
       const timestamp = Date.now();
-      const filePath = `${artistId}/${timestamp}.webp`;
+      const mimeToExtension: Record<string, string> = {
+        'image/webp': 'webp',
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+      };
+
+      const normalizedMimeType = processedFile.type || 'image/webp';
+      const extension = mimeToExtension[normalizedMimeType] || 'webp';
+      const filePath = `${artistId}/${timestamp}.${extension}`;
 
       // Upload to 'Avatar' bucket
       const { error: uploadError } = await supabase.storage
         .from('Avatar')
         .upload(filePath, processedFile, {
-          contentType: 'image/webp',
+          contentType: normalizedMimeType,
           upsert: true
         });
 
       if (uploadError) throw uploadError;
 
-      // Construct final ImageKit URL
-      // Endpoint: https://ik.imagekit.io/kongzas
-      // Path: /Avatar/{artistId}/{timestamp}.webp
-      // Transformation: force 400x400 square crop
-      // const finalUrl = `https://ik.imagekit.io/kongzas/Avatar/${filePath}?tr=w-400,h-400,fo-auto`;
-
-      // 1. สร้าง URL แบบตรงๆ จาก Supabase ก่อน (เพื่อเอามาเช็ค)
+      // Use Supabase public URL directly to avoid broken external transforms.
       const { data: { publicUrl } } = supabase.storage
-        .from('Avatar') // ชื่อ Bucket ที่คุณใช้
+        .from('Avatar')
         .getPublicUrl(filePath);
 
-      // 2. สร้างตัวแปร finalUrl รอไว้
-      let finalUrl = publicUrl;
-
-      // 3. เช็คว่า "ไม่ใช่" Localhost ใช่ไหม? (ถ้าไม่ใช่ Local ค่อยใช้ ImageKit)
-      const isLocal = publicUrl.includes('localhost') || publicUrl.includes('127.0.0.1');
-
-      if (!isLocal) {
-        // ✅ Production: ใช้ ImageKit
-        finalUrl = `https://ik.imagekit.io/kongzas/Avatar/${filePath}?tr=w-400,h-400,fo-auto`;
-      } else {
-        // 🏠 Local Docker: ใช้ publicUrl เดิม (ไม่ต้องทำอะไรเพิ่ม)
-        console.log('Using Local Docker URL (Bypass ImageKit):', finalUrl);
-      }
-      // หลังจากนี้ก็เอา finalUrl ไป save ลง Database ตามเดิม
+      const finalUrl = publicUrl;
 
       setPreviewUrl(finalUrl);
       onUploadComplete(finalUrl);

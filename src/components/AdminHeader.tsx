@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X, User } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 
 // --- TYPES ---
@@ -31,7 +31,27 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [userEmail, setUserEmail] = useState<string | null>(null);
     const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user?.email) {
+                setUserEmail(user.email);
+            }
+        };
+        fetchUser();
+    }, []);
+
+    const roleLabelMapping: Record<string, string> = {
+        owner: 'Owner',
+        queue_only: 'Queue Staff',
+        queue_pos: 'Queue & POS Staff',
+    };
+    
+    const displayRole = actorRole ? (roleLabelMapping[actorRole] || actorRole) : 'Admin';
+    const firstLetter = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -84,7 +104,27 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                     );
                 })}
                 
-                <div className="h-5 w-px bg-gray-200 mx-2"></div>
+                <div className="h-5 w-px bg-gray-200 mx-1"></div>
+
+                {/* Profile Indicator (Desktop) */}
+                <div className="flex items-center gap-2 mr-2 group relative cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors">
+                    <div className="w-7 h-7 rounded-sm bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-xs ring-1 ring-pink-200">
+                        {firstLetter}
+                    </div>
+                    <div className="hidden lg:flex flex-col items-start leading-none max-w-[140px]">
+                        <span className="text-[11px] font-semibold text-gray-700 truncate w-full">{userEmail || 'Loading...'}</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                            <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wide">{displayRole}</span>
+                        </div>
+                    </div>
+                    {/* Tooltip for smaller desktop screens */}
+                    <div className="absolute top-10 right-0 lg:hidden bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                        {userEmail} • {displayRole}
+                    </div>
+                </div>
+
+                <div className="h-5 w-px bg-gray-200 mr-2"></div>
                 
                 <button 
                     onClick={handleLogout} 
@@ -107,6 +147,18 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
                 <div className="absolute top-14 left-0 right-0 bg-white border-b border-gray-200 shadow-lg md:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
+                    {/* Profile Information (Mobile) */}
+                    <div className="flex items-center gap-3 px-4 py-2 mb-2 bg-gray-50 rounded-lg">
+                        <div className="w-10 h-10 rounded-md bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-sm ring-1 ring-pink-200">
+                            {firstLetter}
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]">{userEmail || 'Loading...'}</span>
+                            <span className="text-xs font-medium text-blue-600 uppercase mt-0.5">{displayRole}</span>
+                        </div>
+                    </div>
+                    <div className="h-px bg-gray-100 my-1"></div>
+
                     {filteredNavItems.map((item) => {
                         const Icon = item.icon;
                         const isActive = activePage === item.page || location.pathname === item.path;

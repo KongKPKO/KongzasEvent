@@ -3,52 +3,66 @@ import { ShoppingBag, Plus, Minus } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
+import { motion } from 'framer-motion';
 
 interface Product {
-    id: string;
-    name: string;
-    price: number;
-    image_url: string;
-    description?: string;
-    category?: string;
-    status?: 'enable' | 'disable' | 'soldout';
-    currency?: string;
-    stock_total?: number | null;
-    stock_reserved?: number;
-    stock_sold?: number;
-    is_unlimited?: boolean;
+   id: string;
+   name: string;
+   price: number;
+   image_url: string;
+   description?: string;
+   category?: string;
+   status?: 'enable' | 'disable' | 'soldout';
+   currency?: string;
+   stock_total?: number | null;
+   stock_reserved?: number;
+   stock_sold?: number;
+   is_unlimited?: boolean;
 }
 
 interface ProductListProps {
-    products: Product[];
-    cart: Record<string, number>;
-    isOrderSent: boolean;
-    onUpdateQuantity: (id: string, delta: number, name?: string) => void;
+   products: Product[];
+   cart: Record<string, number>;
+   isOrderSent: boolean;
+   onUpdateQuantity: (id: string, delta: number, name?: string) => void;
 }
 
 const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
-    const getAvailableUnits = (product: Product) => {
-        if (product.is_unlimited) return Number.POSITIVE_INFINITY;
-        const total = product.stock_total || 0;
-        const reserved = product.stock_reserved || 0;
-        const sold = product.stock_sold || 0;
-        return Math.max(0, total - reserved - sold);
-    };
+   const getAvailableUnits = (product: Product) => {
+      if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+      const total = product.stock_total || 0;
+      const reserved = product.stock_reserved || 0;
+      const sold = product.stock_sold || 0;
+      return Math.max(0, total - reserved - sold);
+   };
 
-    const getProductImageUrl = (dbValue: string, width: number = 400) => {
-        if (!dbValue) return '';
-        let path = dbValue;
-        if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-           const parts = dbValue.split('Menu/');
-           if (parts.length > 1) path = parts[1];
-        }
-        const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-        return getOptimizedImageUrl(data.publicUrl, width);
-    };
+   const getProductImageUrl = (dbValue: string, width: number = 400) => {
+      if (!dbValue) return '';
+      let path = dbValue;
+      if (dbValue.includes('http') && dbValue.includes('Menu/')) {
+         const parts = dbValue.split('Menu/');
+         if (parts.length > 1) path = parts[1];
+      }
+      const { data } = supabase.storage.from('Menu').getPublicUrl(path);
+      return getOptimizedImageUrl(data.publicUrl, width);
+   };
 
-    return (
-       <div className="pt-[115px] px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto">
-          {products.map((product, index) => {
+   return (
+      <motion.div
+         className="pt-[115px] px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto"
+         initial="hidden"
+         animate="visible"
+         variants={{
+            hidden: { opacity: 0 },
+            visible: {
+               opacity: 1,
+               transition: {
+                  staggerChildren: 0.08
+               }
+            }
+         }}
+      >
+         {products.map((product, index) => {
             const qty = cart[product.id] || 0;
             const isFirst = index === 0;
             const availableUnits = getAvailableUnits(product);
@@ -56,26 +70,45 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
             const soldOut = product.status === 'soldout' || outOfStock;
 
             return (
-               <div key={product.id} className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full border border-gray-100 transition-all ${qty > 0 ? 'ring-2 ring-pink-500' : ''}`}>
+               <motion.div
+                  key={product.id}
+                  className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full border border-gray-100 transition-all ${qty > 0 ? 'ring-2 ring-pink-500' : ''} group`}
+                  variants={{
+                     hidden: { opacity: 0, y: 30 },
+                     visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+                  }}
+               >
                   <div className="aspect-square bg-gray-100 relative w-full overflow-hidden">
                      {product.image_url ? (
-                        <img 
-                           // Optimization: 300px width (sufficient for 2-column layout), q-80 is handled by helper
-                           src={getProductImageUrl(product.image_url, 300)} 
-                           alt={product.name} 
-                           // LCP Optimization: Prioritize the first image
+                        <motion.img
+                           whileHover={{ scale: 1.05 }}
+                           transition={{ duration: 0.3 }}
+                           src={getProductImageUrl(product.image_url, 300)}
+                           alt={product.name}
                            loading={isFirst ? "eager" : "lazy"}
                            // @ts-ignore
                            fetchPriority={isFirst ? "high" : "auto"}
-                           // Layout Stability: Explicit dimensions matching aspect-square (1:1)
                            width="300"
                            height="300"
-                           className="w-full h-full object-cover" 
-                           onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }} 
+                           className="w-full h-full object-cover"
+                           onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
                         />
                      ) : (<div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>)}
                      {soldOut && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"><span className="text-white font-bold border-2 px-2 py-1 rotate-[-12deg] text-xs">SOLD OUT</span></div>
+                        <motion.div
+                           className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"
+                           initial={{ opacity: 0 }}
+                           animate={{ opacity: 1 }}
+                        >
+                           <motion.span
+                              className="text-white font-bold border-2 border-white px-2 py-1 text-xs"
+                              initial={{ scale: 2.5, opacity: 0, rotate: -12 }}
+                              animate={{ scale: 1, opacity: 1, rotate: -12 }}
+                              transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
+                           >
+                              SOLD OUT
+                           </motion.span>
+                        </motion.div>
                      )}
                   </div>
                   <div className="p-2.5 flex flex-col flex-1 justify-between">
@@ -99,12 +132,12 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
                         )}
                      </div>
                   </div>
-               </div>
+               </motion.div>
             );
-          })}
-          <div className="col-span-2 h-10 text-center text-[10px] text-gray-300 pt-4">End of Menu</div>
-       </div>
-    );
+         })}
+         <div className="col-span-2 h-10 text-center text-[10px] text-gray-300 pt-4">End of Menu</div>
+      </motion.div>
+   );
 };
 
 export default ProductList;

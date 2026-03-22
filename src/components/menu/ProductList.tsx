@@ -4,6 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
 import { motion } from 'framer-motion';
+import { getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 
 interface Product {
    id: string;
@@ -22,12 +23,13 @@ interface Product {
 
 interface ProductListProps {
    products: Product[];
+   promotions?: PromotionRule[];
    cart: Record<string, number>;
    isOrderSent: boolean;
    onUpdateQuantity: (id: string, delta: number, name?: string) => void;
 }
 
-const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
+const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
    const getAvailableUnits = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const total = product.stock_total || 0;
@@ -49,7 +51,7 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
 
    return (
       <motion.div
-         className="pt-[115px] px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto"
+         className="pt-3 px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto"
          initial="hidden"
          animate="visible"
          variants={{
@@ -68,6 +70,8 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
             const availableUnits = getAvailableUnits(product);
             const outOfStock = availableUnits <= 0;
             const soldOut = product.status === 'soldout' || outOfStock;
+            const promoBadges = getPromotionBadgesForProduct(product, promotions);
+            const isLowStock = Number.isFinite(availableUnits) && availableUnits > 0 && availableUnits <= 3;
 
             return (
                <motion.div
@@ -110,6 +114,13 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
                            </motion.span>
                         </motion.div>
                      )}
+                     {!soldOut && promoBadges.length > 0 && (
+                        <div className="absolute top-2 left-2 z-10">
+                           <span className="px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-black shadow-sm">
+                              {promoBadges[0].shortLabel}
+                           </span>
+                        </div>
+                     )}
                   </div>
                   <div className="p-2.5 flex flex-col flex-1 justify-between">
                      <div className="mb-2">
@@ -118,9 +129,14 @@ const ProductList = ({ products, cart, isOrderSent, onUpdateQuantity }: ProductL
                      </div>
                      <div className="flex flex-col gap-1.5">
                         <div className="text-pink-600 font-extrabold text-sm">{formatPrice(product.price, product.currency)}</div>
-                        {!product.is_unlimited && (
-                           <div className="text-[9px] text-gray-400">Left: {Math.max(0, availableUnits - qty)}</div>
-                        )}
+                        <div className="flex items-center justify-between gap-2">
+                           {!product.is_unlimited ? (
+                              <div className="text-[9px] text-gray-400">Left: {Math.max(0, availableUnits - qty)}</div>
+                           ) : (
+                              <div className="text-[9px] text-gray-400">Unlimited</div>
+                           )}
+                           {isLowStock && <div className="text-[9px] font-bold text-amber-700">Low stock</div>}
+                        </div>
                         {qty === 0 ? (
                            <button onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)} disabled={soldOut || isOrderSent} className={`w-full rounded-md py-1 flex items-center justify-center gap-1 text-[10px] font-bold transition-all ${soldOut || isOrderSent ? 'bg-gray-100 text-gray-400' : 'bg-gray-900 text-white active:scale-95'}`}><ShoppingBag size={10} /> ADD</button>
                         ) : (

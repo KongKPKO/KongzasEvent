@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X, User } from 'lucide-react';
+import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 
 // --- TYPES ---

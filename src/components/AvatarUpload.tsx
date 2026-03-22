@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
+import { resolveAvatarUrl } from '../utils/avatarUrl';
 
 interface AvatarUploadProps {
   currentImageUrl?: string;
@@ -10,7 +11,7 @@ interface AvatarUploadProps {
 }
 
 const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUploadProps) => {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(resolveAvatarUrl(currentImageUrl) || null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setPreviewUrl(currentImageUrl || null);
+    setPreviewUrl(resolveAvatarUrl(currentImageUrl) || null);
   }, [currentImageUrl]);
 
   const handleImageCompression = async (imageFile: File): Promise<File> => {
@@ -93,10 +94,10 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
         .from('Avatar')
         .getPublicUrl(filePath);
 
-      const finalUrl = publicUrl;
+      const finalUrl = resolveAvatarUrl(publicUrl);
 
       setPreviewUrl(finalUrl);
-      onUploadComplete(finalUrl);
+      onUploadComplete(publicUrl);
 
     } catch (err: any) {
       console.error('Upload failed:', err);

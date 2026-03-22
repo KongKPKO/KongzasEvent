@@ -7,6 +7,7 @@ import { canAccessOwnerPages, canAccessQueuePages } from './types/access';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
+const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
 import QueueView from './pages/customer/QueueView';
 
@@ -14,6 +15,7 @@ const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
+const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 import ManageLogin from './pages/ManageLogin';
@@ -151,11 +153,16 @@ function App() {
               element={session ? (isOwner ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
+              path="/manage-events/:eventId/dashboard"
+              element={session ? (isOwner ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
               path="/manage-pos-queues"
               element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
             />
 
             <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
+            <Route path="/discover" element={<DiscoveryHome />} />
 
             <Route path="/:slug" element={<CustomerLayout />}>
               <Route path="home" element={<CustomerHome />} />

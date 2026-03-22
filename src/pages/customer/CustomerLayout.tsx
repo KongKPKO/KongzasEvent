@@ -1,5 +1,5 @@
 import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
-import { Home, ShoppingBag, Users } from 'lucide-react';
+import { Home, ShoppingBag, Users, Compass } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useArtist } from '../../hooks/useArtist';
 import CallingNotification from '../../components/CallingNotification';
@@ -75,6 +75,17 @@ const CustomerLayout = () => {
                   >
                      <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} aria-hidden="true" />
                      Queue
+                  </Link>
+               </motion.div>
+
+               <motion.div whileTap={{ scale: 0.9 }}>
+                  <Link
+                     to="/discover"
+                     className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.startsWith('/discover') ? 'text-[#d63384]' : 'text-slate-600'}`}
+                     aria-label="Discover"
+                  >
+                     <Compass size={22} strokeWidth={location.pathname.startsWith('/discover') ? 2.5 : 2} aria-hidden="true" />
+                     Discover
                   </Link>
                </motion.div>
             </nav>

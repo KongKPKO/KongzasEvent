@@ -7,6 +7,7 @@ import { Button, Card } from '../../components/ui';
 import { RefreshCcw, LogOut } from 'lucide-react';
 import CustomerHeader from '../../components/CustomerHeader';
 import { motion, AnimatePresence } from 'framer-motion';
+import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
 const FUN_FACTS = [
     "รู้หรือไม่? ชุดนี้ใช้เวลาทำนานมากเลยนะ!",
@@ -502,6 +503,64 @@ const QueueView = () => {
 
     // NOTE: artist prop from useArtistRealtime now contains is_queue_open
     const isQueueOpen = displayArtist?.is_queue_open ?? true; // Default to true if undefined
+    const queueActionGuidance = (() => {
+        if (!myTicket) {
+            if (!isQueueOpen) {
+                return {
+                    title: 'Queue paused',
+                    detail: 'The booth paused online queue intake. Please wait for reopening or ask staff at the booth.',
+                    tone: 'amber',
+                };
+            }
+            if (activeEvent && isBoothOpen) {
+                return {
+                    title: 'Get a ticket first',
+                    detail: 'Join the queue here, then keep this page open to track your status and calling instructions.',
+                    tone: 'pink',
+                };
+            }
+            return {
+                title: 'Queue unavailable',
+                detail: 'There is no active booth session right now. Check the event status or come back later.',
+                tone: 'slate',
+            };
+        }
+
+        switch (myTicket.status) {
+            case 'waiting':
+                return {
+                    title: 'Wait and keep browsing',
+                    detail: 'You can keep browsing the menu. Confirmation unlocks when your queue is called.',
+                    tone: 'slate',
+                };
+            case 'calling':
+                return {
+                    title: 'Proceed to the booth now',
+                    detail: activeEvent?.queueing_area?.trim()
+                        ? `Go to ${activeEvent.queueing_area.trim()} and be ready to confirm your selected items.`
+                        : 'Go to the booth now and be ready to confirm your selected items.',
+                    tone: 'amber',
+                };
+            case 'serving':
+                return {
+                    title: 'You can confirm your items now',
+                    detail: 'Staff is ready for you. Use the menu cart if you want to send your selected items before checkout.',
+                    tone: 'blue',
+                };
+            case 'complete':
+                return {
+                    title: 'Queue completed',
+                    detail: 'This queue is finished. You can close this ticket or continue browsing other booths.',
+                    tone: 'green',
+                };
+            default:
+                return {
+                    title: 'Ticket closed',
+                    detail: 'This ticket is no longer active. If you still want to buy, please get a new queue ticket.',
+                    tone: 'red',
+                };
+        }
+    })();
 
 
     return (
@@ -518,7 +577,7 @@ const QueueView = () => {
                 artistId={displayArtist.id}
                 title={displayArtist.display_name || 'Queue'}
                 transparent={true} // Restored transparent background
-                avatarUrl={displayArtist.image_url}
+                avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
                 avatarDisplay="inline"
             >
                 {activeEvent && (
@@ -553,6 +612,19 @@ const QueueView = () => {
                         </div>
                     </div>
                 </motion.div>
+
+                <div className={`w-full rounded-2xl border px-4 py-3 mb-4 ${
+                    queueActionGuidance.tone === 'pink' ? 'bg-pink-50 border-pink-100' :
+                    queueActionGuidance.tone === 'amber' ? 'bg-amber-50 border-amber-100' :
+                    queueActionGuidance.tone === 'blue' ? 'bg-sky-50 border-sky-100' :
+                    queueActionGuidance.tone === 'green' ? 'bg-green-50 border-green-100' :
+                    queueActionGuidance.tone === 'red' ? 'bg-red-50 border-red-100' :
+                    'bg-slate-50 border-slate-100'
+                }`}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Next Step</div>
+                    <div className="mt-1 text-sm font-bold text-gray-900">{queueActionGuidance.title}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-gray-600">{queueActionGuidance.detail}</div>
+                </div>
 
                 {/* MAIN TICKET AREA */}
                 {myTicket ? (

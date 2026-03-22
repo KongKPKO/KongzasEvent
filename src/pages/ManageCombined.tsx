@@ -41,6 +41,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>('queue');
+    const [isQueuePanelExpanded, setIsQueuePanelExpanded] = useState(false);
 
     const activeEventIdRef = useRef<string | null>(null);
 
@@ -213,10 +214,10 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+        <div className="flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
-            <div className="md:hidden flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
+            <div className="md:hidden sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
                 <button
                     onClick={() => setActiveTab('queue')}
                     className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
@@ -242,10 +243,11 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                 )}
             </div>
 
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 overflow-hidden relative">
                 <div className={`
                     ${activeTab === 'queue' ? 'flex' : 'hidden'}
-                    md:flex w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px]
+                    ${!hasPosPermission || isQueuePanelExpanded ? 'md:flex' : 'md:hidden'}
+                    w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px]
                     border-r border-gray-200 bg-white flex-col z-10
                     shadow-[4px_0_24px_rgba(0,0,0,0.02)]
                 `}>
@@ -264,8 +266,20 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
                 <div className={`
                     ${activeTab === 'pos' ? 'flex' : 'hidden'}
-                    md:flex flex-1 bg-gray-50 flex-col min-w-0
+                    md:flex flex-1 bg-gray-50 flex-col min-w-0 relative
                 `} data-testid="pos-pane">
+                    {hasPosPermission && (
+                        <button
+                            type="button"
+                            onClick={() => setIsQueuePanelExpanded((prev) => !prev)}
+                            className="hidden md:inline-flex absolute top-6 -left-px z-20 rounded-r-lg border border-l-0 border-gray-200 bg-white/95 backdrop-blur px-1.5 py-2 text-[10px] font-bold text-gray-700 shadow-sm hover:bg-white"
+                            aria-label={isQueuePanelExpanded ? 'Collapse queue control' : 'Expand queue control'}
+                            title={isQueuePanelExpanded ? 'Hide Queue Control' : 'Expand Queue Control'}
+                        >
+                            <span className="[writing-mode:vertical-rl] rotate-180 leading-none tracking-tight">{isQueuePanelExpanded ? '< Hide Queue' : '> Queue'}</span>
+                        </button>
+                    )}
+
                     <PosPanel
                         activeEvent={activeEvent}
                         servingQueues={servingQueues}
@@ -273,6 +287,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                         selectedQueueNumber={selectedQueueNumber}
                         actorContext={actorContext}
                         canUsePos={hasPosPermission}
+                        isQueuePanelExpanded={isQueuePanelExpanded}
                         onSelectQueue={(queue) => {
                             setSelectedQueueId(queue.id);
                             setSelectedQueueNumber(queue.queue_number);

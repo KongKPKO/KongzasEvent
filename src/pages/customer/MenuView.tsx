@@ -2,12 +2,13 @@ import { useEffect, useState, useMemo, Suspense, lazy } from 'react';
 import { useOutletContext, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
-import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket, ShoppingBag } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket, ShoppingBag, Sparkles, Compass } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
 
 const ProductList = lazy(() => import('../../components/menu/ProductList'));
 import { formatPrice } from '../../utils/currency';
+import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 
 interface Product {
   id: string;
@@ -16,6 +17,7 @@ interface Product {
   image_url: string;
   description?: string;
   category?: string;
+  tags?: string[];
   status?: 'enable' | 'disable' | 'soldout';
   currency?: string;  // ✅ NEW: Currency code
   stock_total?: number | null;
@@ -39,6 +41,7 @@ const MenuView = () => {
   const { slug } = useParams();
   
   const [products, setProducts] = useState<Product[]>([]);
+  const [promotions, setPromotions] = useState<PromotionRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [productsLoaded, setProductsLoaded] = useState(false);
   
@@ -62,6 +65,7 @@ const MenuView = () => {
   const [cart, setCart] = useState<CartItems>(() => readStoredCart().items);
   const [cartItemNames, setCartItemNames] = useState<CartItemNames>(() => readStoredCart().names);
   const [userQueueNumber, setUserQueueNumber] = useState<string | null>(null);
+  const [userQueueStatus, setUserQueueStatus] = useState<string | null>(null);
   
   // UI States
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -69,6 +73,7 @@ const MenuView = () => {
   // Filter & Sort State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedTag, setSelectedTag] = useState('All');
   const [sortOption, setSortOption] = useState('name_asc');
 
   // Order Submission State - Initialize from localStorage
@@ -111,22 +116,49 @@ const MenuView = () => {
       return ['All', ...Array.from(new Set(cats)).sort()];
   }, [products]);
 
+  const uniqueTags = useMemo(() => {
+      const tags = products.flatMap((p) => p.tags || []).map((tag) => tag.trim()).filter(Boolean);
+      return ['All', ...Array.from(new Set(tags)).sort()];
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
+      const query = searchQuery.trim().toLowerCase();
       return products.filter(product => {
-         const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+         const tagHaystack = (product.tags || []).join(' ').toLowerCase();
+         const matchesSearch =
+            query.length === 0 ||
+            product.name.toLowerCase().includes(query) ||
+            (product.category || '').toLowerCase().includes(query) ||
+            (product.description || '').toLowerCase().includes(query) ||
+            tagHaystack.includes(query);
          const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
+         const matchesTag = selectedTag === 'All' || (product.tags || []).some((tag) => tag.trim() === selectedTag);
          const isVisible = product.status !== 'disable';
-         return matchesSearch && matchesCategory && isVisible;
+         return matchesSearch && matchesCategory && matchesTag && isVisible;
       }).sort((a, b) => {
          if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
          if (sortOption === 'price_asc') return a.price - b.price;
          if (sortOption === 'price_desc') return b.price - a.price;
          return 0;
       });
-  }, [products, searchQuery, selectedCategory, sortOption]);
+  }, [products, searchQuery, selectedCategory, selectedTag, sortOption]);
 
   const totalItems = useMemo(() => Object.values(cart).reduce((sum, qty) => sum + qty, 0), [cart]);
-  const totalPrice = useMemo(() => products.reduce((sum, p) => sum + (p.price * (cart[p.id] || 0)), 0), [products, cart]);
+  const cartItems = useMemo(() => products
+    .filter((product) => (cart[product.id] || 0) > 0)
+    .map((product) => ({ product, quantity: cart[product.id] || 0 })), [products, cart]);
+  const pricing = useMemo(() => calculatePromotionPricing(cartItems, promotions), [cartItems, promotions]);
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    selectedCategory !== 'All' ||
+    selectedTag !== 'All' ||
+    sortOption !== 'name_asc';
+  const promoProductCount = useMemo(
+    () => products.filter((product) => getPromotionBadgesForProduct(product, promotions).length > 0).length,
+    [products, promotions]
+  );
+  const quickCategoryChips = uniqueCategories.slice(0, 5);
+  const hasMoreCategories = uniqueCategories.length > quickCategoryChips.length;
   
   // ✅ NEW: Get currency from first cart item for totals display
   const cartCurrency = useMemo(() => {
@@ -134,6 +166,23 @@ const MenuView = () => {
     const firstProduct = firstProductId ? productById.get(firstProductId) : null;
     return firstProduct?.currency;
   }, [cart, productById]);
+
+  const fetchPromotions = async (artistId: string) => {
+    const { data, error } = await supabase
+      .from('artist_promotions')
+      .select('id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status')
+      .eq('artist_id', artistId)
+      .eq('status', 'active')
+      .order('priority', { ascending: false });
+
+    if (error) {
+      console.error('[MenuView] fetchPromotions failed:', error);
+      setPromotions([]);
+      return;
+    }
+
+    setPromotions((data || []) as PromotionRule[]);
+  };
 
   // --- Persist cart to localStorage ---
   useEffect(() => {
@@ -169,16 +218,18 @@ const MenuView = () => {
             // Only show queue number if status is active
             if (queueData && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
                 setUserQueueNumber(queueData.queue_number);
+                setUserQueueStatus(queueData.status);
                 console.log("Customer is Queue:", queueData.queue_number);
             } else {
                setUserQueueNumber(null);
+               setUserQueueStatus(queueData?.status || null);
             }
         }
 
         // 2.2 ดึงสินค้า
         const { data, error } = await supabase
             .from('products')
-            .select('id, name, price, image_url, description, category, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .select('id, name, price, image_url, description, category, tags, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
             .eq('artist_id', displayArtist.id)
             .order('created_at', { ascending: false });
 
@@ -186,13 +237,15 @@ const MenuView = () => {
             setProducts(data);
             setProductsLoaded(true);
         }
+
+        await fetchPromotions(displayArtist.id);
         setLoading(false);
     };
 
     if (displayArtist?.id) {
        initData();
        
-       const channel = supabase
+       const productChannel = supabase
          .channel(`menu-realtime-${displayArtist.id}`)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${displayArtist.id}` }, (payload) => {
                if (payload.eventType === 'INSERT') setProducts(prev => [payload.new as Product, ...prev]);
@@ -200,8 +253,18 @@ const MenuView = () => {
                if (payload.eventType === 'DELETE') setProducts(prev => prev.filter(p => p.id !== payload.old.id));
             }
          ).subscribe();
+
+       const promotionChannel = supabase
+         .channel(`menu-promotions-${displayArtist.id}`)
+         .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_promotions', filter: `artist_id=eq.${displayArtist.id}` }, () => {
+            fetchPromotions(displayArtist.id);
+         })
+         .subscribe();
          
-       return () => { supabase.removeChannel(channel); };
+       return () => {
+         supabase.removeChannel(productChannel);
+         supabase.removeChannel(promotionChannel);
+       };
     }
   }, [displayArtist?.id]);
 
@@ -282,7 +345,12 @@ const MenuView = () => {
         return; 
     }
 
-    if (!confirm(`Confirm order for ${totalItems} items (${formatPrice(totalPrice, cartCurrency)})?`)) return;
+    if (!canConfirmOrder) {
+        alert('You can confirm when your queue is called.');
+        return;
+    }
+
+    if (!confirm(`Confirm order for ${totalItems} items (${formatPrice(pricing.total, cartCurrency)})?`)) return;
 
     setSubmitting(true);
     try {
@@ -296,12 +364,17 @@ const MenuView = () => {
         if (queueError || !queueData) {
              throw new Error("Queue ticket not found. Please queue again.");
         }
-        // Allow only active queues
-        if (!['waiting', 'calling', 'serving', 'in_progress'].includes(queueData.status)) {
-             // If completed/cancelled, force clear and redirect
-             localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
-             alert(`Your queue ticket is ${queueData.status} (expired/completed).\nPlease get a new ticket.`);
-             navigate(`/${displayArtist?.slug || slug}/queue`);
+        // Allow only calling / serving queues to confirm cart
+        if (!['calling', 'serving'].includes(queueData.status)) {
+             if (['complete', 'missed', 'expired'].includes(queueData.status)) {
+                 localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
+                 alert(`Your queue ticket is ${queueData.status} (expired/completed).\nPlease get a new ticket.`);
+                 navigate(`/${displayArtist?.slug || slug}/queue`);
+                 return;
+             }
+
+             setUserQueueStatus(queueData.status);
+             alert('You can confirm when your queue is called.');
              return;
         }
 
@@ -426,6 +499,7 @@ const MenuView = () => {
                  if (newStatus === 'complete' && isOrderSent) {
                     setIsOrderCompleted(true);
                  }
+                 setUserQueueStatus(newStatus || null);
                  if (['complete', 'missed', 'expired'].includes(newStatus)) {
                     setUserQueueNumber(null); // Clear badge
                  } else if (payload.new?.queue_number) {
@@ -439,6 +513,20 @@ const MenuView = () => {
   }, [displayArtist?.id, isOrderSent]);
 
   // Helper to reset order state - Clear all localStorage and state
+  const canConfirmOrder = userQueueStatus === 'calling' || userQueueStatus === 'serving';
+  const queueGuidance = canConfirmOrder
+    ? 'You can confirm now. Send your selected items before staying at booth.'
+    : userQueueNumber
+      ? 'You can select now. Confirm unlocks when your queue is called.'
+      : 'You can select now. Get a queue number before confirming.';
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('All');
+    setSelectedTag('All');
+    setSortOption('name_asc');
+  };
+
   const handleCloseCompletedOrder = () => {
       clearCart();
       setIsOrderSent(false);
@@ -466,7 +554,7 @@ const MenuView = () => {
        )}
 
       {/* --- 🌟 1. FIXED HEADER AREA (Fix Layout Overflow) --- */}
-      <div className="fixed top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-200 w-full max-w-md">
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-200 w-full max-w-md">
          
          {/* Row 1: Shop Name & Queue Badge (Left Aligned with standard Flexbox) */}
          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100/50 bg-white gap-3">
@@ -486,9 +574,14 @@ const MenuView = () => {
             </div>
         
             {/* Right Side: Queue Badge */}
-            <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-               <Ticket size={14} />
-               <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+               <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                  <Ticket size={14} />
+                  <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
+               </div>
+               <div className={`max-w-[200px] text-right px-2 py-1 rounded-full text-[9px] font-bold leading-tight ${canConfirmOrder ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                  {queueGuidance}
+               </div>
             </div>
          </div>
 
@@ -508,18 +601,99 @@ const MenuView = () => {
                 </div>
             </div>
 
-            {/* Categories */}
-            <div className="px-3 pb-2 pt-0.5 flex gap-1.5 overflow-x-auto no-scrollbar">
-                {uniqueCategories.map(cat => (
-                    <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{cat}</button>
-                ))}
+            <div className="px-3 pb-2 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="px-2 py-1 rounded-full bg-gray-100 text-[10px] font-bold text-gray-600">
+                        {filteredProducts.length} items
+                    </span>
+                    {promoProductCount > 0 && (
+                        <span className="px-2 py-1 rounded-full bg-rose-50 text-[10px] font-bold text-rose-700 border border-rose-100">
+                            {promoProductCount} on promo
+                        </span>
+                    )}
+                </div>
+                {hasActiveFilters && (
+                    <button
+                        onClick={clearFilters}
+                        className="text-[10px] font-bold text-pink-600 border border-pink-200 bg-pink-50 rounded-full px-2.5 py-1"
+                    >
+                        Clear filters
+                    </button>
+                )}
             </div>
+
+            {/* Categories */}
+            <div className="px-3 pb-2 pt-0.5 flex items-center gap-1.5">
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
+                    {quickCategoryChips.map(cat => (
+                        <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{cat}</button>
+                    ))}
+                </div>
+                {hasMoreCategories && (
+                    <div className="relative min-w-[130px] shrink-0">
+                        <select
+                            value={quickCategoryChips.includes(selectedCategory) ? 'More' : selectedCategory}
+                            onChange={(e) => {
+                                const nextValue = e.target.value;
+                                if (nextValue !== 'More') setSelectedCategory(nextValue);
+                            }}
+                            className="w-full appearance-none rounded-full border border-gray-200 bg-white px-3 py-1.5 pr-7 text-[10px] font-bold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            aria-label="More categories"
+                        >
+                            <option value="More" disabled>More</option>
+                            {uniqueCategories.filter((cat) => !quickCategoryChips.includes(cat)).map((cat) => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={12} />
+                    </div>
+                )}
+            </div>
+
+            {uniqueTags.length > 1 && (
+                <div className="px-3 pb-2 pt-0">
+                    <div className="relative">
+                        <select
+                            value={selectedTag}
+                            onChange={(e) => setSelectedTag(e.target.value)}
+                            className="w-full appearance-none rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 pr-8 text-[11px] font-bold text-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            aria-label="Filter products by tag"
+                        >
+                            {uniqueTags.map(tag => (
+                                <option key={tag} value={tag}>{tag === 'All' ? 'All tags' : tag}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-400 pointer-events-none" size={14} />
+                    </div>
+                </div>
+            )}
+
+            {hasActiveFilters && (
+                <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+                    {selectedCategory !== 'All' && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-pink-50 text-pink-600 border border-pink-100">
+                            Category: {selectedCategory}
+                        </span>
+                    )}
+                    {selectedTag !== 'All' && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-100">
+                            Tag: {selectedTag}
+                        </span>
+                    )}
+                    {searchQuery.trim() && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
+                            Search: {searchQuery.trim()}
+                        </span>
+                    )}
+                </div>
+            )}
        </div>
 
        {/* --- MENU GRID (LAZY LOADED) --- */}
        <Suspense fallback={<ProductSkeleton />}>
           <ProductList 
               products={filteredProducts}
+              promotions={promotions}
               cart={cart}
               isOrderSent={isOrderSent}
               onUpdateQuantity={updateQuantity}
@@ -543,20 +717,97 @@ const MenuView = () => {
                                 {Object.entries(cart).map(([id, qty]) => {
                                     const product = products.find(p => p.id === id);
                                     if (!product || qty === 0) return null;
+                                    const lineBreakdowns = pricing.lineBreakdowns[id] || [];
+                                    const lineDiscount = lineBreakdowns.reduce((sum, item) => sum + item.discountAmount, 0);
+                                    const lineSubtotal = product.price * qty;
+                                    const lineTotal = Math.max(0, lineSubtotal - lineDiscount);
                                     return (
-                                        <div key={id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                            <div className="flex items-center gap-2 overflow-hidden">
-                                                <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
-                                                <div className="min-w-0"><div className="font-bold text-xs text-gray-800 truncate">{product.name}</div><div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / unit</div></div>
+                                        <div key={id} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 overflow-hidden min-w-0 flex-1">
+                                                    <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-bold text-xs text-gray-800 truncate">{product.name}</div>
+                                                        <div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / unit</div>
+                                                        {lineDiscount > 0 && (
+                                                            <div className="mt-0.5 text-[10px] font-bold text-emerald-700">Now {formatPrice(lineTotal, product.currency)} from {formatPrice(lineSubtotal, product.currency)}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => updateQuantity(id, -1, product.name)} className="w-6 h-6 rounded-md border border-gray-200 bg-white text-gray-600 text-xs font-black" aria-label={`Decrease quantity of ${product.name}`}>-</button>
+                                                    <div className="font-bold text-xs min-w-[28px] text-center text-pink-600">x {qty}</div>
+                                                    <button onClick={() => updateQuantity(id, 1, product.name)} className="w-6 h-6 rounded-md border border-gray-200 bg-white text-gray-600 text-xs font-black" aria-label={`Increase quantity of ${product.name}`}>+</button>
+                                                    <button onClick={() => updateQuantity(id, -qty, product.name)} className="w-6 h-6 rounded-md border border-red-200 bg-white text-red-500 text-[10px] font-black" aria-label={`Remove ${product.name}`}>✕</button>
+                                                </div>
                                             </div>
-                                            <div className="font-bold text-xs w-10 text-right text-pink-600">x {qty}</div>
+                                            {lineBreakdowns.length > 0 && (
+                                                <div className="mt-2 space-y-1">
+                                                    {lineBreakdowns.map((entry, entryIndex) => (
+                                                        <div key={`${entry.ruleId}-${entryIndex}`} className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div>
+                                                                    <div className="text-[10px] font-black text-emerald-800">{entry.label}</div>
+                                                                    <div className="text-[10px] text-emerald-700">{entry.freeQuantity > 0 ? `${entry.freeQuantity} item free` : `Discount applied on ${entry.affectedQuantity} item${entry.affectedQuantity > 1 ? 's' : ''}`}</div>
+                                                                </div>
+                                                                <div className="text-[10px] font-black text-emerald-700">- {formatPrice(entry.discountAmount, product.currency)}</div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
                             </div>
+
+                            {pricing.appliedPromotions.length > 0 && (
+                                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-800 mb-2">
+                                        <Sparkles size={12} /> Applied promotions
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {pricing.appliedPromotions.map((promotion) => (
+                                            <div key={promotion.ruleId} className="flex items-start justify-between gap-2 rounded-lg bg-white/90 border border-emerald-100 px-2 py-1.5">
+                                                <div>
+                                                    <div className="text-[11px] font-bold text-gray-800">{promotion.label}</div>
+                                                    <div className="text-[10px] text-gray-600">{promotion.message}</div>
+                                                </div>
+                                                <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discountAmount, cartCurrency)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px] text-gray-600">
+                                    <span>Subtotal</span>
+                                    <span className="font-bold text-gray-800">{formatPrice(pricing.subtotal, cartCurrency)}</span>
+                                </div>
+                                {pricing.discountTotal > 0 && (
+                                    <div className="flex items-center justify-between text-[11px] text-emerald-700">
+                                        <span>Discount</span>
+                                        <span className="font-black">- {formatPrice(pricing.discountTotal, cartCurrency)}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+                                    <span className="text-xs font-bold text-gray-700">Total</span>
+                                    <span className="text-sm font-black text-gray-900">{formatPrice(pricing.total, cartCurrency)}</span>
+                                </div>
+                            </div>
+
+                            <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canConfirmOrder ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                                <div className={`text-[10px] font-black uppercase tracking-wide ${canConfirmOrder ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                    {canConfirmOrder ? 'Ready to confirm' : 'Selection only'}
+                                </div>
+                                <div className={`mt-1 text-[11px] leading-relaxed ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                    {queueGuidance}
+                                </div>
+                            </div>
                         </div>
                     )}
-                    <div className="p-2 px-3 flex items-center gap-3 bg-white/95 backdrop-blur-sm h-14">
+                    <div className="p-2 px-3 flex items-center gap-3 bg-white/95 backdrop-blur-sm min-h-14">
                         {isOrderSent ? (
                             isOrderCompleted ? (
                                 // ✅ ORDER COMPLETED UI
@@ -594,9 +845,13 @@ const MenuView = () => {
                             <>
                                 <div onClick={() => setIsCartOpen(!isCartOpen)} className="flex-1 cursor-pointer flex flex-col justify-center">
                                     <div className="flex items-center gap-1 text-gray-400 text-[9px] font-bold uppercase tracking-wider"><span>TOTAL</span>{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="animate-bounce"/>}</div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(totalPrice, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} items</span></div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} items</span></div>
+                                    {pricing.discountTotal > 0 && (
+                                        <div className="text-[10px] font-bold text-emerald-700">Saved {formatPrice(pricing.discountTotal, cartCurrency)}</div>
+                                    )}
+                                    <div className={`text-[10px] font-medium mt-0.5 ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>{queueGuidance}</div>
                                 </div>
-                                <button onClick={handleConfirmOrder} disabled={submitting} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-lg shadow-pink-200 active:scale-95 transition-all disabled:opacity-70 disabled:scale-100 flex items-center gap-1.5 h-10">{submitting ? 'Sending...' : (<><span>Confirm</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
+                                <button onClick={handleConfirmOrder} disabled={submitting || !canConfirmOrder} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-lg shadow-pink-200 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center gap-1.5 h-10">{submitting ? 'Sending...' : (<><span>{canConfirmOrder ? 'Confirm' : 'Wait'}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
                             </>
                         )}
                     </div>
@@ -610,6 +865,7 @@ const MenuView = () => {
                 <button onClick={() => navigate(`/${displayArtist?.slug || ''}`)} className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 ${location.pathname.endsWith(`/${displayArtist?.slug}`) ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}><Home size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Home</span></button>
                 <button className="flex flex-col items-center justify-center w-full h-full space-y-0.5 text-pink-500"><ShoppingBag size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Menu</span></button>
                 <button onClick={() => navigate(`/${displayArtist?.slug || ''}/queue`)} className="flex flex-col items-center justify-center w-full h-full space-y-0.5 text-gray-400 hover:text-gray-600"><Users size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Queue</span></button>
+                <button onClick={() => navigate('/discover')} className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 ${location.pathname.startsWith('/discover') ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}><Compass size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Discover</span></button>
             </div>
         </div>
     </div>

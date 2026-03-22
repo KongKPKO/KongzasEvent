@@ -65,11 +65,6 @@ const ManageArtist = () => {
     [currentEvent.event_timezone, browserTimeZone]
   );
 
-  // Stats Modal State
-  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
-  const [summaryStats, setSummaryStats] = useState<any>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
-
   // Filter State
   const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
   const [filterYear, setFilterYear] = useState<number | 'all'>('all');
@@ -382,69 +377,7 @@ const ManageArtist = () => {
 
   // --- STATS LOGIC ---
   const handleOpenStats = async (event: Event) => {
-      setCurrentEvent(event);
-      setIsStatsModalOpen(true);
-      setLoadingStats(true);
-      setSummaryStats(null);
-
-      try {
-         const { data: queues, error } = await supabase
-            .from('queues')
-            .select('id, status, created_at, called_at, served_at, completed_at')
-            .eq('event_id', event.id);
-
-         if (error) throw error;
-
-         if (queues) {
-            // 1. Count Statuses
-            const total = queues.length;
-            const served = queues.filter(q => q.status === 'complete').length;
-            const cancelled = queues.filter(q => q.status === 'missed').length; // User Cancelled
-            const expired = queues.filter(q => q.status === 'expired').length;   // System Expired
-            
-            // 2. Calc Averages
-            let totalWaitTime = 0;
-            let waitCount = 0;
-            let totalServiceTime = 0;
-            let serviceCount = 0;
-
-            queues.forEach(q => {
-               if (q.created_at && (q.served_at || q.called_at)) {
-                  const endTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
-                  const wait = (endTime - new Date(q.created_at).getTime()) / 60000;
-                  
-                  if (wait > 0 && wait < 600) { 
-                     totalWaitTime += wait;
-                     waitCount++;
-                  }
-               }
-
-               if (q.status === 'complete' && q.completed_at && (q.served_at || q.called_at)) {
-                   const startTime = q.served_at ? new Date(q.served_at).getTime() : new Date(q.called_at).getTime();
-                   const service = (new Date(q.completed_at).getTime() - startTime) / 60000;
-                   
-                   if (service > 0 && service < 300) { 
-                       totalServiceTime += service;
-                       serviceCount++;
-                   }
-               }
-            });
-
-            setSummaryStats({
-               total,
-               served,
-               cancelled,
-               expired,
-               avgWait: waitCount > 0 ? Math.round(totalWaitTime / waitCount) : 0,
-               avgService: serviceCount > 0 ? Math.round(totalServiceTime / serviceCount) : 0
-            });
-         }
-
-      } catch (err) {
-         console.error("Error fetching stats:", err);
-      } finally {
-         setLoadingStats(false);
-      }
+      navigate(`/manage-events/${event.id}/dashboard`);
   };
 
 
@@ -683,35 +616,39 @@ const ManageArtist = () => {
                                      </div>
                                   </td>
                                   <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 transition-opacity">
-                                        <button 
+                                    <div className="flex items-center justify-end gap-2 transition-opacity flex-wrap">
+                                        <button
                                           onClick={() => handleOpenStats(evt)}
-                                          className="text-gray-400 hover:text-pink-600 hover:bg-pink-50 p-1.5 rounded-md transition-colors"
-                                          title="View Queue Stats"
+                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-pink-600 hover:bg-pink-50 px-3 py-1.5 rounded-md transition-colors border border-pink-100"
+                                          title="Open dashboard"
                                         >
-                                           <BarChart2 size={20} />
-                                        </button>
-                                        
-                                        {/* ✅ BUTTON: Sales History */}
-                                        <button 
-                                          onClick={() => navigate(`/manage-events/${evt.id}/history`)}
-                                          className="text-gray-400 hover:text-green-600 hover:bg-green-50 p-1.5 rounded-md transition-colors"
-                                          title="View Sales History"
-                                        >
-                                           <FileText size={20} />
+                                           <BarChart2 size={14} />
+                                           Dashboard
                                         </button>
 
-                                        <button 
+                                        <button
+                                          onClick={() => navigate(`/manage-events/${evt.id}/history`)}
+                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-md transition-colors border border-emerald-100"
+                                          title="Open order history"
+                                        >
+                                           <FileText size={14} />
+                                           Orders
+                                        </button>
+
+                                        <button
                                           onClick={() => handleOpenModal(evt)}
-                                          className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors"
+                                          className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors border border-blue-100"
+                                          title="Edit event"
                                         >
                                            Edit
                                         </button>
-                                        <button 
+                                        <button
                                           onClick={() => handleEventDelete(evt.id)}
-                                          className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-colors"
+                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors border border-red-100"
+                                          title="Delete event"
                                         >
-                                           <Trash2 size={20} />
+                                           <Trash2 size={14} />
+                                           Delete
                                         </button>
                                       </div>
                                    </td>
@@ -820,87 +757,6 @@ const ManageArtist = () => {
          </div>
       )}
 
-      {/* --- STATS MODAL --- */}
-      {isStatsModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
-               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                  <div className="flex items-center gap-2">
-                     <BarChart2 className="text-[#d63384]" size={20} />
-                     <div>
-                        <h3 className="font-bold text-lg text-slate-800">Performance Summary</h3>
-                        <p className="text-xs text-gray-400 font-medium">{currentEvent.event_name}</p>
-                     </div>
-                  </div>
-                  <button onClick={() => setIsStatsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                     <X size={20} />
-                  </button>
-               </div>
-               
-               <div className="p-8">
-                  {loadingStats ? (
-                     <div className="py-12 text-center text-gray-400 font-medium animate-pulse">Calculating metrics...</div>
-                  ) : summaryStats ? (
-                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {/* Total Tickets */}
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center">
-                           <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Limit</div>
-                           <div className="text-3xl font-black text-slate-800">{summaryStats.total}</div>
-                           <div className="text-[10px] text-gray-400 mt-1">Tickets Issued</div>
-                        </div>
-
-                        {/* Served */}
-                        <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
-                           <div className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Served</div>
-                           <div className="text-3xl font-black text-green-700">{summaryStats.served}</div>
-                           <div className="text-[10px] text-green-600/70 mt-1">
-                              {summaryStats.total > 0 ? Math.round((summaryStats.served / summaryStats.total) * 100) : 0}% Rate
-                           </div>
-                        </div>
-
-                        {/* Avg Wait */}
-                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
-                           <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Avg Wait</div>
-                           <div className="text-3xl font-black text-blue-700">{summaryStats.avgWait}<span className="text-sm font-bold text-blue-400 ml-1">m</span></div>
-                           <div className="text-[10px] text-blue-600/70 mt-1">To Get Called</div>
-                        </div>
-
-                        {/* Avg Service */}
-                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 text-center">
-                           <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Avg Service</div>
-                           <div className="text-3xl font-black text-purple-700">{summaryStats.avgService}<span className="text-sm font-bold text-purple-400 ml-1">m</span></div>
-                           <div className="text-[10px] text-purple-600/70 mt-1">At Counter</div>
-                        </div>
-
-                        {/* Missed / Cancelled Split */}
-                         <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center col-span-2 mt-2 flex items-center justify-between px-6">
-                           <div className="text-left">
-                              <div className="text-red-700 font-bold text-sm">Cancelled</div>
-                              <div className="text-red-400 text-[10px]">By User</div>
-                           </div>
-                           <div className="text-3xl font-black text-red-600">{summaryStats.cancelled}</div>
-                        </div>
-
-                         <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 text-center col-span-2 mt-2 flex items-center justify-between px-6">
-                           <div className="text-left">
-                              <div className="text-gray-700 font-bold text-sm">Expired</div>
-                              <div className="text-gray-400 text-[10px]">System Removal</div>
-                           </div>
-                           <div className="text-3xl font-black text-gray-600">{summaryStats.expired}</div>
-                        </div>
-
-                     </div>
-                  ) : (
-                     <div className="text-center text-gray-400">No data available.</div>
-                  )}
-               </div>
-
-               <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
-                  <Button onClick={() => setIsStatsModalOpen(false)} variant="ghost" className="text-gray-500 hover:text-gray-700">Close</Button>
-               </div>
-            </div>
-         </div>
-      )}
 
     </div>
   );

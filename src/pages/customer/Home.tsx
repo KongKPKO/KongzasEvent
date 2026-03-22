@@ -1,12 +1,25 @@
-import { useEffect, Suspense, lazy } from 'react';
+import { useEffect, Suspense, lazy, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom'; 
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
 import CustomerHeader from '../../components/CustomerHeader';
+import { supabase } from '../../supabaseClient';
+import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
 const SocialFooter = lazy(() => import('../../components/home/SocialFooter'));
+const CreatorDirectory = lazy(() => import('../../components/home/CreatorDirectory'));
+
+interface NearbyCreator {
+  id: string;
+  slug: string;
+  display_name: string;
+  image_url?: string | null;
+  event_name: string;
+  location?: string | null;
+  is_booth_open: boolean;
+}
 
 const Home = () => {
   // Midnight Watcher
@@ -17,6 +30,7 @@ const Home = () => {
   const { artist, events, isConnected, refresh } = useArtistRealtime({ 
     artistId: contextArtist?.id 
   });
+  const [nearbyCreators, setNearbyCreators] = useState<NearbyCreator[]>([]);
   
   // Use local artist state from Hook, fallback to context for initial render
   const displayArtist = artist || contextArtist;
@@ -59,6 +73,82 @@ const Home = () => {
     // แต่ถ้า code เดิมใช้ได้ดีแล้วผมคงไว้ตามเดิมครับ
 
   const nextUpEventId = sortedValidEvents[0]?.id;
+  const focusLocations = useMemo(
+    () => Array.from(new Set(visibleEvents.map((event) => event.location?.trim()).filter(Boolean))) as string[],
+    [visibleEvents]
+  );
+
+  useEffect(() => {
+    const loadNearbyCreators = async () => {
+      if (!displayArtist?.id) return;
+
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      const { data: upcomingEvents, error } = await supabase
+        .from('events')
+        .select('artist_id, event_name, location, start_date, end_date, is_booth_open, status')
+        .eq('status', 'Confirmed')
+        .gte('end_date', todayStr)
+        .order('start_date', { ascending: true });
+
+      if (error || !upcomingEvents) {
+        setNearbyCreators([]);
+        return;
+      }
+
+      const groupedByArtist = new Map<string, typeof upcomingEvents[number]>();
+      const sameLocationArtists = new Set<string>();
+
+      for (const event of upcomingEvents) {
+        if (event.artist_id === displayArtist.id) continue;
+        if (!groupedByArtist.has(event.artist_id)) groupedByArtist.set(event.artist_id, event);
+        if (event.location && focusLocations.includes(event.location.trim())) sameLocationArtists.add(event.artist_id);
+      }
+
+      const prioritizedArtistIds = Array.from(groupedByArtist.keys())
+        .sort((left, right) => {
+          const leftPriority = sameLocationArtists.has(left) ? 1 : 0;
+          const rightPriority = sameLocationArtists.has(right) ? 1 : 0;
+          return rightPriority - leftPriority;
+        })
+        .slice(0, 8);
+
+      if (prioritizedArtistIds.length === 0) {
+        setNearbyCreators([]);
+        return;
+      }
+
+      const { data: artistsData, error: artistsError } = await supabase
+        .from('artists')
+        .select('id, slug, display_name, image_url')
+        .in('id', prioritizedArtistIds);
+
+      if (artistsError || !artistsData) {
+        setNearbyCreators([]);
+        return;
+      }
+
+      const creators = prioritizedArtistIds
+        .map((artistId) => {
+          const creator = artistsData.find((artistItem) => artistItem.id === artistId);
+          const event = groupedByArtist.get(artistId);
+          if (!creator || !event) return null;
+          return {
+            id: creator.id,
+            slug: creator.slug,
+            display_name: creator.display_name,
+            image_url: resolveAvatarUrl(creator.image_url),
+            event_name: event.event_name,
+            location: event.location,
+            is_booth_open: event.is_booth_open,
+          };
+        })
+        .filter(Boolean) as NearbyCreator[];
+
+      setNearbyCreators(creators);
+    };
+
+    void loadNearbyCreators();
+  }, [displayArtist?.id, focusLocations]);
 
   return (
     <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">
@@ -73,7 +163,7 @@ const Home = () => {
       <CustomerHeader 
         artistId={displayArtist.id} 
         title={displayArtist.display_name || 'Artist Name'}
-        avatarUrl={displayArtist.image_url}
+        avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
         avatarDisplay="stacked"
       >
         {displayArtist.bio && (
@@ -104,6 +194,10 @@ const Home = () => {
       {/* Events Section - Lazy Loaded */}
       <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">Loading events...</div>}>
          <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} />
+      </Suspense>
+
+      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">Loading creators...</div>}>
+         <CreatorDirectory creators={nearbyCreators} />
       </Suspense>
 
       {/* Social Footer - Lazy Loaded */}

@@ -4,6 +4,21 @@ import { Compass, MapPin, Search } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
+interface DiscoveryEventRecord {
+  id: string;
+  artist_id: string;
+  event_name: string;
+  status?: string | null;
+  is_booth_open?: boolean | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  location?: string | null;
+  booth_detail?: string | null;
+  location_name?: string | null;
+  location_detail?: string | null;
+  booth_number?: string | null;
+}
+
 interface DiscoveryRow {
   artist_id: string;
   slug: string;
@@ -16,6 +31,20 @@ interface DiscoveryRow {
   booth_detail?: string | null;
   is_booth_open: boolean;
 }
+
+const normalizeEventLocation = (event?: DiscoveryEventRecord | null) => {
+  if (!event) return null;
+  if (event.location && event.location.trim().length > 0) return event.location;
+  return [event.location_name, event.location_detail]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(', ') || null;
+};
+
+const normalizeEventBooth = (event?: DiscoveryEventRecord | null) => {
+  if (!event) return null;
+  if (event.booth_detail && event.booth_detail.trim().length > 0) return event.booth_detail;
+  return event.booth_number || null;
+};
 
 export default function DiscoveryHome() {
   const [loading, setLoading] = useState(true);
@@ -33,19 +62,19 @@ export default function DiscoveryHome() {
             .from('artists')
             .select('id, slug, display_name, bio, image_url'),
           supabase
-          .from('events')
-          .select('id, artist_id, event_name, location, booth_detail, is_booth_open, start_date, end_date, status')
-          .eq('status', 'Confirmed')
-          .gte('end_date', today)
-          .order('is_booth_open', { ascending: false })
-          .order('start_date', { ascending: true })
+            .from('events')
+            .select('*')
+            .in('status', ['Confirmed', 'confirmed'])
+            .gte('end_date', today)
+            .order('is_booth_open', { ascending: false })
+            .order('start_date', { ascending: true })
         ]);
 
         if (artistsError) throw artistsError;
         if (eventsError) throw eventsError;
 
-        const byArtist = new Map<string, any>();
-        for (const event of events || []) {
+        const byArtist = new Map<string, DiscoveryEventRecord>();
+        for (const event of (events || []) as DiscoveryEventRecord[]) {
           if (!byArtist.has(event.artist_id)) byArtist.set(event.artist_id, event);
         }
 
@@ -60,9 +89,9 @@ export default function DiscoveryHome() {
               image_url: resolveAvatarUrl(artist.image_url),
               event_id: event?.id || `artist-${artist.id}`,
               event_name: event?.event_name || 'No upcoming event',
-              location: event?.location || null,
-              booth_detail: event?.booth_detail || null,
-              is_booth_open: event?.is_booth_open || false,
+              location: normalizeEventLocation(event),
+              booth_detail: normalizeEventBooth(event),
+              is_booth_open: !!event?.is_booth_open,
             };
           })
           .sort((left, right) => Number(right.is_booth_open) - Number(left.is_booth_open)) as DiscoveryRow[];

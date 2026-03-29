@@ -6,6 +6,7 @@ import { formatPrice } from '../../utils/currency';
 import type { ActorContext } from '../../types/access';
 import { getAvailableUnits, isLowStock } from '../../utils/posCatalog';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
+import { normalizeProductRecord } from '../../utils/schemaCompat';
 
 interface Product {
     id: string;
@@ -129,13 +130,13 @@ export default function POSPanel({
 
         const { data } = await supabase
             .from('products')
-            .select('id, name, price, image_url, status, category, tags, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .select('*')
             .eq('artist_id', actorContext.artist_id)
             .eq('status', 'enable')
             .is('deleted_at', null)
             .order('name');
 
-        if (data) setProducts(data);
+        if (data) setProducts(data.map((product) => normalizeProductRecord(product) as Product));
     }, [actorContext.artist_id, canUsePos]);
 
     const fetchPromotions = useCallback(async () => {

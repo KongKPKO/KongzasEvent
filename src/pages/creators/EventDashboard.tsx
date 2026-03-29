@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, Clock3, CreditCard, DollarSign, ShoppingBag, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
+import { normalizeEventRecord } from '../../utils/schemaCompat';
 
 interface EventInfo {
   id: string;
@@ -64,7 +65,7 @@ export default function EventDashboard() {
         const [{ data: event, error: eventError }, { data: orderData, error: orderError }, { data: queueData, error: queueError }] = await Promise.all([
           supabase
             .from('events')
-            .select('id, event_name, start_date, end_date, location, booth_detail, status')
+            .select('*')
             .eq('id', eventId)
             .single(),
           supabase
@@ -97,7 +98,7 @@ export default function EventDashboard() {
         if (orderError) throw orderError;
         if (queueError) throw queueError;
 
-        setEventInfo(event as EventInfo);
+        setEventInfo(normalizeEventRecord(event as Record<string, any>) as unknown as EventInfo);
         setOrders((orderData || []) as unknown as OrderRow[]);
         setQueues((queueData || []) as QueueRow[]);
       } catch (error) {

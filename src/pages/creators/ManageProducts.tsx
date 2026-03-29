@@ -9,6 +9,7 @@ import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
 import { getAuthUserSafe } from '../../utils/auth';
+import { normalizeProductRecord } from '../../utils/schemaCompat';
 import PromotionManager from '../../components/promotions/PromotionManager';
 
 interface Product {
@@ -246,13 +247,13 @@ const ManageProducts = () => {
 
          const { data, error } = await supabase
             .from('products')
-            .select('id, name, price, image_url, description, category, tags, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited, created_at')
+            .select('*')
             .eq('artist_id', user.id)
             .is('deleted_at', null)
             .order('created_at', { ascending: false });
 
          if (!error && data) {
-            setProducts(data);
+            setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
          }
       } catch (error) {
          console.error('[ManageProducts] fetchProducts failed:', error);

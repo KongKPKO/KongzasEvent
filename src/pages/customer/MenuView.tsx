@@ -9,6 +9,7 @@ import ProductSkeleton from '../../components/menu/ProductSkeleton';
 const ProductList = lazy(() => import('../../components/menu/ProductList'));
 import { formatPrice } from '../../utils/currency';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
+import { normalizeProductRecord } from '../../utils/schemaCompat';
 
 interface Product {
   id: string;
@@ -229,12 +230,12 @@ const MenuView = () => {
         // 2.2 ดึงสินค้า
         const { data, error } = await supabase
             .from('products')
-            .select('id, name, price, image_url, description, category, tags, status, currency, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .select('*')
             .eq('artist_id', displayArtist.id)
             .order('created_at', { ascending: false });
 
         if (!error && data) {
-            setProducts(data);
+            setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
             setProductsLoaded(true);
         }
 
@@ -248,8 +249,8 @@ const MenuView = () => {
        const productChannel = supabase
          .channel(`menu-realtime-${displayArtist.id}`)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${displayArtist.id}` }, (payload) => {
-               if (payload.eventType === 'INSERT') setProducts(prev => [payload.new as Product, ...prev]);
-               if (payload.eventType === 'UPDATE') setProducts(prev => prev.map(p => p.id === payload.new.id ? payload.new as Product : p));
+               if (payload.eventType === 'INSERT') setProducts(prev => [normalizeProductRecord(payload.new) as Product, ...prev]);
+               if (payload.eventType === 'UPDATE') setProducts(prev => prev.map(p => p.id === payload.new.id ? normalizeProductRecord(payload.new) as Product : p));
                if (payload.eventType === 'DELETE') setProducts(prev => prev.filter(p => p.id !== payload.old.id));
             }
          ).subscribe();

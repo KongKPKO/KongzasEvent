@@ -11,6 +11,20 @@ const EventsList = lazy(() => import('../../components/home/EventsList'));
 const SocialFooter = lazy(() => import('../../components/home/SocialFooter'));
 const CreatorDirectory = lazy(() => import('../../components/home/CreatorDirectory'));
 
+interface NearbyCreatorEventRecord {
+  artist_id: string;
+  event_name: string;
+  location?: string | null;
+  booth_detail?: string | null;
+  location_name?: string | null;
+  location_detail?: string | null;
+  booth_number?: string | null;
+  start_date: string;
+  end_date: string;
+  is_booth_open: boolean;
+  status: string;
+}
+
 interface NearbyCreator {
   id: string;
   slug: string;
@@ -22,6 +36,20 @@ interface NearbyCreator {
   booth_detail?: string | null;
   is_booth_open: boolean;
 }
+
+const normalizeEventLocation = (event?: NearbyCreatorEventRecord | null) => {
+  if (!event) return null;
+  if (event.location && event.location.trim().length > 0) return event.location;
+  return [event.location_name, event.location_detail]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(', ') || null;
+};
+
+const normalizeEventBooth = (event?: NearbyCreatorEventRecord | null) => {
+  if (!event) return null;
+  if (event.booth_detail && event.booth_detail.trim().length > 0) return event.booth_detail;
+  return event.booth_number || null;
+};
 
 const Home = () => {
   // Midnight Watcher
@@ -87,8 +115,8 @@ const Home = () => {
       const todayStr = new Date().toLocaleDateString('en-CA');
       const { data: upcomingEvents, error } = await supabase
         .from('events')
-        .select('artist_id, event_name, location, booth_detail, start_date, end_date, is_booth_open, status')
-        .eq('status', 'Confirmed')
+        .select('*')
+        .in('status', ['Confirmed', 'confirmed'])
         .gte('end_date', todayStr)
         .order('start_date', { ascending: true });
 
@@ -97,13 +125,14 @@ const Home = () => {
         return;
       }
 
-      const groupedByArtist = new Map<string, typeof upcomingEvents[number]>();
+      const groupedByArtist = new Map<string, NearbyCreatorEventRecord>();
       const sameLocationArtists = new Set<string>();
 
-      for (const event of upcomingEvents) {
+      for (const event of upcomingEvents as NearbyCreatorEventRecord[]) {
         if (event.artist_id === displayArtist.id) continue;
         if (!groupedByArtist.has(event.artist_id)) groupedByArtist.set(event.artist_id, event);
-        if (event.location && focusLocations.includes(event.location.trim())) sameLocationArtists.add(event.artist_id);
+        const eventLocation = normalizeEventLocation(event);
+        if (eventLocation && focusLocations.includes(eventLocation.trim())) sameLocationArtists.add(event.artist_id);
       }
 
       const prioritizedArtistIds = Array.from(groupedByArtist.keys())
@@ -141,8 +170,8 @@ const Home = () => {
             bio: creator.bio,
             image_url: resolveAvatarUrl(creator.image_url),
             event_name: event.event_name,
-            location: event.location,
-            booth_detail: event.booth_detail,
+            location: normalizeEventLocation(event),
+            booth_detail: normalizeEventBooth(event),
             is_booth_open: event.is_booth_open,
           };
         })

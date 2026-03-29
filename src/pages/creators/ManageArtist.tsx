@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
+import { normalizeEventRecord } from '../../utils/schemaCompat';
 import {
   formatDateTimeForInput,
   getBrowserTimeZone,
@@ -99,25 +100,16 @@ const ManageArtist = () => {
           // 2. Fetch Events
           const { data: eventData, error: eventError } = await supabase
             .from('events')
-            .select('id, artist_id, event_name, event_timezone, is_booth_open, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, start_date, end_date, status')
+            .select('*')
             .eq('artist_id', artistData.id)
             .order('start_date', { ascending: true });
 
           if (eventError) throw eventError;
 
           if (isMounted) {
-            const normalizedEvents = (eventData || []).map((evt: Event) => {
-              const fallbackLocation = [evt.location_name, evt.location_detail]
-                .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-                .join(', ');
-
-              return {
-                ...evt,
-                event_timezone: evt.event_timezone || browserTimeZone,
-                location: evt.location && evt.location.trim().length > 0 ? evt.location : fallbackLocation,
-                booth_detail: evt.booth_detail && evt.booth_detail.trim().length > 0 ? evt.booth_detail : evt.booth_number
-              };
-            });
+            const normalizedEvents = (eventData || []).map((evt: Event) =>
+              normalizeEventRecord(evt, browserTimeZone) as Event
+            );
 
             // Auto-update events that have passed end_date to 'Ended'
             const now = new Date();

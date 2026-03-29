@@ -6,9 +6,11 @@ interface CreatorCard {
   id: string;
   slug: string;
   display_name: string;
+  bio?: string | null;
   image_url?: string | null;
   event_name: string;
   location?: string | null;
+  booth_detail?: string | null;
   is_booth_open: boolean;
 }
 
@@ -29,43 +31,53 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-3">
         {creators.map((creator) => (
           <Link
             key={creator.id}
             to={`/${creator.slug}`}
-            className="rounded-3xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+            className="rounded-[28px] border border-gray-100 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow block"
           >
-            <div className="flex items-start gap-3 mb-2">
+            <div className="flex items-start gap-3">
               {creator.image_url ? (
                 <img
                   src={resolveAvatarUrl(creator.image_url)}
                   alt={creator.display_name}
-                  className="w-12 h-12 rounded-2xl object-cover bg-gray-100 shrink-0"
+                  className="w-[88px] h-[88px] rounded-[26px] object-cover bg-gray-100 shrink-0"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-2xl bg-pink-100 text-pink-600 flex items-center justify-center font-black text-lg shrink-0">
+                <div className="w-[88px] h-[88px] rounded-[26px] bg-pink-100 text-pink-600 flex items-center justify-center font-black text-2xl shrink-0">
                   {creator.display_name.charAt(0)}
                 </div>
               )}
-              <div className="min-w-0">
-                <div className="text-sm font-black text-gray-900 truncate">{creator.display_name}</div>
-                <div className="text-[11px] text-gray-500 line-clamp-2">{creator.event_name}</div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-black leading-tight text-gray-900 truncate">{creator.display_name}</div>
+                    {creator.bio && (
+                      <div className="mt-1 text-[11px] leading-[1.35] text-gray-500 line-clamp-2">{creator.bio}</div>
+                    )}
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shrink-0 ${
+                    creator.is_booth_open ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${creator.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+                    {creator.is_booth_open ? 'Open now' : 'Closed'}
+                  </span>
+                </div>
+                <div className="mt-1.5 text-[13px] font-semibold leading-tight text-gray-800">{creator.event_name}</div>
+                <div className="flex items-center gap-1.5 text-[11px] leading-tight text-gray-500 mt-1.5">
+                  <MapPin size={12} className="text-[#d63384] shrink-0" />
+                  <span className="line-clamp-1">{creator.location || 'Location updates soon'}</span>
+                </div>
+                {creator.booth_detail && (
+                  <div className="mt-1 text-[11px] leading-tight text-gray-500">
+                    <span className="font-semibold text-gray-700">Booth:</span> {creator.booth_detail}
+                  </div>
+                )}
               </div>
             </div>
-
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-3 min-h-[32px]">
-              <MapPin size={12} className="text-[#d63384] shrink-0" />
-              <span className="line-clamp-2">{creator.location || 'Location updates soon'}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
-                creator.is_booth_open ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-600 border border-gray-200'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${creator.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                {creator.is_booth_open ? 'Open now' : 'Closed'}
-              </span>
+            <div className="flex justify-end mt-2">
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#d63384]">
                 <Sparkles size={11} />
                 View booth

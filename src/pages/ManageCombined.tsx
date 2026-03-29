@@ -36,6 +36,7 @@ interface ManageCombinedProps {
 export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [eventLoading, setEventLoading] = useState(true);
+    const [boothToggleLoading, setBoothToggleLoading] = useState(false);
     const [queues, setQueues] = useState<QueueItem[]>([]);
 
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
@@ -48,6 +49,27 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     useEffect(() => {
         activeEventIdRef.current = activeEvent?.id || null;
     }, [activeEvent]);
+
+    const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
+        if (!activeEvent?.id || boothToggleLoading) return;
+
+        try {
+            setBoothToggleLoading(true);
+            const { error } = await supabase
+                .from('events')
+                .update({ is_booth_open: nextOpen })
+                .eq('id', activeEvent.id)
+                .eq('artist_id', actorContext.artist_id);
+
+            if (error) throw error;
+            setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
+        } catch (error) {
+            console.error('[ManageCombined] Error updating booth status:', error);
+            alert('Failed to update booth status.');
+        } finally {
+            setBoothToggleLoading(false);
+        }
+    }, [activeEvent?.id, actorContext.artist_id, boothToggleLoading]);
 
     const fetchActiveEvent = useCallback(async () => {
         try {
@@ -216,6 +238,48 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     return (
         <div className="flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
+
+            <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Booth Status</div>
+                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
+                                activeEvent?.is_booth_open
+                                    ? 'border-green-200 bg-green-50 text-green-700'
+                                    : 'border-gray-200 bg-gray-100 text-gray-600'
+                            }`}>
+                                <span className={`h-2 w-2 rounded-full ${activeEvent?.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                            </span>
+                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold border ${
+                                activeEvent
+                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
+                                    : 'border-gray-200 bg-gray-100 text-gray-500'
+                            }`}>
+                                {activeEvent ? `Active Event: ${activeEvent.event_name}` : 'No active event'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        disabled={!activeEvent || boothToggleLoading}
+                        onClick={() => handleBoothToggle(!activeEvent?.is_booth_open)}
+                        className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            activeEvent?.is_booth_open
+                                ? 'bg-gray-900 text-white hover:bg-black'
+                                : 'bg-pink-600 text-white hover:bg-pink-700'
+                        }`}
+                    >
+                        {boothToggleLoading
+                            ? 'Updating...'
+                            : activeEvent?.is_booth_open
+                                ? 'Close Booth'
+                                : 'Open Booth'}
+                    </button>
+                </div>
+            </div>
 
             <div className="md:hidden sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
                 <button

@@ -8,10 +8,12 @@ interface DiscoveryRow {
   artist_id: string;
   slug: string;
   display_name: string;
+  bio?: string | null;
   image_url?: string | null;
   event_id: string;
   event_name: string;
   location?: string | null;
+  booth_detail?: string | null;
   is_booth_open: boolean;
 }
 
@@ -29,10 +31,10 @@ export default function DiscoveryHome() {
         const [{ data: artists, error: artistsError }, { data: events, error: eventsError }] = await Promise.all([
           supabase
             .from('artists')
-            .select('id, slug, display_name, image_url'),
+            .select('id, slug, display_name, bio, image_url'),
           supabase
           .from('events')
-          .select('id, artist_id, event_name, location, is_booth_open, start_date, end_date, status')
+          .select('id, artist_id, event_name, location, booth_detail, is_booth_open, start_date, end_date, status')
           .eq('status', 'Confirmed')
           .gte('end_date', today)
           .order('is_booth_open', { ascending: false })
@@ -54,10 +56,12 @@ export default function DiscoveryHome() {
               artist_id: artist.id,
               slug: artist.slug,
               display_name: artist.display_name,
+              bio: artist.bio,
               image_url: resolveAvatarUrl(artist.image_url),
               event_id: event?.id || `artist-${artist.id}`,
               event_name: event?.event_name || 'No upcoming event',
               location: event?.location || null,
+              booth_detail: event?.booth_detail || null,
               is_booth_open: event?.is_booth_open || false,
             };
           })
@@ -127,17 +131,17 @@ export default function DiscoveryHome() {
             <Link
               key={`${creator.artist_id}-${creator.event_id}`}
               to={`/${creator.slug}/home`}
-              className="block rounded-3xl border border-gray-100 bg-white p-4 shadow-sm"
+              className="block rounded-[28px] border border-gray-100 bg-white px-4 py-3 shadow-sm"
             >
               <div className="flex items-start gap-3">
                 {creator.image_url ? (
-                  <img src={creator.image_url} alt={creator.display_name} className="w-14 h-14 rounded-2xl object-cover bg-gray-100 shrink-0" />
+                  <img src={creator.image_url} alt={creator.display_name} className="w-[88px] h-[88px] rounded-[26px] object-cover bg-gray-100 shrink-0" />
                 ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-pink-100 text-pink-600 flex items-center justify-center font-black text-lg shrink-0">
+                  <div className="w-[88px] h-[88px] rounded-[26px] bg-pink-100 text-pink-600 flex items-center justify-center font-black text-2xl shrink-0">
                     {creator.display_name.charAt(0)}
                   </div>
                 )}
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 -mt-0.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-black text-gray-900 truncate">{creator.display_name}</div>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${creator.is_booth_open ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
@@ -145,12 +149,20 @@ export default function DiscoveryHome() {
                       {creator.is_booth_open ? 'Open' : 'Closed'}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">{creator.event_name}</div>
-                  <div className="flex items-start gap-1.5 mt-2 text-[11px] text-gray-500">
+                  {creator.bio && (
+                    <div className="text-[11px] leading-[1.25] text-gray-500 mt-0.5 line-clamp-2">{creator.bio}</div>
+                  )}
+                  <div className="mt-1 text-[13px] font-semibold leading-tight text-gray-800">{creator.event_name}</div>
+                  <div className="flex items-start gap-1.5 mt-1 text-[11px] leading-tight text-gray-500">
                     <MapPin size={12} className="text-[#d63384] shrink-0 mt-0.5" />
                     <span>{creator.location || 'Location updates soon'}</span>
                   </div>
-                  <div className="mt-3 text-[11px] font-bold text-[#d63384]">View booth</div>
+                  {creator.booth_detail && (
+                    <div className="mt-0.5 text-[11px] leading-tight text-gray-500">
+                      <span className="font-semibold text-gray-700">Booth:</span> {creator.booth_detail}
+                    </div>
+                  )}
+                  <div className="mt-1.5 text-[11px] font-bold text-[#d63384]">View booth</div>
                 </div>
               </div>
             </Link>

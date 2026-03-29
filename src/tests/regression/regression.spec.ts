@@ -17,6 +17,16 @@ async function getUserId() {
     return data.user?.id;
 }
 
+async function ensureArtistFixture(userId: string) {
+    await supabase.from('artists').upsert({
+        id: userId,
+        email: ADMIN_EMAIL,
+        slug: ARTIST_SLUG,
+        display_name: 'Regression Test Artist',
+        is_queue_open: true,
+    });
+}
+
 // --- HELPER 2: Clean Database ---
 async function prepareTestData(userId: string) {
     console.log(`[Prep] Cleaning data for user ${userId}...]`);
@@ -34,6 +44,7 @@ async function prepareTestData(userId: string) {
 
 // --- HELPER 3: Ensure Active Event ---
 async function ensureActiveEvent(userId: string) {
+    await ensureArtistFixture(userId);
     await supabase.from('artists').update({ is_queue_open: true }).eq('id', userId);
     
     const { data: events } = await supabase.from('events').select('*')
@@ -55,6 +66,20 @@ async function ensureActiveEvent(userId: string) {
     } else {
         await supabase.from('events').update({ is_booth_open: true }).eq('id', events[0].id);
     }
+}
+
+async function findFirstPosProductCard(page: Page) {
+    const grid = page.locator('[aria-label="Product grid"]').first();
+    await expect(grid).toBeVisible({ timeout: 20000 });
+
+    const visualCard = grid.locator('.group').first();
+    if (await visualCard.isVisible().catch(() => false)) return visualCard;
+
+    const compactCard = grid.locator('button').filter({
+        hasNot: page.locator('button[aria-label^="Pin"], button[aria-label^="Unpin"]'),
+    }).first();
+    await expect(compactCard).toBeVisible({ timeout: 10000 });
+    return compactCard;
 }
 
 // --- HELPER 4: Robust Login (handles UI text differences & redirects) ---
@@ -80,8 +105,15 @@ async function robustLogin(page: Page) {
         throw new Error('❌ Login Failed: Invalid Credentials or User Blocked');
     }
 
-    // Align expectation with working E2E: just ensure we are not stuck on login
+    await page.waitForTimeout(1500);
+
+    // The current app can briefly land on a workspace fallback page before actor context hydrates.
+    if (page.url().includes('/manage-login') || await page.getByText(/Workspace Not Assigned/i).isVisible().catch(() => false)) {
+        await page.goto('/manage-events');
+    }
+
     await expect(page).not.toHaveURL(/manage-login/);
+    await expect(page.getByText(/Workspace Not Assigned/i)).toHaveCount(0);
 }
 
 
@@ -170,6 +202,28 @@ async function ensurePosPanelActive(page: Page) {
     throw new Error('POS panel (pane/grid/cart/search) not visible after activating POS tab');
 }
 
+async function ensureQueuePanelActive(page: Page) {
+    const queueList = page.getByRole('region', { name: /Queue list/i }).first();
+    const callNext = page.getByRole('button', { name: /Call Next/i }).first();
+    if ((await queueList.isVisible().catch(() => false)) || (await callNext.isVisible().catch(() => false))) return;
+
+    const queueToggle = page.getByRole('button', { name: /Expand queue control|Hide queue|Collapse queue control/i }).first();
+    if (await queueToggle.isVisible().catch(() => false)) {
+        await queueToggle.click({ force: true });
+        await expect(callNext).toBeVisible({ timeout: 10000 });
+        return;
+    }
+
+    const queueTab = page.getByRole('button', { name: /Queue Control/i }).first();
+    if (await queueTab.isVisible().catch(() => false)) {
+        await queueTab.click({ force: true });
+        await expect(callNext).toBeVisible({ timeout: 10000 });
+        return;
+    }
+
+    throw new Error('Queue panel not visible and no queue toggle/tab could be activated');
+}
+
 
 test.describe('Regression Suite @regression', () => {
     test.setTimeout(180000);
@@ -184,6 +238,7 @@ test.describe('Regression Suite @regression', () => {
         const userId = await getUserId();
         if (userId) {
             await prepareTestData(userId);
+            await ensureArtistFixture(userId);
             await ensureActiveEvent(userId);
 
             const { error } = await supabase.from('products').insert({
@@ -208,6 +263,7 @@ test.describe('Regression Suite @regression', () => {
         // Navigate to POS/Queues
         await adminPage.goto('/manage-pos-queues'); 
         await ensurePosPanelActive(adminPage);
+        await ensureQueuePanelActive(adminPage);
 
         // Ensure Booth Open
         const boothStatusText = adminPage.getByText(/BOOTH OPEN|BOOTH CLOSED/i).first();
@@ -231,25 +287,28 @@ test.describe('Regression Suite @regression', () => {
         // 4. Admin Serve
         await adminPage.bringToFront();
         
-        // Loop Call Next until our queue appears with Arrived
+        // Call the queued customer from Queue Control.
+        let queueReady = false;
         for (let i = 0; i < 15; i++) {
-            const callingSection = adminPage.locator('div').filter({ hasText: /Calling/i }).last();
-            const myCard = callingSection.locator('div').filter({ hasText: `Queue #${queueNum}` });
-            
-            if (await myCard.count() > 0 && await myCard.getByRole('button', { name: /Arrived/i }).isVisible()) {
+            await ensureQueuePanelActive(adminPage);
+            const arrivingButton = adminPage.locator('button', { hasText: 'ARRIVED' }).first();
+            if (await arrivingButton.isVisible().catch(() => false)) {
+                queueReady = true;
                 break;
             }
-            
-            const callNextBtn = adminPage.getByRole('button', { name: /Call Next/i }).first();
+
+            const callNextBtn = adminPage.getByRole('button', { name: new RegExp(`Call Next \(#${queueNum}\)|Call Next`, 'i') }).first();
+            await expect(callNextBtn).toBeVisible({ timeout: 10000 });
             if (await callNextBtn.isEnabled()) {
                 await callNextBtn.click();
-                await adminPage.waitForTimeout(2000); 
+                await adminPage.waitForTimeout(1500);
             } else {
                 await adminPage.waitForTimeout(1000);
             }
         }
 
-        await adminPage.getByRole('button', { name: /Arrived/i }).first().click();
+        expect(queueReady).toBeTruthy();
+        await adminPage.locator('button', { hasText: 'ARRIVED' }).first().click();
 
         // 5. POS Payment
         await adminPage.waitForTimeout(2000);
@@ -264,23 +323,25 @@ test.describe('Regression Suite @regression', () => {
         await queueTab.click();
         
         // Click Product
-        await adminPage.locator('[aria-label="Product grid"] .group').first().click();
+        const firstProduct = await findFirstPosProductCard(adminPage);
+        await firstProduct.click();
 
         await adminPage.getByRole('button', { name: /Charge/i }).click();
         await adminPage.getByRole('button', { name: /Cash/i }).click();
 
-        await expect(customerPage.getByText(/Completed/i)).toBeVisible({ timeout: 20000 });
+        await expect(customerPage.getByText(/Completed/i).first()).toBeVisible({ timeout: 20000 });
         
         await adminContext.close();
         await customerContext.close();
     });
 
     test('R2.1 Product Status Toggle (Enable/Disable/Soldout)', async ({ browser }) => {
-         const userId = await getUserId();
-         const TEST_PROD = `R2.1-Prod-${Date.now()}`;
+        const userId = await getUserId();
+        const TEST_PROD = `R2.1-Prod-${Date.now()}`;
          
          if (userId) {
              await prepareTestData(userId);
+             await ensureArtistFixture(userId);
              const { error } = await supabase.from('products').insert({
                  artist_id: userId,
                  name: TEST_PROD,
@@ -349,7 +410,10 @@ test.describe('Regression Suite @regression', () => {
 
     test('R2.6 Booth Open/Close Toggle', async ({ browser }) => {
         const userId = await getUserId();
-        if (userId) { await ensureActiveEvent(userId); }
+        if (userId) {
+            await ensureArtistFixture(userId);
+            await ensureActiveEvent(userId);
+        }
 
         const adminContext = await browser.newContext();
         const page = await adminContext.newPage();
@@ -359,23 +423,22 @@ test.describe('Regression Suite @regression', () => {
 
         await page.goto('/manage-pos-queues');
         // Ensure dashboard is loaded; either status text or product grid visible
-        await expect(page.getByText(/BOOTH OPEN|BOOTH CLOSED/i).first()).toBeVisible({ timeout: 30000 });
+        await expect(page.getByText(/Booth Open|Booth Closed/i).first()).toBeVisible({ timeout: 30000 });
 
-        const status = page.getByText(/BOOTH OPEN|BOOTH CLOSED/i).first();
+        const status = page.getByText(/Booth Open|Booth Closed/i).first();
         await expect(status).toBeVisible({ timeout: 20000 });
         
-        const toggleBtn = page.locator('button.rounded-full').first();
         const initialText = await status.innerText();
-        
-        await toggleBtn.click();
-        if (initialText.includes('OPEN')) {
-            await expect(page.getByText('BOOTH CLOSED')).toBeVisible();
-            await toggleBtn.click(); 
-            await expect(page.getByText('BOOTH OPEN')).toBeVisible();
+
+        await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
+        if (initialText.includes('Open')) {
+            await expect(page.getByText('Booth Closed').first()).toBeVisible();
+            await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
+            await expect(page.getByText('Booth Open').first()).toBeVisible();
         } else {
-            await expect(page.getByText('BOOTH OPEN')).toBeVisible();
-            await toggleBtn.click();
-            await expect(page.getByText('BOOTH CLOSED')).toBeVisible();
+            await expect(page.getByText('Booth Open').first()).toBeVisible();
+            await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
+            await expect(page.getByText('Booth Closed').first()).toBeVisible();
         }
         await adminContext.close();
     });
@@ -384,6 +447,8 @@ test.describe('Regression Suite @regression', () => {
          const userId = await getUserId();
          if (userId) {
             await prepareTestData(userId);
+            await ensureArtistFixture(userId);
+            await ensureActiveEvent(userId);
             await supabase.from('products').insert({
                 artist_id: userId,
                 name: 'POS-Item-1',
@@ -404,8 +469,8 @@ test.describe('Regression Suite @regression', () => {
          await ensurePosPanelActive(page);
 
          const status = page.getByText(/BOOTH/i).first();
-         if ((await status.innerText()).includes('CLOSED')) {
-             await page.locator('button.rounded-full').first().click();
+         if ((await status.innerText()).includes('Closed')) {
+             await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
          }
 
          // Walk-in tab is default or not required to interact; proceed with grid
@@ -413,8 +478,7 @@ test.describe('Regression Suite @regression', () => {
          const grid = page.locator('[aria-label="Product grid"]');
          await expect(grid).toBeVisible({ timeout: 20000 });
 
-         const firstProduct = grid.locator('.group').first();
-         await expect(firstProduct).toBeVisible();
+         const firstProduct = await findFirstPosProductCard(page);
          await firstProduct.click();
          await firstProduct.click();
 

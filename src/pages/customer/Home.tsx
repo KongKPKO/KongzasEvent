@@ -15,9 +15,11 @@ interface NearbyCreator {
   id: string;
   slug: string;
   display_name: string;
+  bio?: string | null;
   image_url?: string | null;
   event_name: string;
   location?: string | null;
+  booth_detail?: string | null;
   is_booth_open: boolean;
 }
 
@@ -85,7 +87,7 @@ const Home = () => {
       const todayStr = new Date().toLocaleDateString('en-CA');
       const { data: upcomingEvents, error } = await supabase
         .from('events')
-        .select('artist_id, event_name, location, start_date, end_date, is_booth_open, status')
+        .select('artist_id, event_name, location, booth_detail, start_date, end_date, is_booth_open, status')
         .eq('status', 'Confirmed')
         .gte('end_date', todayStr)
         .order('start_date', { ascending: true });
@@ -119,7 +121,7 @@ const Home = () => {
 
       const { data: artistsData, error: artistsError } = await supabase
         .from('artists')
-        .select('id, slug, display_name, image_url')
+        .select('id, slug, display_name, bio, image_url')
         .in('id', prioritizedArtistIds);
 
       if (artistsError || !artistsData) {
@@ -136,9 +138,11 @@ const Home = () => {
             id: creator.id,
             slug: creator.slug,
             display_name: creator.display_name,
+            bio: creator.bio,
             image_url: resolveAvatarUrl(creator.image_url),
             event_name: event.event_name,
             location: event.location,
+            booth_detail: event.booth_detail,
             is_booth_open: event.is_booth_open,
           };
         })

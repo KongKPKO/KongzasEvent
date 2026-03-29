@@ -10,6 +10,16 @@ const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPA
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const ARTIST_SLUG = 'test1';
 
+async function ensureArtistFixture(userId: string) {
+  await supabase.from('artists').upsert({
+    id: userId,
+    email: TEST_EMAIL,
+    slug: ARTIST_SLUG,
+    display_name: 'Mobile Test Artist',
+    is_queue_open: true,
+  });
+}
+
 test.describe('Mobile Responsive Testing', () => {
 
   test.beforeAll(async () => {
@@ -25,11 +35,7 @@ test.describe('Mobile Responsive Testing', () => {
     }
 
     if (userId) {
-      // Create Artist
-      await supabase.from('artists').upsert({
-        id: userId, email: TEST_EMAIL, slug: ARTIST_SLUG, 
-        display_name: 'Mobile Test Artist', is_queue_open: true
-      });
+      await ensureArtistFixture(userId);
       
       // Cleanup & Create Event
       await supabase.from('events').delete().eq('artist_id', userId);
@@ -77,7 +83,7 @@ test.describe('Mobile Responsive Testing', () => {
     await context.close();
   });
 
-  test('Mobile: Admin POS Page should show Cart on Top and Product Grid at Bottom', async ({ browser }) => {
+  test('Mobile: Admin POS Page should keep product grid visible and open cart via bottom sheet', async ({ browser }) => {
     test.slow(); // Allow more time for this test
     const context = await browser.newContext({
         ...devices['iPhone 12'], // Width 390px
@@ -104,27 +110,23 @@ test.describe('Mobile Responsive Testing', () => {
     // The tab switcher is visible on mobile.
     await page.getByRole('button', { name: 'POS / Order' }).click({ force: true });
 
-    // 1. Verify Layout Order (Cart Top, Products Bottom)
-    // We can check this by bounding boxes. Cart should be above Product Grid.
-    
-    const cartSection = page.locator('[aria-label="Shopping cart"]').first();
+    const cartSummaryButton = page.getByRole('button').filter({ hasText: /View cart|Select items|Cart/i }).first();
     const productGrid = page.locator('[aria-label="Product grid"]').first();
 
-    await expect(cartSection).toBeVisible();
     await expect(productGrid).toBeVisible();
+    await expect(cartSummaryButton).toBeVisible();
 
-    const cartBox = await cartSection.boundingBox();
+    const summaryBox = await cartSummaryButton.boundingBox();
     const gridBox = await productGrid.boundingBox();
 
-    if (cartBox && gridBox) {
-        console.log(`Mobile Layout: Cart Y=${cartBox.y}, Product Grid Y=${gridBox.y}`);
-        expect(cartBox.y).toBeLessThan(gridBox.y);
+    if (summaryBox && gridBox) {
+        console.log(`Mobile Layout: Product Grid Y=${gridBox.y}, Cart Summary Y=${summaryBox.y}`);
+        expect(gridBox.y).toBeLessThan(summaryBox.y);
     }
 
-    // 2. Verify Product Grid Columns (Should be 4 cols on mobile)
-    // We can check expected CSS class or visual layout
-    const gridContainer = page.locator('[aria-label="Product grid"] .grid').first();
-    await expect(gridContainer).toHaveClass(/grid-cols-4/);
+    await cartSummaryButton.click();
+    await expect(page.getByRole('button', { name: /Close/i }).last()).toBeVisible();
+    await expect(page.getByText(/Cart Summary/i).last()).toBeVisible();
 
     await context.close();
   });

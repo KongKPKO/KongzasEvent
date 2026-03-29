@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
 const FUN_FACTS = [
-    "รู้หรือไม่? ชุดนี้ใช้เวลาทำนานมากเลยนะ!",
     "ขอบคุณที่มารอคิวนะคะ/ครับ ✨",
     "ระหว่างรอดื่มน้ำพักผ่อนด้วยน้า 🥤",
     "วันนี้คนเยอะมาก ขอบคุณที่คอยซัพพอร์ตนะคะ 💖",

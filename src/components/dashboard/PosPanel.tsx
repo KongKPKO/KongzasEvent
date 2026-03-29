@@ -722,41 +722,6 @@ export default function POSPanel({
                     </div>
                 </div>
 
-                <div className={`px-4 py-2 border-t transition-colors ${
-                    selectedQueueId
-                        ? 'bg-gradient-to-r from-pink-50 to-rose-50 border-pink-100'
-                        : 'bg-gray-50/50 border-gray-100'
-                }`}>
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                            {selectedQueueId ? (
-                                <>
-                                    <span className="inline-flex items-center gap-2 bg-pink-600 text-white px-3 py-1 rounded-full shadow-sm">
-                                        <span className="text-xs font-bold">Queue</span>
-                                        <span className="text-lg font-black">#{selectedQueueNumber}</span>
-                                    </span>
-                                    {currentOrderId && (
-                                        <span className="text-xs text-green-600 font-bold flex items-center gap-1">
-                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                            Active Order
-                                        </span>
-                                    )}
-                                </>
-                            ) : (
-                                <span className="text-lg font-extrabold text-gray-700">Walk-in Customer</span>
-                            )}
-                        </div>
-
-                        {activeEvent && (
-                            <div className="text-right">
-                                <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Event</div>
-                                <div className="text-xs font-bold text-pink-600 max-w-[150px] truncate" title={activeEvent.event_name}>
-                                    {activeEvent.event_name}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">

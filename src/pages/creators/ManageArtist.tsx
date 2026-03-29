@@ -34,6 +34,7 @@ interface Event {
   artist_id: string;
   event_name: string;
   event_timezone?: string | null;
+  is_booth_open?: boolean;
   location?: string | null;
   booth_detail?: string | null;
   queueing_area?: string | null;
@@ -98,7 +99,7 @@ const ManageArtist = () => {
           // 2. Fetch Events
           const { data: eventData, error: eventError } = await supabase
             .from('events')
-            .select('id, artist_id, event_name, event_timezone, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, start_date, end_date, status')
+            .select('id, artist_id, event_name, event_timezone, is_booth_open, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, start_date, end_date, status')
             .eq('artist_id', artistData.id)
             .order('start_date', { ascending: true });
 
@@ -375,6 +376,27 @@ const ManageArtist = () => {
     }
   };
 
+  const handleBoothToggle = async (eventId: string, nextOpen: boolean) => {
+    if (!artist) return;
+
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({ is_booth_open: nextOpen })
+        .eq('id', eventId)
+        .eq('artist_id', artist.id);
+
+      if (error) throw error;
+
+      setEvents((prev) => prev.map((evt) => (
+        evt.id === eventId ? { ...evt, is_booth_open: nextOpen } : evt
+      )));
+    } catch (error) {
+      console.error('Error updating booth status:', error);
+      alert('Failed to update booth status.');
+    }
+  };
+
   // --- STATS LOGIC ---
   const handleOpenStats = async (event: Event) => {
       navigate(`/manage-events/${event.id}/dashboard`);
@@ -615,11 +637,24 @@ const ManageArtist = () => {
                                         </span>
                                      </div>
                                   </td>
-                                  <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 transition-opacity flex-wrap">
+                                  <td className="px-4 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-1.5 transition-opacity whitespace-nowrap">
+                                        <button
+                                          onClick={() => handleBoothToggle(evt.id, !evt.is_booth_open)}
+                                          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-md transition-colors border ${
+                                            evt.is_booth_open
+                                              ? 'text-gray-700 hover:bg-gray-50 border-gray-200'
+                                              : 'text-pink-600 hover:bg-pink-50 border-pink-100'
+                                          }`}
+                                          title={evt.is_booth_open ? 'Close booth' : 'Open booth'}
+                                        >
+                                           <span className={`w-2 h-2 rounded-full ${evt.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+                                           {evt.is_booth_open ? 'Close Booth' : 'Open Booth'}
+                                        </button>
+
                                         <button
                                           onClick={() => handleOpenStats(evt)}
-                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-pink-600 hover:bg-pink-50 px-3 py-1.5 rounded-md transition-colors border border-pink-100"
+                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-pink-600 hover:bg-pink-50 px-2.5 py-1.5 rounded-md transition-colors border border-pink-100"
                                           title="Open dashboard"
                                         >
                                            <BarChart2 size={14} />
@@ -628,7 +663,7 @@ const ManageArtist = () => {
 
                                         <button
                                           onClick={() => navigate(`/manage-events/${evt.id}/history`)}
-                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-md transition-colors border border-emerald-100"
+                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-50 px-2.5 py-1.5 rounded-md transition-colors border border-emerald-100"
                                           title="Open order history"
                                         >
                                            <FileText size={14} />
@@ -637,14 +672,14 @@ const ManageArtist = () => {
 
                                         <button
                                           onClick={() => handleOpenModal(evt)}
-                                          className="text-xs font-semibold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors border border-blue-100"
+                                          className="text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-md transition-colors border border-blue-100"
                                           title="Edit event"
                                         >
                                            Edit
                                         </button>
                                         <button
                                           onClick={() => handleEventDelete(evt.id)}
-                                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors border border-red-100"
+                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition-colors border border-red-100"
                                           title="Delete event"
                                         >
                                            <Trash2 size={14} />

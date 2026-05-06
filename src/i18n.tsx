@@ -692,7 +692,7 @@ const translations = {
     customerArtistNotFoundBody: 'ไม่พบ “{slug}” ลิงก์นี้อาจเก่า พิมพ์ผิด หรือ creator ยังไม่เปิด public.',
     customerArtistNotFoundDiscover: 'ค้นหา creator',
     customerArtistNotFoundHome: 'กลับหน้าแรก',
-    customerOffline: 'ออฟไลน์ - กำลังเชื่อมต่อใหม่...',
+    customerOffline: 'คุณออฟไลน์อยู่ ข้อมูลคิวอาจไม่อัปเดต',
     customerLoadingArtist: 'กำลังโหลดโปรไฟล์ artist...',
     customerBoothOpen: 'บูธเปิดอยู่',
     customerBoothClosed: 'บูธปิดอยู่',

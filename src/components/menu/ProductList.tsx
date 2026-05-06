@@ -28,10 +28,34 @@ interface ProductListProps {
    cart: Record<string, number>;
    isOrderSent: boolean;
    onUpdateQuantity: (id: string, delta: number, name?: string) => void;
+   onClearFilters?: () => void;
 }
 
-const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
+const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity, onClearFilters }: ProductListProps) => {
    const { t } = useI18n();
+
+   if (products.length === 0) {
+      return (
+         <div className="flex flex-col items-center justify-center px-8 py-20 text-center animate-fade-in">
+            <div className="mb-4 rounded-3xl bg-pink-50 p-6 text-pink-300">
+               <ShoppingBag size={48} strokeWidth={1.5} />
+            </div>
+            <h3 className="mb-2 text-lg font-black text-gray-950">{t('homeNoCreators').replace(t('homeCreators'), t('customerNavMerch'))}</h3>
+            <p className="mb-8 text-sm font-medium text-gray-500 leading-relaxed">
+               {t('menuClearFilters').includes('Filters') ? 'Try clearing your search or filters to see more products.' : 'ลองล้างตัวกรองหรือคำค้นหาเพื่อดูสินค้าเพิ่มเติม'}
+            </p>
+            {onClearFilters && (
+               <button
+                  onClick={onClearFilters}
+                  className="rounded-2xl border-2 border-pink-100 bg-white px-6 py-3 text-sm font-black text-pink-600 shadow-sm transition-all active:scale-95 hover:bg-pink-50"
+               >
+                  {t('menuClearFilters')}
+               </button>
+            )}
+         </div>
+      );
+   }
+
    const getAvailableUnits = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const total = product.stock_total || 0;
@@ -145,31 +169,31 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                            <button
                               onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)}
                               disabled={soldOut || isOrderSent}
-                              className={`flex min-h-10 w-full items-center justify-center gap-1.5 rounded-2xl text-xs font-black transition-all ${
+                              className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
                                  soldOut || isOrderSent
                                     ? 'bg-gray-100 text-gray-400'
                                     : 'bg-gray-950 text-white shadow-md shadow-gray-200 active:scale-95'
                               }`}
                            >
-                              <ShoppingBag size={14} /> {t('productAdd')}
+                              <ShoppingBag size={16} /> {t('productAdd')}
                            </button>
                         ) : (
-                           <div className="flex min-h-10 items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
+                           <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
                               <button
                                  onClick={() => onUpdateQuantity(product.id, -1, product.name)}
-                                 className="grid h-8 w-8 place-items-center rounded-xl bg-white text-pink-600 shadow-sm active:scale-95"
+                                 className="grid h-9 w-9 place-items-center rounded-xl bg-white text-pink-600 shadow-sm active:scale-95"
                                  aria-label={t('productDecrease', { name: product.name })}
                               >
-                                 <Minus size={14} />
+                                 <Minus size={16} />
                               </button>
-                              <span className="min-w-[32px] text-center text-sm font-black text-gray-950">{qty}</span>
+                              <span className="min-w-[40px] text-center text-sm font-black text-gray-950">{qty}</span>
                               <button
                                  onClick={() => onUpdateQuantity(product.id, 1, product.name)}
                                  disabled={!product.is_unlimited && qty >= availableUnits}
-                                 className="grid h-8 w-8 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
+                                 className="grid h-9 w-9 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
                                  aria-label={t('productIncrease', { name: product.name })}
                               >
-                                 <Plus size={14} />
+                                 <Plus size={16} />
                               </button>
                            </div>
                         )}

@@ -132,30 +132,35 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   
   // Priority 1: Calling Notification
   if (isCalling) {
+    const accessibleLabel = `${t('notificationYourTurn')}. ${t('notificationQueue')} ${ticketNumber}. ${proceedMessage}`;
+
     return (
       <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
-        <div 
+        <button 
           onClick={() => navigate(`/${slug}/queue`)}
-          className="pointer-events-auto w-full max-w-md bg-yellow-400 text-yellow-900 rounded-b-2xl shadow-xl shadow-yellow-400/20 py-3 px-4 flex items-center justify-between cursor-pointer border-b-2 border-x-2 border-yellow-200 animate-bounce-in"
+          className="pointer-events-auto w-full max-w-md bg-yellow-400 text-yellow-900 rounded-b-2xl shadow-xl shadow-yellow-400/20 py-3 px-4 flex items-center justify-between cursor-pointer border-b-2 border-x-2 border-yellow-200 animate-bounce-in text-left appearance-none"
+          aria-live="assertive"
+          aria-atomic="true"
+          aria-label={accessibleLabel}
         >
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="bg-white/90 p-2 rounded-full shadow-sm animate-pulse flex-shrink-0">
+            <div className="bg-white/90 p-2 rounded-full shadow-sm animate-pulse flex-shrink-0" aria-hidden="true">
               <Bell size={18} className="text-yellow-600 fill-yellow-600" />
             </div>
             
             <div className="flex-1 min-w-0 flex flex-col justify-center">
-              <span className="font-black text-sm text-yellow-950 uppercase tracking-wide leading-tight">
+              <span className="font-black text-sm text-yellow-950 uppercase tracking-wide leading-tight" aria-hidden="true">
                 {t('notificationYourTurn')}
               </span>
-              <span className="text-xs font-semibold text-yellow-800 truncate leading-tight">
+              <span className="text-xs font-semibold text-yellow-800 truncate leading-tight" aria-hidden="true">
                  {t('notificationQueue')} <span className="font-black text-sm text-yellow-950">#{ticketNumber}</span> {proceedMessage}
               </span>
             </div>
           </div>
-          <div className="bg-white/40 p-1 rounded-full flex-shrink-0 ml-2">
+          <div className="bg-white/40 p-1 rounded-full flex-shrink-0 ml-2" aria-hidden="true">
              <ChevronRight size={16} className="text-yellow-900" />
           </div>
-        </div>
+        </button>
       </div>
     );
   }

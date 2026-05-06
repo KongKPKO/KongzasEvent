@@ -517,7 +517,33 @@ const QueueView = () => {
         );
     };
 
-    if (loading) return <div className="p-12 text-center text-gray-400 font-medium">{t('queueLoadingStatus')}</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-[#fff7fb] pb-24 flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl animate-pulse">
+            {/* Header Skeleton */}
+            <div className="w-full h-16 bg-white/50 border-b border-pink-50 flex items-center px-4 gap-3">
+                <div className="w-10 h-10 rounded-full bg-gray-200" />
+                <div className="h-4 w-24 bg-gray-200 rounded" />
+            </div>
+
+            <div className="w-full px-4 mt-8 flex flex-col items-center flex-1 gap-4">
+                {/* Now Serving Skeleton */}
+                <div className="w-full h-28 rounded-[1.75rem] bg-gray-900/5 border border-pink-100 p-5" />
+                
+                {/* Guidance Skeleton */}
+                <div className="w-full h-20 rounded-2xl bg-white border border-pink-50 p-4">
+                    <div className="h-2 w-16 bg-gray-200 rounded mb-2" />
+                    <div className="h-3 w-32 bg-gray-200 rounded mb-1" />
+                    <div className="h-2 w-48 bg-gray-100 rounded" />
+                </div>
+
+                {/* Main Card Skeleton */}
+                <div className="w-full flex-1 min-h-[320px] rounded-[2rem] bg-white border border-pink-100 p-8 shadow-sm" />
+
+                {/* Button Skeleton */}
+                <div className="w-full h-14 rounded-2xl bg-gray-200 mt-auto" />
+            </div>
+        </div>
+    );
 
     // Strict UI Check: Booth must be OPEN
     const isBoothOpen = activeEvent?.is_booth_open;
@@ -599,7 +625,7 @@ const QueueView = () => {
 
             {/* Offline Indicator */}
             {!isConnected && (
-                <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
+                <div className="bg-red-600 text-white text-xs font-black text-center py-2.5 px-4 tracking-wide sticky top-0 z-[60] shadow-md">
                     {t('customerOffline')}
                 </div>
             )}
@@ -683,7 +709,11 @@ const QueueView = () => {
 
                             <button
                                 onClick={handleLeaveQueue}
-                                className="flex items-center justify-center gap-1 text-gray-400 hover:text-red-500 font-medium text-xs transition-colors py-2"
+                                className={`flex items-center justify-center gap-1.5 font-bold text-xs transition-all py-3 rounded-xl border ${
+                                    ['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase())
+                                        ? 'text-gray-400 border-transparent hover:text-gray-600'
+                                        : 'text-red-500 border-red-100 bg-red-50/30 hover:bg-red-50 hover:border-red-200'
+                                }`}
                             >
                                 <LogOut size={14} />
                                 {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? t('queueCloseTicket') : t('queueLeaveQueue')}

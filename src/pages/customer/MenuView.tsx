@@ -815,6 +815,7 @@ const MenuView = () => {
               cart={cart}
               isOrderSent={isOrderSent}
               onUpdateQuantity={updateQuantity}
+              onClearFilters={clearFilters}
           />
        </Suspense>
 

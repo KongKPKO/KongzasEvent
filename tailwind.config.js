@@ -11,6 +11,13 @@ export default {
         primary: "#ec4899", // Pink primary color as requested
         "primary-hover": "#db2777",
         "primary-soft": "#ffe4e6",
+        brand: {
+          DEFAULT: "#be185d",
+          hover: "#9d174d",
+          soft: "#fdf2f8",
+          border: "#fbcfe8",
+          ink: "#111827",
+        },
         "background-light": "#f8fafc", // Slate-50
         "background-dark": "#18181b", // Zinc-950
         "surface-light": "#ffffff",

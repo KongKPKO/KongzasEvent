@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   Trash2, Plus, Calendar, MapPin, FileText, 
-  BarChart2, X, User, Ticket 
+  BarChart2, X, User, Ticket, ExternalLink, Copy
 } from 'lucide-react'; 
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,7 @@ import {
 
 interface Artist {
   id: string;
+  slug?: string;
   display_name: string;
   bio: string;
   image_url: string;
@@ -88,7 +89,7 @@ const ManageArtist = () => {
         // 2. Fetch Artist by User ID
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
-          .select('id, display_name, bio, image_url, x_url, ig_url, facebook_url, tiktok_url, email')
+          .select('id, slug, display_name, bio, image_url, x_url, ig_url, facebook_url, tiktok_url, email')
           .eq('id', user.id)
           .single();
 
@@ -398,6 +399,15 @@ const ManageArtist = () => {
   if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">Loading Artist Center...</div>;
   if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">Artist not found.</div>;
 
+  const publicPageUrl = artist.slug ? `${window.location.origin}/${artist.slug}/home` : '';
+  const publicMenuUrl = artist.slug ? `${window.location.origin}/${artist.slug}/menu` : '';
+  const visibleEvents = events.filter(evt => {
+    const eventDate = new Date(evt.start_date);
+    const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
+    const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
+    return matchMonth && matchYear;
+  });
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
        
@@ -413,12 +423,33 @@ const ManageArtist = () => {
               <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
               <p className="text-sm md:text-base text-pink-600 font-bold">{artist.display_name}</p>
            </div>
+           {artist.slug && (
+             <div className="flex flex-col sm:flex-row gap-2">
+               <button
+                 type="button"
+                 onClick={() => void navigator.clipboard?.writeText(publicPageUrl)}
+                 className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
+               >
+                 <Copy size={16} aria-hidden="true" />
+                 Copy public URL
+               </button>
+               <a
+                 href={publicMenuUrl}
+                 target="_blank"
+                 rel="noreferrer"
+                 className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
+               >
+                 <ExternalLink size={16} aria-hidden="true" />
+                 Open public menu
+               </a>
+             </div>
+           )}
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* --- LEFT COL: Profile Settings --- */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-auto self-start">
+          <div className="workspace-card h-auto self-start">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
                <User className="text-[#d63384]" size={16} />
                <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
@@ -435,25 +466,27 @@ const ManageArtist = () => {
                </div>
 
                {/* Display Name */}
-               <div className="space-y-0.5">
-                  <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Display Name</label>
+               <div className="space-y-1">
+                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Display Name</label>
                   <input 
+                    id="artist-display-name"
                     name="display_name"
                     value={artist.display_name}
                     onChange={handleProfileChange}
-                    className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-pink-500/50 focus:border-pink-500 transition-all"
+                    className="w-full min-h-11 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-500 transition-all"
                   />
                </div>
 
                {/* Bio */}
-               <div className="space-y-0.5">
-                  <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Bio</label>
+               <div className="space-y-1">
+                  <label htmlFor="artist-bio" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bio</label>
                   <textarea 
+                    id="artist-bio"
                     name="bio"
                     value={artist.bio}
                     onChange={handleProfileChange}
                     rows={3}
-                    className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500/50 focus:border-pink-500 transition-all resize-none leading-relaxed"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-500 transition-all resize-none leading-relaxed"
                   />
                </div>
 
@@ -471,11 +504,13 @@ const ManageArtist = () => {
                              </span>
                           </div>
                           <input 
+                             id={`artist-${field}`}
                              name={field}
                              value={(artist as any)[field] || ''}
                              onChange={handleProfileChange}
                              placeholder={field === 'email' ? 'contact@email.com' : '...'}
-                             className="w-full bg-white border border-gray-200 rounded pl-16 pr-2 py-1 text-xs font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all"
+                             aria-label={field.replace('_url', '').replace('email', 'Email')}
+                             className="w-full min-h-10 bg-white border border-gray-200 rounded-lg pl-16 pr-2 py-2 text-sm font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition-all"
                           />
                        </div>
                      ))}
@@ -485,7 +520,7 @@ const ManageArtist = () => {
                <Button 
                  onClick={handleProfileSave} 
                  disabled={isSaving}
-                 className="w-full mt-1 bg-[#d63384] hover:bg-[#e63e80] text-white font-bold h-9 text-xs rounded shadow-md shadow-pink-200 active:scale-95 transition-all"
+                 className="w-full mt-1 bg-pink-600 hover:bg-pink-700 text-white font-bold h-11 text-sm rounded-xl shadow-md shadow-pink-200 active:scale-95 transition-all"
                >
                  {isSaving ? 'Saving...' : 'Save Updates'}
                </Button>
@@ -556,12 +591,7 @@ const ManageArtist = () => {
 
                       {/* Filtered Count */}
                       <span className="ml-auto text-xs text-gray-400 font-medium">
-                        Showing {events.filter(evt => {
-                          const eventDate = new Date(evt.start_date);
-                          const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
-                          const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
-                          return matchMonth && matchYear;
-                        }).length} of {events.length}
+                        Showing {visibleEvents.length} of {events.length}
                       </span>
                    </div>
                 </div>
@@ -583,13 +613,7 @@ const ManageArtist = () => {
                             </tr>
                          </thead>
                          <tbody className="divide-y divide-gray-50">
-                            {events
-                              .filter(evt => {
-                                const eventDate = new Date(evt.start_date);
-                                const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
-                                const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
-                                return matchMonth && matchYear;
-                              })
+                            {visibleEvents
                               .map((evt) => (
                                <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
                                   <td className="px-6 py-4">
@@ -630,10 +654,10 @@ const ManageArtist = () => {
                                      </div>
                                   </td>
                                   <td className="px-4 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-1.5 transition-opacity whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-2 transition-opacity whitespace-nowrap">
                                         <button
                                           onClick={() => handleBoothToggle(evt.id, !evt.is_booth_open)}
-                                          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-md transition-colors border ${
+                                          className={`workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg transition-colors border ${
                                             evt.is_booth_open
                                               ? 'text-gray-700 hover:bg-gray-50 border-gray-200'
                                               : 'text-pink-600 hover:bg-pink-50 border-pink-100'
@@ -646,8 +670,9 @@ const ManageArtist = () => {
 
                                         <button
                                           onClick={() => handleOpenStats(evt)}
-                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-pink-600 hover:bg-pink-50 px-2.5 py-1.5 rounded-md transition-colors border border-pink-100"
+                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-pink-600 hover:bg-pink-50 px-3 py-2 rounded-lg transition-colors border border-pink-100"
                                           title="Open dashboard"
+                                          aria-label={`Open dashboard for ${evt.event_name}`}
                                         >
                                            <BarChart2 size={14} />
                                            Dashboard
@@ -655,8 +680,9 @@ const ManageArtist = () => {
 
                                         <button
                                           onClick={() => navigate(`/manage-events/${evt.id}/history`)}
-                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-50 px-2.5 py-1.5 rounded-md transition-colors border border-emerald-100"
+                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-lg transition-colors border border-emerald-100"
                                           title="Open order history"
+                                          aria-label={`Open orders for ${evt.event_name}`}
                                         >
                                            <FileText size={14} />
                                            Orders
@@ -664,15 +690,17 @@ const ManageArtist = () => {
 
                                         <button
                                           onClick={() => handleOpenModal(evt)}
-                                          className="text-[11px] font-semibold text-blue-600 hover:bg-blue-50 px-2.5 py-1.5 rounded-md transition-colors border border-blue-100"
+                                          className="workspace-action min-h-10 text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-100"
                                           title="Edit event"
+                                          aria-label={`Edit ${evt.event_name}`}
                                         >
                                            Edit
                                         </button>
                                         <button
                                           onClick={() => handleEventDelete(evt.id)}
-                                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 px-2.5 py-1.5 rounded-md transition-colors border border-red-100"
+                                          className="workspace-action min-h-10 ml-2 inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors border border-red-100"
                                           title="Delete event"
+                                          aria-label={`Delete ${evt.event_name}`}
                                         >
                                            <Trash2 size={14} />
                                            Delete
@@ -698,12 +726,17 @@ const ManageArtist = () => {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                   <h3 className="font-bold text-lg text-slate-800">{isEditingEvent ? 'Edit Event' : 'New Event'}</h3>
-                  <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <button onClick={() => setIsModalOpen(false)} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100" aria-label="Close event form">
                      <X size={20} />
                   </button>
                </div>
                
                <div className="p-6 overflow-y-auto space-y-4 text-sm">
+                  <div className="rounded-xl border border-pink-100 bg-pink-50 p-3">
+                     <p className="text-xs font-black uppercase tracking-wide text-pink-700">Event timing</p>
+                     <p className="mt-1 text-xs font-semibold text-pink-800/80">Queue days reset using this event timezone, so choose the timezone where the booth is actually running.</p>
+                  </div>
+
                   <div className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
                      <div className="space-y-1 flex-1">
                         <label className="font-bold text-xs uppercase text-gray-400">Status</label>
@@ -735,6 +768,7 @@ const ManageArtist = () => {
                            </option>
                         ))}
                      </select>
+                     <p className="mt-1 text-xs font-semibold text-gray-500">Used for end-of-day and daily queue reset.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

@@ -3,13 +3,16 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { supabase } from './supabaseClient';
 import { fetchActorContext } from './utils/access';
 import type { ActorContext } from './types/access';
-import { canAccessOwnerPages, canAccessQueuePages } from './types/access';
+import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages } from './types/access';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
 const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
 import QueueView from './pages/customer/QueueView';
+import ResetPassword from './pages/ResetPassword';
+import CreatorRegister from './pages/CreatorRegister';
+import AdminApplications from './pages/AdminApplications';
 
 const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
@@ -19,8 +22,10 @@ const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 import ManageLogin from './pages/ManageLogin';
+import { useI18n } from './i18n';
 
 function App() {
+  const { t } = useI18n();
   const [session, setSession] = useState<any>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,24 +73,7 @@ function App() {
       void syncSessionContext(nextSession);
 
       if (event === 'PASSWORD_RECOVERY') {
-        void (async () => {
-          const newPassword = window.prompt('Security Alert: Please set your new password immediately.');
-
-          if (newPassword && newPassword.trim().length > 0) {
-            try {
-              const { error } = await supabase.auth.updateUser({ password: newPassword });
-              if (error) throw error;
-
-              alert('Success! Your password has been changed.');
-              window.location.href = '/';
-            } catch (error: any) {
-              alert('Error changing password: ' + error.message);
-            }
-          } else {
-            alert('Password change cancelled. Please try reset again when ready.');
-            await supabase.auth.signOut();
-          }
-        })();
+        window.location.replace('/reset-password');
       }
     });
 
@@ -96,25 +84,29 @@ function App() {
   }, []);
 
   const isOwner = canAccessOwnerPages(actorContext?.role);
+  const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
 
   const getDefaultPath = () => {
-    if (!session) return '/manage-login';
-    if (isOwner) return '/manage-events';
+    if (!session) return '/';
+    if (canUseManagement) return '/manage-events';
     if (canUseQueueWorkspace) return '/manage-pos-queues';
-    return '/manage-login';
+    return '/';
   };
 
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications'].includes(currentPath);
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
   }
 
-  if (session && !actorContext) {
+  if (session && !actorContext && !isWorkspaceOptionalPath) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md text-center">
-          <h1 className="text-lg font-bold text-gray-800 mb-2">Workspace Not Assigned</h1>
-          <p className="text-sm text-gray-600 mb-4">This account is signed in but has no artist workspace role.</p>
+          <h1 className="text-lg font-bold text-gray-800 mb-2">{t('workspaceNotAssigned')}</h1>
+          <p className="text-sm text-gray-600 mb-4">{t('workspaceNotAssignedBody')}</p>
           <button
             onClick={async () => {
               await supabase.auth.signOut();
@@ -122,7 +114,7 @@ function App() {
             }}
             className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-bold hover:bg-pink-700"
           >
-            Sign out
+            {t('signOut')}
           </button>
         </div>
       </div>
@@ -132,17 +124,23 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
-        <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading application...</div>}>
+        <Suspense fallback={<div className="flex justify-center items-center h-screen">{t('loading')}</div>}>
           <Routes>
             <Route path="/manage-login" element={<ManageLogin />} />
+            <Route path="/creator/register" element={<CreatorRegister />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route
+              path="/admin/applications"
+              element={session ? <AdminApplications /> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}
+            />
 
             <Route
               path="/manage-products"
-              element={session ? (isOwner ? <ManageProducts /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? <ManageProducts /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events"
-              element={session ? (isOwner ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-team"
@@ -150,18 +148,18 @@ function App() {
             />
             <Route
               path="/manage-events/:eventId/history"
-              element={session ? (isOwner ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/dashboard"
-              element={session ? (isOwner ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-pos-queues"
               element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
             />
 
-            <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
+            <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />
 
             <Route path="/:slug" element={<CustomerLayout />}>
@@ -170,6 +168,7 @@ function App() {
               <Route path="queue" element={<QueueView />} />
               <Route index element={<CustomerHome />} />
             </Route>
+            <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
           </Routes>
         </Suspense>
       </div>

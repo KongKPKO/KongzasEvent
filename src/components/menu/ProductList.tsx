@@ -5,6 +5,7 @@ import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
 import { motion } from 'framer-motion';
 import { getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
+import { useI18n } from '../../i18n';
 
 interface Product {
    id: string;
@@ -27,9 +28,34 @@ interface ProductListProps {
    cart: Record<string, number>;
    isOrderSent: boolean;
    onUpdateQuantity: (id: string, delta: number, name?: string) => void;
+   onClearFilters?: () => void;
 }
 
-const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity }: ProductListProps) => {
+const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity, onClearFilters }: ProductListProps) => {
+   const { t } = useI18n();
+
+   if (products.length === 0) {
+      return (
+         <div className="flex flex-col items-center justify-center px-8 py-20 text-center animate-fade-in">
+            <div className="mb-4 rounded-3xl bg-pink-50 p-6 text-pink-300">
+               <ShoppingBag size={48} strokeWidth={1.5} />
+            </div>
+            <h3 className="mb-2 text-lg font-black text-gray-950">{t('homeNoCreators').replace(t('homeCreators'), t('customerNavMerch'))}</h3>
+            <p className="mb-8 text-sm font-medium text-gray-500 leading-relaxed">
+               {t('menuClearFilters').includes('Filters') ? 'Try clearing your search or filters to see more products.' : 'ลองล้างตัวกรองหรือคำค้นหาเพื่อดูสินค้าเพิ่มเติม'}
+            </p>
+            {onClearFilters && (
+               <button
+                  onClick={onClearFilters}
+                  className="rounded-2xl border-2 border-pink-100 bg-white px-6 py-3 text-sm font-black text-pink-600 shadow-sm transition-all active:scale-95 hover:bg-pink-50"
+               >
+                  {t('menuClearFilters')}
+               </button>
+            )}
+         </div>
+      );
+   }
+
    const getAvailableUnits = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const total = product.stock_total || 0;
@@ -51,7 +77,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
 
    return (
       <motion.div
-         className="pt-3 px-3 grid grid-cols-2 gap-2 pb-44 overflow-y-auto"
+         className="grid grid-cols-2 gap-3 overflow-y-auto px-3 pb-40 pt-3"
          initial="hidden"
          animate="visible"
          variants={{
@@ -76,13 +102,17 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
             return (
                <motion.div
                   key={product.id}
-                  className={`bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full border border-gray-100 transition-all ${qty > 0 ? 'ring-2 ring-pink-500' : ''} group`}
+                  className={`group flex h-full flex-col overflow-hidden rounded-3xl border bg-white shadow-sm transition-all ${
+                     qty > 0
+                        ? 'border-pink-200 ring-2 ring-pink-500 shadow-lg shadow-pink-100'
+                        : 'border-pink-50'
+                  }`}
                   variants={{
                      hidden: { opacity: 0, y: 30 },
                      visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
                   }}
                >
-                  <div className="aspect-square bg-gray-100 relative w-full overflow-hidden">
+                  <div className="relative aspect-square w-full overflow-hidden bg-[#fff7fb]">
                      {product.image_url ? (
                         <motion.img
                            whileHover={{ scale: 1.05 }}
@@ -90,60 +120,81 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                            src={getProductImageUrl(product.image_url, 300)}
                            alt={product.name}
                            loading={isFirst ? "eager" : "lazy"}
-                           // @ts-ignore
-                           fetchPriority={isFirst ? "high" : "auto"}
                            width="300"
                            height="300"
-                           className="w-full h-full object-cover"
+                           className="h-full w-full object-contain p-2"
                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
                         />
-                     ) : (<div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No Img</div>)}
+                     ) : (<div className="flex h-full w-full items-center justify-center text-xs font-bold text-gray-300">{t('productNoImage')}</div>)}
                      {soldOut && (
                         <motion.div
-                           className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"
+                           className="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
                            initial={{ opacity: 0 }}
                            animate={{ opacity: 1 }}
                         >
                            <motion.span
-                              className="text-white font-bold border-2 border-white px-2 py-1 text-xs"
+                              className="border-2 border-white px-2 py-1 text-xs font-bold text-white"
                               initial={{ scale: 2.5, opacity: 0, rotate: -12 }}
                               animate={{ scale: 1, opacity: 1, rotate: -12 }}
                               transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
                            >
-                              SOLD OUT
+                              {t('productSoldOut')}
                            </motion.span>
                         </motion.div>
                      )}
                      {!soldOut && promoBadges.length > 0 && (
-                        <div className="absolute top-2 left-2 z-10">
-                           <span className="px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-black shadow-sm">
+                        <div className="absolute left-2 top-2 z-10">
+                           <span className="rounded-full border border-rose-100 bg-rose-50 px-2 py-1 text-[9px] font-black text-rose-700 shadow-sm">
                               {promoBadges[0].shortLabel}
                            </span>
                         </div>
                      )}
                   </div>
-                  <div className="p-2.5 flex flex-col flex-1 justify-between">
+                  <div className="flex flex-1 flex-col justify-between p-3">
                      <div className="mb-2">
-                        <h3 className="font-bold text-gray-900 text-xs leading-tight line-clamp-2">{product.name}</h3>
-                        {product.description && <p className="text-[10px] text-gray-400 line-clamp-1 mt-0.5">{product.description}</p>}
+                        <h3 className="line-clamp-2 text-[13px] font-black leading-tight text-gray-950">{product.name}</h3>
+                        {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
                      </div>
-                     <div className="flex flex-col gap-1.5">
-                        <div className="text-pink-600 font-extrabold text-sm">{formatPrice(product.price, product.currency)}</div>
-                        <div className="flex items-center justify-between gap-2">
+                     <div className="flex flex-col gap-2">
+                        <div className="text-base font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
+                        <div className="flex min-h-4 items-center justify-between gap-2">
                            {!product.is_unlimited ? (
-                              <div className="text-[9px] text-gray-400">Left: {Math.max(0, availableUnits - qty)}</div>
+                              <div className="text-[10px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
                            ) : (
-                              <div className="text-[9px] text-gray-400">Unlimited</div>
+                              <div className="text-[10px] font-bold text-gray-500">{t('productUnlimited')}</div>
                            )}
-                           {isLowStock && <div className="text-[9px] font-bold text-amber-700">Low stock</div>}
+                           {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">{t('productLowStock')}</div>}
                         </div>
                         {qty === 0 ? (
-                           <button onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)} disabled={soldOut || isOrderSent} className={`w-full rounded-md py-1 flex items-center justify-center gap-1 text-[10px] font-bold transition-all ${soldOut || isOrderSent ? 'bg-gray-100 text-gray-400' : 'bg-gray-900 text-white active:scale-95'}`}><ShoppingBag size={10} /> ADD</button>
+                           <button
+                              onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)}
+                              disabled={soldOut || isOrderSent}
+                              className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
+                                 soldOut || isOrderSent
+                                    ? 'bg-gray-100 text-gray-400'
+                                    : 'bg-gray-950 text-white shadow-md shadow-gray-200 active:scale-95'
+                              }`}
+                           >
+                              <ShoppingBag size={16} /> {t('productAdd')}
+                           </button>
                         ) : (
-                           <div className="flex items-center justify-between bg-pink-50 rounded-md p-0.5 border border-pink-100">
-                              <button onClick={() => onUpdateQuantity(product.id, -1, product.name)} className="w-6 h-6 rounded bg-white text-pink-600 flex items-center justify-center shadow-sm"><Minus size={12} /></button>
-                              <span className="font-bold text-xs">{qty}</span>
-                              <button onClick={() => onUpdateQuantity(product.id, 1, product.name)} disabled={!product.is_unlimited && qty >= availableUnits} className="w-6 h-6 rounded bg-pink-500 text-white flex items-center justify-center shadow-md disabled:bg-gray-300 disabled:shadow-none"><Plus size={12} /></button>
+                           <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
+                              <button
+                                 onClick={() => onUpdateQuantity(product.id, -1, product.name)}
+                                 className="grid h-9 w-9 place-items-center rounded-xl bg-white text-pink-600 shadow-sm active:scale-95"
+                                 aria-label={t('productDecrease', { name: product.name })}
+                              >
+                                 <Minus size={16} />
+                              </button>
+                              <span className="min-w-[40px] text-center text-sm font-black text-gray-950">{qty}</span>
+                              <button
+                                 onClick={() => onUpdateQuantity(product.id, 1, product.name)}
+                                 disabled={!product.is_unlimited && qty >= availableUnits}
+                                 className="grid h-9 w-9 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
+                                 aria-label={t('productIncrease', { name: product.name })}
+                              >
+                                 <Plus size={16} />
+                              </button>
                            </div>
                         )}
                      </div>
@@ -151,7 +202,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                </motion.div>
             );
          })}
-         <div className="col-span-2 h-10 text-center text-[10px] text-gray-300 pt-4">End of Menu</div>
+         <div className="col-span-2 h-10 text-center text-[10px] text-gray-300 pt-4">{t('productEnd')}</div>
       </motion.div>
    );
 };

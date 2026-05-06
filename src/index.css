@@ -6,16 +6,51 @@
 
 /* CSS Variables for Accessibility (WCAG AA compliant colors) */
 :root {
-  --primary: #be185d; /* Darker pink for WCAG AA contrast on white */
-  --primary-hover: #9d174d; /* Even darker for hover states */
+  --primary: #be185d; /* Nireq pink, WCAG AA on white */
+  --primary-hover: #9d174d;
+  --brand-primary: #be185d;
+  --brand-primary-hover: #9d174d;
+  --brand-soft: #fdf2f8;
+  --brand-border: #fbcfe8;
+  --brand-ink: #111827;
+  --surface: #ffffff;
+  --surface-muted: #f9fafb;
+  --surface-border: #e5e7eb;
   --font-family: "Outfit", "Inter", sans-serif;
   --color-text: #1f2937;
 }
 
 @layer base {
-  body {
+body {
     @apply font-body bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-100 transition-colors duration-300 min-h-screen;
   }
+}
+
+.input-surface {
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 0.75rem 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.input-surface::placeholder {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.input-surface:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.16);
+}
+
+.input-with-icon {
+  padding-left: 2.75rem;
 }
 
 /* Custom Scrollbar */
@@ -39,4 +74,28 @@
 .no-scrollbar {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
+}
+
+.workspace-card {
+  border: 1px solid var(--surface-border);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.workspace-action {
+  min-height: 2.75rem;
+  border-radius: 0.75rem;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  touch-action: manipulation;
+}
+
+.workspace-action:focus-visible {
+  outline: 3px solid rgba(190, 24, 93, 0.24);
+  outline-offset: 2px;
+}
+
+.icon-touch {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
 }

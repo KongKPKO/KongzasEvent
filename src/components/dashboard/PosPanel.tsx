@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
+import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
 import { getAvailableUnits, isLowStock } from '../../utils/posCatalog';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
@@ -49,6 +50,7 @@ interface QueueItem {
 type SortType = 'name' | 'price_low' | 'price_high';
 type QuickFilter = 'all' | 'promo' | 'low_stock' | 'recent' | 'pinned';
 type ViewMode = 'compact' | 'visual';
+type ViewPreference = 'auto' | ViewMode;
 
 interface POSPanelProps {
     activeEvent: ActiveEvent | null;
@@ -60,6 +62,7 @@ interface POSPanelProps {
     isQueuePanelExpanded?: boolean;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
     onClearQueue: () => void;
+    onQueueCompleted?: (queueId: string) => void;
 }
 
 export default function POSPanel({
@@ -72,6 +75,7 @@ export default function POSPanel({
     isQueuePanelExpanded = true,
     onSelectQueue,
     onClearQueue,
+    onQueueCompleted,
 }: POSPanelProps) {
     const [products, setProducts] = useState<Product[]>([]);
     const [promotions, setPromotions] = useState<PromotionRule[]>([]);
@@ -79,6 +83,7 @@ export default function POSPanel({
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     const selectedQueueIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
@@ -89,9 +94,10 @@ export default function POSPanel({
     const [selectedTag, setSelectedTag] = useState<string>('All');
     const [sortBy, setSortBy] = useState<SortType>('name');
     const [selectedQuickFilter, setSelectedQuickFilter] = useState<QuickFilter>('all');
-    const [viewMode, setViewMode] = useState<ViewMode>(() => {
-        if (typeof window === 'undefined') return 'compact';
-        return (window.localStorage.getItem('posViewMode') as ViewMode) || 'compact';
+    const [viewPreference, setViewPreference] = useState<ViewPreference>(() => {
+        if (typeof window === 'undefined') return 'auto';
+        const savedPreference = window.localStorage.getItem('posViewPreference') as ViewPreference | null;
+        return savedPreference || 'auto';
     });
     const [pinnedProductIds, setPinnedProductIds] = useState<string[]>(() => {
         if (typeof window === 'undefined') return [];
@@ -114,8 +120,8 @@ export default function POSPanel({
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        window.localStorage.setItem('posViewMode', viewMode);
-    }, [viewMode]);
+        window.localStorage.setItem('posViewPreference', viewPreference);
+    }, [viewPreference]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -123,21 +129,23 @@ export default function POSPanel({
     }, [pinnedProductIds]);
 
     const fetchProducts = useCallback(async () => {
-        if (!canUsePos) {
+        if (!canUsePos || !activeEvent?.id) {
             setProducts([]);
             return;
         }
 
-        const { data } = await supabase
-            .from('products')
-            .select('*')
-            .eq('artist_id', actorContext.artist_id)
-            .eq('status', 'enable')
-            .is('deleted_at', null)
-            .order('name');
+        const { data, error } = await supabase.rpc('list_event_products', {
+            p_event_id: activeEvent.id,
+        });
 
-        if (data) setProducts(data.map((product) => normalizeProductRecord(product) as Product));
-    }, [actorContext.artist_id, canUsePos]);
+        if (error) {
+            console.error('[POS] Error fetching event catalog:', error);
+            setProducts([]);
+            return;
+        }
+
+        if (data) setProducts((data as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
+    }, [activeEvent?.id, canUsePos]);
 
     const fetchPromotions = useCallback(async () => {
         if (!canUsePos) {
@@ -145,26 +153,24 @@ export default function POSPanel({
             return;
         }
 
-        const { data } = await supabase
-            .from('artist_promotions')
-            .select('id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status')
-            .eq('artist_id', actorContext.artist_id)
-            .eq('status', 'active')
-            .order('priority', { ascending: true })
-            .order('created_at', { ascending: false });
+        const { data } = await supabase.rpc('list_active_promotions', {
+            p_artist_id: actorContext.artist_id,
+            p_event_id: activeEvent?.id || null,
+        });
 
         if (data) setPromotions(data as PromotionRule[]);
-    }, [actorContext.artist_id, canUsePos]);
+    }, [activeEvent?.id, actorContext.artist_id, canUsePos]);
 
     useEffect(() => {
         fetchProducts();
         fetchPromotions();
 
-        if (!canUsePos) return;
+        if (!canUsePos || !activeEvent?.id) return;
 
         const productChannel = supabase
-            .channel(`pos-panel-products-${actorContext.artist_id}`)
+            .channel(`pos-panel-products-${actorContext.artist_id}-${activeEvent?.id || 'none'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${actorContext.artist_id}` }, fetchProducts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'event_products', filter: `event_id=eq.${activeEvent?.id}` }, fetchProducts)
             .subscribe();
 
         const promotionChannel = supabase
@@ -176,7 +182,7 @@ export default function POSPanel({
             supabase.removeChannel(productChannel);
             supabase.removeChannel(promotionChannel);
         };
-    }, [fetchProducts, fetchPromotions, actorContext.artist_id, canUsePos]);
+    }, [fetchProducts, fetchPromotions, actorContext.artist_id, activeEvent?.id, canUsePos]);
 
     const fetchCurrentOrder = useCallback(async () => {
         if (!canUsePos || !activeEvent) return;
@@ -353,6 +359,10 @@ export default function POSPanel({
     }, [products, promotions, searchQuery, selectedCategory, selectedTag, selectedQuickFilter, recentProductIds, pinnedProductIds, sortBy]);
 
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
+    const effectiveViewMode: ViewMode = viewPreference === 'auto'
+        ? (isQueuePanelExpanded ? 'compact' : 'visual')
+        : viewPreference;
+    const isVisualProductGrid = effectiveViewMode === 'visual';
     const hasActiveProductFilters =
         searchQuery.trim().length > 0 ||
         selectedCategory !== 'All' ||
@@ -439,15 +449,15 @@ export default function POSPanel({
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (!canUsePos) {
-            alert('You do not have POS permission.');
+            setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
             return;
         }
         if (!activeEvent) {
-            alert('Cannot process payment: No active event.');
+            setToast({ tone: 'warning', title: 'No active event', detail: 'Cannot process payment without an active event.' });
             return;
         }
         if (cart.length === 0) {
-            alert('Cart is empty.');
+            setToast({ tone: 'info', title: 'Cart is empty', detail: 'Select products before charging.' });
             return;
         }
 
@@ -497,12 +507,16 @@ export default function POSPanel({
             setCart([]);
             setCurrentOrderId(null);
             setIsPaymentModalOpen(false);
+            if (selectedQueueId) {
+                onQueueCompleted?.(selectedQueueId);
+            }
             onClearQueue();
             await fetchProducts();
+            setToast({ tone: 'success', title: 'Payment completed' });
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             console.error('[Payment] error:', err);
-            alert('Error: ' + errorMessage);
+            setToast({ tone: 'error', title: 'Payment failed', detail: errorMessage });
         } finally {
             setLoading(false);
         }
@@ -683,6 +697,7 @@ export default function POSPanel({
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
+            <Toast message={toast} onClose={() => setToast(null)} />
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
@@ -799,20 +814,29 @@ export default function POSPanel({
                                 <option value="price_low">Price ↑</option>
                                 <option value="price_high">Price ↓</option>
                             </select>
-                            <div className="hidden md:flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+                            <div className="hidden md:flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label="Product browser layout">
                                 <button
-                                    onClick={() => setViewMode('compact')}
-                                    className={`px-2 py-1 rounded-md ${viewMode === 'compact' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500'}`}
-                                    aria-label="Compact product view"
+                                    onClick={() => setViewPreference('auto')}
+                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black ${viewPreference === 'auto' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                                    aria-label="Auto product layout"
                                 >
-                                    <Rows3 size={16} />
+                                    Auto
                                 </button>
                                 <button
-                                    onClick={() => setViewMode('visual')}
-                                    className={`px-2 py-1 rounded-md ${viewMode === 'visual' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500'}`}
-                                    aria-label="Visual product view"
+                                    onClick={() => setViewPreference('visual')}
+                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'visual' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                                    aria-label="Fast grid product view"
                                 >
                                     <Grid2x2 size={16} />
+                                    Grid
+                                </button>
+                                <button
+                                    onClick={() => setViewPreference('compact')}
+                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'compact' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                                    aria-label="Detail list product view"
+                                >
+                                    <Rows3 size={16} />
+                                    List
                                 </button>
                             </div>
                         </div>
@@ -882,11 +906,11 @@ export default function POSPanel({
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label="Product grid">
+                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'}>
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
-                            <div className={viewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2')}>
+                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
                                 {filteredProducts.map((product) => (
                                     (() => {
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
@@ -894,7 +918,7 @@ export default function POSPanel({
                                         const lowStock = isLowStock(product);
                                         const isPinned = pinnedProductIds.includes(product.id);
 
-                                        if (viewMode === 'compact') {
+                                        if (effectiveViewMode === 'compact') {
                                             return (
                                                 <div
                                                     key={product.id}
@@ -910,10 +934,14 @@ export default function POSPanel({
                                                                     src={getProductImage(product.image_url)}
                                                                     alt={product.name}
                                                                     className="w-full h-full object-cover"
+                                                                    loading="lazy"
+                                                                    decoding="async"
                                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
                                                                 />
                                                             ) : (
-                                                                <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">📷</div>
+                                                                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                                    <PackageX size={18} aria-hidden="true" />
+                                                                </div>
                                                             )}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
@@ -953,43 +981,55 @@ export default function POSPanel({
                                         }
 
                                         return (
-                                            <div
-                                                key={product.id}
-                                                className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden transition-all group flex flex-col gap-1 p-0 relative"
-                                            >
-                                                <button
-                                                    onClick={() => addToCart(product)}
-                                                    className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all active:scale-[0.98] text-left"
+                                                <div
+                                                    key={product.id}
+                                                    className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200 hover:shadow-md"
                                                 >
-                                                    <div className="w-full aspect-square bg-gray-100 relative overflow-hidden shrink-0">
+                                                    <button
+                                                    onClick={() => addToCart(product)}
+                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col"
+                                                >
+                                                    <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
                                                         {product.image_url ? (
                                                             <img
                                                                 src={getProductImage(product.image_url)}
                                                                 alt={product.name}
-                                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                                                className="w-full h-full object-contain bg-white group-hover:scale-[1.03] transition-transform"
+                                                                loading="lazy"
+                                                                decoding="async"
                                                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
                                                             />
-                                                        ) : (<div className="w-full h-full flex items-center justify-center text-xs text-gray-500">📷</div>)}
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-xs font-bold text-gray-400">
+                                                                <PackageX size={22} aria-hidden="true" />
+                                                                No image
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="flex flex-col px-2.5 pb-2.5 pt-1.5 justify-between flex-1 min-w-0">
-                                                        <div className="flex flex-col justify-between items-start w-full">
-                                                            <h3 className="font-bold text-gray-800 text-xs leading-tight w-full mb-0.5 break-words min-h-[2rem]" title={product.name}>{product.name}</h3>
-                                                            <p className="text-pink-600 font-extrabold text-xs">{formatPrice(product.price, product.currency)}</p>
-                                                            <div className="mt-1 flex flex-wrap gap-1">
+                                                    <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
+                                                        <div>
+                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{product.name}</h3>
+                                                            <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
+                                                            <div className="mt-2 flex flex-wrap gap-1">
                                                                 {promoBadges.slice(0, 2).map((badge) => (
                                                                     <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
                                                                 ))}
                                                                 {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">Low</span>}
                                                             </div>
                                                         </div>
-                                                        <div className="mt-2 w-full text-right text-[10px] font-semibold text-gray-500">
-                                                            {Number.isFinite(available) ? `Left: ${available}` : 'Left: Unlimited'}
+                                                        <div className="mt-3 flex items-end justify-between gap-2">
+                                                            <div className="text-[10px] font-bold text-gray-500">
+                                                                {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
+                                                            </div>
+                                                            <div className="text-base font-black text-pink-600">
+                                                                {formatPrice(product.price, product.currency)}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </button>
                                                 <button
                                                     onClick={() => togglePinnedProduct(product.id)}
-                                                    className={`absolute top-2 right-2 p-1.5 rounded-full ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/90 text-gray-500'}`}
+                                                    className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
                                                     aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
                                                 >
                                                     <Pin size={12} />

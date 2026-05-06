@@ -3,15 +3,18 @@ import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { Loader2 } from 'lucide-react';
+import { CalendarDays, Loader2 } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
+import { Toast } from '../components/ui/Feedback';
+import { formatDateInTimeZone } from '../utils/timezone';
 
 export interface ActiveEvent {
     id: string;
     event_name: string;
     start_date: string;
     end_date: string;
+    event_timezone?: string | null;
     is_booth_open: boolean;
     status: string;
 }
@@ -20,6 +23,7 @@ export interface QueueItem {
     id: string;
     artist_id: string;
     event_id?: string;
+    queue_service_date?: string | null;
     queue_number: number;
     status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued';
     last_updated_at: string;
@@ -35,23 +39,44 @@ interface ManageCombinedProps {
 
 export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
+    const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
+    const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
+        if (typeof window === 'undefined') return null;
+        return window.localStorage.getItem(`posSelectedEventId:${actorContext.artist_id}`);
+    });
     const [eventLoading, setEventLoading] = useState(true);
     const [boothToggleLoading, setBoothToggleLoading] = useState(false);
     const [queues, setQueues] = useState<QueueItem[]>([]);
 
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'queue' | 'pos'>('queue');
-    const [isQueuePanelExpanded, setIsQueuePanelExpanded] = useState(false);
+    const hasPosPermission = canUsePos(actorContext.role);
+    const [activeTab, setActiveTab] = useState<'queue' | 'pos'>(() => {
+        if (typeof window === 'undefined') return 'queue';
+        return hasPosPermission && window.matchMedia('(max-width: 767px)').matches ? 'pos' : 'queue';
+    });
+    const [isQueuePanelExpanded, setIsQueuePanelExpanded] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        return !window.matchMedia('(max-width: 767px)').matches;
+    });
+    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     const activeEventIdRef = useRef<string | null>(null);
+    const activeServiceDateRef = useRef<string | null>(null);
+    const activeServiceDate = activeEvent
+        ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
+        : null;
 
     useEffect(() => {
         activeEventIdRef.current = activeEvent?.id || null;
-    }, [activeEvent]);
+        activeServiceDateRef.current = activeServiceDate || null;
+    }, [activeEvent, activeServiceDate]);
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!activeEvent?.id || boothToggleLoading) return;
+        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(`Close booth for ${activeEvent.event_name}? Customers will see the booth as closed.`)) {
+            return;
+        }
 
         try {
             setBoothToggleLoading(true);
@@ -65,34 +90,48 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
         } catch (error) {
             console.error('[ManageCombined] Error updating booth status:', error);
-            alert('Failed to update booth status.');
+            setToast({ tone: 'error', title: 'Could not update booth status', detail: 'Please try again.' });
         } finally {
             setBoothToggleLoading(false);
         }
-    }, [activeEvent?.id, actorContext.artist_id, boothToggleLoading]);
+    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, actorContext.artist_id, boothToggleLoading]);
 
-    const fetchActiveEvent = useCallback(async () => {
+    const fetchActiveEvents = useCallback(async () => {
         try {
-            const now = new Date().toISOString();
-            const { data, error } = await supabase
-                .from('events')
-                .select('id, event_name, start_date, end_date, is_booth_open, status')
-                .eq('artist_id', actorContext.artist_id)
-                .eq('status', 'Confirmed')
-                .lte('start_date', now)
-                .gte('end_date', now)
-                .order('start_date', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+            const { data, error } = await supabase.rpc('list_accessible_pos_events');
 
             if (error) {
-                console.error('[ManageCombined] Error fetching active event:', error);
+                console.error('[ManageCombined] Error fetching active events:', error);
+                setAvailableEvents([]);
                 setActiveEvent(null);
             } else {
-                setActiveEvent((data as ActiveEvent) || null);
+                const events = (data || []) as ActiveEvent[];
+                setAvailableEvents(events);
+
+                setSelectedEventId((currentSelectedId) => {
+                    const storedSelectedId = currentSelectedId || (
+                        typeof window !== 'undefined'
+                            ? window.localStorage.getItem(`posSelectedEventId:${actorContext.artist_id}`)
+                            : null
+                    );
+                    const nextSelectedId = events.some((event) => event.id === storedSelectedId)
+                        ? storedSelectedId
+                        : events[0]?.id || null;
+
+                    if (typeof window !== 'undefined') {
+                        if (nextSelectedId) {
+                            window.localStorage.setItem(`posSelectedEventId:${actorContext.artist_id}`, nextSelectedId);
+                        } else {
+                            window.localStorage.removeItem(`posSelectedEventId:${actorContext.artist_id}`);
+                        }
+                    }
+
+                    return nextSelectedId;
+                });
             }
         } catch (err) {
-            console.error('[ManageCombined] Error fetching active event:', err);
+            console.error('[ManageCombined] Error fetching active events:', err);
+            setAvailableEvents([]);
             setActiveEvent(null);
         } finally {
             setEventLoading(false);
@@ -101,6 +140,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
     const fetchQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
+        const serviceDate = activeServiceDateRef.current;
         if (!eventId) {
             setQueues([]);
             return;
@@ -108,9 +148,10 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
         const { data, error } = await supabase
             .from('queues')
-            .select('id, artist_id, event_id, queue_number, status, called_at, last_updated_at, created_at, served_at, completed_at')
+            .select('id, artist_id, event_id, queue_service_date, queue_number, status, called_at, last_updated_at, created_at, served_at, completed_at')
             .eq('artist_id', actorContext.artist_id)
             .eq('event_id', eventId)
+            .eq('queue_service_date', serviceDate)
             .order('queue_number', { ascending: true });
 
         if (!error && data) {
@@ -120,6 +161,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
     const expireStaleCallingQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
+        const serviceDate = activeServiceDateRef.current;
         if (!eventId) return;
 
         const staleThresholdMs = Date.now() - (30 * 60 * 1000);
@@ -128,6 +170,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             .select('id, called_at, last_updated_at')
             .eq('artist_id', actorContext.artist_id)
             .eq('event_id', eventId)
+            .eq('queue_service_date', serviceDate)
             .eq('status', 'calling');
 
         if (error || !data || data.length === 0) return;
@@ -157,16 +200,42 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     }, [actorContext.artist_id]);
 
     useEffect(() => {
-        fetchActiveEvent();
+        fetchActiveEvents();
 
         const channel = supabase.channel(`manage-combined-events-${actorContext.artist_id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `artist_id=eq.${actorContext.artist_id}` }, () => {
-                fetchActiveEvent();
+                fetchActiveEvents();
             })
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [fetchActiveEvent, actorContext.artist_id]);
+    }, [fetchActiveEvents, actorContext.artist_id]);
+
+    useEffect(() => {
+        const nextActiveEvent = selectedEventId
+            ? availableEvents.find((event) => event.id === selectedEventId) || null
+            : null;
+        setActiveEvent(nextActiveEvent);
+    }, [availableEvents, selectedEventId]);
+
+    useEffect(() => {
+        setSelectedQueueId(null);
+        setSelectedQueueNumber(null);
+    }, [activeEvent?.id]);
+
+    const handleSelectedEventChange = (eventId: string) => {
+        if (selectedQueueId && eventId && eventId !== activeEvent?.id && !window.confirm('Switch event and clear the selected queue/order context?')) {
+            return;
+        }
+        setSelectedEventId(eventId || null);
+        if (typeof window !== 'undefined') {
+            if (eventId) {
+                window.localStorage.setItem(`posSelectedEventId:${actorContext.artist_id}`, eventId);
+            } else {
+                window.localStorage.removeItem(`posSelectedEventId:${actorContext.artist_id}`);
+            }
+        }
+    };
 
     useEffect(() => {
         if (activeEvent) {
@@ -174,7 +243,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         } else {
             setQueues([]);
         }
-    }, [activeEvent?.id, fetchQueues]);
+    }, [activeEvent?.id, activeServiceDate, fetchQueues]);
 
     useEffect(() => {
         if (!activeEvent?.id) return;
@@ -198,12 +267,17 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newTicket = payload.new as QueueItem;
+                        if (newTicket.queue_service_date !== activeServiceDateRef.current) return;
                         setQueues((prev) => {
                             if (prev.find(q => q.id === newTicket.id)) return prev;
                             return [...prev, newTicket];
                         });
                     } else if (payload.eventType === 'UPDATE') {
                         const updatedTicket = payload.new as QueueItem;
+                        if (updatedTicket.queue_service_date !== activeServiceDateRef.current) {
+                            setQueues((prev) => prev.filter(q => q.id !== updatedTicket.id));
+                            return;
+                        }
                         setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
                     } else if (payload.eventType === 'DELETE') {
                         const deletedId = (payload.old as QueueItem).id;
@@ -216,16 +290,14 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [actorContext.artist_id, activeEvent?.id]);
+    }, [actorContext.artist_id, activeEvent?.id, activeServiceDate]);
 
     const filteredQueues = activeEvent?.id
-        ? queues.filter(q => q.event_id === activeEvent.id)
+        ? queues.filter(q => q.event_id === activeEvent.id && q.queue_service_date === activeServiceDate)
         : queues;
 
     const servingQueues = filteredQueues.filter(q => q.status === 'serving');
     const otherQueues = filteredQueues.filter(q => q.status !== 'serving');
-    const hasPosPermission = canUsePos(actorContext.role);
-
     if (eventLoading) {
         return (
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
@@ -237,11 +309,12 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
     return (
         <div className="flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
+            <Toast message={toast} onClose={() => setToast(null)} />
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
             <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Booth Status</div>
                         <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
@@ -250,7 +323,9 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                                     : 'border-gray-200 bg-gray-100 text-gray-600'
                             }`}>
                                 <span className={`h-2 w-2 rounded-full ${activeEvent?.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`} />
-                                {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                                <span data-testid="booth-status">
+                                    {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                                </span>
                             </span>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold border ${
                                 activeEvent
@@ -262,22 +337,45 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                         </div>
                     </div>
 
-                    <button
-                        type="button"
-                        disabled={!activeEvent || boothToggleLoading}
-                        onClick={() => handleBoothToggle(!activeEvent?.is_booth_open)}
-                        className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                            activeEvent?.is_booth_open
-                                ? 'bg-gray-900 text-white hover:bg-black'
-                                : 'bg-pink-600 text-white hover:bg-pink-700'
-                        }`}
-                    >
-                        {boothToggleLoading
-                            ? 'Updating...'
-                            : activeEvent?.is_booth_open
-                                ? 'Close Booth'
-                                : 'Open Booth'}
-                    </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 lg:justify-end">
+                        <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                            <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />
+                            <span className="sr-only">Select POS event</span>
+                            <select
+                                value={activeEvent?.id || ''}
+                                onChange={(event) => handleSelectedEventChange(event.target.value)}
+                                disabled={availableEvents.length === 0}
+                                data-testid="pos-event-selector"
+                                className="min-w-0 w-full sm:w-[240px] bg-transparent text-sm font-bold text-gray-800 outline-none disabled:text-gray-400"
+                                aria-label="Select POS event"
+                            >
+                                {availableEvents.length === 0 && <option value="">No active event</option>}
+                                {availableEvents.map((event) => (
+                                    <option key={event.id} value={event.id}>
+                                        {event.event_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <button
+                            type="button"
+                            disabled={!activeEvent || boothToggleLoading}
+                            onClick={() => handleBoothToggle(!activeEvent?.is_booth_open)}
+                            data-testid="booth-toggle"
+                            className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                activeEvent?.is_booth_open
+                                    ? 'bg-gray-900 text-white hover:bg-black'
+                                    : 'bg-pink-600 text-white hover:bg-pink-700'
+                            }`}
+                        >
+                            {boothToggleLoading
+                                ? 'Updating...'
+                                : activeEvent?.is_booth_open
+                                    ? 'Close Booth'
+                                    : 'Open Booth'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -325,6 +423,9 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                             setSelectedQueueNumber(queue.queue_number);
                             if (hasPosPermission) setActiveTab('pos');
                         }}
+                        onStatusUpdated={(id, updates) => {
+                            setQueues((prev) => prev.map((queue) => queue.id === id ? { ...queue, ...updates } : queue));
+                        }}
                     />
                 </div>
 
@@ -359,6 +460,13 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                         onClearQueue={() => {
                             setSelectedQueueId(null);
                             setSelectedQueueNumber(null);
+                        }}
+                        onQueueCompleted={(queueId) => {
+                            setQueues((prev) => prev.map((queue) => (
+                                queue.id === queueId
+                                    ? { ...queue, status: 'complete', completed_at: new Date().toISOString(), last_updated_at: new Date().toISOString() }
+                                    : queue
+                            )));
                         }}
                     />
                 </div>

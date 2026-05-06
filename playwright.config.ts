@@ -1,8 +1,32 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
+import { execFileSync } from 'node:child_process';
 
+const envMode = process.env.PLAYWRIGHT_ENV || process.env.MODE || 'local';
+
+dotenv.config({ path: `.env.${envMode}` });
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '.env' });
+
+if (envMode === 'local' && (process.env.VITE_SUPABASE_URL || '').includes('127.0.0.1')) {
+  try {
+    const statusEnv = execFileSync('supabase', ['status', '-o', 'env'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const parsed = Object.fromEntries(
+      statusEnv
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const index = line.indexOf('=');
+          return [line.slice(0, index), line.slice(index + 1).replace(/^"|"$/g, '')];
+        })
+    );
+    process.env.VITE_SUPABASE_ANON_KEY ||= parsed.ANON_KEY;
+    process.env.TEST_SUPABASE_SERVICE_KEY ||= parsed.SERVICE_ROLE_KEY;
+  } catch {
+    // Local Supabase may be stopped; individual tests will surface the missing fixture access.
+  }
+}
 
 export default defineConfig({
   testDir: './src/tests',
@@ -68,7 +92,8 @@ export default defineConfig({
       VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321',
       VITE_SUPABASE_ANON_KEY:
         process.env.VITE_SUPABASE_ANON_KEY ||
-        'eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODQ2Mzc2ODN9.USpdkBGt_bp9ywixWVdIwdiW4rk7xuNljYkjwBki4rx5_4sM4fbots6paIFQDiuU40eEC2slYEvUqLi4LFyPwg',
+        process.env.VITE_SUPABASE_KEY ||
+        '',
     },
   },
 

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
+import { formatDateInTimeZone } from '../utils/timezone';
 
-export const useMidnightTick = () => {
-  // Initialize with local safe date
-  const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString('en-CA'));
+export const useMidnightTick = (timeZone?: string | null) => {
+  const getCurrentDate = () => formatDateInTimeZone(new Date(), timeZone) || new Date().toLocaleDateString('en-CA');
+  const [currentDate, setCurrentDate] = useState(getCurrentDate);
 
   useEffect(() => {
     const checkDate = () => {
-      const nowStr = new Date().toLocaleDateString('en-CA');
+      const nowStr = getCurrentDate();
       if (nowStr !== currentDate) {
         console.log("Midnight Tick: Date changed to", nowStr);
         setCurrentDate(nowStr);
@@ -17,7 +18,7 @@ export const useMidnightTick = () => {
     const timer = setInterval(checkDate, 30000);
     
     return () => clearInterval(timer);
-  }, [currentDate]);
+  }, [currentDate, timeZone]);
 
   return currentDate;
 };

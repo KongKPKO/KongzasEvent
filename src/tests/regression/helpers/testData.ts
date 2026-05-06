@@ -3,11 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
 export const TEST_CONFIG = {
-  ADMIN_EMAIL: process.env.TEST_EMAIL || 'kongphop.testy@gmail.com',
-  ADMIN_PASSWORD: process.env.TEST_PASSWORD || 'Test112233',
+  ADMIN_EMAIL: process.env.TEST_EMAIL || 'local-test-user@example.com',
+  ADMIN_PASSWORD: process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!',
   ARTIST_SLUG: process.env.TEST_SLUG || 'testy',
   SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321',
-  SUPABASE_KEY: process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || ''
+  SUPABASE_KEY: process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || ''
 };
 
 export const supabase = createClient(TEST_CONFIG.SUPABASE_URL, TEST_CONFIG.SUPABASE_KEY);

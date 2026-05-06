@@ -35,7 +35,7 @@ const MainLayout: React.FC = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-primary font-bold text-xl tracking-tight">
-                Kongzas
+                Nireq
               </Link>
             </div>
             <div className="flex space-x-8 items-center ml-auto">

@@ -85,13 +85,17 @@ Playwright regression runs across multi-device matrix:
 
 Current status:
 - Desktop & Tablet: GREEN
-- Mobile (Pixel 5, iPhone 12): 2 scenarios each timeout on POS pane visibility (see Known Caveats). These appear to be test interaction/visibility issues, not confirmed product defects.
+- Mobile POS users now land on the POS tab by default when their role allows POS. Re-run `npm run test:mobile` after applying migrations/env setup to confirm the previous visibility timeout is closed.
 
 Useful commands:
 ```
 npx playwright test
 npx playwright show-report
 npm run test:api:smoke
+npm run test:regression
+npm run test:accessibility
+npm run test:security
+npm run test:mobile
 ```
 
 API smoke (`npm run test:api:smoke`) checks:
@@ -102,9 +106,9 @@ API smoke (`npm run test:api:smoke`) checks:
 
 ## Known Caveats & Mitigations
 Mobile POS Tab Activation
-- On phones, the POS pane can remain hidden on `/manage-pos-queues` until the user taps the "POS / Order" tab.
-- Operational guidance: staff using phones should tap "POS / Order" to activate POS before using the product grid.
-- Tests include helpers to activate the tab; adding `data-testid` hooks (pos-switcher, pos-tab, pos-pane) makes this deterministic.
+- POS-capable roles open `/manage-pos-queues` on the POS tab by default on mobile.
+- Queue-only roles remain on Queue Control.
+- The tab switcher still exposes `data-testid` hooks (`pos-switcher`, `pos-tab`, `pos-pane`) for deterministic tests.
 
 CSV Upload Feedback
 - CSV validation details are primarily logged to console; the UI shows a simple summary. For large bulk uploads in production, consider enhancing UI feedback (non-blocking toasts with error counts/details).
@@ -121,7 +125,7 @@ Daily operations
 - Events: ensure an active Confirmed event exists for the artist
 
 Troubleshooting
-- Mobile POS grid not visible → tap "POS / Order" tab; if still not visible, refresh or use tablet/desktop
+- Mobile POS grid not visible → refresh first; if role is queue-only, POS is intentionally hidden.
 - Customer cannot get ticket → verify booth open and an active event exists
 - Product not visible → ensure status `enable` and currency matches
 - Upload failures → verify storage policy and file types (JPG/PNG/WebP) & reasonable size
@@ -161,6 +165,10 @@ Run tests:
 ```
 npx playwright test
 npx playwright show-report
+npm run test:regression
+npm run test:accessibility
+npm run test:security
+npm run test:mobile
 npm run test:api:smoke
 ```
 

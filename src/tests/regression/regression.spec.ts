@@ -7,7 +7,7 @@ const ADMIN_EMAIL = process.env.TEST_EMAIL || 'kongphop.testy@gmail.com';
 const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'Test112233';
 const ARTIST_SLUG = process.env.TEST_SLUG || 'testy';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -18,13 +18,17 @@ async function getUserId() {
 }
 
 async function ensureArtistFixture(userId: string) {
-    await supabase.from('artists').upsert({
+    const { error } = await supabase.from('artists').upsert({
         id: userId,
         email: ADMIN_EMAIL,
         slug: ARTIST_SLUG,
         display_name: 'Regression Test Artist',
         is_queue_open: true,
+        is_public: true,
+        is_verified: true,
+        published_at: new Date().toISOString(),
     });
+    if (error) throw new Error(`[Artist Fixture Failed] ${error.message}`);
 }
 
 // --- HELPER 2: Clean Database ---
@@ -45,17 +49,20 @@ async function prepareTestData(userId: string) {
 // --- HELPER 3: Ensure Active Event ---
 async function ensureActiveEvent(userId: string) {
     await ensureArtistFixture(userId);
-    await supabase.from('artists').update({ is_queue_open: true }).eq('id', userId);
+    const { error: artistError } = await supabase.from('artists').update({ is_queue_open: true }).eq('id', userId);
+    if (artistError) throw new Error(`[Active Event Artist Update Failed] ${artistError.message}`);
+    const now = new Date().toISOString();
     
     const { data: events } = await supabase.from('events').select('*')
         .eq('artist_id', userId)
         .eq('status', 'Confirmed')
+        .lte('start_date', now)
         .gte('end_date', new Date().toISOString());
     
     if (!events || events.length === 0) {
         const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
         const tomorrow = new Date(Date.now() + 86400000).toISOString();
-        await supabase.from('events').insert({
+        const { error } = await supabase.from('events').insert({
             artist_id: userId,
             event_name: `Reg Event ${Date.now()}`,
             start_date: oneHourAgo,
@@ -63,8 +70,21 @@ async function ensureActiveEvent(userId: string) {
             status: 'Confirmed',
             is_booth_open: true
         });
+        if (error) throw new Error(`[Active Event Insert Failed] ${error.message}`);
     } else {
-        await supabase.from('events').update({ is_booth_open: true }).eq('id', events[0].id);
+        const { error } = await supabase.from('events').update({ is_booth_open: true }).eq('id', events[0].id);
+        if (error) throw new Error(`[Active Event Update Failed] ${error.message}`);
+    }
+}
+
+async function ensureBoothOpen(page: Page) {
+    const status = page.locator('[data-testid="booth-status"]').first();
+    await expect(status).toBeVisible({ timeout: 30000 });
+    if ((await status.innerText()).match(/closed/i)) {
+        const toggle = page.locator('[data-testid="booth-toggle"]').first();
+        await expect(toggle).toBeEnabled({ timeout: 20000 });
+        await toggle.click();
+        await expect(status).toHaveText(/Booth Open/i, { timeout: 20000 });
     }
 }
 
@@ -72,7 +92,7 @@ async function findFirstPosProductCard(page: Page) {
     const grid = page.locator('[aria-label="Product grid"]').first();
     await expect(grid).toBeVisible({ timeout: 20000 });
 
-    const visualCard = grid.locator('.group').first();
+    const visualCard = grid.locator('.group > button').first();
     if (await visualCard.isVisible().catch(() => false)) return visualCard;
 
     const compactCard = grid.locator('button').filter({
@@ -185,14 +205,15 @@ async function ensurePosPanelActive(page: Page) {
 
     for (let attempt = 0; attempt < 6; attempt++) {
         await clickPosTabVariants();
-        await grid.scrollIntoViewIfNeeded().catch(() => {});
-        await cart.scrollIntoViewIfNeeded().catch(() => {});
-        await searchInput.scrollIntoViewIfNeeded().catch(() => {});
-        await posPane.scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(300);
 
         const anyVisible = (await posPane.isVisible().catch(() => false)) || (await grid.isVisible().catch(() => false)) || (await cart.isVisible().catch(() => false)) || (await searchInput.isVisible().catch(() => false));
         const anyCssVisible = (await cssVisible(posPane)) || (await cssVisible(grid)) || (await cssVisible(cart)) || (await cssVisible(searchInput));
         if (anyVisible || anyCssVisible) {
+            if (await grid.isVisible().catch(() => false)) await grid.scrollIntoViewIfNeeded().catch(() => {});
+            if (await cart.isVisible().catch(() => false)) await cart.scrollIntoViewIfNeeded().catch(() => {});
+            if (await searchInput.isVisible().catch(() => false)) await searchInput.scrollIntoViewIfNeeded().catch(() => {});
+            if (await posPane.isVisible().catch(() => false)) await posPane.scrollIntoViewIfNeeded().catch(() => {});
             return;
         }
         await page.waitForTimeout(800);
@@ -222,6 +243,18 @@ async function ensureQueuePanelActive(page: Page) {
     }
 
     throw new Error('Queue panel not visible and no queue toggle/tab could be activated');
+}
+
+async function clickChargeButton(page: Page) {
+    let chargeBtn = page.getByRole('button', { name: /Charge/i }).first();
+    if (!(await chargeBtn.isVisible().catch(() => false))) {
+        const mobileCart = page.getByRole('button').filter({ hasText: /View cart|Cart/i }).first();
+        await expect(mobileCart).toBeVisible({ timeout: 10000 });
+        await mobileCart.click();
+        chargeBtn = page.getByRole('button', { name: /Charge/i }).first();
+    }
+    await expect(chargeBtn).toBeEnabled({ timeout: 10000 });
+    await chargeBtn.click();
 }
 
 
@@ -266,11 +299,7 @@ test.describe('Regression Suite @regression', () => {
         await ensureQueuePanelActive(adminPage);
 
         // Ensure Booth Open
-        const boothStatusText = adminPage.getByText(/BOOTH OPEN|BOOTH CLOSED/i).first();
-        if ((await boothStatusText.innerText()).match(/CLOSED/i)) {
-            await adminPage.locator('button.rounded-full').first().click();
-            await expect(adminPage.getByText('BOOTH OPEN')).toBeVisible();
-        }
+        await ensureBoothOpen(adminPage);
 
         // 3. Customer Journey
         const customerContext = await browser.newContext();
@@ -312,7 +341,7 @@ test.describe('Regression Suite @regression', () => {
 
         // 5. POS Payment
         await adminPage.waitForTimeout(2000);
-        const queueTab = adminPage.getByRole('button', { name: `Queue #${queueNum}` });
+        const queueTab = adminPage.getByRole('button', { name: `Queue #${queueNum}`, exact: true }).first();
         
         if (!await queueTab.isVisible().catch(()=>false)) {
              const callingArrived = adminPage.locator('.bg-yellow-50').getByRole('button', { name: /ARRIVED/i }).first();
@@ -326,7 +355,7 @@ test.describe('Regression Suite @regression', () => {
         const firstProduct = await findFirstPosProductCard(adminPage);
         await firstProduct.click();
 
-        await adminPage.getByRole('button', { name: /Charge/i }).click();
+        await clickChargeButton(adminPage);
         await adminPage.getByRole('button', { name: /Cash/i }).click();
 
         await expect(customerPage.getByText(/Completed/i).first()).toBeVisible({ timeout: 20000 });
@@ -425,20 +454,22 @@ test.describe('Regression Suite @regression', () => {
         // Ensure dashboard is loaded; either status text or product grid visible
         await expect(page.getByText(/Booth Open|Booth Closed/i).first()).toBeVisible({ timeout: 30000 });
 
-        const status = page.getByText(/Booth Open|Booth Closed/i).first();
+        const status = page.locator('[data-testid="booth-status"]').first();
         await expect(status).toBeVisible({ timeout: 20000 });
         
         const initialText = await status.innerText();
 
-        await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
+        const toggle = page.locator('[data-testid="booth-toggle"]').first();
+        await expect(toggle).toBeEnabled({ timeout: 20000 });
+        await toggle.click();
         if (initialText.includes('Open')) {
-            await expect(page.getByText('Booth Closed').first()).toBeVisible();
-            await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
-            await expect(page.getByText('Booth Open').first()).toBeVisible();
+            await expect(status).toHaveText(/Booth Closed/i);
+            await toggle.click();
+            await expect(status).toHaveText(/Booth Open/i);
         } else {
-            await expect(page.getByText('Booth Open').first()).toBeVisible();
-            await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
-            await expect(page.getByText('Booth Closed').first()).toBeVisible();
+            await expect(status).toHaveText(/Booth Open/i);
+            await toggle.click();
+            await expect(status).toHaveText(/Booth Closed/i);
         }
         await adminContext.close();
     });
@@ -467,11 +498,7 @@ test.describe('Regression Suite @regression', () => {
 
          await page.goto('/manage-pos-queues');
          await ensurePosPanelActive(page);
-
-         const status = page.getByText(/BOOTH/i).first();
-         if ((await status.innerText()).includes('Closed')) {
-             await page.getByRole('button', { name: /Open Booth|Close Booth/i }).first().click();
-         }
+         await ensureBoothOpen(page);
 
          // Walk-in tab is default or not required to interact; proceed with grid
          
@@ -485,9 +512,7 @@ test.describe('Regression Suite @regression', () => {
          const cart = page.locator('[aria-label="Shopping cart"]');
          await expect(cart).toContainText(/[0-9]+/);
          
-         const chargeBtn = page.getByRole('button', { name: /Charge/i });
-         await expect(chargeBtn).toBeEnabled();
-         await chargeBtn.click();
+         await clickChargeButton(page);
 
          await expect(page.getByRole('button', { name: /Cash/i })).toBeVisible({ timeout: 10000 });
 

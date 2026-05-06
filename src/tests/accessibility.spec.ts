@@ -6,7 +6,7 @@ const TEST_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'SupaF@irytail1';
 const BASE_URL = 'http://localhost:5173';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const ARTIST_SLUG = 'test1';

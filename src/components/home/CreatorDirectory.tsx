@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Compass, MapPin, Sparkles } from 'lucide-react';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
+import { useI18n } from '../../i18n';
 
 interface CreatorCard {
   id: string;
@@ -19,15 +20,16 @@ interface CreatorDirectoryProps {
 }
 
 const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
+  const { t } = useI18n();
   if (creators.length === 0) return null;
 
   return (
     <div className="px-4 mt-2 mb-4">
       <div className="flex items-center gap-2 px-1 mb-3">
         <Compass size={16} className="text-[#d63384]" />
-        <h3 className="font-bold text-gray-900 text-sm">Explore Creators</h3>
-        <Link to="/discover" className="ml-auto text-[11px] font-bold text-[#d63384]">
-          View all
+        <h3 className="font-bold text-gray-900 text-sm">{t('creatorsExplore')}</h3>
+        <Link to="/discover" className="ml-auto inline-flex min-h-9 items-center rounded-full px-3 text-[11px] font-black text-[#d63384] hover:bg-pink-50">
+          {t('creatorsViewAll')}
         </Link>
       </div>
 
@@ -62,25 +64,25 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                     creator.is_booth_open ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-600 border border-gray-200'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${creator.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                    {creator.is_booth_open ? 'Open now' : 'Closed'}
+                    {creator.is_booth_open ? t('creatorsOpenNow') : t('creatorsClosed')}
                   </span>
                 </div>
                 <div className="mt-1.5 text-[13px] font-semibold leading-tight text-gray-800">{creator.event_name}</div>
                 <div className="flex items-center gap-1.5 text-[11px] leading-tight text-gray-500 mt-1.5">
                   <MapPin size={12} className="text-[#d63384] shrink-0" />
-                  <span className="line-clamp-1">{creator.location || 'Location updates soon'}</span>
+                  <span className="line-clamp-1">{creator.location || t('creatorsLocationSoon')}</span>
                 </div>
                 {creator.booth_detail && (
                   <div className="mt-1 text-[11px] leading-tight text-gray-500">
-                    <span className="font-semibold text-gray-700">Booth:</span> {creator.booth_detail}
+                    <span className="font-semibold text-gray-700">{t('eventsBooth')}</span> {creator.booth_detail}
                   </div>
                 )}
               </div>
             </div>
             <div className="flex justify-end mt-2">
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#d63384]">
+              <span className="inline-flex min-h-9 items-center gap-1 rounded-full bg-pink-50 px-3 text-[10px] font-black text-[#d63384]">
                 <Sparkles size={11} />
-                View booth
+                {t('creatorsViewBooth')}
               </span>
             </div>
           </Link>

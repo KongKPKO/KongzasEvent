@@ -7,7 +7,7 @@ export const Navbar = () => {
     <nav className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b border-gray-200 z-50 pb-2">
       <div className="max-w-md mx-auto flex flex-col items-center px-4 pt-3 pb-2">
         {/* Brand */}
-        <div className="font-bold text-xl tracking-wider uppercase mb-3" style={{ color: '#ee81a3' }}>Kongzas</div>
+        <div className="font-bold text-xl tracking-normal mb-3" style={{ color: '#ee81a3' }}>Nireq</div>
 
         {/* Navigation Links */}
         <div className="flex gap-4 w-full justify-center">

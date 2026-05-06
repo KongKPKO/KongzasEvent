@@ -1,19 +1,126 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
-import { Home, ShoppingBag, Users, Compass } from 'lucide-react';
+import { CalendarDays, ChevronDown, Compass, Home, MapPin, Search, ShoppingBag, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useArtist } from '../../hooks/useArtist';
+import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
+import { LanguageToggle, useI18n } from '../../i18n';
+import { supabase } from '../../supabaseClient';
+import { customerEventStorageKey, getCurrentCustomerEvents } from '../../utils/customerEvents';
 
 const CustomerLayout = () => {
+   const { t } = useI18n();
    const { slug } = useParams<{ slug: string }>();
    const location = useLocation();
    const { artist, loading, error } = useArtist(slug);
+   const { artist: realtimeArtist, events, isConnected, refresh } = useArtistRealtime({
+      artistId: artist?.id || '',
+      initialArtist: artist
+         ? {
+            id: artist.id,
+            display_name: artist.display_name || '',
+            bio: artist.bio || '',
+            image_url: (artist as any).image_url,
+            broadcast_message: artist.broadcast_message,
+            x_url: artist.x_url || null,
+            facebook_url: artist.facebook_url || null,
+            ig_url: artist.ig_url || null,
+            tiktok_url: artist.tiktok_url || null,
+            email: artist.email || null,
+         }
+         : undefined,
+   });
+   const displayArtist = artist && realtimeArtist ? { ...artist, ...realtimeArtist, slug: artist.slug } : artist;
+   const [selectedEventId, setSelectedEventIdState] = useState<string | null>(null);
+   const availableEvents = useMemo(() => getCurrentCustomerEvents(events), [events]);
+   const selectedEvent = availableEvents.find((event) => event.id === selectedEventId) || availableEvents[0] || null;
 
-   if (loading) return <div className="min-h-screen flex items-center justify-center text-pink-500 font-bold">Loading...</div>;
+   const setSelectedEventId = (eventId: string) => {
+      if (!displayArtist?.id) return;
+      setSelectedEventIdState(eventId);
+      localStorage.setItem(customerEventStorageKey(displayArtist.id), eventId);
+   };
+
+   useEffect(() => {
+      if (!displayArtist?.id || availableEvents.length === 0) {
+         setSelectedEventIdState(null);
+         return;
+      }
+
+      let isMounted = true;
+      const eventIds = new Set(availableEvents.map((event) => event.id));
+      const storageKey = customerEventStorageKey(displayArtist.id);
+      const storedEventId = localStorage.getItem(storageKey);
+
+      if (storedEventId && eventIds.has(storedEventId)) {
+         setSelectedEventIdState(storedEventId);
+         return;
+      }
+
+      const chooseInitialEvent = async () => {
+         const localQueueId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
+         if (localQueueId) {
+            const { data } = await supabase
+               .from('queues')
+               .select('event_id, status')
+               .eq('id', localQueueId)
+               .maybeSingle();
+            if (
+               isMounted &&
+               data?.event_id &&
+               eventIds.has(data.event_id) &&
+               ['waiting', 'calling', 'serving'].includes(data.status)
+            ) {
+               setSelectedEventIdState(data.event_id);
+               localStorage.setItem(storageKey, data.event_id);
+               return;
+            }
+         }
+
+         if (isMounted) {
+            setSelectedEventIdState(availableEvents[0].id);
+            localStorage.setItem(storageKey, availableEvents[0].id);
+         }
+      };
+
+      void chooseInitialEvent();
+
+      return () => {
+         isMounted = false;
+      };
+   }, [displayArtist?.id, availableEvents.map((event) => event.id).join('|')]);
+
+   if (loading) return <div className="min-h-screen flex items-center justify-center text-pink-500 font-bold">{t('loading')}</div>;
    if (error || !artist) return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-gray-50">
-         <h1 className="text-2xl font-bold text-gray-800 mb-2">Artist Not Found</h1>
-         <p className="text-gray-500">The URL you entered might be incorrect.</p>
+      <div className="min-h-screen bg-pink-50/40 px-5 py-8 font-sans">
+         <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center">
+            <div className="rounded-3xl border border-pink-100 bg-white p-7 text-center shadow-xl shadow-pink-100/60">
+               <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-pink-50 text-pink-500">
+                  <Search size={30} aria-hidden="true" />
+               </div>
+               <h1 className="text-2xl font-black tracking-tight text-gray-900">{t('customerArtistNotFound')}</h1>
+               <p className="mt-3 text-sm font-semibold leading-6 text-gray-500">
+                  {t('customerArtistNotFoundBody', { slug: slug || '' })}
+               </p>
+               <div className="mt-7 grid gap-3 sm:grid-cols-2">
+                  <Link
+                     to="/discover"
+                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-500 px-4 py-3 text-sm font-black text-white shadow-lg shadow-pink-200 transition-colors hover:bg-pink-600"
+                  >
+                     <Compass size={17} aria-hidden="true" />
+                     {t('customerArtistNotFoundDiscover')}
+                  </Link>
+                  <Link
+                     to="/"
+                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-gray-700 transition-colors hover:bg-gray-50"
+                  >
+                     <Home size={17} aria-hidden="true" />
+                     {t('customerArtistNotFoundHome')}
+                  </Link>
+               </div>
+            </div>
+         </div>
       </div>
    );
 
@@ -21,14 +128,63 @@ const CustomerLayout = () => {
       <div className="min-h-screen bg-gray-50 pb-20 md:pb-0 font-sans">
          {/* Mobile-first wrapper */}
          <div className="max-w-md mx-auto min-h-screen bg-white shadow-xl overflow-hidden relative">
+            {availableEvents.length === 0 && (
+               <div className="fixed right-3 top-3 z-[120]">
+                  <LanguageToggle className="min-h-11 min-w-11 px-3 py-2 text-[10px]" />
+               </div>
+            )}
 
-            {/* ✅ แปะ component นี้ไว้ตรงไหนก็ได้ (เพราะมัน position fixed) */}
-            {artist && (
+            {displayArtist && (
                <CallingNotification
-                  artistId={artist.id}
-                  slug={artist.slug}
-                  broadcastMessage={artist.broadcast_message}
+                  artistId={displayArtist.id}
+                  slug={displayArtist.slug}
+                  broadcastMessage={displayArtist.broadcast_message}
                />
+            )}
+
+            {availableEvents.length > 0 && (
+               <div className="sticky top-0 z-[45] border-b border-gray-100 bg-white/90 px-3 py-2 backdrop-blur-xl">
+                  <div className="flex items-center gap-2">
+                     <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#d63384] text-white shadow-sm shadow-pink-100">
+                        <CalendarDays size={17} aria-hidden="true" />
+                     </div>
+                     <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                           <span className="text-[9px] font-black uppercase tracking-[0.16em] text-gray-400">
+                              {t('customerSelectedEvent')}
+                           </span>
+                           <span className={`h-1.5 w-1.5 rounded-full ${selectedEvent?.is_booth_open ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                           <span className={`text-[9px] font-black uppercase tracking-[0.12em] ${selectedEvent?.is_booth_open ? 'text-emerald-600' : 'text-gray-400'}`}>
+                              {selectedEvent?.is_booth_open ? t('customerBoothOpen') : t('customerBoothClosed')}
+                           </span>
+                        </div>
+                        {availableEvents.length === 1 ? (
+                           <div className="mt-0.5 truncate text-sm font-black leading-5 text-gray-900">{selectedEvent?.event_name}</div>
+                        ) : (
+                           <div className="relative">
+                              <select
+                                 value={selectedEvent?.id || ''}
+                                 onChange={(event) => setSelectedEventId(event.target.value)}
+                                 className="mt-0.5 min-h-10 w-full appearance-none bg-transparent pr-7 text-sm font-black leading-5 text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-pink-300"
+                                 aria-label={t('customerSelectedEvent')}
+                              >
+                                 {availableEvents.map((event) => (
+                                    <option key={event.id} value={event.id}>{event.event_name}</option>
+                                 ))}
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-pink-400" size={16} />
+                           </div>
+                        )}
+                        {selectedEvent && (
+                           <div className="flex min-w-0 items-center gap-1 text-[10px] font-bold text-gray-500">
+                              <MapPin size={11} className="shrink-0 text-pink-400" aria-hidden="true" />
+                              <span className="truncate">{[selectedEvent.location, selectedEvent.booth_detail].filter(Boolean).join(' · ') || t('customerBoothOpen')}</span>
+                           </div>
+                        )}
+                     </div>
+                     <LanguageToggle className="min-h-11 min-w-11 shrink-0 px-3 py-2 text-[10px]" />
+                  </div>
+               </div>
             )}
 
             <AnimatePresence mode="wait">
@@ -39,53 +195,64 @@ const CustomerLayout = () => {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2, ease: "easeInOut" }}
                >
-                  <Outlet context={{ artist }} />
+                  <Outlet
+                     context={{
+                        artist: displayArtist,
+                        realtimeArtist,
+                        events,
+                        isConnected,
+                        refresh,
+                        selectedEvent,
+                        availableEvents,
+                        setSelectedEventId,
+                     }}
+                  />
                </motion.div>
             </AnimatePresence>
 
             {/* Bottom Nav for Mobile */}
-            <nav className="fixed bottom-0 w-full max-w-md bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around items-end pb-6 h-20 z-50 text-[11px] font-bold tracking-tight" aria-label="Main navigation">
-               <motion.div whileTap={{ scale: 0.9 }}>
+            <nav className="fixed bottom-0 z-50 flex h-20 w-full max-w-md justify-around border-t border-gray-100 bg-white/90 pb-5 text-[11px] font-bold tracking-tight backdrop-blur-md" aria-label="Main navigation">
+               <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/home`}
-                     className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/home') ? 'text-[#d63384]' : 'text-slate-600'}`}
-                     aria-label="Home"
+                     className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.endsWith('/home') ? 'text-[#d63384]' : 'text-slate-600'}`}
+                     aria-label={t('customerNavHome')}
                   >
                      <Home size={22} strokeWidth={location.pathname.endsWith('/home') ? 2.5 : 2} aria-hidden="true" />
-                     Home
+                     {t('customerNavHome')}
                   </Link>
                </motion.div>
 
-               <motion.div whileTap={{ scale: 0.9 }}>
+               <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/menu`}
-                     className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/menu') ? 'text-[#d63384]' : 'text-slate-600'}`}
-                     aria-label="Merchandise"
+                     className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.endsWith('/menu') ? 'text-[#d63384]' : 'text-slate-600'}`}
+                     aria-label={t('customerNavMerch')}
                   >
                      <ShoppingBag size={22} strokeWidth={location.pathname.endsWith('/menu') ? 2.5 : 2} aria-hidden="true" />
-                     Merchandise
+                     {t('customerNavMerch')}
                   </Link>
                </motion.div>
 
-               <motion.div whileTap={{ scale: 0.9 }}>
+               <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/queue`}
-                     className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-[#d63384]' : 'text-slate-600'}`}
-                     aria-label="Queue"
+                     className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-[#d63384]' : 'text-slate-600'}`}
+                     aria-label={t('customerNavQueue')}
                   >
                      <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} aria-hidden="true" />
-                     Queue
+                     {t('customerNavQueue')}
                   </Link>
                </motion.div>
 
-               <motion.div whileTap={{ scale: 0.9 }}>
+               <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to="/discover"
-                     className={`flex flex-col items-center gap-1 transition-colors ${location.pathname.startsWith('/discover') ? 'text-[#d63384]' : 'text-slate-600'}`}
-                     aria-label="Discover"
+                     className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.startsWith('/discover') ? 'text-[#d63384]' : 'text-slate-600'}`}
+                     aria-label={t('customerNavDiscover')}
                   >
                      <Compass size={22} strokeWidth={location.pathname.startsWith('/discover') ? 2.5 : 2} aria-hidden="true" />
-                     Discover
+                     {t('customerNavDiscover')}
                   </Link>
                </motion.div>
             </nav>

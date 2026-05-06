@@ -7,7 +7,7 @@ const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Helpers
@@ -31,6 +31,22 @@ async function ensureTestUserAndArtist() {
   return userId;
 }
 
+async function clickSignOut(page: import('@playwright/test').Page) {
+  const signOut = page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first();
+  try {
+    await expect(signOut).toBeVisible({ timeout: 20000 });
+    await signOut.click();
+    return;
+  } catch {
+    // Mobile layouts keep sign out inside the workspace menu.
+  }
+
+  const menuButton = page.getByRole('button', { name: /Open workspace menu/i }).first();
+  await expect(menuButton).toBeVisible({ timeout: 20000 });
+  await menuButton.click();
+  await page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first().click();
+}
+
 test.describe('Extended Security Behaviors', () => {
   test.setTimeout(120000);
 
@@ -46,10 +62,9 @@ test.describe('Extended Security Behaviors', () => {
     await page.getByRole('button', { name: /Login/i }).click();
     await expect(page).toHaveURL(/\/manage-events/);
 
-    // Trigger logout from header
-    const logoutBtn = page.getByRole('button', { name: /Logout/i }).first();
-    await expect(logoutBtn).toBeVisible({ timeout: 20000 });
-    await logoutBtn.click();
+    // Trigger logout from header or responsive workspace menu
+    await clickSignOut(page);
+    await expect(page).toHaveURL(/\/manage-login/, { timeout: 10000 });
 
     // Try visiting a protected route again
     await page.goto(`${BASE_URL}/manage-products`);

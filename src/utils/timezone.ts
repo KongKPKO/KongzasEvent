@@ -163,6 +163,19 @@ export const formatDateTimeForInput = (
   return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}`;
 };
 
+export const formatDateInTimeZone = (
+  dateInput: string | Date | null | undefined,
+  timeZone?: string | null
+): string => {
+  if (!dateInput) return '';
+
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = getPartsInTimeZone(date, timeZone || FALLBACK_EVENT_TIMEZONE);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
+};
+
 export const parseDateTimeInputInTimeZone = (input: string, timeZone: string): Date | null => {
   const match = input.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
   if (!match) return null;

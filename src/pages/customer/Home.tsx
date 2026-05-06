@@ -1,10 +1,12 @@
 import { useEffect, Suspense, lazy, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom'; 
-import { useArtistRealtime } from '../../hooks/useArtistRealtime';
+import { Link, useOutletContext } from 'react-router-dom';
+import { ShoppingBag, Users } from 'lucide-react';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
 import CustomerHeader from '../../components/CustomerHeader';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
+import { useI18n } from '../../i18n';
+import type { CustomerOutletContext } from '../../types/customerContext';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
@@ -52,18 +54,21 @@ const normalizeEventBooth = (event?: NearbyCreatorEventRecord | null) => {
 };
 
 const Home = () => {
+  const { t } = useI18n();
   // Midnight Watcher
   const currentDate = useMidnightTick();
 
-  // 1. Unified Realtime Hook
-  const { artist: contextArtist } = useOutletContext<{ artist: any }>(); 
-  const { artist, events, isConnected, refresh } = useArtistRealtime({ 
-    artistId: contextArtist?.id 
-  });
+  // 1. Shared realtime customer context from CustomerLayout.
+  const {
+    artist: contextArtist,
+    events,
+    isConnected,
+    refresh,
+    selectedEvent,
+  } = useOutletContext<CustomerOutletContext>();
   const [nearbyCreators, setNearbyCreators] = useState<NearbyCreator[]>([]);
   
-  // Use local artist state from Hook, fallback to context for initial render
-  const displayArtist = artist || contextArtist;
+  const displayArtist = contextArtist;
   
   // Midnight Refresh Effect
   useEffect(() => {
@@ -71,13 +76,11 @@ const Home = () => {
   }, [currentDate, refresh]);
 
   // Early return if no artist data
-  if (!displayArtist) return <div className="p-10 text-center text-gray-400">Loading Artist Profile...</div>;
+  if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
   
   const now = new Date().toISOString();
   
-  // --- 🎯 LOGIC FILTER: จัดการการแสดงผลตรงนี้ครับ ---
-  // กฎ: 1. ยังไม่หมดเวลา (end_date >= now)
-  //     2. สถานะต้องเป็น Confirmed หรือ Cancelled เท่านั้น (Ended จะถูกดีดออก)
+  // Show only non-expired events that should remain visible to customers.
   const visibleEvents = events.filter(e => {
      const isNotExpired = e.end_date >= now;
      const isShowStatus = e.status === 'Confirmed' || e.status === 'Cancelled';
@@ -86,7 +89,7 @@ const Home = () => {
 
   // Derive Booth Status: Check if ANY valid event is currently open AND not ended
   const activeOpenEvent = events.find(e => {
-       const isOpen = e.is_booth_open && e.status === 'Confirmed'; // Booth เปิดได้ต้อง Confirmed เท่านั้น
+       const isOpen = e.is_booth_open && e.status === 'Confirmed';
        const isStarted = e.start_date <= now;
        const isNotEnded = e.end_date >= now;
        return isOpen && isStarted && isNotEnded;
@@ -94,15 +97,12 @@ const Home = () => {
   
   const isBoothActive = !!activeOpenEvent;
 
-  // 3. Auto-set Next Up Logic: Pick the first NON-CANCELLED event
-  // ใช้ visibleEvents มาหา Next Up เลย จะได้สอดคล้องกัน
+  // Pick the first non-cancelled event from the visible list.
   const sortedValidEvents = visibleEvents
-    .filter(e => e.status !== 'Cancelled') // Next Up ต้องไม่เอา Cancelled
-    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()); // (อันนี้ Logic เดิมคุณพี่ Sort มากไปน้อย หรือ น้อยไปมาก ลองเช็คดูนะครับ ปกติ Next event น่าจะเรียงตามเวลาใกล้สุด)
-    // *หมายเหตุ:* ปกติถ้าจะหา "งานถัดไป" ควร sort ascending (น้อยไปมาก) นะครับ
-    // แต่ถ้า code เดิมใช้ได้ดีแล้วผมคงไว้ตามเดิมครับ
+    .filter(e => e.status !== 'Cancelled')
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
 
-  const nextUpEventId = sortedValidEvents[0]?.id;
+  const nextUpEventId = selectedEvent?.id || sortedValidEvents[0]?.id;
   const focusLocations = useMemo(
     () => Array.from(new Set(visibleEvents.map((event) => event.location?.trim()).filter(Boolean))) as string[],
     [visibleEvents]
@@ -189,7 +189,7 @@ const Home = () => {
       {/* Offline Indicator */}
       {!isConnected && (
          <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
-            Offline - Reconnecting...
+            {t('customerOffline')}
          </div>
       )}
 
@@ -211,25 +211,42 @@ const Home = () => {
             <div className="inline-flex items-center px-2.5 py-0.5 bg-green-50 border border-green-100 rounded-full animate-fade-in">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
               <span className="text-green-700 text-[9px] font-bold uppercase tracking-wider">
-                  {activeOpenEvent ? 'Booth Open' : 'Booth Open'}
+                  {t('customerBoothOpen')}
               </span>
             </div>
           ) : (
             <div className="inline-flex items-center px-2.5 py-0.5 bg-red-50 border border-red-100 rounded-full animate-fade-in">
                <div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
-               <span className="text-red-700 text-[9px] font-bold uppercase tracking-wider">Booth Closed</span>
+               <span className="text-red-700 text-[9px] font-bold uppercase tracking-wider">{t('customerBoothClosed')}</span>
             </div>
           )}
+        </div>
+
+        <div className="mx-auto mt-4 grid max-w-[320px] grid-cols-2 gap-2">
+          <Link
+            to={`/${displayArtist.slug}/menu`}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-100 transition active:scale-95"
+          >
+            <ShoppingBag size={17} aria-hidden="true" />
+            {t('customerNavMerch')}
+          </Link>
+          <Link
+            to={`/${displayArtist.slug}/queue`}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 shadow-sm transition active:scale-95"
+          >
+            <Users size={17} aria-hidden="true" />
+            {t('customerNavQueue')}
+          </Link>
         </div>
       </CustomerHeader>
 
 
       {/* Events Section - Lazy Loaded */}
-      <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">Loading events...</div>}>
+      <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
          <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} />
       </Suspense>
 
-      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">Loading creators...</div>}>
+      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
          <CreatorDirectory creators={nearbyCreators} />
       </Suspense>
 

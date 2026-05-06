@@ -1,6 +1,7 @@
 export type PromotionTargetType = 'category' | 'tag' | 'category_tag' | 'product';
 export type PromotionRuleType = 'discount' | 'free_items';
 export type PromotionStatus = 'active' | 'inactive';
+export type PromotionEventScope = 'all' | 'selected';
 
 export interface PromotionRule {
   id: string;
@@ -17,6 +18,10 @@ export interface PromotionRule {
   reward_quantity?: number | null;
   priority?: number;
   status?: PromotionStatus;
+  event_scope?: PromotionEventScope;
+  event_ids?: string[] | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
 }
 
 export interface PromotionProductLike {
@@ -235,11 +240,13 @@ export const calculatePromotionPricing = <TProduct extends PromotionProductLike>
     if (rule.rule_type === 'discount') {
       const bundleSize = Math.max(1, rule.buy_quantity);
       const bundleCount = Math.floor(eligibleQty / bundleSize);
-      const discountAmount = bundleCount * Number(rule.reward_value || 0);
-      if (bundleCount <= 0 || discountAmount <= 0) continue;
+      const requestedDiscountAmount = bundleCount * Number(rule.reward_value || 0);
+      if (bundleCount <= 0 || requestedDiscountAmount <= 0) continue;
 
       const consumedAllocations = consumeEntries(eligibleEntries, bundleCount * bundleSize);
       const consumedTotalAmount = consumedAllocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+      const discountAmount = Math.min(requestedDiscountAmount, consumedTotalAmount);
+      if (discountAmount <= 0) continue;
       const label = getPromotionLabel(rule, productsById);
 
       consumedAllocations.forEach((allocation, index) => {

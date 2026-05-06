@@ -35,9 +35,16 @@ const SocialFooter = ({ artist }: SocialFooterProps) => {
            <span className="text-xs font-bold text-black uppercase tracking-widest">Follow Me</span>
            <div className="h-px bg-gray-200 flex-1"></div>
         </div>
-        <div className="flex justify-center items-center gap-6 mb-4">
+        <div className="mb-4 flex items-center justify-center gap-3">
            {socialLinks.map((link, i) => (
-              <a key={i} href={link.url} target="_blank" rel="noreferrer" className="text-black hover:text-[#d63384] hover:scale-110 transition-all">
+              <a
+                key={i}
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={link.label}
+                className="grid h-11 w-11 place-items-center rounded-full border border-pink-100 bg-white text-black shadow-sm transition-all hover:scale-105 hover:text-[#d63384] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-100"
+              >
                  {link.icon}
               </a>
            ))}

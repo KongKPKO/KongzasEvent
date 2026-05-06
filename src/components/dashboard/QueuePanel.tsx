@@ -6,6 +6,7 @@ import {
     LayoutDashboard, Bell, RotateCcw, Play, 
     Coffee, AlertCircle, PauseCircle, X 
 } from 'lucide-react';
+import { Toast } from '../ui/Feedback';
 
 // --- TYPES ---
 interface QueueItem {
@@ -38,6 +39,7 @@ interface QueuePanelProps {
     selectedQueueId: string | null;
     actorContext: ActorContext;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
+    onStatusUpdated?: (id: string, updates: Partial<QueueItem>) => void;
 }
 
 // --- HELPERS ---
@@ -55,10 +57,11 @@ const formatElapsedTime = (dateString?: string) => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-export default function QueuePanel({ activeEvent, queues, selectedQueueId, actorContext, onSelectQueue }: QueuePanelProps) {
+export default function QueuePanel({ activeEvent, queues, selectedQueueId, actorContext, onSelectQueue, onStatusUpdated }: QueuePanelProps) {
     const [isBoothActive, setIsBoothActive] = useState(false);
     const [isQueueOpen, setIsQueueOpen] = useState(true);
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     // Sync booth status from activeEvent prop
     useEffect(() => {
@@ -142,7 +145,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
 
     const handleToggleBooth = async () => {
         if (!activeEvent) {
-            alert("No Active Event Today! Cannot open booth.");
+            setToast({ tone: 'warning', title: 'No active event', detail: 'Create or activate an event before opening the booth.' });
             return;
         }
 
@@ -181,9 +184,10 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
 
         if (error) {
             console.error(`Error updating status to ${newStatus}:`, error);
+            return;
         }
-        // Parent will receive realtime update and refresh
-    }, []);
+        onStatusUpdated?.(id, updates as Partial<QueueItem>);
+    }, [onStatusUpdated]);
 
     const handleCallNext = useCallback(() => {
         const waitingList = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
@@ -208,6 +212,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
+            <Toast message={toast} onClose={() => setToast(null)} />
             {/* Header */}
             <div className="p-4 border-b border-gray-100 bg-white shrink-0">
                 <div className="flex items-center justify-between mb-3">

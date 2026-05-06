@@ -1,1 +1,0 @@
-const i="https://ik.imagekit.io/kongzas",c=(t,o=600)=>{if(!t)return"";if(t.includes("supabase.co/storage/v1/object/public/"))try{const r=t.split("/storage/v1/object/public/");if(r.length>1){const s=r[1];return`${i}/${s}?tr=w-${o},q-80`}}catch(e){console.error("Error transforming ImageKit URL:",e)}return t};export{c as g};

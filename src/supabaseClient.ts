@@ -40,7 +40,7 @@ const rewriteToCurrentHost = (rawUrl: string) => {
 };
 
 const resolveSupabaseUrl = (rawUrl: string) => {
-  return rewriteToCurrentHost(rawUrl);
+  return rawUrl;
 };
 
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;

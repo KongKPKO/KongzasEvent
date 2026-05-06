@@ -7,7 +7,7 @@ const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Security & Vulnerability Testing', () => {
@@ -92,8 +92,9 @@ test.describe('Security & Vulnerability Testing', () => {
     await page.fill('input[type="password"]', TEST_USER_Y_PASS);
     await page.getByRole('button', { name: /Login/i }).click();
     
-    // Wait for dashboard
-    await expect(page.getByRole('button', { name: 'Events', exact: true }))
+    // Wait for workspace dashboard. The desktop topbar exposes an Events button,
+    // while mobile keeps it inside a menu, so the page heading is the stable check.
+    await expect(page.getByRole('heading', { name: /Manage profile and events/i }))
       .toBeVisible({ timeout: 20000 });
   
     const maliciousName = '<img src=x onerror=alert(1)>';

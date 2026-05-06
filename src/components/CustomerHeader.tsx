@@ -27,8 +27,6 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className =
                      alt={title} 
                      width="128"
                      height="128"
-                     // @ts-ignore - fetchPriority is standard now but Typescript might lag
-                     fetchPriority="high"
                      className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md bg-gray-100"
                   />
                ) : (

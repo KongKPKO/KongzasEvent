@@ -77,3 +77,27 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# local/system
+.DS_Store
+**/.DS_Store
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+
+# local test artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+output/
+screenshots/
+debug-*.png
+
+# env
+.env
+.env.local
+.env.*.local

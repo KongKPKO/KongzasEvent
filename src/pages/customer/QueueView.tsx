@@ -2,82 +2,84 @@ import { useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
-import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import { Button, Card } from '../../components/ui';
-import { RefreshCcw, LogOut } from 'lucide-react';
+import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
+import { Ban, RefreshCcw, LogOut, Ticket } from 'lucide-react';
 import CustomerHeader from '../../components/CustomerHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-
-const FUN_FACTS = [
-    "ขอบคุณที่มารอคิวนะคะ/ครับ ✨",
-    "ระหว่างรอดื่มน้ำพักผ่อนด้วยน้า 🥤",
-    "วันนี้คนเยอะมาก ขอบคุณที่คอยซัพพอร์ตนะคะ 💖",
-];
+import { useI18n } from '../../i18n';
+import { formatDateInTimeZone } from '../../utils/timezone';
+import type { CustomerOutletContext } from '../../types/customerContext';
 
 interface Ticket {
     id: string;
     event_id?: string;
+    queue_service_date?: string | null;
     queue_number: number;
     status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired';
     created_at: string;
 }
 
-const formatTime = (dateString: string) => {
+const formatTime = (dateString: string, locale: string) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return new Date(dateString).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 const QueueView = () => {
+    const { t, language, dateLocale } = useI18n();
+    const funFacts = language === 'th'
+        ? [
+            'ขอบคุณที่มารอคิวนะคะ/ครับ',
+            'ระหว่างรออย่าลืมพักและดื่มน้ำ',
+            'ขอบคุณที่คอยซัพพอร์ต creator วันนี้',
+        ]
+        : [
+            'Thanks for waiting in the queue.',
+            'Take a quick break and stay hydrated while you wait.',
+            'Thanks for supporting creators today.',
+        ];
     // Midnight Watcher: Triggers update when day changes
     const currentDate = useMidnightTick();
 
-    // 1. Unified Realtime Hook
-    const { artist: contextArtist } = useOutletContext<{ artist: any }>();
-    const { artist, events, isConnected, refresh } = useArtistRealtime({
-        artistId: contextArtist?.id
-    });
-    const displayArtist = artist || contextArtist;
+    // 1. Shared customer event context from CustomerLayout.
+    const {
+        artist: contextArtist,
+        events,
+        isConnected,
+        refresh,
+        selectedEvent,
+        availableEvents,
+        setSelectedEventId,
+    } = useOutletContext<CustomerOutletContext>();
+    const displayArtist = contextArtist;
 
     // Early return if no artist data
-    if (!displayArtist) return <div className="p-12 text-center text-gray-400 font-medium">Loading...</div>;
+    if (!displayArtist) return <div className="p-12 text-center text-gray-400 font-medium">{t('loading')}</div>;
 
     const [myTicket, setMyTicket] = useState<Ticket | null>(null);
     const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
     const [etaWindow, setEtaWindow] = useState<{ min: number; max: number; peopleAhead: number } | null>(null);
     const [loading, setLoading] = useState(true);
     const [factIndex, setFactIndex] = useState(0);
+    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+    const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         const interval = setInterval(() => {
-            setFactIndex(prev => (prev + 1) % FUN_FACTS.length);
+            setFactIndex(prev => (prev + 1) % funFacts.length);
         }, 4000);
         return () => clearInterval(interval);
-    }, []);
+    }, [funFacts.length]);
 
-    // DERIVED STATE: Syncs instantly with Realtime Hook
-    // ✅ FIX: Match Admin Panel logic - filter by end_date >= now, sort DESCENDING (get LATEST)
-    const activeEvent = (() => {
-        const now = new Date().toISOString();
-
-        // Filter: must be Confirmed AND not ended (end_date >= now)
-        const validEvents = events.filter(event => {
-            const isConfirmed = event.status === 'Confirmed';
-            const isStarted = event.start_date <= now;
-            const isNotEnded = event.end_date >= now;
-            return isConfirmed && isStarted && isNotEnded;
-        });
-
-        // Sort: DESCENDING by start_date (get the LATEST started event)
-        validEvents.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
-
-        // Return first (latest) event
-        return validEvents[0] || null;
-    })();
+    const activeEvent = selectedEvent;
+    const activeServiceDate = activeEvent
+        ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
+        : null;
 
     // Derived Status Message
-    let eventStatusMessage = "Booth Closed";
+    let eventStatusMessage = t('customerBoothClosed');
     if (!activeEvent) {
         const todayStr = currentDate;
         const cancelled = events.find(e => {
@@ -85,21 +87,23 @@ const QueueView = () => {
             const end = e.end_date.substring(0, 10);
             return e.status === 'Cancelled' && todayStr >= start && todayStr <= end;
         });
-        if (cancelled) eventStatusMessage = "Today's event has been cancelled.";
+        if (cancelled) eventStatusMessage = t('queueEventCancelledBody');
     }
 
     // Helper to fetch the "Now Serving" number for a specific EVENT
-    const fetchNowServing = async (eventId: string) => {
+    const fetchNowServing = async (eventId: string, serviceDate?: string | null) => {
         // PRIORITY 1: LOWEST 'serving' number (Active Service)
-        let { data: servingData } = await supabase
+        let servingQuery = supabase
             .from('queues')
             .select('queue_number')
             .eq('artist_id', displayArtist.id)
             .eq('event_id', eventId)
-            .eq('status', 'serving')
+            .eq('status', 'serving');
+        if (serviceDate) servingQuery = servingQuery.eq('queue_service_date', serviceDate);
+        const { data: servingRows } = await servingQuery
             .order('queue_number', { ascending: true }) // Show Lowest # first (Sequential)
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+        const servingData = servingRows?.[0];
 
         if (servingData) {
             setNowServingNumber(servingData.queue_number);
@@ -107,15 +111,17 @@ const QueueView = () => {
         }
 
         // PRIORITY 2: Fallback to 'calling' (Latest called) if no one is serving
-        let { data: callingData } = await supabase
+        let callingQuery = supabase
             .from('queues')
             .select('queue_number')
             .eq('artist_id', displayArtist.id)
             .eq('event_id', eventId)
-            .eq('status', 'calling')
+            .eq('status', 'calling');
+        if (serviceDate) callingQuery = callingQuery.eq('queue_service_date', serviceDate);
+        const { data: callingRows } = await callingQuery
             .order('last_updated_at', { ascending: false }) // Show most recent call
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+        const callingData = callingRows?.[0];
 
         setNowServingNumber(callingData ? callingData.queue_number : null);
     };
@@ -161,20 +167,31 @@ const QueueView = () => {
         }
 
         const initQueueData = async () => {
-            await fetchNowServing(activeEvent.id);
+            await fetchNowServing(activeEvent.id, activeServiceDate);
 
             // Ticket Verification
             const storedTicketId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
             if (storedTicketId) {
                 const { data: ticket } = await supabase
                     .from('queues')
-                    .select('id, event_id, queue_number, status, created_at')
+                    .select('id, event_id, queue_service_date, queue_number, status, created_at')
                     .eq('id', storedTicketId)
                     .single();
 
                 if (ticket) {
-                    // Check Mismatch
-                    if (ticket.event_id !== activeEvent.id) {
+                    // Check Mismatch. If the stored active ticket belongs to another current event,
+                    // switch the customer context instead of deleting a valid ticket.
+                    if (ticket.event_id !== activeEvent.id || ticket.queue_service_date !== activeServiceDate) {
+                        const ticketEvent = availableEvents.find((event) => event.id === ticket.event_id);
+                        if (
+                            ticketEvent &&
+                            ['waiting', 'calling', 'serving'].includes(ticket.status) &&
+                            ticket.queue_service_date === formatDateInTimeZone(new Date(), ticketEvent.event_timezone || 'Asia/Bangkok')
+                        ) {
+                            setSelectedEventId(ticket.event_id || ticketEvent.id);
+                            setLoading(false);
+                            return;
+                        }
                         console.warn("Ticket Event Mismatch. Clearing.");
                         localStorage.removeItem(`ticket_id_${displayArtist.id}`);
                         setMyTicket(null);
@@ -201,11 +218,11 @@ const QueueView = () => {
                     clearTimeout(nowServingTimerRef.current);
                 }
                 nowServingTimerRef.current = setTimeout(() => {
-                    fetchNowServing(activeEvent.id);
+                    fetchNowServing(activeEvent.id, activeServiceDate);
                 }, 200);
 
                 setMyTicket((prev) => {
-                    if (prev && (payload.new as Ticket)?.id === prev.id) {
+                    if (prev && (payload.new as Ticket)?.id === prev.id && (payload.new as Ticket)?.queue_service_date === activeServiceDate) {
                         return payload.new as Ticket;
                     }
                     return prev;
@@ -221,7 +238,7 @@ const QueueView = () => {
             supabase.removeChannel(channel);
         };
 
-    }, [activeEvent?.id, activeEvent?.is_booth_open, displayArtist.id]);
+    }, [activeEvent?.id, activeEvent?.is_booth_open, activeServiceDate, displayArtist.id, availableEvents.map((event) => event.id).join('|')]);
 
     useEffect(() => {
         if (!activeEvent || !myTicket) {
@@ -230,6 +247,33 @@ const QueueView = () => {
         }
         fetchEta(activeEvent.id, myTicket.queue_number, myTicket.status);
     }, [activeEvent?.id, myTicket?.queue_number, myTicket?.status, nowServingNumber]);
+
+    useEffect(() => {
+        if (!myTicket?.id || !activeEvent?.id) return;
+
+        let isMounted = true;
+        const syncTicketStatus = async () => {
+            const { data, error } = await supabase
+                .from('queues')
+                .select('id, event_id, queue_service_date, queue_number, status, created_at')
+                .eq('id', myTicket.id)
+                .maybeSingle();
+
+            if (!isMounted || error || !data) return;
+            if (data.event_id !== activeEvent.id || data.queue_service_date !== activeServiceDate) {
+                localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+                setMyTicket(null);
+                return;
+            }
+            setMyTicket(data as Ticket);
+        };
+
+        const pollId = window.setInterval(() => { void syncTicketStatus(); }, 3000);
+        return () => {
+            isMounted = false;
+            window.clearInterval(pollId);
+        };
+    }, [activeEvent?.id, activeServiceDate, displayArtist.id, myTicket?.id]);
 
 
 
@@ -240,51 +284,24 @@ const QueueView = () => {
         const now = new Date();
         const end = new Date(activeEvent.end_date);
         if (now > end) {
-            alert("This event has unfortunately ended.");
+            setToast({ tone: 'warning', title: t('queueEventEnded'), detail: t('queueEventEndedDetail') });
             refresh();
             return;
         }
 
         setLoading(true);
         try {
-            // 2. Auto-Sequence Logic: Calculate Next Ticket Number
-            const startOfDay = new Date();
-            startOfDay.setHours(0, 0, 0, 0);
-
-            // Query for the latest ticket for this event TODAY
-            const { data: maxData, error: maxError } = await supabase
-                .from('queues')
-                .select('queue_number')
-                .eq('event_id', activeEvent.id)
-                .gte('created_at', startOfDay.toISOString())
-                .order('queue_number', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (maxError && maxError.code !== 'PGRST116') {
-                console.error("Error fetching max ticket number:", maxError);
-            }
-
-            const nextNum = (maxData?.queue_number || 0) + 1;
-
-            console.log(`Generating Ticket | Event ID: ${activeEvent.id} | Next Number: ${nextNum}`);
-
-            const { data, error: insertError } = await supabase
-                .from('queues')
-                .insert([{
-                    artist_id: displayArtist.id,
-                    event_id: activeEvent.id,
-                    queue_number: nextNum,
-                    status: 'waiting'
-                }])
-                .select('id, event_id, queue_number, status, created_at')
-                .single();
+            const { data: createdTicket, error: insertError } = await supabase.rpc('create_queue_ticket', {
+                p_artist_id: displayArtist.id,
+                p_event_id: activeEvent.id,
+            });
 
             if (insertError) {
                 console.error("Supabase Insert Error:", insertError);
                 throw insertError;
             }
 
+            const data = Array.isArray(createdTicket) ? createdTicket[0] : createdTicket;
             if (data) {
                 localStorage.setItem(`ticket_id_${displayArtist.id}`, data.id);
                 setMyTicket(data);
@@ -292,7 +309,7 @@ const QueueView = () => {
 
         } catch (err) {
             console.error("handleGetTicket Exception:", err);
-            alert('Failed to get ticket. Please try again.');
+            setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: t('queueTryAgain') });
         } finally {
             setLoading(false);
         }
@@ -305,14 +322,16 @@ const QueueView = () => {
 
         // Refresh Queue Data (Now Serving + My Ticket)
         if (activeEvent) {
-            await fetchNowServing(activeEvent.id);
+            await fetchNowServing(activeEvent.id, activeServiceDate);
             if (myTicket) {
                 const { data } = await supabase
                     .from('queues')
-                    .select('id, event_id, queue_number, status, created_at')
+                    .select('id, event_id, queue_service_date, queue_number, status, created_at')
                     .eq('id', myTicket.id)
                     .single();
-                if (data) setMyTicket(data);
+                if (data && data.event_id === activeEvent.id && data.queue_service_date === activeServiceDate) {
+                    setMyTicket(data);
+                }
             }
         }
         setLoading(false);
@@ -332,27 +351,30 @@ const QueueView = () => {
             return;
         }
 
-        // SCENARIO A: Active (Waiting, Calling, Serving) -> Confirm + Update DB + Clear
         if (activeStatuses.includes(status) || !endedStatuses.includes(status)) {
-            if (confirm("Are you sure you want to leave the queue? This action cannot be undone.")) {
-                console.log(`Attempting to leave queue for ticket ${myTicket.id} with status ${status}`);
-
-                const { error } = await supabase
-                    .from('queues')
-                    .update({ status: 'missed' }) // Set to 'missed' to satisfy constraint & logic
-                    .eq('id', myTicket.id);
-
-                if (error) {
-                    console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
-                    alert("Failed to leave queue. Please try again.");
-                    return; // DO NOT clear local state if DB update fails
-                }
-
-                // ONLY Clear local storage after successful DB update
-                localStorage.removeItem(`ticket_id_${displayArtist.id}`);
-                setMyTicket(null);
-            }
+            setIsLeaveConfirmOpen(true);
         }
+    };
+
+    const confirmLeaveQueue = async () => {
+        if (!myTicket) return;
+
+        console.log(`Attempting to leave queue for ticket ${myTicket.id} with status ${myTicket.status}`);
+        const { error } = await supabase
+            .from('queues')
+            .update({ status: 'missed' })
+            .eq('id', myTicket.id);
+
+        if (error) {
+            console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
+            setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
+            return;
+        }
+
+        localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+        setMyTicket(null);
+        setIsLeaveConfirmOpen(false);
+        setToast({ tone: 'success', title: t('queueCancelledToast') });
     };
 
     // UI State Components
@@ -361,56 +383,56 @@ const QueueView = () => {
 
         const { status, queue_number } = myTicket;
         const queueingArea = activeEvent?.queueing_area?.trim();
-        const callingMessage = queueingArea ? `Please proceed to ${queueingArea}` : 'Please proceed to the booth!';
+        const callingMessage = queueingArea ? t('queueProceedToArea', { area: queueingArea }) : t('queueProceedToBooth');
 
         // Configuration for each status
         const config = {
             waiting: {
                 bg: 'bg-gray-50',
                 border: 'border-gray-200',
-                badge: { text: 'Waiting', bg: 'bg-gray-200', color: 'text-gray-700' },
+                badge: { text: t('queueStatusWaiting'), bg: 'bg-gray-200', color: 'text-gray-700' },
                 messageColor: 'text-gray-500',
-                message: 'You are in the queue.\nPlease wait for your number.',
+                message: t('queueWaitingMessage'),
                 subMessage: undefined
             },
             calling: {
                 bg: 'bg-yellow-50',
                 border: 'border-yellow-200',
-                badge: { text: "It's Your Turn!", bg: 'bg-yellow-500', color: 'text-white' },
+                badge: { text: t('queueStatusTurn'), bg: 'bg-yellow-500', color: 'text-white' },
                 messageColor: 'text-yellow-800',
                 message: callingMessage,
-                subMessage: 'Calling...'
+                subMessage: t('queueCalling')
             },
             serving: {
                 bg: 'bg-sky-50',
                 border: 'border-sky-200',
-                badge: { text: 'Being Served', bg: 'bg-sky-500', color: 'text-white' },
+                badge: { text: t('queueStatusServing'), bg: 'bg-sky-500', color: 'text-white' },
                 messageColor: 'text-sky-800',
-                message: 'You are being served.',
-                subMessage: 'Active'
+                message: t('queueServingMessage'),
+                subMessage: t('queueActive')
             },
             complete: {
                 bg: 'bg-green-50',
                 border: 'border-green-200',
-                badge: { text: 'Completed', bg: 'bg-green-100', color: 'text-green-700' },
+                badge: { text: t('queueStatusComplete'), bg: 'bg-green-100', color: 'text-green-700' },
                 messageColor: 'text-green-800',
-                message: 'Thank you! Your order is complete.',
+                message: t('queueCompleteMessage'),
                 subMessage: undefined
             },
             expired: {
                 bg: 'bg-purple-50',
                 border: 'border-purple-200',
-                badge: { text: 'Expired', bg: 'bg-purple-100', color: 'text-purple-700' },
+                badge: { text: t('queueStatusExpired'), bg: 'bg-purple-100', color: 'text-purple-700' },
                 messageColor: 'text-purple-800',
-                message: 'Ticket Expired',
+                message: t('queueExpiredMessage'),
                 subMessage: undefined
             },
             missed: { // Acts as Cancelled
                 bg: 'bg-red-50',
                 border: 'border-red-200',
-                badge: { text: 'Cancelled', bg: 'bg-red-100', color: 'text-red-700' },
+                badge: { text: t('queueStatusCancelled'), bg: 'bg-red-100', color: 'text-red-700' },
                 messageColor: 'text-red-800',
-                message: 'Cancelled Ticket by customer',
+                message: t('queueCancelledMessage'),
                 subMessage: undefined
             }
         };
@@ -443,7 +465,7 @@ const QueueView = () => {
 
                     {/* Created Time */}
                     <div className="mb-4 text-xs font-medium text-gray-400 uppercase tracking-wide z-10">
-                        Booked at {formatTime(myTicket.created_at)}
+                        {t('queueBookedAt', { time: formatTime(myTicket.created_at, dateLocale) })}
                     </div>
 
                     {/* Queue Number */}
@@ -462,7 +484,7 @@ const QueueView = () => {
 
                     {etaWindow && (status === 'waiting' || status === 'calling' || status === 'serving') && (
                         <div className="mt-4 text-sm font-semibold text-gray-600 z-10">
-                            Estimated wait: {etaWindow.min}-{etaWindow.max} min ({etaWindow.peopleAhead} ahead)
+                            {t('queueEstimatedWait', { min: etaWindow.min, max: etaWindow.max, people: etaWindow.peopleAhead })}
                         </div>
                     )}
 
@@ -478,7 +500,7 @@ const QueueView = () => {
                                     transition={{ duration: 0.4 }}
                                     className="absolute text-xs font-medium text-pink-600 tracking-wide w-full"
                                 >
-                                    {FUN_FACTS[factIndex]}
+                                    {funFacts[factIndex]}
                                 </motion.div>
                             </AnimatePresence>
                         </div>
@@ -495,7 +517,7 @@ const QueueView = () => {
         );
     };
 
-    if (loading) return <div className="p-12 text-center text-gray-400 font-medium">Loading status...</div>;
+    if (loading) return <div className="p-12 text-center text-gray-400 font-medium">{t('queueLoadingStatus')}</div>;
 
     // Strict UI Check: Booth must be OPEN
     const isBoothOpen = activeEvent?.is_booth_open;
@@ -506,21 +528,21 @@ const QueueView = () => {
         if (!myTicket) {
             if (!isQueueOpen) {
                 return {
-                    title: 'Queue paused',
-                    detail: 'The booth paused online queue intake. Please wait for reopening or ask staff at the booth.',
+                    title: t('queuePausedTitle'),
+                    detail: t('queuePausedDetail'),
                     tone: 'amber',
                 };
             }
             if (activeEvent && isBoothOpen) {
                 return {
-                    title: 'Get a ticket first',
-                    detail: 'Join the queue here, then keep this page open to track your status and calling instructions.',
+                    title: t('queueGetTicketFirstTitle'),
+                    detail: t('queueGetTicketFirstDetail'),
                     tone: 'pink',
                 };
             }
             return {
-                title: 'Queue unavailable',
-                detail: 'There is no active booth session right now. Check the event status or come back later.',
+                title: t('queueUnavailableTitle'),
+                detail: t('queueUnavailableDetail'),
                 tone: 'slate',
             };
         }
@@ -528,34 +550,34 @@ const QueueView = () => {
         switch (myTicket.status) {
             case 'waiting':
                 return {
-                    title: 'Wait and keep browsing',
-                    detail: 'You can keep browsing the menu. Confirmation unlocks when your queue is called.',
+                    title: t('queueWaitBrowseTitle'),
+                    detail: t('queueWaitBrowseDetail'),
                     tone: 'slate',
                 };
             case 'calling':
                 return {
-                    title: 'Proceed to the booth now',
+                    title: t('queueProceedTitle'),
                     detail: activeEvent?.queueing_area?.trim()
-                        ? `Go to ${activeEvent.queueing_area.trim()} and be ready to confirm your selected items.`
-                        : 'Go to the booth now and be ready to confirm your selected items.',
+                        ? t('queueProceedDetailArea', { area: activeEvent.queueing_area.trim() })
+                        : t('queueProceedDetailBooth'),
                     tone: 'amber',
                 };
             case 'serving':
                 return {
-                    title: 'You can confirm your items now',
-                    detail: 'Staff is ready for you. Use the menu cart if you want to send your selected items before checkout.',
+                    title: t('queueServingTitle'),
+                    detail: t('queueServingDetail'),
                     tone: 'blue',
                 };
             case 'complete':
                 return {
-                    title: 'Queue completed',
-                    detail: 'This queue is finished. You can close this ticket or continue browsing other booths.',
+                    title: t('queueTicketFinishedTitle'),
+                    detail: t('queueTicketFinishedDetail'),
                     tone: 'green',
                 };
             default:
                 return {
-                    title: 'Ticket closed',
-                    detail: 'This ticket is no longer active. If you still want to buy, please get a new queue ticket.',
+                    title: t('queueTicketClosedTitle'),
+                    detail: t('queueTicketClosedDetail'),
                     tone: 'red',
                 };
         }
@@ -563,12 +585,22 @@ const QueueView = () => {
 
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-24 animate-fade-in flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl">
+        <div className="min-h-screen bg-[#fff7fb] pb-24 animate-fade-in flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl">
+            <Toast message={toast} onClose={() => setToast(null)} />
+            <ConfirmDialog
+                open={isLeaveConfirmOpen}
+                title={t('queueLeaveTitle')}
+                detail={t('queueLeaveDetail')}
+                confirmLabel={t('queueLeaveButton')}
+                tone="danger"
+                onConfirm={confirmLeaveQueue}
+                onCancel={() => setIsLeaveConfirmOpen(false)}
+            />
 
             {/* Offline Indicator */}
             {!isConnected && (
                 <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
-                    Offline - Reconnecting...
+                    {t('customerOffline')}
                 </div>
             )}
 
@@ -578,35 +610,32 @@ const QueueView = () => {
                 transparent={true} // Restored transparent background
                 avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
                 avatarDisplay="inline"
-            >
-                {activeEvent && (
-                    <div className="inline-block bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-pink-100 mt-0.5">
-                        {activeEvent.event_name}
-                    </div>
-                )}
-            </CustomerHeader>
+            />
 
             {/* Content Area with Padding */}
             <div className="w-full px-4 mt-4 flex flex-col items-center flex-1">
                 {/* NOW SERVING INDICATOR (Compact) */}
                 <motion.div
-                    className="w-full bg-slate-900 rounded-2xl p-4 shadow-xl shadow-slate-200 mb-4 relative overflow-hidden group"
-                    whileHover={{ scale: 1.02 }}
+                    className="w-full rounded-[1.75rem] border border-pink-100 bg-gray-950 p-5 shadow-xl shadow-pink-100 mb-4 relative overflow-hidden group"
+                    whileTap={{ scale: 0.99 }}
                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500 rounded-full blur-[40px] opacity-20 -mr-8 -mt-8 animate-pulse-slow"></div>
-
-                    <div className="relative flex flex-row items-center justify-between px-2">
+                    <div className="relative flex flex-row items-center justify-between">
                         <div className="flex flex-col items-start gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mb-1"></span>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">Now<br />Serving</span>
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
+                                <span className="text-[10px] font-black text-pink-100 uppercase tracking-widest leading-tight">{t('queueNowServing')}</span>
+                            </span>
+                            {activeEvent?.queueing_area?.trim() && (
+                                <span className="mt-1 text-[11px] font-bold text-gray-400">{activeEvent.queueing_area.trim()}</span>
+                            )}
                         </div>
 
-                        <div className={`text-4xl font-black tracking-tighter ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}>
+                        <div className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}>
                             {nowServingNumber ? (
-                                <span><span className="text-pink-500 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
+                                <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
                             ) : (
-                                <span className="text-2xl text-gray-600">--</span>
+                                <span className="text-3xl text-gray-600">--</span>
                             )}
                         </div>
                     </div>
@@ -618,9 +647,9 @@ const QueueView = () => {
                     queueActionGuidance.tone === 'blue' ? 'bg-sky-50 border-sky-100' :
                     queueActionGuidance.tone === 'green' ? 'bg-green-50 border-green-100' :
                     queueActionGuidance.tone === 'red' ? 'bg-red-50 border-red-100' :
-                    'bg-slate-50 border-slate-100'
+                    'bg-white border-pink-50'
                 }`}>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Next Step</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{t('queueNextStep')}</div>
                     <div className="mt-1 text-sm font-bold text-gray-900">{queueActionGuidance.title}</div>
                     <div className="mt-1 text-xs leading-relaxed text-gray-600">{queueActionGuidance.detail}</div>
                 </div>
@@ -635,9 +664,9 @@ const QueueView = () => {
                             <Button
                                 onClick={handleRefresh}
                                 className="w-full bg-[#d63384] hover:bg-pink-700 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
-                                aria-label="Refresh queue status"
+                                aria-label={t('queueRefreshStatus')}
                             >
-                                <RefreshCcw size={16} aria-hidden="true" /> Refresh Status
+                                <RefreshCcw size={16} aria-hidden="true" /> {t('queueRefreshStatus')}
                             </Button>
 
                             <button
@@ -645,36 +674,40 @@ const QueueView = () => {
                                 className="flex items-center justify-center gap-1 text-gray-400 hover:text-red-500 font-medium text-xs transition-colors py-2"
                             >
                                 <LogOut size={14} />
-                                {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? 'Close Ticket' : 'Leave Queue'}
+                                {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? t('queueCloseTicket') : t('queueLeaveQueue')}
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full flex-1 flex flex-col justify-center">
-                        <div className="bg-white p-6 rounded-3xl shadow-lg border border-white text-center mb-4">
-                            {/* Dynamic Icon based on Status */}
-                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${!isQueueOpen ? 'bg-red-50 text-red-500' : 'bg-pink-50 text-pink-500'
+                    <div className="w-full flex-1 flex flex-col justify-start pt-8 pb-8">
+                        <div className="rounded-[2rem] border border-pink-100 bg-white p-6 text-center shadow-xl shadow-pink-50 mb-4">
+                            <div className={`mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl ${!isQueueOpen ? 'bg-red-50 text-red-500' : 'bg-pink-50 text-pink-600'
                                 }`}>
-                                <span className="material-icons-outlined text-3xl">
-                                    {!isQueueOpen ? 'block' : 'confirmation_number'}
-                                </span>
+                                {!isQueueOpen ? <Ban size={30} aria-hidden="true" /> : <Ticket size={30} aria-hidden="true" />}
                             </div>
 
-                            <h3 className="text-lg font-bold text-gray-900 mb-1">
+                            <h3 className="text-xl font-black text-gray-950 mb-2">
                                 {!isQueueOpen
-                                    ? "Queuing is closed"
-                                    : (activeEvent && isBoothOpen ? "Join the Queue" : (eventStatusMessage || "Booth Closed"))
+                                    ? t('queueClosedTitle')
+                                    : (activeEvent && isBoothOpen ? t('queueJoinTitle') : (eventStatusMessage || t('customerBoothClosed')))
                                 }
                             </h3>
 
-                            <p className="text-gray-500 text-xs leading-relaxed px-4">
+                            {activeEvent && (
+                                <div className="mx-auto mb-3 inline-flex max-w-full items-center gap-1.5 rounded-full border border-pink-100 bg-pink-50 px-3 py-1.5 text-[11px] font-black text-pink-700">
+                                    <Ticket size={13} aria-hidden="true" />
+                                    <span className="truncate">{activeEvent.event_name}</span>
+                                </div>
+                            )}
+
+                            <p className="text-gray-600 text-sm font-medium leading-relaxed px-2">
                                 {!isQueueOpen
-                                    ? "Due to high traffic, we are temporarily pausing the queue. Please wait for the reopening."
+                                    ? t('queueClosedPausedBody')
                                     : (activeEvent && isBoothOpen
-                                        ? "Get a number and wait for your turn."
-                                        : (eventStatusMessage === "Today's event has been cancelled."
-                                            ? "This event has been cancelled."
-                                            : "Queue is currently closed."))
+                                        ? t('queueJoinBody')
+                                        : (eventStatusMessage === t('queueEventCancelledBody')
+                                            ? t('queueEventCancelledBody')
+                                            : t('queueCurrentlyClosedBody')))
                                 }
                             </p>
                         </div>
@@ -684,12 +717,12 @@ const QueueView = () => {
                             <Button
                                 onClick={handleGetTicket}
                                 disabled={!activeEvent || !isBoothOpen || loading}
-                                className={`w-full py-4 text-base shadow-lg font-bold rounded-xl transition-transform active:scale-95 ${activeEvent && isBoothOpen
-                                    ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-200 text-white'
+                                className={`w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 ${activeEvent && isBoothOpen
+                                    ? 'bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white'
                                     : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
                                     }`}
                             >
-                                {activeEvent && isBoothOpen ? "Get Ticket" : (eventStatusMessage || "Booth Closed")}
+                                {activeEvent && isBoothOpen ? t('queueGetTicket') : (eventStatusMessage || t('customerBoothClosed'))}
                             </Button>
                         )}
                     </div>

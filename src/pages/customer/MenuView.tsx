@@ -1,15 +1,18 @@
 import { useEffect, useState, useMemo, Suspense, lazy } from 'react';
-import { useOutletContext, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { useArtistRealtime } from '../../hooks/useArtistRealtime';
-import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Home, Users, Trash2, Ticket, ShoppingBag, Sparkles, Compass } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
+import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 
 const ProductList = lazy(() => import('../../components/menu/ProductList'));
 import { formatPrice } from '../../utils/currency';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
+import { useI18n } from '../../i18n';
+import { formatDateInTimeZone } from '../../utils/timezone';
+import type { CustomerOutletContext } from '../../types/customerContext';
 
 interface Product {
   id: string;
@@ -30,15 +33,26 @@ interface Product {
 type CartItems = Record<string, number>;
 type CartItemNames = Record<string, string>;
 
+const getQueueEventTimeZone = (queueData: any): string => {
+  const eventData = Array.isArray(queueData?.events) ? queueData.events[0] : queueData?.events;
+  return eventData?.event_timezone || 'Asia/Bangkok';
+};
+
+const isQueueFromToday = (queueData: any): boolean => {
+  if (!queueData?.queue_service_date) return true;
+  return queueData.queue_service_date === formatDateInTimeZone(new Date(), getQueueEventTimeZone(queueData));
+};
+
 const MenuView = () => {
-  const { artist: contextArtist } = useOutletContext<{ artist: any }>();
-  const { artist, isConnected } = useArtistRealtime({ 
-    artistId: contextArtist?.id 
-  });
-  
-  const displayArtist = artist || contextArtist;
+  const { t } = useI18n();
+  const {
+    artist: contextArtist,
+    isConnected,
+    selectedEvent,
+    setSelectedEventId,
+  } = useOutletContext<CustomerOutletContext>();
+  const displayArtist = contextArtist;
   const navigate = useNavigate();
-  const location = useLocation();
   const { slug } = useParams();
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -88,7 +102,8 @@ const MenuView = () => {
   const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
     return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
   });
-
+  const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
   const clearCart = () => {
     setCart({});
     setCartItemNames({});
@@ -168,13 +183,11 @@ const MenuView = () => {
     return firstProduct?.currency;
   }, [cart, productById]);
 
-  const fetchPromotions = async (artistId: string) => {
-    const { data, error } = await supabase
-      .from('artist_promotions')
-      .select('id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status')
-      .eq('artist_id', artistId)
-      .eq('status', 'active')
-      .order('priority', { ascending: false });
+  const fetchPromotions = async (artistId: string, eventId?: string | null) => {
+    const { data, error } = await supabase.rpc('list_active_promotions', {
+      p_artist_id: artistId,
+      p_event_id: eventId || null,
+    });
 
     if (error) {
       console.error('[MenuView] fetchPromotions failed:', error);
@@ -212,34 +225,44 @@ const MenuView = () => {
         if (localQueueId) {
             const { data: queueData } = await supabase
                 .from('queues')
-                .select('queue_number, status')
+                .select('event_id, queue_number, status, queue_service_date, events(event_timezone)')
                 .eq('id', localQueueId)
                 .single();
             
             // Only show queue number if status is active
-            if (queueData && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
+            if (queueData && isQueueFromToday(queueData) && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
+                if (queueData.event_id && queueData.event_id !== selectedEvent?.id) {
+                  setSelectedEventId(queueData.event_id);
+                }
                 setUserQueueNumber(queueData.queue_number);
                 setUserQueueStatus(queueData.status);
                 console.log("Customer is Queue:", queueData.queue_number);
             } else {
+               if (queueData && !isQueueFromToday(queueData)) {
+                  localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+               }
                setUserQueueNumber(null);
                setUserQueueStatus(queueData?.status || null);
             }
         }
 
-        // 2.2 ดึงสินค้า
-        const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('artist_id', displayArtist.id)
-            .order('created_at', { ascending: false });
+        // 2.2 ดึงสินค้า: use the selected customer event catalog, fallback to global catalog when no current event exists.
+        const productRequest = selectedEvent?.id
+            ? supabase.rpc('list_event_products', { p_event_id: selectedEvent.id })
+            : supabase
+                .from('products')
+                .select('*')
+                .eq('artist_id', displayArtist.id)
+                .order('created_at', { ascending: false });
+
+        const { data, error } = await productRequest;
 
         if (!error && data) {
-            setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
+            setProducts(((data || []) as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
             setProductsLoaded(true);
         }
 
-        await fetchPromotions(displayArtist.id);
+        await fetchPromotions(displayArtist.id, selectedEvent?.id || null);
         setLoading(false);
     };
 
@@ -248,17 +271,20 @@ const MenuView = () => {
        
        const productChannel = supabase
          .channel(`menu-realtime-${displayArtist.id}`)
-         .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${displayArtist.id}` }, (payload) => {
-               if (payload.eventType === 'INSERT') setProducts(prev => [normalizeProductRecord(payload.new) as Product, ...prev]);
-               if (payload.eventType === 'UPDATE') setProducts(prev => prev.map(p => p.id === payload.new.id ? normalizeProductRecord(payload.new) as Product : p));
-               if (payload.eventType === 'DELETE') setProducts(prev => prev.filter(p => p.id !== payload.old.id));
+         .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${displayArtist.id}` }, () => {
+               void initData();
             }
-         ).subscribe();
+         )
+         .on('postgres_changes', { event: '*', schema: 'public', table: 'event_products', filter: `event_id=eq.${selectedEvent?.id || '00000000-0000-0000-0000-000000000000'}` }, () => {
+               void initData();
+            }
+         )
+         .subscribe();
 
        const promotionChannel = supabase
          .channel(`menu-promotions-${displayArtist.id}`)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_promotions', filter: `artist_id=eq.${displayArtist.id}` }, () => {
-            fetchPromotions(displayArtist.id);
+            fetchPromotions(displayArtist.id, selectedEvent?.id || null);
          })
          .subscribe();
          
@@ -267,7 +293,7 @@ const MenuView = () => {
          supabase.removeChannel(promotionChannel);
        };
     }
-  }, [displayArtist?.id]);
+  }, [displayArtist?.id, selectedEvent?.id]);
 
   // ✅ NEW: Realtime Cart Cleanup - Remove sold out/disabled items automatically
   useEffect(() => {
@@ -292,8 +318,12 @@ const MenuView = () => {
             return next;
         });
         
-        const removedNames = itemsToRemove.map(id => productById.get(id)?.name || cartItemNames[id] || 'Unknown Item');
-        alert(`The following items in your cart are no longer available and have been removed:\n- ${removedNames.join('\n- ')}`);
+        const removedNames = itemsToRemove.map(id => productById.get(id)?.name || cartItemNames[id] || t('menuUnknownItem'));
+        setToast({
+          tone: 'warning',
+          title: t('menuCartUpdated'),
+          detail: `${t('menuCartUpdatedDetail')}\n- ${removedNames.join('\n- ')}`,
+        });
     }
   }, [cart, cartItemNames, loading, productById, productsLoaded]); // Run whenever products list updates (via realtime)
 
@@ -338,44 +368,86 @@ const MenuView = () => {
   const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
-    // 1. Check Local Queue ID presence
     const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
     if (!localQueueId) {
-        alert("Please get a queue ticket first!\nกรุณารับบัตรคิวก่อนกด Confirm รายการ.");
+        setToast({
+          tone: 'warning',
+          title: t('menuQueueTicketRequired'),
+          detail: t('menuQueueTicketRequiredDetail'),
+        });
         navigate(`/${displayArtist?.slug || slug}/queue`); 
         return; 
     }
 
     if (!canConfirmOrder) {
-        alert('You can confirm when your queue is called.');
+        setToast({ tone: 'info', title: t('menuPleaseWaitQueue'), detail: t('menuPleaseWaitQueueDetail') });
         return;
     }
 
-    if (!confirm(`Confirm order for ${totalItems} items (${formatPrice(pricing.total, cartCurrency)})?`)) return;
+    setConfirmAction('submit_order');
+  };
 
+  const submitConfirmedOrder = async () => {
+    const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+    if (!localQueueId) {
+        setConfirmAction(null);
+        setToast({ tone: 'warning', title: t('menuQueueTicketRequired'), detail: t('menuQueueTicketRequiredDetail') });
+        navigate(`/${displayArtist?.slug || slug}/queue`);
+        return;
+    }
+
+    setConfirmAction(null);
     setSubmitting(true);
     try {
         // 2. Validate Queue Status (Server Check - Strict)
         const { data: queueData, error: queueError } = await supabase
             .from('queues')
-            .select('status')
+            .select('event_id, status, queue_service_date, events(event_timezone)')
             .eq('id', localQueueId)
             .single();
 
         if (queueError || !queueData) {
-             throw new Error("Queue ticket not found. Please queue again.");
+             throw new Error(t('menuTicketNotFound'));
         }
-        // Allow only calling / serving queues to confirm cart
+
+        if (!isQueueFromToday(queueData)) {
+             localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
+             setUserQueueNumber(null);
+             setUserQueueStatus(null);
+             setToast({
+              tone: 'warning',
+              title: t('menuTicketClosed'),
+              detail: t('menuTicketClosedDetail', { status: 'expired' }),
+             });
+             navigate(`/${displayArtist?.slug || slug}/queue`);
+             return;
+        }
+
+        if (selectedEvent?.id && queueData.event_id !== selectedEvent.id) {
+             if (queueData.event_id) setSelectedEventId(queueData.event_id);
+             setToast({
+              tone: 'info',
+              title: t('menuQueueTicketRequired'),
+              detail: t('menuQueueTicketRequiredDetail'),
+             });
+             navigate(`/${displayArtist?.slug || slug}/queue`);
+             return;
+        }
+
         if (!['calling', 'serving'].includes(queueData.status)) {
              if (['complete', 'missed', 'expired'].includes(queueData.status)) {
                  localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
-                 alert(`Your queue ticket is ${queueData.status} (expired/completed).\nPlease get a new ticket.`);
+                 setToast({
+                  tone: 'warning',
+                  title: t('menuTicketClosed'),
+                  detail: t('menuTicketClosedDetail', { status: queueData.status }),
+                 });
                  navigate(`/${displayArtist?.slug || slug}/queue`);
                  return;
              }
 
              setUserQueueStatus(queueData.status);
-             alert('You can confirm when your queue is called.');
+             setToast({ tone: 'info', title: t('menuPleaseWaitQueue'), detail: t('menuPleaseWaitQueueDetail') });
              return;
         }
 
@@ -399,9 +471,10 @@ const MenuView = () => {
         setIsOrderSent(true);
         setIsCartOpen(false);
         clearCart();
+        setToast({ tone: 'success', title: t('menuOrderSentToast'), detail: t('menuOrderSentDetail') });
 
     } catch (err: any) {
-        alert('Failed: ' + err.message);
+        setToast({ tone: 'error', title: t('menuOrderSendError'), detail: err.message });
         console.error(err);
     } finally {
         setSubmitting(false);
@@ -410,15 +483,19 @@ const MenuView = () => {
 
   const handleCancelOrder = async () => {
       if (!sentOrderId) return;
-      if (!confirm("Are you sure you want to cancel this order?")) return;
+      setConfirmAction('cancel_order');
+  };
 
+  const cancelConfirmedOrder = async () => {
+      if (!sentOrderId) return;
+      setConfirmAction(null);
       setSubmitting(true);
       try {
           const { data: cancelled, error } = await supabase.rpc('cancel_customer_order_with_stock_release', {
             p_order_id: sentOrderId
           });
           if (error) throw error;
-          if (cancelled === false) throw new Error('Order cannot be cancelled anymore.');
+          if (cancelled === false) throw new Error(t('menuOrderCannotCancel'));
           
           // Reset all states
           clearCart();
@@ -433,8 +510,9 @@ const MenuView = () => {
             localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
             localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
           }
+          setToast({ tone: 'success', title: t('menuOrderCancelled') });
       } catch (err: any) {
-          alert('Failed to cancel: ' + err.message);
+          setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: err.message });
       } finally {
           setSubmitting(false);
       }
@@ -442,19 +520,20 @@ const MenuView = () => {
 
   // Keep completion status in sync even when realtime events are missed.
   useEffect(() => {
-      if (!sentOrderId) return;
+      const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+      if (!sentOrderId || !localQueueId) return;
 
       let isMounted = true;
 
       const syncCompletionStatus = async () => {
-          const { data, error } = await supabase
-              .from('orders')
-              .select('status')
-              .eq('id', sentOrderId)
-              .maybeSingle();
+          const { data, error } = await supabase.rpc('get_customer_order_status', {
+              p_order_id: sentOrderId,
+              p_queue_id: localQueueId,
+          });
 
-          if (!isMounted || error || !data) return;
-          if (data.status === 'completed') {
+          const status = Array.isArray(data) ? data[0]?.status : data?.status;
+          if (!isMounted || error || !status) return;
+          if (status === 'completed') {
               setIsOrderCompleted(true);
           }
       };
@@ -462,29 +541,11 @@ const MenuView = () => {
       void syncCompletionStatus();
       const pollId = window.setInterval(() => { void syncCompletionStatus(); }, 5000);
 
-      const channel = supabase
-          .channel(`order-status-${sentOrderId}`)
-          .on('postgres_changes', 
-              { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${sentOrderId}` }, 
-              (payload: any) => {
-                  console.log('[Menu] Order update received:', payload.new?.status);
-                  if (payload.new?.status === 'completed') {
-                      setIsOrderCompleted(true);
-                  }
-              }
-          )
-          .subscribe((status) => {
-              if (status === 'SUBSCRIBED') {
-                  void syncCompletionStatus();
-              }
-          });
-
       return () => {
           isMounted = false;
           window.clearInterval(pollId);
-          supabase.removeChannel(channel);
       };
-  }, [sentOrderId]);
+  }, [sentOrderId, displayArtist?.id]);
 
   // ✅ NEW: Realtime listener for Queue Status (To clear badge when completed)
   useEffect(() => {
@@ -516,10 +577,10 @@ const MenuView = () => {
   // Helper to reset order state - Clear all localStorage and state
   const canConfirmOrder = userQueueStatus === 'calling' || userQueueStatus === 'serving';
   const queueGuidance = canConfirmOrder
-    ? 'You can confirm now. Send your selected items before staying at booth.'
+    ? t('menuQueueGuidanceReady')
     : userQueueNumber
-      ? 'You can select now. Confirm unlocks when your queue is called.'
-      : 'You can select now. Get a queue number before confirming.';
+      ? t('menuQueueGuidanceWaiting')
+      : t('menuQueueGuidanceNeedTicket');
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -543,152 +604,208 @@ const MenuView = () => {
       }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400">Loading menu...</div>;
+  if (loading) return <div className="p-8 text-center text-gray-400">{t('menuLoading')}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-gray-100">
+    <div className="min-h-screen bg-[#fff7fb] relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-pink-50">
+      <Toast message={toast} onClose={() => setToast(null)} />
+      <ConfirmDialog
+        open={confirmAction === 'submit_order'}
+        title={t('menuConfirmOrderTitle')}
+        detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(pricing.total, cartCurrency)}`}
+        confirmLabel={t('menuConfirmOrderButton')}
+        loading={submitting}
+        onConfirm={submitConfirmedOrder}
+        onCancel={() => setConfirmAction(null)}
+      />
+      <ConfirmDialog
+        open={confirmAction === 'cancel_order'}
+        title={t('menuCancelOrderTitle')}
+        detail={t('menuCancelOrderDetail')}
+        confirmLabel={t('menuCancelOrderButton')}
+        tone="danger"
+        loading={submitting}
+        onConfirm={cancelConfirmedOrder}
+        onCancel={() => setConfirmAction(null)}
+      />
        
        {!isConnected && (
          <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest fixed top-0 left-0 right-0 z-[60] max-w-md mx-auto">
-            Offline - Reconnecting...
+            {t('customerOffline')}
          </div>
        )}
 
-      {/* --- 🌟 1. FIXED HEADER AREA (Fix Layout Overflow) --- */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-200 w-full max-w-md">
-         
-         {/* Row 1: Shop Name & Queue Badge (Left Aligned with standard Flexbox) */}
-         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100/50 bg-white gap-3">
-            
-            {/* Left: Avatar & Name */}
-            <div className="flex items-center flex-1 min-w-0 mr-2">
-                  {displayArtist?.image_url && (
-                     <img 
-                        src={displayArtist.image_url} 
-                        alt="Logo" 
-                        className="w-10 h-10 rounded-full shrink-0 mr-3 object-cover shadow-sm border border-gray-100"
+      <div className="sticky top-0 z-40 w-full max-w-md border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
+         <div className="px-4 pb-3 pt-3">
+            <div className="flex items-center justify-between gap-3">
+               <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {displayArtist?.image_url ? (
+                     <img
+                        src={displayArtist.image_url}
+                        alt={displayArtist?.display_name || 'Creator'}
+                        className="h-11 w-11 shrink-0 rounded-2xl border border-pink-100 bg-pink-50 object-cover shadow-sm"
                      />
+                  ) : (
+                     <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-pink-100 text-base font-black text-pink-600">
+                        {(displayArtist?.display_name || 'M').charAt(0)}
+                     </div>
                   )}
-                  <h1 className="text-xl font-black text-pink-500 tracking-tight truncate">
-                     {displayArtist?.display_name || 'Menu'}
-                  </h1>
-            </div>
-        
-            {/* Right Side: Queue Badge */}
-            <div className="shrink-0 flex flex-col items-end gap-1">
-               <div className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold shadow-sm ${userQueueNumber ? 'bg-pink-50 border-pink-200 text-pink-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                  <Ticket size={14} />
-                  <span>{userQueueNumber ? `Q #${userQueueNumber}` : 'Queue Number'}</span>
+                  <div className="min-w-0">
+                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-500">{t('customerNavMerch')}</div>
+                     <h1 className="truncate text-lg font-black leading-6 text-gray-950">
+                        {displayArtist?.display_name || 'Menu'}
+                     </h1>
+                  </div>
                </div>
-               <div className={`max-w-[200px] text-right px-2 py-1 rounded-full text-[9px] font-bold leading-tight ${canConfirmOrder ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                  {queueGuidance}
+
+               <div className="flex shrink-0 flex-col items-end gap-1">
+                  <button
+                     type="button"
+                     onClick={() => navigate(`/${displayArtist?.slug || slug}/queue`)}
+                     className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition active:scale-95 ${
+                        userQueueNumber
+                           ? 'border-pink-200 bg-pink-50 text-pink-700'
+                           : 'border-gray-200 bg-white text-gray-600'
+                     }`}
+                  >
+                     <Ticket size={14} aria-hidden="true" />
+                     <span>{userQueueNumber ? `Q #${userQueueNumber}` : t('menuQueueNumber')}</span>
+                  </button>
+                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[9px] font-black leading-tight ${
+                     canConfirmOrder
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                  }`}>
+                     {queueGuidance}
+                  </div>
                </div>
             </div>
-         </div>
 
-            {/* Search & Sort */}
-            <div className="px-3 py-1.5 flex gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all text-xs" />
-                </div>
-                <div className="relative min-w-[50px]">
-                    <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><ArrowUpDown className="text-gray-400" size={12} /></div>
-                    <select value={sortOption} onChange={(e) => setSortOption(e.target.value)} className="w-full pl-7 pr-5 py-1.5 appearance-none rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 text-[10px] h-full font-bold uppercase text-gray-600">
-                        <option value="name_asc">Name</option>
-                        <option value="price_asc">Price: Low</option>
-                        <option value="price_desc">Price: High</option>
-                    </select>
-                </div>
+            <div className="mt-3 flex gap-2">
+               <label className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-pink-400" size={17} />
+                  <input
+                     type="text"
+                     inputMode="search"
+                     placeholder={t('menuSearchPlaceholder')}
+                     value={searchQuery}
+                     onChange={(e) => setSearchQuery(e.target.value)}
+                     className="h-11 w-full rounded-2xl border border-pink-100 bg-[#fff7fb] py-2 pl-10 pr-3 text-sm font-bold text-gray-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
+                  />
+               </label>
+               <label className="relative w-[126px] shrink-0">
+                  <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <select
+                     value={sortOption}
+                     onChange={(e) => setSortOption(e.target.value)}
+                     className="h-11 w-full appearance-none rounded-2xl border border-pink-100 bg-white py-2 pl-9 pr-8 text-xs font-black text-gray-700 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                     aria-label={t('menuSortName')}
+                  >
+                     <option value="name_asc">{t('menuSortName')}</option>
+                     <option value="price_asc">{t('menuSortPriceLow')}</option>
+                     <option value="price_desc">{t('menuSortPriceHigh')}</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+               </label>
             </div>
 
-            <div className="px-3 pb-2 flex items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="px-2 py-1 rounded-full bg-gray-100 text-[10px] font-bold text-gray-600">
-                        {filteredProducts.length} items
-                    </span>
-                    {promoProductCount > 0 && (
-                        <span className="px-2 py-1 rounded-full bg-rose-50 text-[10px] font-bold text-rose-700 border border-rose-100">
-                            {promoProductCount} on promo
-                        </span>
-                    )}
-                </div>
-                {hasActiveFilters && (
-                    <button
-                        onClick={clearFilters}
-                        className="text-[10px] font-bold text-pink-600 border border-pink-200 bg-pink-50 rounded-full px-2.5 py-1"
-                    >
-                        Clear filters
-                    </button>
-                )}
+            <div className="mt-3 flex items-center justify-between gap-2">
+               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-black text-gray-600">
+                     {filteredProducts.length} {t('menuItems')}
+                  </span>
+                  {promoProductCount > 0 && (
+                     <span className="rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-[10px] font-black text-rose-700">
+                        {promoProductCount} {t('menuOnPromo')}
+                     </span>
+                  )}
+               </div>
+               {hasActiveFilters && (
+                  <button
+                     onClick={clearFilters}
+                     className="min-h-9 shrink-0 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700 transition active:scale-95"
+                  >
+                     {t('menuClearFilters')}
+                  </button>
+               )}
             </div>
 
-            {/* Categories */}
-            <div className="px-3 pb-2 pt-0.5 flex items-center gap-1.5">
-                <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
-                    {quickCategoryChips.map(cat => (
-                        <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{cat}</button>
-                    ))}
-                </div>
-                {hasMoreCategories && (
-                    <div className="relative min-w-[130px] shrink-0">
-                        <select
-                            value={quickCategoryChips.includes(selectedCategory) ? 'More' : selectedCategory}
-                            onChange={(e) => {
-                                const nextValue = e.target.value;
-                                if (nextValue !== 'More') setSelectedCategory(nextValue);
-                            }}
-                            className="w-full appearance-none rounded-full border border-gray-200 bg-white px-3 py-1.5 pr-7 text-[10px] font-bold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                            aria-label="More categories"
-                        >
-                            <option value="More" disabled>More</option>
-                            {uniqueCategories.filter((cat) => !quickCategoryChips.includes(cat)).map((cat) => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={12} />
-                    </div>
-                )}
+            <div className="mt-2 flex items-center gap-2">
+               <div className="no-scrollbar flex flex-1 gap-2 overflow-x-auto">
+                  {quickCategoryChips.map(cat => (
+                     <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`min-h-9 min-w-11 shrink-0 rounded-full px-3 text-xs font-black transition active:scale-95 ${
+                           selectedCategory === cat
+                              ? 'bg-pink-600 text-white shadow-md shadow-pink-100'
+                              : 'border border-gray-200 bg-white text-gray-600'
+                        }`}
+                     >
+                        {cat === 'All' ? t('menuAll') : cat}
+                     </button>
+                  ))}
+               </div>
+               {hasMoreCategories && (
+                  <div className="relative w-[128px] shrink-0">
+                     <select
+                        value={quickCategoryChips.includes(selectedCategory) ? 'More' : selectedCategory}
+                        onChange={(e) => {
+                           const nextValue = e.target.value;
+                           if (nextValue !== 'More') setSelectedCategory(nextValue);
+                        }}
+                        className="h-9 w-full appearance-none rounded-full border border-gray-200 bg-white px-3 pr-7 text-xs font-black text-gray-700 outline-none focus:ring-4 focus:ring-pink-100"
+                        aria-label={t('menuMoreCategories')}
+                     >
+                        <option value="More" disabled>{t('menuMore')}</option>
+                        {uniqueCategories.filter((cat) => !quickCategoryChips.includes(cat)).map((cat) => (
+                           <option key={cat} value={cat}>{cat === 'All' ? t('menuAll') : cat}</option>
+                        ))}
+                     </select>
+                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+                  </div>
+               )}
             </div>
 
             {uniqueTags.length > 1 && (
-                <div className="px-3 pb-2 pt-0">
-                    <div className="relative">
-                        <select
-                            value={selectedTag}
-                            onChange={(e) => setSelectedTag(e.target.value)}
-                            className="w-full appearance-none rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 pr-8 text-[11px] font-bold text-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            aria-label="Filter products by tag"
-                        >
-                            {uniqueTags.map(tag => (
-                                <option key={tag} value={tag}>{tag === 'All' ? 'All tags' : tag}</option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-400 pointer-events-none" size={14} />
-                    </div>
-                </div>
+               <div className="mt-2">
+                  <div className="relative">
+                     <select
+                        value={selectedTag}
+                        onChange={(e) => setSelectedTag(e.target.value)}
+                        className="h-10 w-full appearance-none rounded-2xl border border-pink-100 bg-white px-3 pr-8 text-xs font-black text-gray-700 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                        aria-label={t('menuFilterByTag')}
+                     >
+                        {uniqueTags.map(tag => (
+                           <option key={tag} value={tag}>{tag === 'All' ? t('menuAllTags') : tag}</option>
+                        ))}
+                     </select>
+                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-pink-400" size={14} />
+                  </div>
+               </div>
             )}
 
             {hasActiveFilters && (
-                <div className="px-3 pb-2 flex flex-wrap gap-1.5">
-                    {selectedCategory !== 'All' && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-pink-50 text-pink-600 border border-pink-100">
-                            Category: {selectedCategory}
-                        </span>
-                    )}
-                    {selectedTag !== 'All' && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-100">
-                            Tag: {selectedTag}
-                        </span>
-                    )}
-                    {searchQuery.trim() && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
-                            Search: {searchQuery.trim()}
-                        </span>
-                    )}
-                </div>
+               <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedCategory !== 'All' && (
+                     <span className="rounded-full border border-pink-100 bg-pink-50 px-2.5 py-1 text-[10px] font-black text-pink-700">
+                        {t('menuCategory')} {selectedCategory}
+                     </span>
+                  )}
+                  {selectedTag !== 'All' && (
+                     <span className="rounded-full border border-pink-100 bg-white px-2.5 py-1 text-[10px] font-black text-pink-700">
+                        {t('menuTag')} {selectedTag}
+                     </span>
+                  )}
+                  {searchQuery.trim() && (
+                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-black text-gray-600">
+                        {t('menuSearch')} {searchQuery.trim()}
+                     </span>
+                  )}
+               </div>
             )}
-       </div>
+         </div>
+      </div>
 
        {/* --- MENU GRID (LAZY LOADED) --- */}
        <Suspense fallback={<ProductSkeleton />}>
@@ -707,12 +824,12 @@ const MenuView = () => {
                 {isCartOpen && !isOrderSent && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] animate-fade-in max-w-md mx-auto" onClick={() => setIsCartOpen(false)} />
                 )}
-                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] rounded-t-xl shadow-[0_-4px_20px_rgba(0,0,0,0.1)] w-full max-w-md mx-auto border-t border-pink-100 transition-all duration-300 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] rounded-t-3xl shadow-[0_-12px_32px_rgba(131,24,67,0.14)] w-full max-w-md mx-auto border-t border-pink-100 transition-all duration-300 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
                     {isCartOpen && !isOrderSent && (
                         <div className="max-h-[50vh] overflow-y-auto p-3 border-b border-gray-100 animate-slide-up bg-white rounded-t-xl">
                             <div className="flex justify-between items-center mb-3 sticky top-0 bg-white z-10 pb-2 border-b border-gray-50">
-                                <h3 className="font-bold text-gray-800 text-sm">Your Order <span className="text-pink-500 text-xs font-normal">({totalItems} items)</span></h3>
-                                <button onClick={() => setIsCartOpen(false)} className="bg-gray-100 p-1 rounded-full text-gray-500 hover:bg-gray-200"><X size={16}/></button>
+                                <h3 className="font-bold text-gray-800 text-sm">{t('menuYourOrder')} <span className="text-pink-500 text-xs font-normal">({totalItems} {t('menuItems')})</span></h3>
+                                <button onClick={() => setIsCartOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200" aria-label={t('menuClose')}><X size={16}/></button>
                             </div>
                             <div className="space-y-2">
                                 {Object.entries(cart).map(([id, qty]) => {
@@ -729,17 +846,17 @@ const MenuView = () => {
                                                     <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-xs text-gray-800 truncate">{product.name}</div>
-                                                        <div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / unit</div>
+                                                        <div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>
                                                         {lineDiscount > 0 && (
-                                                            <div className="mt-0.5 text-[10px] font-bold text-emerald-700">Now {formatPrice(lineTotal, product.currency)} from {formatPrice(lineSubtotal, product.currency)}</div>
+                                                            <div className="mt-0.5 text-[10px] font-bold text-emerald-700">{t('menuNow')} {formatPrice(lineTotal, product.currency)} {t('menuFrom')} {formatPrice(lineSubtotal, product.currency)}</div>
                                                         )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    <button onClick={() => updateQuantity(id, -1, product.name)} className="w-6 h-6 rounded-md border border-gray-200 bg-white text-gray-600 text-xs font-black" aria-label={`Decrease quantity of ${product.name}`}>-</button>
+                                                    <button onClick={() => updateQuantity(id, -1, product.name)} className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productDecrease', { name: product.name })}>-</button>
                                                     <div className="font-bold text-xs min-w-[28px] text-center text-pink-600">x {qty}</div>
-                                                    <button onClick={() => updateQuantity(id, 1, product.name)} className="w-6 h-6 rounded-md border border-gray-200 bg-white text-gray-600 text-xs font-black" aria-label={`Increase quantity of ${product.name}`}>+</button>
-                                                    <button onClick={() => updateQuantity(id, -qty, product.name)} className="w-6 h-6 rounded-md border border-red-200 bg-white text-red-500 text-[10px] font-black" aria-label={`Remove ${product.name}`}>✕</button>
+                                                    <button onClick={() => updateQuantity(id, 1, product.name)} className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productIncrease', { name: product.name })}>+</button>
+                                                    <button onClick={() => updateQuantity(id, -qty, product.name)} className="h-9 w-9 rounded-xl border border-red-200 bg-white text-red-500 text-xs font-black" aria-label={t('productRemove', { name: product.name })}>x</button>
                                                 </div>
                                             </div>
                                             {lineBreakdowns.length > 0 && (
@@ -749,7 +866,7 @@ const MenuView = () => {
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div>
                                                                     <div className="text-[10px] font-black text-emerald-800">{entry.label}</div>
-                                                                    <div className="text-[10px] text-emerald-700">{entry.freeQuantity > 0 ? `${entry.freeQuantity} item free` : `Discount applied on ${entry.affectedQuantity} item${entry.affectedQuantity > 1 ? 's' : ''}`}</div>
+                                                                    <div className="text-[10px] text-emerald-700">{entry.freeQuantity > 0 ? t('menuItemFree', { count: entry.freeQuantity }) : t('menuDiscountApplied', { count: entry.affectedQuantity })}</div>
                                                                 </div>
                                                                 <div className="text-[10px] font-black text-emerald-700">- {formatPrice(entry.discountAmount, product.currency)}</div>
                                                             </div>
@@ -765,7 +882,7 @@ const MenuView = () => {
                             {pricing.appliedPromotions.length > 0 && (
                                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
                                     <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-800 mb-2">
-                                        <Sparkles size={12} /> Applied promotions
+                                        <Sparkles size={12} /> {t('menuAppliedPromotions')}
                                     </div>
                                     <div className="space-y-1.5">
                                         {pricing.appliedPromotions.map((promotion) => (
@@ -783,24 +900,24 @@ const MenuView = () => {
 
                             <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-1.5">
                                 <div className="flex items-center justify-between text-[11px] text-gray-600">
-                                    <span>Subtotal</span>
+                                    <span>{t('menuSubtotal')}</span>
                                     <span className="font-bold text-gray-800">{formatPrice(pricing.subtotal, cartCurrency)}</span>
                                 </div>
                                 {pricing.discountTotal > 0 && (
                                     <div className="flex items-center justify-between text-[11px] text-emerald-700">
-                                        <span>Discount</span>
+                                        <span>{t('menuDiscount')}</span>
                                         <span className="font-black">- {formatPrice(pricing.discountTotal, cartCurrency)}</span>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between pt-1 border-t border-gray-200">
-                                    <span className="text-xs font-bold text-gray-700">Total</span>
+                                    <span className="text-xs font-bold text-gray-700">{t('menuTotal')}</span>
                                     <span className="text-sm font-black text-gray-900">{formatPrice(pricing.total, cartCurrency)}</span>
                                 </div>
                             </div>
 
                             <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canConfirmOrder ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
                                 <div className={`text-[10px] font-black uppercase tracking-wide ${canConfirmOrder ? 'text-emerald-800' : 'text-amber-800'}`}>
-                                    {canConfirmOrder ? 'Ready to confirm' : 'Selection only'}
+                                    {canConfirmOrder ? t('menuReadyConfirm') : t('menuSelectionOnly')}
                                 </div>
                                 <div className={`mt-1 text-[11px] leading-relaxed ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>
                                     {queueGuidance}
@@ -816,15 +933,15 @@ const MenuView = () => {
                                     <div className="flex items-center gap-2">
                                         <CheckCircle size={22} className="text-green-600" />
                                         <div>
-                                            <div className="text-sm font-black text-green-800">Order Completed!</div>
-                                            <div className="text-[10px] text-green-600">Thank you for your purchase.</div>
+                                            <div className="text-sm font-black text-green-800">{t('menuOrderCompleted')}</div>
+                                            <div className="text-[10px] text-green-600">{t('menuOrderCompletedThanks')}</div>
                                         </div>
                                     </div>
                                     <button 
                                         onClick={handleCloseCompletedOrder} 
-                                        className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-green-700 flex items-center gap-1"
+                                        className="flex min-h-10 items-center gap-1 rounded-xl bg-green-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-green-700"
                                     >
-                                        <X size={14} /> Close
+                                        <X size={14} /> {t('menuClose')}
                                     </button>
                                 </div>
                             ) : (
@@ -833,42 +950,32 @@ const MenuView = () => {
                                     <div className="flex items-center gap-2">
                                         <CheckCircle size={20} className="text-green-600" />
                                         <div>
-                                            <div className="text-xs font-black text-green-800">ORDER SENT!</div>
-                                            <div className="text-[10px] text-green-600">Wait for queue.</div>
+                                            <div className="text-xs font-black text-green-800">{t('menuOrderSent')}</div>
+                                            <div className="text-[10px] text-green-600">{t('menuWaitForQueue')}</div>
                                         </div>
                                     </div>
-                                    <button onClick={handleCancelOrder} disabled={submitting} className="bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm hover:bg-red-50 flex items-center gap-1">
-                                        <Trash2 size={12} /> Cancel
+                                    <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[10px] font-bold text-red-500 shadow-sm hover:bg-red-50">
+                                        <Trash2 size={12} /> {t('menuCancel')}
                                     </button>
                                 </div>
                             )
                         ) : (
                             <>
-                                <div onClick={() => setIsCartOpen(!isCartOpen)} className="flex-1 cursor-pointer flex flex-col justify-center">
-                                    <div className="flex items-center gap-1 text-gray-400 text-[9px] font-bold uppercase tracking-wider"><span>TOTAL</span>{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="animate-bounce"/>}</div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} items</span></div>
+                                <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left">
+                                    <div className="flex items-center gap-1 text-gray-400 text-[9px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span>{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="animate-bounce"/>}</div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} {t('menuItems')}</span></div>
                                     {pricing.discountTotal > 0 && (
-                                        <div className="text-[10px] font-bold text-emerald-700">Saved {formatPrice(pricing.discountTotal, cartCurrency)}</div>
+                                        <div className="text-[10px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(pricing.discountTotal, cartCurrency)}</div>
                                     )}
-                                    <div className={`text-[10px] font-medium mt-0.5 ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>{queueGuidance}</div>
-                                </div>
-                                <button onClick={handleConfirmOrder} disabled={submitting || !canConfirmOrder} className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-lg shadow-pink-200 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center gap-1.5 h-10">{submitting ? 'Sending...' : (<><span>{canConfirmOrder ? 'Confirm' : 'Wait'}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
+                                    <div className={`mt-0.5 text-[10px] font-medium ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>{queueGuidance}</div>
+                                </button>
+                                <button onClick={handleConfirmOrder} disabled={submitting || !canConfirmOrder} className="flex h-12 items-center gap-1.5 rounded-2xl bg-pink-600 px-4 text-xs font-black text-white shadow-lg shadow-pink-200 transition-all hover:bg-pink-700 active:scale-95 disabled:scale-100 disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none">{submitting ? t('menuSending') : (<><span>{canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
                             </>
                         )}
                     </div>
                 </div>
             </>
         )}
-
-        {/* BOTTOM NAV */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 pb-safe w-full max-w-md mx-auto">
-            <div className="flex justify-around items-center h-[60px]">
-                <button onClick={() => navigate(`/${displayArtist?.slug || ''}`)} className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 ${location.pathname.endsWith(`/${displayArtist?.slug}`) ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}><Home size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Home</span></button>
-                <button className="flex flex-col items-center justify-center w-full h-full space-y-0.5 text-pink-500"><ShoppingBag size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Menu</span></button>
-                <button onClick={() => navigate(`/${displayArtist?.slug || ''}/queue`)} className="flex flex-col items-center justify-center w-full h-full space-y-0.5 text-gray-400 hover:text-gray-600"><Users size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Queue</span></button>
-                <button onClick={() => navigate('/discover')} className={`flex flex-col items-center justify-center w-full h-full space-y-0.5 ${location.pathname.startsWith('/discover') ? 'text-pink-500' : 'text-gray-400 hover:text-gray-600'}`}><Compass size={20} strokeWidth={2.5} /><span className="text-[9px] font-bold">Discover</span></button>
-            </div>
-        </div>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { ArrowLeft, Clock3, CreditCard, DollarSign, ShoppingBag, Ticket, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, ShoppingBag, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
 
@@ -272,14 +272,39 @@ export default function EventDashboard() {
 
   const maxCategoryRevenue = Math.max(1, ...analytics.categoryBreakdown.map((item) => item.revenue));
   const maxHourlyRevenue = Math.max(1, ...analytics.hourlySales.map((item) => item.revenue));
+  const paymentTotalRevenue = Math.max(1, analytics.paymentSummary.cashRevenue + analytics.paymentSummary.transferRevenue);
+
+  const exportSummaryCsv = () => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Event', eventInfo.event_name],
+      ['Net Revenue', String(analytics.revenue)],
+      ['Discount Given', String(analytics.discountTotal)],
+      ['Completed Orders', String(analytics.completedOrders.length)],
+      ['Items Sold', String(analytics.itemCount)],
+      ['Queue Conversion %', String(Math.round(analytics.queueSummary.conversionRate))],
+      ['Avg Wait Minutes', String(Math.round(analytics.queueSummary.avgWaitMinutes))],
+      ['Avg Service Minutes', String(Math.round(analytics.queueSummary.avgServiceMinutes))],
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${eventInfo.event_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-summary.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/manage-events')}
-            className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500"
+            className="icon-touch inline-flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500"
+            aria-label="Back to events"
           >
             <ArrowLeft size={20} />
           </button>
@@ -292,6 +317,15 @@ export default function EventDashboard() {
               {eventInfo.booth_detail ? ` | Booth ${eventInfo.booth_detail}` : ''}
             </p>
           </div>
+        </div>
+          <button
+            type="button"
+            onClick={exportSummaryCsv}
+            className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
+          >
+            <Download size={16} aria-hidden="true" />
+            Export summary
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -325,6 +359,14 @@ export default function EventDashboard() {
             <div className="space-y-4">
               <PaymentRow label="Cash" orders={analytics.paymentSummary.cashOrders} value={formatPrice(analytics.paymentSummary.cashRevenue, analytics.currency)} color="emerald" />
               <PaymentRow label="Transfer" orders={analytics.paymentSummary.transferOrders} value={formatPrice(analytics.paymentSummary.transferRevenue, analytics.currency)} color="blue" />
+              <div className="overflow-hidden rounded-full bg-gray-100 h-3" aria-label="Payment revenue mix">
+                <div
+                  className="h-full rounded-full bg-pink-500"
+                  style={{ width: `${(analytics.paymentSummary.cashRevenue / paymentTotalRevenue) * 100}%` }}
+                  title="Cash revenue share"
+                />
+              </div>
+              <p className="text-xs font-semibold text-gray-500">Pink segment shows cash revenue share. Remaining share is transfer.</p>
             </div>
           </section>
 
@@ -371,7 +413,7 @@ export default function EventDashboard() {
 
           <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-sm font-black text-gray-800 uppercase tracking-wide mb-4">Hourly Sales Trend</h2>
-            <div className="space-y-3">
+            <div className="space-y-3" aria-label="Hourly sales revenue chart">
               {analytics.hourlySales.length === 0 ? (
                 <div className="text-sm text-gray-400 py-8 text-center">No hourly sales yet.</div>
               ) : analytics.hourlySales.map((slot) => (

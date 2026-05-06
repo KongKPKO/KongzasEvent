@@ -2,6 +2,7 @@
 import { MapPin, Ticket, Train, Calendar } from 'lucide-react';
 import { Card } from '../ui';
 import { motion } from 'framer-motion';
+import { useI18n } from '../../i18n';
 
 interface Event {
   id: string;
@@ -21,11 +22,12 @@ interface EventsListProps {
 }
 
 const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
+  const { t, dateLocale } = useI18n();
 
   const getBoxDate = (dateString: string) => {
     const date = new Date(dateString);
     return {
-      month: date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+      month: date.toLocaleDateString(dateLocale, { month: 'short' }).toUpperCase(),
       day: date.getDate().toString().padStart(2, '0')
     };
   };
@@ -36,15 +38,15 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
 
     if (startDate.toDateString() === endDate.toDateString()) {
-      return `${startDate.toLocaleDateString('en-GB', options)}, ${startDate.getFullYear()}`;
+      return `${startDate.toLocaleDateString(dateLocale, options)}, ${startDate.getFullYear()}`;
     }
 
-    return `${startDate.toLocaleDateString('en-GB', options)} - ${endDate.toLocaleDateString('en-GB', options)}, ${endDate.getFullYear()}`;
+    return `${startDate.toLocaleDateString(dateLocale, options)} - ${endDate.toLocaleDateString(dateLocale, options)}, ${endDate.getFullYear()}`;
   };
 
   return (
     <div className="flex-1 px-4 mt-2">
-      <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2 px-1">Next Events</h3>
+      <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2 px-1">{t('eventsNext')}</h3>
       <motion.div
         className="space-y-3 mb-4"
         initial="hidden"
@@ -55,7 +57,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
         }}
       >
         {events.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-sm font-medium">No upcoming events</div>
+          <div className="text-center py-8 text-gray-400 text-sm font-medium">{t('eventsEmpty')}</div>
         ) : (
           events.map((event) => {
             const { month, day } = getBoxDate(event.start_date);
@@ -84,7 +86,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                   {isCancelled && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="border-[2px] border-red-500 text-red-500 text-xl font-black uppercase tracking-widest -rotate-12 px-4 py-2 rounded-lg bg-white/10 backdrop-blur-[1px]">
-                        Cancelled
+                        {t('eventsCancelled')}
                       </div>
                     </div>
                   )}
@@ -92,7 +94,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                   {/* Next Up Badge */}
                   {isNextUp && !isCancelled && (
                     <div className="absolute top-0 right-0 bg-[#d63384] text-white text-[10px] font-bold px-3 py-1 rounded-bl-2xl z-10">
-                      NEXT UP
+                      {t('eventsNextUp')}
                     </div>
                   )}
 
@@ -113,7 +115,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                         {event.booth_detail && (
                           <div className="flex items-start gap-2">
                             <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
-                            <span>Booth: {event.booth_detail}</span>
+                            <span>{t('eventsBooth')} {event.booth_detail}</span>
                           </div>
                         )}
 

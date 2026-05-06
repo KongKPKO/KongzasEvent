@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, ChevronUp, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, ChevronUp, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -11,6 +11,8 @@ import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency'
 import { getAuthUserSafe } from '../../utils/auth';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import PromotionManager from '../../components/promotions/PromotionManager';
+import ProductImageCropModal from '../../components/ProductImageCropModal';
+import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 
 interface Product {
   id: string;
@@ -27,6 +29,71 @@ interface Product {
   stock_sold?: number;
   is_unlimited?: boolean;
 }
+
+interface EventOption {
+  id: string;
+  event_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+interface EventProductRecord {
+  id?: string;
+  event_id: string;
+  product_id: string;
+  artist_id: string;
+  is_enabled: boolean;
+  price_override?: number | null;
+  stock_total?: number | null;
+  stock_reserved?: number;
+  stock_sold?: number;
+  is_unlimited: boolean;
+}
+
+type EventCatalogDraft = Record<string, {
+  id?: string;
+  is_enabled: boolean;
+  price_override: string;
+  is_unlimited: boolean;
+  stock_total: string;
+}>;
+
+type ProductImageTarget = 'add' | 'edit';
+type ProductConfirmAction =
+   | { type: 'switch_currency'; currency: string }
+   | { type: 'delete_product'; id: string; name: string }
+   | null;
+
+const PRODUCT_IMAGE_ACCEPT = 'image/png, image/jpeg, image/webp, image/heic, image/heif, .heic, .heif';
+const PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const PRODUCT_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
+
+const getFileExtension = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || '';
+
+const isHeicImage = (imageFile: File) => {
+   const extension = getFileExtension(imageFile.name);
+   return imageFile.type === 'image/heic' || imageFile.type === 'image/heif' || extension === 'heic' || extension === 'heif';
+};
+
+const isAllowedProductImage = (imageFile: File) => {
+   const extension = getFileExtension(imageFile.name);
+   return PRODUCT_IMAGE_TYPES.includes(imageFile.type) || PRODUCT_IMAGE_EXTENSIONS.includes(extension);
+};
+
+const convertHeicToEditableImage = async (imageFile: File) => {
+   if (!isHeicImage(imageFile)) return imageFile;
+
+   const { default: heic2any } = await import('heic2any');
+   const converted = await heic2any({
+      blob: imageFile,
+      toType: 'image/jpeg',
+      quality: 0.92
+   });
+   const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+   const fileName = imageFile.name.replace(/\.[^/.]+$/, '') || 'iphone-image';
+   return new File([convertedBlob], `${fileName}.jpg`, { type: 'image/jpeg' });
+};
 
 const normalizeTag = (value: string) => value.trim().replace(/\s+/g, ' ');
 
@@ -88,6 +155,7 @@ const ManageProducts = () => {
    const [stockTotal, setStockTotal] = useState('');
    const [isUnlimited, setIsUnlimited] = useState(true);
    const [file, setFile] = useState<File | null>(null);
+   const [cropRequest, setCropRequest] = useState<{ file: File; target: ProductImageTarget } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    
    // Filter & Sort State
@@ -96,9 +164,22 @@ const ManageProducts = () => {
    const [selectedCurrency, setSelectedCurrency] = useState('All'); // ✅ NEW: Currency filter
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
-   const [isAddSectionOpen, setIsAddSectionOpen] = useState(true);
+   const [isAddSectionOpen, setIsAddSectionOpen] = useState(false);
    const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
    const [isPromotionSectionOpen, setIsPromotionSectionOpen] = useState(false);
+   const [isEventCatalogOpen, setIsEventCatalogOpen] = useState(true);
+   const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
+   const [selectedEventId, setSelectedEventId] = useState('');
+   const [eventCatalogDraft, setEventCatalogDraft] = useState<EventCatalogDraft>({});
+   const [eventCatalogSavedDraft, setEventCatalogSavedDraft] = useState<EventCatalogDraft>({});
+   const [eventCatalogLoading, setEventCatalogLoading] = useState(false);
+   const [eventCatalogSaving, setEventCatalogSaving] = useState(false);
+   const [eventCatalogSearch, setEventCatalogSearch] = useState('');
+   const [eventCatalogCategory, setEventCatalogCategory] = useState('All');
+   const [eventCatalogTag, setEventCatalogTag] = useState('All');
+   const [eventCatalogView, setEventCatalogView] = useState<'all' | 'selling' | 'hidden' | 'overrides'>('all');
+   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+   const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -152,10 +233,12 @@ const ManageProducts = () => {
    const enabledCurrencies = Array.from(new Set(enabledProducts.map(p => p.currency || DEFAULT_CURRENCY)));
    const hasMixedCurrencies = enabledCurrencies.length > 1;
 
+   const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
+      setToast(message);
+   };
+
    // ✅ NEW: Fix Mixed Currencies (Batch Update)
    const handleSwitchAll = async (targetCurrency: string) => {
-      if (!confirm(`Enable ONLY ${targetCurrency} products and disable others?`)) return;
-      
       setLoading(true);
       try {
          const user = await getAuthUserSafe();
@@ -177,10 +260,10 @@ const ManageProducts = () => {
             .neq('currency', targetCurrency);
          
          await fetchProducts();
-         alert(`Switched active currency to ${targetCurrency}`);
+         showToast({ tone: 'success', title: 'Active currency switched', detail: `Only ${targetCurrency} products are enabled now.` });
       } catch (error: any) {
          console.error(error);
-         alert('Failed to switch currency');
+         showToast({ tone: 'error', title: 'Failed to switch currency', detail: error.message });
       } finally {
          setLoading(false);
       }
@@ -215,12 +298,195 @@ const ManageProducts = () => {
       selectedTag !== 'All' ||
       sortOption !== 'name_asc';
 
+   const filteredEventCatalogProducts = products.filter((product) => {
+      const draft = eventCatalogDraft[product.id];
+      const query = eventCatalogSearch.trim().toLowerCase();
+      const tagHaystack = (product.tags || []).join(' ').toLowerCase();
+      const matchesSearch =
+         query.length === 0 ||
+         product.name.toLowerCase().includes(query) ||
+         (product.category || '').toLowerCase().includes(query) ||
+         tagHaystack.includes(query);
+      const matchesCategory = eventCatalogCategory === 'All' || (product.category || 'Other') === eventCatalogCategory;
+      const matchesTag =
+         eventCatalogTag === 'All' ||
+         (product.tags || []).some(tag => normalizeTag(tag).toLowerCase() === eventCatalogTag.toLowerCase());
+      const matchesView =
+         eventCatalogView === 'all' ||
+         (eventCatalogView === 'selling' && draft?.is_enabled) ||
+         (eventCatalogView === 'hidden' && draft && !draft.is_enabled) ||
+         (eventCatalogView === 'overrides' && !!draft && (draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '')));
+
+      return matchesSearch && matchesCategory && matchesTag && matchesView;
+   });
+   const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
+   const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft);
+
    const clearAllFilters = () => {
       setSearchQuery('');
       setSelectedCategory('All');
       setSelectedCurrency('All');
       setSelectedTag('All');
       setSortOption('name_asc');
+   };
+
+   const buildDefaultCatalogDraft = (catalogRows: EventProductRecord[] = []) => {
+      const rowByProductId = new Map(catalogRows.map((row) => [row.product_id, row]));
+      const nextDraft: EventCatalogDraft = {};
+
+      for (const product of products) {
+         const row = rowByProductId.get(product.id);
+         nextDraft[product.id] = {
+            id: row?.id,
+            is_enabled: row?.is_enabled ?? getEffectiveStatus(product) === 'enable',
+            price_override: row?.price_override != null ? String(row.price_override) : '',
+            is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
+            stock_total: row?.stock_total != null ? String(row.stock_total) : (product.stock_total != null ? String(product.stock_total) : ''),
+         };
+      }
+
+      return nextDraft;
+   };
+
+   const fetchEventOptions = async (artistIdValue: string) => {
+      const { data, error } = await supabase
+         .from('events')
+         .select('id, event_name, start_date, end_date, status')
+         .eq('artist_id', artistIdValue)
+         .in('status', ['Confirmed', 'confirmed'])
+         .order('start_date', { ascending: true });
+
+      if (error) {
+         console.error('[ManageProducts] fetchEventOptions failed:', error);
+         setEventOptions([]);
+         return;
+      }
+
+      const events = (data || []) as EventOption[];
+      setEventOptions(events);
+      setSelectedEventId((current) => current || events[0]?.id || '');
+   };
+
+   const fetchEventCatalog = async (eventId: string) => {
+      if (!eventId || products.length === 0) {
+         setEventCatalogDraft({});
+         setEventCatalogSavedDraft({});
+         return;
+      }
+
+      setEventCatalogLoading(true);
+      try {
+         const { data, error } = await supabase
+            .from('event_products')
+            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .eq('event_id', eventId);
+
+         if (error) throw error;
+         const nextDraft = buildDefaultCatalogDraft((data || []) as EventProductRecord[]);
+         setEventCatalogDraft(nextDraft);
+         setEventCatalogSavedDraft(nextDraft);
+      } catch (error) {
+         console.error('[ManageProducts] fetchEventCatalog failed:', error);
+         showToast({ tone: 'error', title: 'Event catalog failed to load' });
+      } finally {
+         setEventCatalogLoading(false);
+      }
+   };
+
+   const updateEventCatalogDraft = (
+      productId: string,
+      updates: Partial<EventCatalogDraft[string]>
+   ) => {
+      setEventCatalogDraft((prev) => {
+         const product = products.find((item) => item.id === productId);
+         const fallback = {
+            is_enabled: product ? getEffectiveStatus(product) === 'enable' : true,
+            price_override: '',
+            is_unlimited: product?.is_unlimited ?? true,
+            stock_total: product?.stock_total != null ? String(product.stock_total) : '',
+         };
+         return {
+            ...prev,
+            [productId]: {
+               ...fallback,
+               ...(prev[productId] || {}),
+               ...updates,
+            },
+         };
+      });
+   };
+
+   const updateFilteredEventCatalogDraft = (updates: Partial<EventCatalogDraft[string]>) => {
+      if (filteredEventCatalogProducts.length === 0) return;
+      setEventCatalogDraft((prev) => {
+         const next = { ...prev };
+         for (const product of filteredEventCatalogProducts) {
+            const fallback = {
+               is_enabled: getEffectiveStatus(product) === 'enable',
+               price_override: '',
+               is_unlimited: product.is_unlimited ?? true,
+               stock_total: product.stock_total != null ? String(product.stock_total) : '',
+            };
+            next[product.id] = {
+               ...fallback,
+               ...(prev[product.id] || {}),
+               ...updates,
+            };
+         }
+         return next;
+      });
+   };
+
+   const saveEventCatalog = async () => {
+      if (!selectedEventId || !artistId) return;
+
+      const invalidProduct = products.find((product) => {
+         const draft = eventCatalogDraft[product.id];
+         if (!draft) return false;
+         if (draft.price_override.trim() !== '' && Number(draft.price_override) < 0) return true;
+         if (!draft.is_unlimited && (draft.stock_total.trim() === '' || Number(draft.stock_total) < 0 || !Number.isInteger(Number(draft.stock_total)))) return true;
+         return false;
+      });
+
+      if (invalidProduct) {
+         showToast({ tone: 'warning', title: 'Invalid event catalog value', detail: `Check price/stock for ${invalidProduct.name}.` });
+         return;
+      }
+
+      setEventCatalogSaving(true);
+      try {
+         const payload = products.map((product) => {
+            const draft = eventCatalogDraft[product.id] || {
+               is_enabled: getEffectiveStatus(product) === 'enable',
+               price_override: '',
+               is_unlimited: product.is_unlimited ?? true,
+               stock_total: product.stock_total != null ? String(product.stock_total) : '',
+            };
+
+            return {
+               event_id: selectedEventId,
+               product_id: product.id,
+               artist_id: artistId,
+               is_enabled: draft.is_enabled,
+               price_override: draft.price_override.trim() === '' ? null : Number(draft.price_override),
+               is_unlimited: draft.is_unlimited,
+               stock_total: draft.is_unlimited ? null : Number(draft.stock_total || 0),
+            };
+         });
+
+         const { error } = await supabase
+            .from('event_products')
+            .upsert(payload, { onConflict: 'event_id,product_id' });
+
+         if (error) throw error;
+         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific menu and stock.' });
+         await fetchEventCatalog(selectedEventId);
+      } catch (error: any) {
+         console.error('[ManageProducts] saveEventCatalog failed:', error);
+         showToast({ tone: 'error', title: 'Failed to save event catalog', detail: error.message });
+      } finally {
+         setEventCatalogSaving(false);
+      }
    };
 
    const fetchProducts = async () => {
@@ -235,6 +501,7 @@ const ManageProducts = () => {
          }
 
          setArtistId(user.id);
+         await fetchEventOptions(user.id);
 
          // Fetch Artist Name
          const { data: artist } = await supabase
@@ -266,6 +533,14 @@ const ManageProducts = () => {
       fetchProducts();
    }, []);
 
+   useEffect(() => {
+      if (selectedEventId && products.length > 0) {
+         void fetchEventCatalog(selectedEventId);
+      } else {
+         setEventCatalogDraft({});
+      }
+   }, [selectedEventId, products.length]);
+
    const getProductImageUrl = (dbValue: string, width: number = 400) => {
       if (!dbValue) return '';
       let path = dbValue;
@@ -292,7 +567,6 @@ const ManageProducts = () => {
 
       // If file is larger than 10MB, reject immediately
       if (imageFile.size > 10 * 1024 * 1024) {
-         alert("File size must be less than 10MB");
          throw new Error("File too large");
       }
       // Skip if already small enough (e.g. < 200KB)
@@ -311,36 +585,65 @@ const ManageProducts = () => {
       }
    };
 
-   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-         const selectedFile = e.target.files[0];
-         // Basic validation
-         if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
-            alert('Only JPG, PNG and WebP files are allowed.');
-            return;
-         }
+   const prepareImageForCrop = async (selectedFile: File, target: ProductImageTarget) => {
+      if (!isAllowedProductImage(selectedFile)) {
+         showToast({ tone: 'warning', title: 'Unsupported image type', detail: 'Use JPG, PNG, WebP, HEIC, or HEIF.' });
+         return;
+      }
 
-         setCompressing(true);
-         try {
-             const compressed = await handleImageCompression(selectedFile);
-             setFile(compressed);
-         } catch (err) {
-            setFile(selectedFile);
-         } finally {
-            setCompressing(false);
+      setCompressing(true);
+      try {
+         const editableFile = await convertHeicToEditableImage(selectedFile);
+         setCropRequest({ file: editableFile, target });
+      } catch (error) {
+         console.error('[ManageProducts] HEIC conversion failed:', error);
+         showToast({ tone: 'error', title: 'Could not read this iPhone image', detail: 'Please try saving it as JPG, PNG, or WebP.' });
+      } finally {
+         setCompressing(false);
+      }
+   };
+
+   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = e.target.files?.[0];
+      if (!selectedFile) return;
+      await prepareImageForCrop(selectedFile, 'add');
+      e.target.value = '';
+   };
+
+   const handleCroppedImage = async (croppedFile: File) => {
+      if (!cropRequest) return;
+
+      setCompressing(true);
+      try {
+         const compressed = await handleImageCompression(croppedFile);
+         if (cropRequest.target === 'add') {
+            setFile(compressed);
+         } else {
+            setEditFile(compressed);
          }
+         setCropRequest(null);
+      } catch (error) {
+         console.error('[ManageProducts] cropped image compression failed:', error);
+         if (cropRequest.target === 'add') {
+            setFile(croppedFile);
+         } else {
+            setEditFile(croppedFile);
+         }
+         setCropRequest(null);
+      } finally {
+         setCompressing(false);
       }
    };
 
    const handleAddProduct = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!name.trim() || !price || !category.trim()) {
-         alert('Please fill in Product Name, Price & Currency, and Category.');
+         showToast({ tone: 'warning', title: 'Required fields missing', detail: 'Fill in Product Name, Price & Currency, and Category.' });
          return;
       }
 
       if (!isUnlimited && (stockTotal === '' || Number(stockTotal) < 0 || !Number.isInteger(Number(stockTotal)))) {
-         alert('Please enter a valid stock quantity, or mark the item as Unlimited.');
+         showToast({ tone: 'warning', title: 'Invalid stock quantity', detail: 'Enter a whole number greater than or equal to 0, or mark the item as Unlimited.' });
          return;
       }
 
@@ -361,7 +664,7 @@ const ManageProducts = () => {
       );
 
       if (hasDuplicate) {
-         alert('A product with the same name, category, currency, and tags already exists.');
+         showToast({ tone: 'warning', title: 'Duplicate product', detail: 'A product with the same name, category, currency, and tags already exists.' });
          return;
       }
 
@@ -418,19 +721,17 @@ const ManageProducts = () => {
          if (fileInputRef.current) fileInputRef.current.value = '';
          
          await fetchProducts();
-         alert('Product added successfully!');
+         showToast({ tone: 'success', title: 'Product added', detail: name });
 
       } catch (error: any) {
          console.error(error);
-         alert(error.message || 'Error adding product');
+         showToast({ tone: 'error', title: 'Error adding product', detail: error.message });
       } finally {
          setUploading(false);
       }
    };
 
    const handleDeleteProduct = async (id: string) => {
-      if (!confirm('Are you sure you want to delete this product?')) return;
-
       try {
          // 1. Soft Delete (Update deleted_at)
          const { error: dbError } = await supabase
@@ -443,11 +744,16 @@ const ManageProducts = () => {
          // Note: We do NOT delete the image from storage to preserve history for past orders.
 
          await fetchProducts();
+         showToast({ tone: 'success', title: 'Product deleted' });
 
       } catch (error) {
          console.error('Error deleting product', error);
-         alert('Failed to delete product');
+         showToast({ tone: 'error', title: 'Failed to delete product' });
       }
+   };
+
+   const requestDeleteProduct = (product: Product) => {
+      setConfirmAction({ type: 'delete_product', id: product.id, name: product.name });
    };
 
 
@@ -467,29 +773,16 @@ const ManageProducts = () => {
    };
 
    const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-         const selectedFile = e.target.files[0];
-         if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
-            alert('Only JPG, PNG, and WebP files are allowed.');
-            return;
-         }
-
-         setCompressing(true);
-         try {
-             const compressed = await handleImageCompression(selectedFile);
-             setEditFile(compressed);
-         } catch (err) {
-             setEditFile(selectedFile);
-         } finally {
-             setCompressing(false);
-         }
-      }
+      const selectedFile = e.target.files?.[0];
+      if (!selectedFile) return;
+      await prepareImageForCrop(selectedFile, 'edit');
+      e.target.value = '';
    };
 
    const handleUpdateProduct = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingProduct || !name || !price) {
-         alert('Please fill in all required fields.');
+         showToast({ tone: 'warning', title: 'Required fields missing', detail: 'Please fill in all required fields.' });
          return;
       }
 
@@ -554,11 +847,11 @@ const ManageProducts = () => {
          setIsUnlimited(true);
          
          await fetchProducts();
-         alert('Product updated successfully!');
+         showToast({ tone: 'success', title: 'Product updated', detail: name });
 
       } catch (error: any) {
          console.error(error);
-         alert(error.message || 'Error updating product');
+         showToast({ tone: 'error', title: 'Error updating product', detail: error.message });
       } finally {
          setUploading(false);
       }
@@ -569,7 +862,7 @@ const ManageProducts = () => {
       if (!file) return;
 
       if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-         alert('Please upload a CSV file.');
+         showToast({ tone: 'warning', title: 'Invalid file type', detail: 'Please upload a CSV file.' });
          return;
       }
 
@@ -582,7 +875,7 @@ const ManageProducts = () => {
          complete: async (results: Papa.ParseResult<Record<string, string>>) => {
             const rows = results.data as any[];
             if (!rows || rows.length === 0) {
-               alert('CSV is empty.');
+               showToast({ tone: 'warning', title: 'CSV is empty' });
                return;
             }
 
@@ -601,7 +894,7 @@ const ManageProducts = () => {
 
             const user = await getAuthUserSafe();
             if (!user) {
-               alert('Not authenticated');
+               showToast({ tone: 'error', title: 'Not authenticated' });
                return;
             }
 
@@ -750,30 +1043,81 @@ const ManageProducts = () => {
                   if (error) throw error;
 
                   const message = `Successfully uploaded ${validItems.length} item(s)!${errors.length > 0 ? `\n\n${errors.length} row(s) skipped. Check console for details.` : ''}`;
-                  alert(message);
+                  showToast({ tone: 'success', title: 'CSV upload complete', detail: message });
                   if (csvInputRef.current) csvInputRef.current.value = '';
                   await fetchProducts();
                } catch (err: any) {
                   console.error('File upload error:', err);
-                  alert('Failed to upload items. ' + err.message);
+                  showToast({ tone: 'error', title: 'Failed to upload items', detail: err.message });
                } finally {
                   setUploading(false);
                }
             } else {
-               alert(`No valid rows found.\n\n${errors.length > 0 ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '') : "Ensure CSV has 'name' and 'price' columns (optional: stock, is_unlimited)."}`);
+               showToast({
+                  tone: 'warning',
+                  title: 'No valid rows found',
+                  detail: errors.length > 0
+                     ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '')
+                     : "Ensure CSV has 'name' and 'price' columns (optional: stock, is_unlimited)."
+               });
             }
          },
          error: (err: Error) => {
             console.error('CSV Parse Error:', err);
-            alert('Failed to parse CSV file.');
+            showToast({ tone: 'error', title: 'Failed to parse CSV file' });
          }
    });
+   };
+
+   const handleConfirmAction = async () => {
+      if (!confirmAction) return;
+
+      const action = confirmAction;
+      setConfirmAction(null);
+
+      if (action.type === 'switch_currency') {
+         await handleSwitchAll(action.currency);
+         return;
+      }
+
+      if (action.type === 'delete_product') {
+         await handleDeleteProduct(action.id);
+      }
    };
 
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
          {/* ✅ NEW: Unified Admin Header */}
          <AdminHeader activePage="menu" />
+         <Toast message={toast} onClose={() => setToast(null)} />
+         <ConfirmDialog
+            open={!!confirmAction}
+            title={
+               confirmAction?.type === 'switch_currency'
+                  ? `Enable only ${confirmAction.currency}?`
+                  : 'Delete product?'
+            }
+            detail={
+               confirmAction?.type === 'switch_currency'
+                  ? `Products in other currencies will be disabled. Sold out items stay unchanged.`
+                  : confirmAction?.type === 'delete_product'
+                    ? `${confirmAction.name} will be hidden from the active menu. Past orders keep their history.`
+                    : undefined
+            }
+            confirmLabel={confirmAction?.type === 'delete_product' ? 'Delete' : 'Confirm'}
+            tone={confirmAction?.type === 'delete_product' ? 'danger' : 'default'}
+            loading={loading || uploading}
+            onConfirm={() => void handleConfirmAction()}
+            onCancel={() => setConfirmAction(null)}
+         />
+         {cropRequest && (
+            <ProductImageCropModal
+               file={cropRequest.file}
+               onCancel={() => setCropRequest(null)}
+               onConfirm={handleCroppedImage}
+               onError={(message) => showToast({ tone: 'error', title: 'Image export failed', detail: message })}
+            />
+         )}
          
          {/* Page Title Wrapper */}
          <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
@@ -782,6 +1126,40 @@ const ManageProducts = () => {
          </div>
 
          <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
+            <section className="workspace-card mb-4 p-3">
+               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                     <p className="text-xs font-black uppercase tracking-wide text-gray-400">Quick actions</p>
+                     <p className="text-sm font-semibold text-gray-700">Jump to the creator task you need right now.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                     <button
+                        type="button"
+                        onClick={() => setIsAddSectionOpen(true)}
+                        className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
+                     >
+                        <Plus size={16} aria-hidden="true" />
+                        Add Product
+                     </button>
+                     <button
+                        type="button"
+                        onClick={() => setIsBulkUploadOpen(true)}
+                        className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
+                     >
+                        <Upload size={16} aria-hidden="true" />
+                        Import CSV
+                     </button>
+                     <button
+                        type="button"
+                        onClick={() => setIsEventCatalogOpen(true)}
+                        className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
+                     >
+                        <CalendarDays size={16} aria-hidden="true" />
+                        Event Catalog
+                     </button>
+                  </div>
+               </div>
+            </section>
             
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
                <button
@@ -892,7 +1270,7 @@ const ManageProducts = () => {
                               onChange={handleFileChange}
                               className="hidden"
                               id="file-upload"
-                              accept="image/png, image/jpeg"
+                              accept={PRODUCT_IMAGE_ACCEPT}
                            />
                            <label 
                               htmlFor="file-upload" 
@@ -904,7 +1282,8 @@ const ManageProducts = () => {
                               </span>
                            </label>
                         </div>
-                        {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
+                        <p className="text-[10px] text-gray-400">JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.</p>
+                        {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Preparing image...</p>}
                      </div>
 
                      <div className="space-y-1">
@@ -1047,12 +1426,285 @@ const ManageProducts = () => {
                      <PromotionManager
                         artistId={artistId}
                         products={products}
+                        eventOptions={eventOptions}
                         categorySuggestions={allCategorySuggestions}
                         tagSuggestions={allTagSuggestions}
                      />
                   </div>
                )}
             </section>
+
+            <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+               <button
+                  type="button"
+                  onClick={() => setIsEventCatalogOpen((prev) => !prev)}
+                  className="w-full px-4 py-4 flex items-start justify-between gap-4 text-left"
+               >
+                  <div>
+                     <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                        <CalendarDays className="text-pink-500" size={18} />
+                        Event Catalog
+                     </h2>
+                     <p className="mt-1 text-xs text-gray-500">Choose which products, price, and stock are available for each event booth.</p>
+                  </div>
+                  {isEventCatalogOpen ? <ChevronUp className="text-gray-400 shrink-0" size={18} /> : <ChevronDown className="text-gray-400 shrink-0" size={18} />}
+               </button>
+
+               {isEventCatalogOpen && (
+                  <div className="border-t border-gray-100 p-4 animate-fade-in space-y-4">
+                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                           <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
+                           <select
+                              value={selectedEventId}
+                              onChange={(event) => setSelectedEventId(event.target.value)}
+                              className="min-w-[260px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                              disabled={eventOptions.length === 0}
+                              aria-label="Select event catalog"
+                           >
+                              {eventOptions.length === 0 && <option value="">No confirmed events</option>}
+                              {eventOptions.map((event) => (
+                                 <option key={event.id} value={event.id}>{event.event_name}</option>
+                              ))}
+                           </select>
+                           {selectedEventOption && (
+                              <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">
+                                 {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
+                              </span>
+                           )}
+                        </div>
+                        <button
+                           type="button"
+                           onClick={() => void saveEventCatalog()}
+                           disabled={!selectedEventId || eventCatalogSaving || eventCatalogLoading || products.length === 0}
+                           className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
+                        >
+                           {eventCatalogSaving ? <Loader className="animate-spin" size={14} /> : <Save size={14} />}
+                           {hasEventCatalogChanges ? 'Save Changes' : 'Saved'}
+                        </button>
+                     </div>
+
+                     <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                        hasEventCatalogChanges
+                           ? 'border-pink-200 bg-pink-50 text-pink-800'
+                           : 'border-gray-200 bg-gray-50 text-gray-600'
+                     }`}>
+                        {hasEventCatalogChanges
+                           ? 'You have unsaved event catalog changes. Save before opening POS for this event.'
+                           : 'Event catalog is saved. POS and customer menu will use this setup.'}
+                     </div>
+
+                     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px] gap-2">
+                        <div className="relative">
+                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                           <input
+                              value={eventCatalogSearch}
+                              onChange={(event) => setEventCatalogSearch(event.target.value)}
+                              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-pink-200"
+                              placeholder="Search event products..."
+                           />
+                        </div>
+                        <select
+                           value={eventCatalogCategory}
+                           onChange={(event) => setEventCatalogCategory(event.target.value)}
+                           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
+                           aria-label="Filter event catalog category"
+                        >
+                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === 'All' ? 'All categories' : item}</option>)}
+                        </select>
+                        <select
+                           value={eventCatalogTag}
+                           onChange={(event) => setEventCatalogTag(event.target.value)}
+                           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
+                           aria-label="Filter event catalog tag"
+                        >
+                           {uniqueTags.map((item) => <option key={item} value={item}>{item === 'All' ? 'All tags' : item}</option>)}
+                        </select>
+                     </div>
+
+                     <div className="flex flex-wrap items-center gap-2">
+                        {(['all', 'selling', 'hidden', 'overrides'] as const).map((view) => (
+                           <button
+                              key={view}
+                              type="button"
+                              onClick={() => setEventCatalogView(view)}
+                              className={`rounded-full px-3 py-1.5 text-xs font-black capitalize transition-colors ${
+                                 eventCatalogView === view
+                                    ? 'bg-pink-600 text-white shadow-sm shadow-pink-100'
+                                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                              }`}
+                           >
+                              {view}
+                           </button>
+                        ))}
+                        <span className="ml-auto rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-600">
+                           {filteredEventCatalogProducts.length} of {products.length}
+                        </span>
+                     </div>
+
+                     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <span className="text-xs font-black uppercase tracking-wide text-gray-500">Bulk visible</span>
+                        <button
+                           type="button"
+                           onClick={() => updateFilteredEventCatalogDraft({ is_enabled: true })}
+                           className="workspace-action min-h-9 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-black text-pink-700 hover:bg-pink-50"
+                        >
+                           Sell visible
+                        </button>
+                        <button
+                           type="button"
+                           onClick={() => updateFilteredEventCatalogDraft({ is_enabled: false })}
+                           className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
+                        >
+                           Hide visible
+                        </button>
+                        <button
+                           type="button"
+                           onClick={() => updateFilteredEventCatalogDraft({ price_override: '' })}
+                           className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
+                        >
+                           Reset visible prices
+                        </button>
+                     </div>
+
+                     {!selectedEventId ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-500">
+                           Create or confirm an event before assigning products.
+                        </div>
+                     ) : (
+                        <div className="overflow-hidden rounded-xl border border-gray-200">
+                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_110px_140px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                              <div>Product</div>
+                              <div>Sell</div>
+                              <div>Event Price</div>
+                              <div>Event Stock</div>
+                           </div>
+                           <div className="divide-y divide-gray-100">
+                              {filteredEventCatalogProducts.map((product) => {
+                                 const draft = eventCatalogDraft[product.id] || {
+                                    is_enabled: getEffectiveStatus(product) === 'enable',
+                                    price_override: '',
+                                    is_unlimited: product.is_unlimited ?? true,
+                                    stock_total: product.stock_total != null ? String(product.stock_total) : '',
+                                 };
+                                 return (
+                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_110px_140px_160px] gap-3 px-4 py-3 items-center">
+                                       <div className="min-w-0 flex items-center gap-3">
+                                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
+                                             {product.image_url ? (
+                                                <img
+                                                   src={getProductImageUrl(product.image_url, 120)}
+                                                   alt={product.name}
+                                                   className="h-full w-full object-cover"
+                                                   loading="lazy"
+                                                   decoding="async"
+                                                />
+                                             ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-gray-400">No image</div>
+                                             )}
+                                          </div>
+                                          <div className="min-w-0">
+                                             <div className="text-sm font-bold text-gray-800 truncate">{product.name}</div>
+                                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                {draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '') ? (
+                                                   <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">
+                                                      Custom
+                                                   </span>
+                                                ) : (
+                                                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-500">
+                                                      Global
+                                                   </span>
+                                                )}
+                                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">
+                                                   {product.category || 'Other'}
+                                                </span>
+                                                {(product.tags || []).slice(0, 3).map((tag) => (
+                                                   <span key={`${product.id}-event-${tag}`} className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-600">
+                                                      #{tag}
+                                                   </span>
+                                                ))}
+                                                {(product.tags || []).length > 3 && (
+                                                   <span className="text-[10px] font-bold text-gray-400">+{(product.tags || []).length - 3}</span>
+                                                )}
+                                             </div>
+                                             <div className="mt-1 text-[11px] font-semibold text-gray-500">
+                                                Global: {formatPrice(product.price, product.currency)} · {product.is_unlimited ? 'Unlimited' : `${product.stock_total || 0} stock`}
+                                             </div>
+                                          </div>
+                                       </div>
+
+                                       <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+                                          <input
+                                             type="checkbox"
+                                             checked={draft.is_enabled}
+                                             onChange={(event) => updateEventCatalogDraft(product.id, { is_enabled: event.target.checked })}
+                                             className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                          />
+                                          Sell
+                                       </label>
+
+                                       <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={draft.price_override}
+                                          onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
+                                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                          placeholder={String(product.price)}
+                                          aria-label={`Event price for ${product.name}`}
+                                       />
+
+                                       <div className="space-y-2">
+                                          <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+                                             <input
+                                                type="checkbox"
+                                                checked={draft.is_unlimited}
+                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: event.target.checked })}
+                                                className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                             />
+                                             Unlimited
+                                          </label>
+                                          <input
+                                             type="number"
+                                             min="0"
+                                             step="1"
+                                             value={draft.stock_total}
+                                             onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
+                                             disabled={draft.is_unlimited}
+                                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200 disabled:bg-gray-100 disabled:text-gray-400"
+                                             placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
+                                             aria-label={`Event stock for ${product.name}`}
+                                          />
+                                       </div>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        </div>
+                     )}
+                  </div>
+               )}
+            </section>
+
+            {hasEventCatalogChanges && selectedEventId && (
+               <div className="sticky bottom-4 z-30 mb-6 rounded-2xl border border-pink-200 bg-white/95 p-3 shadow-xl shadow-pink-100/70 backdrop-blur">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                     <div>
+                        <p className="text-sm font-black text-gray-900">Unsaved event catalog</p>
+                        <p className="text-xs font-semibold text-gray-500">Save before using POS or sharing the customer menu for this event.</p>
+                     </div>
+                     <button
+                        type="button"
+                        onClick={() => void saveEventCatalog()}
+                        disabled={eventCatalogSaving || eventCatalogLoading}
+                        className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white shadow-md shadow-pink-100 hover:bg-pink-700 disabled:bg-gray-300"
+                     >
+                        {eventCatalogSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
+                        Save catalog
+                     </button>
+                  </div>
+               </div>
+            )}
 
             {/* ✅ NEW: Mixed Currency Warning */}
             {hasMixedCurrencies && (
@@ -1074,7 +1726,7 @@ const ManageProducts = () => {
                      <select 
                         className="text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded px-2 py-1 focus:outline-none cursor-pointer hover:bg-amber-100 transition-colors"
                         onChange={(e) => {
-                           if (e.target.value) handleSwitchAll(e.target.value);
+                           if (e.target.value) setConfirmAction({ type: 'switch_currency', currency: e.target.value });
                         }}
                         value=""
                      >
@@ -1316,8 +1968,8 @@ const ManageProducts = () => {
                               
                               {/* Mobile Actions (Always Visible) */}
                               <div className="absolute bottom-2 right-2 flex gap-2">
-                                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="text-gray-400 hover:text-blue-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Edit2 size={14}/></button>
-                                  <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id); }} className="text-gray-400 hover:text-red-600 bg-white/80 p-1.5 rounded-full shadow-sm border border-gray-100"><Trash2 size={14}/></button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
+                                  <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
                               </div>
                            </div>
                         </div>
@@ -1390,18 +2042,20 @@ const ManageProducts = () => {
                                     {effectiveStatus === 'soldout' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">Sold Out</span>}
                                  </td>
                                  <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center justify-end gap-2 transition-opacity">
                                        <button 
                                           onClick={() => handleEditClick(product)}
-                                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                           title="Edit"
+                                          aria-label={`Edit ${product.name}`}
                                        >
                                           <Edit2 size={18} />
                                        </button>
                                        <button 
-                                          onClick={() => handleDeleteProduct(product.id)}
-                                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          onClick={() => requestDeleteProduct(product)}
+                                          className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                           title="Delete"
+                                          aria-label={`Delete ${product.name}`}
                                        >
                                           <Trash2 size={18} />
                                        </button>
@@ -1517,7 +2171,7 @@ const ManageProducts = () => {
                                  onChange={handleEditFileChange}
                                  className="hidden"
                                  id="edit-file-upload"
-                                 accept="image/png, image/jpeg"
+                                 accept={PRODUCT_IMAGE_ACCEPT}
                               />
                               <label 
                                  htmlFor="edit-file-upload" 
@@ -1529,7 +2183,8 @@ const ManageProducts = () => {
                                  </span>
                               </label>
                            </div>
-                           {compressing && <p className="text-xs text-pink-500 font-bold mt-1 animate-pulse">Optimizing image size...</p>}
+                           <p className="mt-1 text-xs text-gray-400">JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.</p>
+                           {compressing && <p className="text-xs text-pink-500 font-bold mt-1 animate-pulse">Preparing image...</p>}
                         </div>
 
                         <div>
@@ -1585,14 +2240,23 @@ const ManageProducts = () => {
                      {editingProduct.image_url && !editFile && (
                         <div>
                            <label className="block text-sm font-medium text-gray-700 mb-2">Current Image</label>
-                           <img 
-                              src={getProductImageUrl(editingProduct.image_url, 200)} 
-                              alt="Current"
-                              loading="lazy"
-                              decoding="async"
-                              className="w-32 h-32 object-cover rounded-lg border border-gray-200 bg-gray-100"
-                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Image'; }}
-                           />
+                           <div className="flex items-end gap-3">
+                              <img 
+                                 src={getProductImageUrl(editingProduct.image_url, 200)} 
+                                 alt="Current"
+                                 loading="lazy"
+                                 decoding="async"
+                                 className="h-32 w-32 rounded-lg border border-gray-200 bg-gray-100 object-cover"
+                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Image'; }}
+                              />
+                              <Button
+                                 type="button"
+                                 onClick={() => editFileInputRef.current?.click()}
+                                 className="rounded-lg border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-bold text-pink-700 hover:bg-pink-100"
+                              >
+                                 Change image
+                              </Button>
+                           </div>
                         </div>
                      )}
 

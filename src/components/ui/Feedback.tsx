@@ -1,0 +1,92 @@
+interface ToastMessage {
+  tone?: 'info' | 'success' | 'warning' | 'error';
+  title: string;
+  detail?: string;
+}
+
+interface ToastProps {
+  message: ToastMessage | null;
+  onClose: () => void;
+}
+
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  detail?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'default' | 'danger';
+  loading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const toneClasses = {
+  info: 'border-sky-100 bg-sky-50 text-sky-800',
+  success: 'border-green-100 bg-green-50 text-green-800',
+  warning: 'border-amber-100 bg-amber-50 text-amber-800',
+  error: 'border-red-100 bg-red-50 text-red-700',
+};
+
+export function Toast({ message, onClose }: ToastProps) {
+  if (!message) return null;
+
+  return (
+    <div className="fixed inset-x-0 top-4 z-[120] mx-auto w-[calc(100%-2rem)] max-w-md" aria-live="polite">
+      <div className={`rounded-xl border p-3 shadow-lg ${toneClasses[message.tone || 'info']}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-black">{message.title}</div>
+            {message.detail && <div className="mt-0.5 whitespace-pre-line text-xs font-medium opacity-90">{message.detail}</div>}
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 rounded-md px-2 py-1 text-xs font-bold opacity-70 hover:opacity-100">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  detail,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  tone = 'default',
+  loading = false,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <h2 className="text-lg font-black text-gray-900">{title}</h2>
+        {detail && <p className="mt-2 whitespace-pre-line text-sm font-medium text-gray-600">{detail}</p>}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className={`rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
+              tone === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-pink-600 hover:bg-pink-700'
+            }`}
+          >
+            {loading ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

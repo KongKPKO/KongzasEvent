@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Calendar, Coffee, Users, UserCog, LogOut, Menu, X } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, Users, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
 import type { ActorRole } from '../types/access';
+import { LanguageToggle, useI18n } from '../i18n';
 
 // --- TYPES ---
 interface ActiveEvent {
@@ -21,17 +22,19 @@ interface AdminHeaderProps {
 
 // Navigation Items Config
 const navItems = [
-    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner'] as ActorRole[] },
-    { path: '/manage-products', label: 'Menu', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner'] as ActorRole[] },
-    { path: '/manage-pos-queues', label: 'POS/Queue', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'queue_only', 'queue_pos'] as ActorRole[] },
+    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[] },
+    { path: '/manage-products', label: 'Menu', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[] },
+    { path: '/manage-pos-queues', label: 'POS/Queue', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[] },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[] },
 ];
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner' }: AdminHeaderProps) {
+    const { t } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [userEmail, setUserEmail] = useState<string | null>(null);
+    const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
     const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
 
     useEffect(() => {
@@ -40,14 +43,20 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             if (user?.email) {
                 setUserEmail(user.email);
             }
+
+            const { data: adminAccess, error } = await supabase.rpc('is_platform_admin');
+            if (!error) {
+                setIsPlatformAdmin(Boolean(adminAccess));
+            }
         };
         fetchUser();
     }, []);
 
     const roleLabelMapping: Record<string, string> = {
-        owner: 'Owner',
-        queue_only: 'Queue Staff',
-        queue_pos: 'Queue & POS Staff',
+        owner: t('workspaceRoleOwner'),
+        manager: t('workspaceRoleManager'),
+        seller: t('workspaceRoleSeller'),
+        queue_staff: t('workspaceRoleQueueStaff'),
     };
     
     const displayRole = actorRole ? (roleLabelMapping[actorRole] || actorRole) : 'Admin';
@@ -55,28 +64,29 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        navigate('/manage-login');
+        window.location.replace('/manage-login');
     };
 
     return (
-        <header className="bg-white border-b border-gray-200 h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-20 shadow-sm relative">
+        <header className="bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-20 shadow-sm relative">
             {/* Left: Brand + Event Badge */}
             <div className="flex items-center gap-2">
                 <div className="bg-pink-500 text-white p-1.5 rounded-md font-bold text-sm">K</div>
-                <span className="font-bold text-gray-800 hidden md:inline">Kongzas <span className="text-pink-600">Workspace</span></span>
-                <span className="font-bold text-gray-800 md:hidden">Kongzas</span>
+                <span className="font-bold text-gray-800 hidden md:inline">Nire<span className="text-pink-600">q</span> Workspace</span>
+                <span className="font-bold text-gray-800 md:hidden">Nireq</span>
                 
                 {/* Active Event Badge */}
                 {activeEvent && (
-                    <div className="ml-2 md:ml-3 px-2 py-0.5 bg-green-50 border border-green-200 rounded-full text-xs font-bold text-green-700 flex items-center gap-1 max-w-[120px] md:max-w-none">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0"></span>
+                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex items-center gap-1.5 max-w-[140px] md:max-w-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse shrink-0"></span>
                         <span className="truncate">{activeEvent.event_name}</span>
                     </div>
                 )}
                 {activeEvent === null && (
-                    <div className="ml-2 md:ml-3 px-2 py-0.5 bg-red-50 border border-red-200 rounded-full text-xs font-bold text-red-600">
+                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-red-50 border border-red-200 rounded-full text-xs font-bold text-red-600 inline-flex items-center gap-1.5">
+                        <AlertTriangle size={13} aria-hidden="true" />
                         <span className="md:hidden">No Event</span>
-                        <span className="hidden md:inline">⚠️ No Active Event</span>
+                        <span className="hidden md:inline">No Active Event</span>
                     </div>
                 )}
             </div>
@@ -91,23 +101,40 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         <button
                             key={item.path}
                             onClick={() => navigate(item.path)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                            className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                 isActive
                                     ? 'bg-pink-50 text-pink-700 border border-pink-200'
                                     : 'text-gray-600 hover:text-pink-600 hover:bg-gray-50'
                             }`}
-                            aria-label={item.label}
+                            aria-label={t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
                         >
                             <Icon size={14} aria-hidden="true" />
-                            <span className="hidden sm:inline">{item.label}</span>
+                            <span className="hidden sm:inline">{t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}</span>
                         </button>
                     );
                 })}
+
+                {isPlatformAdmin && (
+                    <button
+                        onClick={() => navigate('/admin/applications')}
+                        className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                            location.pathname === '/admin/applications'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'text-gray-600 hover:text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                        aria-label={t('workspaceNavApplications')}
+                    >
+                        <ClipboardCheck size={14} aria-hidden="true" />
+                        <span className="hidden sm:inline">{t('workspaceNavApplications')}</span>
+                    </button>
+                )}
                 
+                <div className="h-5 w-px bg-gray-200 mx-1"></div>
+                <LanguageToggle className="workspace-action px-2 py-2" />
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
 
                 {/* Profile Indicator (Desktop) */}
-                <div className="flex items-center gap-2 mr-2 group relative cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors">
+                <div className="min-h-11 flex items-center gap-2 mr-2 group relative cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors">
                     <div className="w-7 h-7 rounded-sm bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-xs ring-1 ring-pink-200">
                         {firstLetter}
                     </div>
@@ -128,18 +155,19 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 
                 <button 
                     onClick={handleLogout} 
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-1.5 transition-all"
-                    aria-label="Logout"
+                    className="workspace-action px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-1.5 transition-all"
+                    aria-label={t('signOut')}
                 >
                     <LogOut size={14} aria-hidden="true" />
-                    <span className="hidden sm:inline">Logout</span>
+                    <span className="hidden sm:inline">{t('signOut')}</span>
                 </button>
             </div>
 
             {/* Mobile Menu Button */}
             <button 
-                className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="md:hidden icon-touch inline-flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
+                aria-label={isMenuOpen ? 'Close workspace menu' : 'Open workspace menu'}
             >
                 {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -169,24 +197,47 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                                     navigate(item.path);
                                     setIsMenuOpen(false);
                                 }}
-                                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
+                                className={`w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
                                     isActive
                                         ? 'bg-pink-50 text-pink-700 border border-pink-200'
                                         : 'text-gray-600 hover:bg-gray-50'
                                 }`}
+                                aria-label={t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
                             >
                                 <Icon size={18} />
-                                {item.label}
+                                {t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
                             </button>
                         );
                     })}
+                    {isPlatformAdmin && (
+                        <button
+                            onClick={() => {
+                                navigate('/admin/applications');
+                                setIsMenuOpen(false);
+                            }}
+                            className={`w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
+                                location.pathname === '/admin/applications'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
+                            }`}
+                            aria-label={t('workspaceNavApplications')}
+                        >
+                            <ClipboardCheck size={18} />
+                            {t('workspaceNavApplications')}
+                        </button>
+                    )}
+                    <div className="h-px bg-gray-100 my-1"></div>
+                    <div className="px-4 py-2">
+                        <LanguageToggle />
+                    </div>
                     <div className="h-px bg-gray-100 my-1"></div>
                     <button 
                         onClick={handleLogout}
-                        className="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3"
+                        className="w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3"
+                        aria-label={t('signOut')}
                     >
                         <LogOut size={18} />
-                        Logout
+                        {t('signOut')}
                     </button>
                 </div>
             )}

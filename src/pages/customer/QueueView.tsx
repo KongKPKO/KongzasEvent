@@ -631,12 +631,24 @@ const QueueView = () => {
                             )}
                         </div>
 
-                        <div className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}>
-                            {nowServingNumber ? (
-                                <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
-                            ) : (
-                                <span className="text-3xl text-gray-600">--</span>
-                            )}
+                        <div 
+                            className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}
+                            aria-live="polite"
+                            aria-atomic="true"
+                            role="status"
+                        >
+                            <span className="sr-only">
+                                {nowServingNumber 
+                                    ? `Now serving queue number ${nowServingNumber}` 
+                                    : "No queue is currently being served"}
+                            </span>
+                            <span aria-hidden="true">
+                                {nowServingNumber ? (
+                                    <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
+                                ) : (
+                                    <span className="text-3xl text-gray-600">--</span>
+                                )}
+                            </span>
                         </div>
                     </div>
                 </motion.div>

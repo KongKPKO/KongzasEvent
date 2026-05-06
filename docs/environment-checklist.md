@@ -198,6 +198,7 @@ Checklist:
 
 ## Safety Rules
 
+- **Pre-Release Check**: Always run `npm run check:public` before pushing to a public repository. This script identifies risky files (secrets, build artifacts) that might be accidentally tracked by git. Use `npm run check:hygiene` for a fast scan of tracked file paths and sensitive content without running the full build/test suite.
 - Never run `supabase db reset` against DEV or PROD.
 - Never use production data for destructive testing.
 - Always run `supabase db push --dry-run` before pushing remote migrations.

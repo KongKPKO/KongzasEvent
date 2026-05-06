@@ -4,8 +4,8 @@ import { CustomerPage } from './pages/CustomerPage';
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
-const ADMIN_EMAIL = process.env.TEST_EMAIL || 'konglnwzas@gmail.com';
-const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'SupaF@irytail1';
+const ADMIN_EMAIL = process.env.TEST_EMAIL || 'local-admin-user@example.com';
+const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const ARTIST_SLUG = process.env.TEST_SLUG || 'test1';
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321', 

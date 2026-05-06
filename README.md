@@ -1,176 +1,113 @@
-# EventWebQueue
+# 🎟️ Event Queue System (SaaS MVP)
 
-Production Deployment Readiness, Runbook, and Test Matrix Summary
+An **Event Queue + POS SaaS MVP** designed for creators and service booths at high-traffic events (e.g., fan conventions, pop-up markets, service centers). This system enables a seamless transition from queueing to ordering in a unified interface.
 
-## Overview
-EventWebQueue is a Vite + React + TypeScript frontend for event queue management and POS, backed by Supabase (auth, database, storage, realtime). The system supports:
-- Admin: Manage Events, Queue/POS, Products (CRUD, CSV import, currency)
-- Customer: Home, Menu, Queue (ticketing)
-- Realtime updates via Supabase channels
-- Automated tests via Playwright across a multi-device matrix
+> [!IMPORTANT]  
+> This project is a **Work-in-Progress (WIP) SaaS MVP** intended for portfolio demonstration. It is **not** currently production-ready. Specific security and reliability areas are under active development and labeled as "Review Focus" below.
 
-## Tech Stack
-- React + TypeScript (Vite)
-- Supabase: Auth, Postgres, Storage, Realtime
-- Playwright: E2E/Regression (multi-device, multi-browser)
+---
 
-## Environments & Configuration
-Define the following environment variables for each environment (staging/production):
+## 🚀 Project Summary
+This platform aims to solve booth congestion by allowing customers to join a virtual queue, browse digital menus, and track their status in real-time. For creators, it provides a lightweight dashboard to manage the flow of people and sales in one spot.
 
-Required (client/runtime):
-- `VITE_SUPABASE_URL` = https://<your-supabase-project>.supabase.co
-- `VITE_SUPABASE_ANON_KEY` = <anon-public-key>
+## 🔄 Main User Flows
 
-Server-side only (do NOT ship to client unless absolutely required; depends on your backend usage):
-- `SUPABASE_SERVICE_ROLE` (if used by backend/admin scripts)
-- `JWT_SECRET` and other backend-only secrets (if applicable)
+### **For Customers**
+*   **Discovery**: Find creators or active events via a dedicated home surface.
+*   **Join Queue**: Secure a virtual ticket for an active event booth.
+*   **Real-time Tracking**: Monitor "Now Serving" numbers and their own queue status via Supabase Realtime.
+*   **Digital Menu**: Browse product catalogs and pricing while waiting.
 
-Supabase configuration:
-- Apply all SQL migrations in `supabase/migrations/` to staging/prod:
-  - `20260131140000_add_deleted_at_to_products.sql` (soft delete)
-  - `20260130190115_create_storage_policy.sql` (Menu bucket policy)
-  - All prior schema/seed fixes
-- RLS and Storage Policies:
-  - Ensure artist-level isolation on: `products`, `orders`, `order_items`, `events`, `queues`, `artists`
-  - Storage bucket `Menu`: public read for images; authenticated write (admins only) via policy
+### **For Admins & Staff**
+*   **Booth Operations**: Open or close the booth to pause ticket issuance instantly.
+*   **Queue Control**: Call the next customer, mark as serving, or complete the ticket.
+*   **Integrated POS**: Link queue tickets directly to orders for seamless checkout and inventory management.
 
-## Build & Deploy
-1) Install & build
-```
-npm ci
-npm run build
-```
-The production artifacts are emitted to `dist/`.
+## 🛠️ Tech Stack
+*   **Frontend**: React (Vite), TypeScript, Tailwind CSS, Framer Motion.
+*   **Backend**: Supabase (Auth, Postgres, Storage, Realtime).
+*   **Testing**: Playwright (E2E, Mobile Responsive), k6 (Load Testing).
 
-2) Deploy static site (choose one)
-- Vercel / Netlify / Cloudflare Pages: point to `dist/`, set env vars in project settings
-- S3 + CloudFront or Nginx: upload `dist/`, configure SPA fallback (rewrite 404 -> index.html)
+---
 
-3) Supabase
-- Create/validate project
-- Apply migrations (CLI or dashboard)
-- Create storage bucket `Menu` and apply policies
+## 🔍 Codebase Navigation (Reviewer Guide)
+For technical reviewers, these files showcase the core logic and architectural patterns:
 
-4) Observability (recommended)
-- Add Sentry (or similar) to capture frontend exceptions
-- Configure uptime checks for the public site
+*   **[`src/pages/customer/QueueView.tsx`](src/pages/customer/QueueView.tsx)**: Customer-facing queue and real-time status component.
+*   **[`src/pages/ManageCombined.tsx`](src/pages/ManageCombined.tsx)**: Unified Admin Workspace combining Queue Control and POS.
+*   **[`src/components/dashboard/QueuePanel.tsx`](src/components/dashboard/QueuePanel.tsx)**: Core logic for admin queue state transitions.
+*   **[`supabase/migrations/`](supabase/migrations/)**: Database schema, atomic RPC functions, and RLS policies.
+*   **[`src/tests/e2e/full-service-loop.spec.ts`](src/tests/e2e/full-service-loop.spec.ts)**: Comprehensive E2E test covering the entire lifecycle.
 
-## Smoke Test Checklist
-Run on staging and post-deploy to production.
+## 🛡️ Technical Deep Dive & Known Review Focus
+This project uses advanced serverless patterns, with several areas identified for further hardening:
 
-Admin
-- Login: `/manage-login`
-- Events: `/manage-events` (list/create if needed)
-- POS/Queue: `/manage-pos-queues`
-  - Verify header and `BOOTH OPEN/CLOSED`
-  - Toggle booth open/close
-  - POS: select Walk-in or serving queue, add products, charge (Cash)
+*   **Atomic Queue Issuance**: Uses a Postgres RPC (`create_queue_ticket`) with `FOR UPDATE` locks to prevent duplicate ticket numbers during high-concurrency spikes.
+*   **RLS Hardening (Active Review Focus)**: While Row Level Security is implemented, ensuring complete isolation and preventing unauthorized updates across all tables is a priority for the next phase.
+*   **Ticket Ownership (WIP)**: Anonymous ticket ownership and the cancellation flow (`queues_public_mark_missed`) require further hardening to prevent unauthorized ticket state changes.
+*   **Stale Ticket Management**: Current stale calling cleanup exists in the frontend logic; moving this to a scheduled backend cleanup (e.g., via `pg_cron` or Edge Functions) is a planned improvement.
+*   **Public Direct Inserts**: A known risk is the potential for direct `INSERT` access to `public.queues` bypasssing the RPC; enforcing RPC-only insertion is an upcoming task.
+*   **Realtime Latency**: Real-time updates are functional, but further stress testing for latency under 10k+ concurrent users is required.
 
-Products
-- `/manage-products`
-  - Add a product with image
-  - Edit status (Enable/Disable/Sold Out)
-  - CSV import (2–3 rows) and confirm processed items
+---
 
-Customer
-- `/<artist-slug>/home` – active event status shows
-- `/<artist-slug>/menu` – product list & currency format
-- `/<artist-slug>/queue` – get ticket, queue number displayed, status updates
+## 💻 Local Development
 
-## Test Strategy & Status
-Playwright regression runs across multi-device matrix:
-- Desktop: Chrome (Chromium), Edge, Safari (WebKit)
-- Mobile: Android (Pixel 5 – Mobile Chrome), iOS (iPhone 12 – Mobile Safari)
-- Tablet: iPad Pro 11 (landscape), iPad Mini (portrait)
+1.  **Clone & Install**:
+    ```bash
+    npm install
+    ```
+2.  **Environment Setup**:
+    *   Copy `.env.example` to `.env.local`.
+    *   Fill in your Supabase credentials (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).
+3.  **Run Development Server**:
+    ```bash
+    npm run dev
+    ```
+4.  **Run Tests**:
+    ```bash
+    npx playwright test
+    ```
 
-Current status:
-- Desktop & Tablet: GREEN
-- Mobile POS users now land on the POS tab by default when their role allows POS. Re-run `npm run test:mobile` after applying migrations/env setup to confirm the previous visibility timeout is closed.
+---
 
-Useful commands:
-```
-npx playwright test
-npx playwright show-report
-npm run test:api:smoke
-npm run test:regression
-npm run test:accessibility
-npm run test:security
-npm run test:mobile
-```
+## ⚙️ Environments & Configuration
+| Layer | Purpose | Supabase Project |
+| --- | --- | --- |
+| **Local** | Fast testing/dev | `http://127.0.0.1:54321` |
+| **Staging** | Cloud testing | `kdjqitvtxmcrnnpuxuyl` |
+| **PROD** | Live Portfolio | `fnutmjnzugpayccscvgr` |
 
-API smoke (`npm run test:api:smoke`) checks:
-- Auth health endpoint
-- REST read endpoint
-- Storage bucket readiness
-- Storage upload to `Menu` bucket
+### Required Environment Variables:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `TEST_EMAIL` / `TEST_PASSWORD` (for Playwright)
 
-## Known Caveats & Mitigations
-Mobile POS Tab Activation
-- POS-capable roles open `/manage-pos-queues` on the POS tab by default on mobile.
-- Queue-only roles remain on Queue Control.
-- The tab switcher still exposes `data-testid` hooks (`pos-switcher`, `pos-tab`, `pos-pane`) for deterministic tests.
+---
 
-CSV Upload Feedback
-- CSV validation details are primarily logged to console; the UI shows a simple summary. For large bulk uploads in production, consider enhancing UI feedback (non-blocking toasts with error counts/details).
+## 🚀 Build & Deploy
+1. **Build**: `npm run build` (Artifacts in `dist/`)
+2. **Deploy (Firebase)**:
+   - Staging: `npm run deploy:staging`
+   - Production: `npm run deploy:prod`
+3. **Database**: Apply migrations via `supabase db push`.
 
-Image Storage Lifecycle
-- Soft delete of products retains images to preserve history. Edit-upload replaces the image and removes the previous one. This is intentional; document this behavior for operators.
+---
 
-## Operational Runbook
-Daily operations
-- Open booth: `/manage-pos-queues` → ensure `BOOTH OPEN`
-- Queue: `Call Next`, monitor `Calling` and `Serving`
-- POS: select Walk-in or a serving queue → add items → `Charge` (Cash/Transfer)
-- Products: CRUD, edit status, CSV import
-- Events: ensure an active Confirmed event exists for the artist
+## ✅ Smoke Test Checklist
+- [ ] Admin login (`/manage-login`)
+- [ ] Toggle booth open/closed
+- [ ] POS: Complete Walk-in sale (Cash)
+- [ ] Customer: Get ticket from `/<slug>/queue`
+- [ ] Admin: `Call Next` -> `Serve` -> `Complete`
+- [ ] Customer: Verify realtime "Now Serving" updates
 
-Troubleshooting
-- Mobile POS grid not visible → refresh first; if role is queue-only, POS is intentionally hidden.
-- Customer cannot get ticket → verify booth open and an active event exists
-- Product not visible → ensure status `enable` and currency matches
-- Upload failures → verify storage policy and file types (JPG/PNG/WebP) & reasonable size
+---
 
-## Pre-Deploy Checklist
-- [ ] Supabase migrations applied to staging/prod
-- [ ] RLS and storage policies enforced for isolation
-- [ ] Env vars set: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-- [ ] `npm run build` successful; `dist/` generated
-- [ ] Deploy `dist/` with SPA fallback
-- [ ] Staging smoke tests:
-  - [ ] Admin login & POS open/close
-  - [ ] POS quick sale (Walk-in, add item, Cash)
-  - [ ] Products add/edit/disable & verification
-  - [ ] Customer ticket issuance flow
-- [ ] Acknowledge mobile POS tab caveat in docs/training
-- [ ] (Optional) Sentry or equivalent is configured
-
-## Post-Deploy Validation
-- Admin dashboard loads, shows booth status; toggle works
-- POS adds items to cart and completes Cash sale
-- Customer ticket issuance works on public site
-- (Optional) Run regression suite against staging clone (be mindful of data writes)
-
-## Development
-Local dev:
-```
-npm run dev
-```
-
-Build:
-```
-npm run build
-```
-
-Run tests:
-```
-npx playwright test
-npx playwright show-report
-npm run test:regression
-npm run test:accessibility
-npm run test:security
-npm run test:mobile
-npm run test:api:smoke
-```
+## 📝 Operational Runbook
+- **Daily Open**: Admin sets booth to `BOOTH OPEN` in Dashboard.
+- **Queue Management**: Use `Call Next` to pull from the waiting list.
+- **Troubleshooting**: If customer cannot get ticket, verify an active event exists and the booth is open.
 
 ## License
 Copyright © 2026. All rights reserved.

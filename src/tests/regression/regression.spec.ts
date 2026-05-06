@@ -3,8 +3,8 @@ import { CustomerPage } from '../e2e/pages/CustomerPage';
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
-const ADMIN_EMAIL = process.env.TEST_EMAIL || 'kongphop.testy@gmail.com';
-const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'Test112233';
+const ADMIN_EMAIL = process.env.TEST_EMAIL || 'local-test-user@example.com';
+const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const ARTIST_SLUG = process.env.TEST_SLUG || 'testy';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';

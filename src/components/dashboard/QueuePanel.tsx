@@ -82,7 +82,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
                 .from('artists')
                 .select('broadcast_message, is_queue_open')
                 .eq('id', actorContext.artist_id)
-                .single();
+                .maybeSingle();
 
             if (artistData) {
                 setBroadcastMessage(artistData.broadcast_message || null);

@@ -121,6 +121,7 @@ export default function POSPanel({
 
     const selectedQueueIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
+    const cartRef = useRef<CartItem[]>([]);
     const isFetchingRef = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -151,6 +152,10 @@ export default function POSPanel({
     useEffect(() => {
         productsRef.current = products;
     }, [products]);
+
+    useEffect(() => {
+        cartRef.current = cart;
+    }, [cart]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -417,11 +422,14 @@ export default function POSPanel({
         return overdrafts;
     }, [cart, products, productsById]);
 
-    // Show a warning toast only when the overdraft count increases (new items became
-    // unavailable).  Decreases happen when the user removes/reduces an item — no
-    // toast needed then.  `overdraftProductIds.size` is a primitive so it is safe
-    // as a standalone effect dependency even though the Set itself is recreated each
-    // render; we intentionally do not re-run this effect on every cart edit.
+    // Show a warning toast only when the overdraft count increases (i.e. a realtime
+    // product update just made cart items unavailable).  Decreases happen when the
+    // user removes/reduces an item — no toast needed then.
+    //
+    // cartRef is used instead of cart directly so we can list affected product names
+    // without adding cart to the deps array.  Adding cart would fire the toast on
+    // every user edit, not just on stock changes.  cartRef is always current because
+    // the sync effect above keeps it updated on every render.
     const prevOverdraftCountRef = useRef(0);
     useEffect(() => {
         const current = overdraftProductIds.size;
@@ -429,7 +437,7 @@ export default function POSPanel({
         prevOverdraftCountRef.current = current;
 
         if (current > 0 && current > prev) {
-            const affectedNames = cart
+            const affectedNames = cartRef.current
                 .filter((item) => overdraftProductIds.has(item.product.id))
                 .slice(0, 2)
                 .map((item) => item.product.name);
@@ -440,8 +448,7 @@ export default function POSPanel({
                 detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove to continue.`,
             });
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [overdraftProductIds.size]);
+    }, [overdraftProductIds]);
 
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
     const effectiveViewMode: ViewMode = viewPreference === 'auto'
@@ -652,8 +659,14 @@ export default function POSPanel({
             setTimeout(() => reject(new PaymentTimeoutError()), PAYMENT_TIMEOUT_MS)
         );
 
+        // Keep a reference to the sequence promise so we can suppress its rejection
+        // if the timeout wins the race first.  Without this, a subsequent network
+        // error from the in-flight RPC becomes an unhandled promise rejection.
+        const sequencePromise = runPaymentSequence();
+        sequencePromise.catch(() => { /* handled by the race winner's catch block */ });
+
         try {
-            await Promise.race([runPaymentSequence(), timeoutPromise]);
+            await Promise.race([sequencePromise, timeoutPromise]);
         } catch (err: unknown) {
             console.error('[Payment] error:', err);
 

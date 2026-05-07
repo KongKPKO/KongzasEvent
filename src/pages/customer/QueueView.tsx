@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
+import { TICKET_UPDATED_EVENT } from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
 
 interface Ticket {
@@ -307,7 +308,7 @@ const QueueView = () => {
                 // Notify CallingNotification (same tab) that a ticket now exists.
                 // The native 'storage' event only fires in OTHER tabs, so we dispatch
                 // a custom event here to cover the same-tab case.
-                window.dispatchEvent(new CustomEvent('ticket-updated'));
+                window.dispatchEvent(new CustomEvent(TICKET_UPDATED_EVENT));
                 setMyTicket(data);
             }
 

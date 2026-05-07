@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { Bell, ChevronRight, Coffee, Info, AlertTriangle, PauseCircle } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { formatDateInTimeZone } from '../utils/timezone';
+import { TICKET_UPDATED_EVENT } from '../utils/customerEvents';
 
 interface CallingNotificationProps {
   artistId: string;
@@ -97,7 +98,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   //    never re-runs.
   //
   //    Solution:
-  //    - QueueView dispatches 'ticket-updated' (CustomEvent) immediately after
+  //    - QueueView dispatches TICKET_UPDATED_EVENT (CustomEvent) immediately after
   //      localStorage.setItem so we catch the same-tab case.
   //    - The native 'storage' StorageEvent fires automatically for cross-tab
   //      writes; we filter it to our specific key.
@@ -117,7 +118,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     };
 
     // Same-tab: dispatched by QueueView right after the localStorage write.
-    window.addEventListener('ticket-updated', syncTicketFromStorage);
+    window.addEventListener(TICKET_UPDATED_EVENT, syncTicketFromStorage);
 
     // Cross-tab: the browser fires 'storage' when a different tab modifies
     // localStorage.  Filter to our exact key so unrelated writes are ignored.
@@ -127,7 +128,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     window.addEventListener('storage', handleStorageEvent);
 
     return () => {
-      window.removeEventListener('ticket-updated', syncTicketFromStorage);
+      window.removeEventListener(TICKET_UPDATED_EVENT, syncTicketFromStorage);
       window.removeEventListener('storage', handleStorageEvent);
     };
   }, [artistId]);

@@ -67,6 +67,13 @@ const QueueView = () => {
     const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Kept in refs so the queues channel effect does not re-subscribe on every
+    // realtime event that causes CustomerLayout to emit new array/function identities.
+    const availableEventsRef = useRef(availableEvents);
+    availableEventsRef.current = availableEvents;
+    const setSelectedEventIdRef = useRef(setSelectedEventId);
+    setSelectedEventIdRef.current = setSelectedEventId;
+
     useEffect(() => {
         const interval = setInterval(() => {
             setFactIndex(prev => (prev + 1) % funFacts.length);
@@ -183,13 +190,13 @@ const QueueView = () => {
                     // Check Mismatch. If the stored active ticket belongs to another current event,
                     // switch the customer context instead of deleting a valid ticket.
                     if (ticket.event_id !== activeEvent.id || ticket.queue_service_date !== activeServiceDate) {
-                        const ticketEvent = availableEvents.find((event) => event.id === ticket.event_id);
+                        const ticketEvent = availableEventsRef.current.find((event) => event.id === ticket.event_id);
                         if (
                             ticketEvent &&
                             ['waiting', 'calling', 'serving'].includes(ticket.status) &&
                             ticket.queue_service_date === formatDateInTimeZone(new Date(), ticketEvent.event_timezone || 'Asia/Bangkok')
                         ) {
-                            setSelectedEventId(ticket.event_id || ticketEvent.id);
+                            setSelectedEventIdRef.current(ticket.event_id || ticketEvent.id);
                             setLoading(false);
                             return;
                         }
@@ -239,7 +246,10 @@ const QueueView = () => {
             supabase.removeChannel(channel);
         };
 
-    }, [activeEvent?.id, activeEvent?.is_booth_open, activeServiceDate, displayArtist.id, availableEvents.map((event) => event.id).join('|')]);
+    // availableEvents and setSelectedEventId are intentionally NOT in the dep array —
+    // they are read via refs so identity changes from realtime updates do not
+    // tear down and re-create this subscription on every queue event.
+    }, [activeEvent?.id, activeEvent?.is_booth_open, activeServiceDate, displayArtist.id]);
 
     useEffect(() => {
         if (!activeEvent || !myTicket) {

@@ -141,14 +141,13 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     if (ticketId) {
        ticketChannel = supabase.channel(`my-ticket-notification:${ticketId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${ticketId}` }, (payload) => {
-            // เช็คสถานะเรียกล่าสุด
+            if (!payload.new) return;
             if (payload.new.status === 'serving' || payload.new.status === 'calling') {
               setIsCalling(true);
               setTicketNumber(payload.new.queue_number);
               void fetchQueueingArea(payload.new.event_id);
               if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
-              // ถ้าสถานะเปลี่ยนเป็น complete/cancelled ให้ปิดแจ้งเตือน
               setIsCalling(false);
               setQueueingArea(null);
             }
@@ -159,6 +158,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     // ฟัง Broadcast ส่วนกลาง
     const broadcastChannel = supabase.channel(`artist-broadcast-notification:${artistId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${artistId}` }, (payload) => {
+          if (!payload.new) return;
           setBroadcastMessage(payload.new.broadcast_message);
       })
       .subscribe();

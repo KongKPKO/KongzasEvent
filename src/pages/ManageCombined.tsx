@@ -333,7 +333,8 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                         }
                         setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
                     } else if (payload.eventType === 'DELETE') {
-                        const deletedId = (payload.old as QueueItem).id;
+                        const deletedId = (payload.old as QueueItem | null)?.id;
+                        if (!deletedId) return;
                         setQueues((prev) => prev.filter(q => q.id !== deletedId));
                     }
                 }

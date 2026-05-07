@@ -528,8 +528,12 @@ const MenuView = () => {
           setSentOrderId(null);
           setIsOrderCompleted(false);
           
-          clearMenuOrderState(contextArtist?.id);
-          setToast({ tone: 'success', title: t('menuOrderCancelled') });
+          const cleared = clearMenuOrderState(contextArtist?.id);
+          if (!cleared) {
+            setToast({ tone: 'warning', title: t('menuOrderCancelled'), detail: t('menuClearOrderError') });
+          } else {
+            setToast({ tone: 'success', title: t('menuOrderCancelled') });
+          }
       } catch (err: any) {
           setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: err.message });
       } finally {
@@ -645,7 +649,10 @@ const MenuView = () => {
       setSentOrderId(null);
       setIsOrderCompleted(false);
       
-      clearMenuOrderState(contextArtist?.id);
+      const cleared = clearMenuOrderState(contextArtist?.id);
+      if (!cleared) {
+        setToast({ tone: 'warning', title: t('menuClearOrderError') });
+      }
   };
 
   if (loading) return <div className="p-8 text-center text-gray-400">{t('menuLoading')}</div>;

@@ -4,15 +4,17 @@ export const customerEventStorageKey = (artistId: string) => `customerSelectedEv
 
 export const posSelectedEventStorageKey = (artistId: string) => `posSelectedEventId:${artistId}`;
 
-export const clearMenuOrderState = (artistId: string | undefined | null): void => {
-  if (!artistId) return;
+export const clearMenuOrderState = (artistId: string | undefined | null): boolean => {
+  if (!artistId) return false;
   try {
     localStorage.removeItem(`cart_${artistId}`);
     localStorage.removeItem(`orderSent_${artistId}`);
     localStorage.removeItem(`sentOrderId_${artistId}`);
     localStorage.removeItem(`orderCompleted_${artistId}`);
-  } catch {
-    // localStorage may be unavailable (SSR, storage-full).
+    return true;
+  } catch (err) {
+    console.warn('Failed to clear menu order state from localStorage:', err);
+    return false;
   }
 };
 

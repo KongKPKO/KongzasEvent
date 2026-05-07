@@ -66,6 +66,8 @@ const QueueView = () => {
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const getTicketInFlightRef = useRef(false);
+    const leaveQueueInFlightRef = useRef(false);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -280,6 +282,8 @@ const QueueView = () => {
 
     const handleGetTicket = async () => {
         if (!activeEvent) return;
+        if (getTicketInFlightRef.current) return;
+        getTicketInFlightRef.current = true;
 
         // Safety Check: Ensure Event hasn't ended
         const now = new Date();
@@ -287,6 +291,7 @@ const QueueView = () => {
         if (now > end) {
             setToast({ tone: 'warning', title: t('queueEventEnded'), detail: t('queueEventEndedDetail') });
             refresh();
+            getTicketInFlightRef.current = false;
             return;
         }
 
@@ -317,6 +322,7 @@ const QueueView = () => {
             setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: t('queueTryAgain') });
         } finally {
             setLoading(false);
+            getTicketInFlightRef.current = false;
         }
     };
 
@@ -363,23 +369,28 @@ const QueueView = () => {
 
     const confirmLeaveQueue = async () => {
         if (!myTicket) return;
+        if (leaveQueueInFlightRef.current) return;
+        leaveQueueInFlightRef.current = true;
 
-        console.log(`Attempting to leave queue for ticket ${myTicket.id} with status ${myTicket.status}`);
-        const { error } = await supabase
-            .from('queues')
-            .update({ status: 'missed' })
-            .eq('id', myTicket.id);
+        try {
+            const { error } = await supabase
+                .from('queues')
+                .update({ status: 'missed' })
+                .eq('id', myTicket.id);
 
-        if (error) {
-            console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
-            setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
-            return;
+            if (error) {
+                console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
+                setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
+                return;
+            }
+
+            localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+            setMyTicket(null);
+            setIsLeaveConfirmOpen(false);
+            setToast({ tone: 'success', title: t('queueCancelledToast') });
+        } finally {
+            leaveQueueInFlightRef.current = false;
         }
-
-        localStorage.removeItem(`ticket_id_${displayArtist.id}`);
-        setMyTicket(null);
-        setIsLeaveConfirmOpen(false);
-        setToast({ tone: 'success', title: t('queueCancelledToast') });
     };
 
     // UI State Components

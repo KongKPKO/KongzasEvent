@@ -89,6 +89,8 @@ const QueueView = () => {
     const setSelectedEventIdRef = useRef(setSelectedEventId);
     setSelectedEventIdRef.current = setSelectedEventId;
 
+    const leaveQueueInFlightRef = useRef(false);
+
     useEffect(() => {
         const interval = setInterval(() => {
             setFactIndex(prev => (prev + 1) % funFacts.length);
@@ -501,10 +503,13 @@ const QueueView = () => {
                 return;
             }
 
-        clearStoredTicketId(displayArtist.id);
-        setMyTicket(null);
-        setIsLeaveConfirmOpen(false);
-        setToast({ tone: 'success', title: t('queueCancelledToast') });
+            clearStoredTicketId(displayArtist.id);
+            setMyTicket(null);
+            setIsLeaveConfirmOpen(false);
+            setToast({ tone: 'success', title: t('queueCancelledToast') });
+        } finally {
+            leaveQueueInFlightRef.current = false;
+        }
     };
 
     // UI State Components

@@ -100,6 +100,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
                     'postgres_changes', 
                     { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${actorContext.artist_id}` }, 
                     (payload) => {
+                        if (!payload.new) return;
                         const updatedArtist = payload.new as { broadcast_message: string | null; is_queue_open: boolean };
                         setBroadcastMessage(updatedArtist.broadcast_message || null);
                         setIsQueueOpen(updatedArtist.is_queue_open ?? true);

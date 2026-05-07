@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Suspense, lazy } from 'react';
+import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
 import { useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
@@ -102,6 +102,8 @@ const MenuView = () => {
   const [isOrderSent, setIsOrderSent] = useState<boolean>(() => {
     return localStorage.getItem(`orderSent_${contextArtist?.id}`) === 'true';
   });
+  const isOrderSentRef = useRef(isOrderSent);
+  isOrderSentRef.current = isOrderSent;
   const [sentOrderId, setSentOrderId] = useState<string | null>(() => {
     return localStorage.getItem(`sentOrderId_${contextArtist?.id}`) || null;
   });
@@ -604,15 +606,18 @@ const MenuView = () => {
          .on('postgres_changes',
              { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${menuTicketId}` },
              (payload: any) => {
-                 const newStatus = payload?.new?.status;
+                 if (!payload.new) return;
+                 const newStatus = payload.new.status;
                  if (!newStatus) return;
-                 if (newStatus === 'complete' && isOrderSent) {
+                 // Read via ref so this subscription is not torn down when
+                 // isOrderSent flips (order submit / cancel).
+                 if (newStatus === 'complete' && isOrderSentRef.current) {
                     setIsOrderCompleted(true);
                  }
                  setUserQueueStatus(newStatus || null);
                  if (['complete', 'missed', 'expired'].includes(newStatus)) {
-                    setUserQueueNumber(null); // Clear badge
-                 } else if (payload.new?.queue_number) {
+                    setUserQueueNumber(null);
+                 } else if (payload.new.queue_number) {
                     setUserQueueNumber(payload.new.queue_number);
                  }
              }
@@ -620,7 +625,9 @@ const MenuView = () => {
          .subscribe();
 
       return () => { supabase.removeChannel(channel); };
-  }, [displayArtist?.id, isOrderSent, menuTicketId]);
+  // isOrderSent is intentionally omitted — read via isOrderSentRef to avoid
+  // re-subscribing every time the customer submits or cancels an order.
+  }, [displayArtist?.id, menuTicketId]);
 
   // Helper to reset order state - Clear all localStorage and state
   const canConfirmOrder = userQueueStatus === 'calling' || userQueueStatus === 'serving';

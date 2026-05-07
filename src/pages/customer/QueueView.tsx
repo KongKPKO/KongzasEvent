@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
@@ -10,7 +10,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
-import { TICKET_UPDATED_EVENT } from '../../utils/customerEvents';
+import {
+    TICKET_UPDATED_EVENT,
+    clearStoredTicketId,
+    getStoredTicketId,
+    setStoredTicketId,
+    ticketStorageKey,
+} from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
 
 interface Ticket {
@@ -66,6 +72,22 @@ const QueueView = () => {
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Guards handleGetTicket against double-tap / rapid duplicate RPCs.
+    // React's disabled={loading} prop is a render-time guard, but a fast
+    // second click can fire before the re-render lands.
+    const getTicketInFlightRef = useRef(false);
+
+    // Latest availableEvents kept in a ref so restoreStoredTicket and other
+    // long-lived callbacks can read it without listing the array in their
+    // dependency arrays (the array identity changes on every realtime event,
+    // which would otherwise tear down the queues channel and other effects).
+    const availableEventsRef = useRef(availableEvents);
+    availableEventsRef.current = availableEvents;
+    // Same pattern for setSelectedEventId — CustomerLayout creates a new
+    // function identity per render, so without this ref the queues channel
+    // would be re-subscribed every time CustomerLayout re-renders.
+    const setSelectedEventIdRef = useRef(setSelectedEventId);
+    setSelectedEventIdRef.current = setSelectedEventId;
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -156,55 +178,79 @@ const QueueView = () => {
         });
     };
 
+    // Stable restore helper: re-reads localStorage, validates against Supabase,
+    // and reconciles myTicket. Used on mount, on cross-tab/same-tab ticket
+    // changes, and after rejoins. Returns whether a valid ticket was loaded.
+    const restoreStoredTicket = useCallback(async (): Promise<boolean> => {
+        if (!activeEvent) return false;
+        const storedTicketId = getStoredTicketId(displayArtist.id);
+        if (!storedTicketId) {
+            setMyTicket((prev) => (prev ? null : prev));
+            return false;
+        }
+
+        const { data: ticket } = await supabase
+            .from('queues')
+            .select('id, event_id, queue_service_date, queue_number, status, created_at')
+            .eq('id', storedTicketId)
+            .maybeSingle();
+
+        if (!ticket) {
+            // Row was deleted (admin reset, retention) — clear stale id uniformly.
+            clearStoredTicketId(displayArtist.id);
+            setMyTicket(null);
+            return false;
+        }
+
+        // Mismatch handling: check the ticket against ITS OWN event/timezone
+        // first; only fall back to clearing when the ticket is genuinely
+        // not-from-today or its event is gone. Read availableEvents from the
+        // ref so this callback's identity doesn't churn when the events list
+        // updates via realtime.
+        const ticketEvent = ticket.event_id
+            ? availableEventsRef.current.find((event) => event.id === ticket.event_id)
+            : undefined;
+        const ticketTodayInOwnTz = ticketEvent
+            ? formatDateInTimeZone(new Date(), ticketEvent.event_timezone || 'Asia/Bangkok')
+            : null;
+        const ticketIsActive = ['waiting', 'calling', 'serving'].includes(ticket.status);
+        const ticketIsFromToday =
+            ticketTodayInOwnTz !== null && ticket.queue_service_date === ticketTodayInOwnTz;
+
+        if (ticket.event_id !== activeEvent.id || ticket.queue_service_date !== activeServiceDate) {
+            // Not for the active event — try to switch context if the ticket
+            // is still valid in its own event/tz.
+            if (ticketEvent && ticketIsActive && ticketIsFromToday) {
+                setSelectedEventIdRef.current(ticket.event_id || ticketEvent.id);
+                return true;
+            }
+            // Ticket genuinely doesn't apply (event missing, stale day, ended state) — clear.
+            console.warn('Ticket Event Mismatch. Clearing.');
+            clearStoredTicketId(displayArtist.id);
+            setMyTicket(null);
+            return false;
+        }
+
+        setMyTicket(ticket as Ticket);
+        return true;
+        // setSelectedEventId is read via ref to keep the callback identity
+        // stable across CustomerLayout re-renders.
+    }, [activeEvent?.id, activeServiceDate, displayArtist.id]);
+
     // 2. EFFECT: Fetch Queue Data when Active Event Changes (or on Mount/Refresh)
     useEffect(() => {
         if (!activeEvent) {
             setNowServingNumber(null);
             setLoading(false);
-            // Optional: Clear ticket if strictly tied to event existence? 
-            // Keeping it loosely allows viewing old tickets if needed, but per requirements usually we clear active state.
-            // We will check ticket validity below.
             return;
         }
 
+        let cancelled = false;
         const initQueueData = async () => {
             await fetchNowServing(activeEvent.id, activeServiceDate);
-
-            // Ticket Verification
-            const storedTicketId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
-            if (storedTicketId) {
-                const { data: ticket } = await supabase
-                    .from('queues')
-                    .select('id, event_id, queue_service_date, queue_number, status, created_at')
-                    .eq('id', storedTicketId)
-                    .single();
-
-                if (ticket) {
-                    // Check Mismatch. If the stored active ticket belongs to another current event,
-                    // switch the customer context instead of deleting a valid ticket.
-                    if (ticket.event_id !== activeEvent.id || ticket.queue_service_date !== activeServiceDate) {
-                        const ticketEvent = availableEvents.find((event) => event.id === ticket.event_id);
-                        if (
-                            ticketEvent &&
-                            ['waiting', 'calling', 'serving'].includes(ticket.status) &&
-                            ticket.queue_service_date === formatDateInTimeZone(new Date(), ticketEvent.event_timezone || 'Asia/Bangkok')
-                        ) {
-                            setSelectedEventId(ticket.event_id || ticketEvent.id);
-                            setLoading(false);
-                            return;
-                        }
-                        console.warn("Ticket Event Mismatch. Clearing.");
-                        localStorage.removeItem(`ticket_id_${displayArtist.id}`);
-                        setMyTicket(null);
-                    } else {
-                        setMyTicket(ticket);
-                    }
-                } else {
-                    localStorage.removeItem(`ticket_id_${displayArtist.id}`);
-                    setMyTicket(null);
-                }
-            }
-
+            if (cancelled) return;
+            await restoreStoredTicket();
+            if (cancelled) return;
             setLoading(false);
         };
 
@@ -222,9 +268,13 @@ const QueueView = () => {
                     fetchNowServing(activeEvent.id, activeServiceDate);
                 }, 200);
 
+                // Null-guard: DELETE events have payload.new === null/undefined.
+                const next = payload?.new as Ticket | null | undefined;
+                if (!next || !next.id) return;
+
                 setMyTicket((prev) => {
-                    if (prev && (payload.new as Ticket)?.id === prev.id && (payload.new as Ticket)?.queue_service_date === activeServiceDate) {
-                        return payload.new as Ticket;
+                    if (prev && next.id === prev.id && next.queue_service_date === activeServiceDate) {
+                        return next;
                     }
                     return prev;
                 });
@@ -232,6 +282,7 @@ const QueueView = () => {
             .subscribe();
 
         return () => {
+            cancelled = true;
             if (nowServingTimerRef.current) {
                 clearTimeout(nowServingTimerRef.current);
                 nowServingTimerRef.current = null;
@@ -239,7 +290,33 @@ const QueueView = () => {
             supabase.removeChannel(channel);
         };
 
-    }, [activeEvent?.id, activeEvent?.is_booth_open, activeServiceDate, displayArtist.id, availableEvents.map((event) => event.id).join('|')]);
+        // Note: availableEvents is intentionally NOT in the dep array.
+        // restoreStoredTicket reads it via availableEventsRef so this
+        // subscription doesn't churn (teardown + re-subscribe) every time
+        // the events list updates over realtime.
+    }, [activeEvent?.id, activeEvent?.is_booth_open, activeServiceDate, displayArtist.id, restoreStoredTicket]);
+
+    // Cross-tab + same-tab ticket sync. The init effect above only re-runs on
+    // event/artist changes, so a ticket created/leaved in another tab (or in
+    // CallingNotification's flow) would not be reflected without this listener.
+    useEffect(() => {
+        if (!activeEvent || !displayArtist.id) return;
+
+        const storageKey = ticketStorageKey(displayArtist.id);
+
+        const sync = () => { void restoreStoredTicket(); };
+
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === storageKey) sync();
+        };
+
+        window.addEventListener(TICKET_UPDATED_EVENT, sync);
+        window.addEventListener('storage', handleStorage);
+        return () => {
+            window.removeEventListener(TICKET_UPDATED_EVENT, sync);
+            window.removeEventListener('storage', handleStorage);
+        };
+    }, [activeEvent?.id, displayArtist.id, restoreStoredTicket]);
 
     useEffect(() => {
         if (!activeEvent || !myTicket) {
@@ -260,9 +337,15 @@ const QueueView = () => {
                 .eq('id', myTicket.id)
                 .maybeSingle();
 
-            if (!isMounted || error || !data) return;
+            if (!isMounted || error) return;
+            if (!data) {
+                // Row deleted server-side — clear stale id uniformly.
+                clearStoredTicketId(displayArtist.id);
+                setMyTicket(null);
+                return;
+            }
             if (data.event_id !== activeEvent.id || data.queue_service_date !== activeServiceDate) {
-                localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+                clearStoredTicketId(displayArtist.id);
                 setMyTicket(null);
                 return;
             }
@@ -281,17 +364,53 @@ const QueueView = () => {
     const handleGetTicket = async () => {
         if (!activeEvent) return;
 
+        // In-flight guard: defeats double-tap before React re-renders the
+        // disabled state after setLoading(true).
+        if (getTicketInFlightRef.current) return;
+        getTicketInFlightRef.current = true;
+
         // Safety Check: Ensure Event hasn't ended
         const now = new Date();
         const end = new Date(activeEvent.end_date);
         if (now > end) {
             setToast({ tone: 'warning', title: t('queueEventEnded'), detail: t('queueEventEndedDetail') });
             refresh();
+            getTicketInFlightRef.current = false;
             return;
         }
 
         setLoading(true);
         try {
+            // Idempotency: if a stored ticket already exists and is still
+            // active for this event/service date, reuse it instead of issuing
+            // a new RPC. Covers the cross-tab case (Tab A created a ticket,
+            // Tab B's UI hasn't synced yet) and the rapid-tap case.
+            const existingId = getStoredTicketId(displayArtist.id);
+            if (existingId) {
+                const { data: existing } = await supabase
+                    .from('queues')
+                    .select('id, event_id, queue_service_date, queue_number, status, created_at')
+                    .eq('id', existingId)
+                    .maybeSingle();
+
+                if (
+                    existing &&
+                    existing.event_id === activeEvent.id &&
+                    existing.queue_service_date === activeServiceDate &&
+                    ['waiting', 'calling', 'serving'].includes(existing.status)
+                ) {
+                    setMyTicket(existing as Ticket);
+                    // Re-dispatch so other tabs/components reconcile against
+                    // the (already-stored) id.
+                    setStoredTicketId(displayArtist.id, existing.id);
+                    return;
+                }
+                if (!existing) {
+                    // Stale id pointing at a deleted row — clear before creating fresh.
+                    clearStoredTicketId(displayArtist.id);
+                }
+            }
+
             const { data: createdTicket, error: insertError } = await supabase.rpc('create_queue_ticket', {
                 p_artist_id: displayArtist.id,
                 p_event_id: activeEvent.id,
@@ -304,11 +423,9 @@ const QueueView = () => {
 
             const data = Array.isArray(createdTicket) ? createdTicket[0] : createdTicket;
             if (data) {
-                localStorage.setItem(`ticket_id_${displayArtist.id}`, data.id);
-                // Notify CallingNotification (same tab) that a ticket now exists.
-                // The native 'storage' event only fires in OTHER tabs, so we dispatch
-                // a custom event here to cover the same-tab case.
-                window.dispatchEvent(new CustomEvent(TICKET_UPDATED_EVENT));
+                // Helper writes localStorage AND dispatches TICKET_UPDATED_EVENT
+                // so CallingNotification (and other tabs via 'storage') sync.
+                setStoredTicketId(displayArtist.id, data.id);
                 setMyTicket(data);
             }
 
@@ -317,6 +434,7 @@ const QueueView = () => {
             setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: t('queueTryAgain') });
         } finally {
             setLoading(false);
+            getTicketInFlightRef.current = false;
         }
     };
 
@@ -333,9 +451,12 @@ const QueueView = () => {
                     .from('queues')
                     .select('id, event_id, queue_service_date, queue_number, status, created_at')
                     .eq('id', myTicket.id)
-                    .single();
-                if (data && data.event_id === activeEvent.id && data.queue_service_date === activeServiceDate) {
-                    setMyTicket(data);
+                    .maybeSingle();
+                if (!data) {
+                    clearStoredTicketId(displayArtist.id);
+                    setMyTicket(null);
+                } else if (data.event_id === activeEvent.id && data.queue_service_date === activeServiceDate) {
+                    setMyTicket(data as Ticket);
                 }
             }
         }
@@ -351,7 +472,7 @@ const QueueView = () => {
 
         // SCENARIO B: Ended Statuses -> Just clear local
         if (endedStatuses.includes(status)) {
-            localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+            clearStoredTicketId(displayArtist.id);
             setMyTicket(null);
             return;
         }
@@ -376,7 +497,7 @@ const QueueView = () => {
             return;
         }
 
-        localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+        clearStoredTicketId(displayArtist.id);
         setMyTicket(null);
         setIsLeaveConfirmOpen(false);
         setToast({ tone: 'success', title: t('queueCancelledToast') });

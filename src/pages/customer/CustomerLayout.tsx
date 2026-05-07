@@ -7,7 +7,7 @@ import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
 import { LanguageToggle, useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
-import { customerEventStorageKey, getCurrentCustomerEvents } from '../../utils/customerEvents';
+import { customerEventStorageKey, getCurrentCustomerEvents, getStoredTicketId } from '../../utils/customerEvents';
 
 const CustomerLayout = () => {
    const { t } = useI18n();
@@ -59,7 +59,7 @@ const CustomerLayout = () => {
       }
 
       const chooseInitialEvent = async () => {
-         const localQueueId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
+         const localQueueId = getStoredTicketId(displayArtist.id);
          if (localQueueId) {
             const { data } = await supabase
                .from('queues')

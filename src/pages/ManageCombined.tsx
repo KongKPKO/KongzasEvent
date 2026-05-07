@@ -8,6 +8,7 @@ import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
 import { formatDateInTimeZone } from '../utils/timezone';
+import { posSelectedEventStorageKey } from '../utils/customerEvents';
 
 export interface ActiveEvent {
     id: string;
@@ -67,7 +68,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
         if (typeof window === 'undefined') return null;
-        return window.localStorage.getItem(`posSelectedEventId:${actorContext.artist_id}`);
+        return window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id));
     });
     const [eventLoading, setEventLoading] = useState(true);
     const [loadingSlow, setLoadingSlow] = useState(false);
@@ -144,7 +145,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
                 setSelectedEventId((currentSelectedId) => {
                     const storedSelectedId = currentSelectedId || (
                         typeof window !== 'undefined'
-                            ? window.localStorage.getItem(`posSelectedEventId:${actorContext.artist_id}`)
+                            ? window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id))
                             : null
                     );
                     const nextSelectedId = events.some((event) => event.id === storedSelectedId)
@@ -153,9 +154,9 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
 
                     if (typeof window !== 'undefined') {
                         if (nextSelectedId) {
-                            window.localStorage.setItem(`posSelectedEventId:${actorContext.artist_id}`, nextSelectedId);
+                            window.localStorage.setItem(posSelectedEventStorageKey(actorContext.artist_id), nextSelectedId);
                         } else {
-                            window.localStorage.removeItem(`posSelectedEventId:${actorContext.artist_id}`);
+                            window.localStorage.removeItem(posSelectedEventStorageKey(actorContext.artist_id));
                         }
                     }
 
@@ -290,9 +291,9 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         setSelectedEventId(eventId || null);
         if (typeof window !== 'undefined') {
             if (eventId) {
-                window.localStorage.setItem(`posSelectedEventId:${actorContext.artist_id}`, eventId);
+                window.localStorage.setItem(posSelectedEventStorageKey(actorContext.artist_id), eventId);
             } else {
-                window.localStorage.removeItem(`posSelectedEventId:${actorContext.artist_id}`);
+                window.localStorage.removeItem(posSelectedEventStorageKey(actorContext.artist_id));
             }
         }
     };

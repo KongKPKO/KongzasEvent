@@ -4,7 +4,12 @@ import { supabase } from '../supabaseClient';
 import { Bell, ChevronRight, Coffee, Info, AlertTriangle, PauseCircle } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { formatDateInTimeZone } from '../utils/timezone';
-import { TICKET_UPDATED_EVENT } from '../utils/customerEvents';
+import {
+  TICKET_UPDATED_EVENT,
+  clearStoredTicketId,
+  getStoredTicketId,
+  ticketStorageKey,
+} from '../utils/customerEvents';
 
 interface CallingNotificationProps {
   artistId: string;
@@ -61,8 +66,8 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     fetchBroadcast();
 
     // 1.2 ดึงสถานะ Ticket ตัวเองจาก LocalStorage (Namespaced by Artist ID)
-    const storedTicketId = localStorage.getItem(`ticket_id_${artistId}`);
-    
+    const storedTicketId = getStoredTicketId(artistId);
+
     if (storedTicketId) {
       setTicketId(storedTicketId);
       const fetchTicketStatus = async () => {
@@ -70,8 +75,8 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
             .from('queues')
             .select('status, queue_number, event_id, queue_service_date, events(event_timezone)')
             .eq('id', storedTicketId)
-            .single();
-            
+            .maybeSingle();
+
         // รองรับทั้ง serving และ calling
         if (data && isTicketFromToday(data) && (data.status === 'serving' || data.status === 'calling')) {
           setIsCalling(true);
@@ -79,7 +84,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
           await fetchQueueingArea(data.event_id);
         } else {
           if (data && !isTicketFromToday(data)) {
-            localStorage.removeItem(`ticket_id_${artistId}`);
+            clearStoredTicketId(artistId);
           }
           setQueueingArea(null);
         }
@@ -108,10 +113,10 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   useEffect(() => {
     if (!artistId) return;
 
-    const storageKey = `ticket_id_${artistId}`;
+    const storageKey = ticketStorageKey(artistId);
 
     const syncTicketFromStorage = () => {
-      const stored = localStorage.getItem(storageKey);
+      const stored = getStoredTicketId(artistId);
       // Functional update avoids stale-closure comparison and
       // skips a re-render when the value hasn't changed.
       setTicketId((prev) => (stored !== prev ? stored : prev));

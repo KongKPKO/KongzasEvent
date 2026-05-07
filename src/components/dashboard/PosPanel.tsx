@@ -1,13 +1,42 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles } from 'lucide-react';
+import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
 import { getAvailableUnits, isLowStock } from '../../utils/posCatalog';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
+
+// Maximum ms the full payment RPC sequence may take before the UI declares
+// "status unknown."  Each individual fetch already has a 15 s per-request
+// timeout in supabaseClient.ts; this outer limit caps the total sequence so
+// the loading spinner can never hang indefinitely.
+const PAYMENT_TIMEOUT_MS = 20_000;
+
+// Sentinel used to distinguish a sequence-level timeout from a real RPC error
+// in the handlePayment catch block.
+class PaymentTimeoutError extends Error {
+    constructor() {
+        super('payment_timeout');
+        this.name = 'PaymentTimeoutError';
+    }
+}
+
+// Returns true for errors where the DB commit status is genuinely ambiguous:
+// an AbortError / "failed to fetch" means the request may have committed but
+// the response was lost in transit.  Callers should warn staff to check order
+// history rather than assume the payment failed.
+const isNetworkAmbiguousError = (err: unknown): boolean => {
+    const msg = err instanceof Error ? err.message.toLowerCase() : '';
+    return (
+        err instanceof PaymentTimeoutError ||
+        msg.includes('aborted') ||
+        msg.includes('failed to fetch') ||
+        msg.includes('networkerror')
+    );
+};
 
 interface Product {
     id: string;
@@ -84,9 +113,15 @@ export default function POSPanel({
     const [loading, setLoading] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+    // Non-null when the payment sequence timed out or the network aborted mid-flight
+    // and we cannot confirm whether the DB committed.  Stores the event ID so the
+    // order history link can point to the right event.  Cleared on confirmed success
+    // or confirmed failure.
+    const [paymentUnknownEventId, setPaymentUnknownEventId] = useState<string | null>(null);
 
     const selectedQueueIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
+    const cartRef = useRef<CartItem[]>([]);
     const isFetchingRef = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -117,6 +152,10 @@ export default function POSPanel({
     useEffect(() => {
         productsRef.current = products;
     }, [products]);
+
+    useEffect(() => {
+        cartRef.current = cart;
+    }, [cart]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -358,6 +397,59 @@ export default function POSPanel({
         return result;
     }, [products, promotions, searchQuery, selectedCategory, selectedTag, selectedQuickFilter, recentProductIds, pinnedProductIds, sortBy]);
 
+    // O(1) lookup into the freshest product data from the last fetchProducts call.
+    // Used by cart validation and the overdraft visual flag in renderCartItems.
+    const productsById = useMemo(
+        () => new Map(products.map((p) => [p.id, p])),
+        [products]
+    );
+
+    // Derive which cart items exceed currently-available stock.
+    // Overdraft can only arise from a realtime product update (another device sold
+    // the last unit while the item was already sitting in this cart), because
+    // addToCart already blocks adding beyond getAvailableUnits at add-time.
+    const overdraftProductIds = useMemo<ReadonlySet<string>>(() => {
+        if (products.length === 0 || cart.length === 0) return new Set();
+        const overdrafts = new Set<string>();
+        for (const item of cart) {
+            const fresh = productsById.get(item.product.id);
+            if (!fresh) continue;
+            const available = getAvailableUnits(fresh);
+            if (Number.isFinite(available) && item.quantity > available) {
+                overdrafts.add(item.product.id);
+            }
+        }
+        return overdrafts;
+    }, [cart, products, productsById]);
+
+    // Show a warning toast only when the overdraft count increases (i.e. a realtime
+    // product update just made cart items unavailable).  Decreases happen when the
+    // user removes/reduces an item — no toast needed then.
+    //
+    // cartRef is used instead of cart directly so we can list affected product names
+    // without adding cart to the deps array.  Adding cart would fire the toast on
+    // every user edit, not just on stock changes.  cartRef is always current because
+    // the sync effect above keeps it updated on every render.
+    const prevOverdraftCountRef = useRef(0);
+    useEffect(() => {
+        const current = overdraftProductIds.size;
+        const prev = prevOverdraftCountRef.current;
+        prevOverdraftCountRef.current = current;
+
+        if (current > 0 && current > prev) {
+            const affectedNames = cartRef.current
+                .filter((item) => overdraftProductIds.has(item.product.id))
+                .slice(0, 2)
+                .map((item) => item.product.name);
+            const extra = overdraftProductIds.size > 2 ? ` +${overdraftProductIds.size - 2} more` : '';
+            setToast({
+                tone: 'warning',
+                title: 'Stock changed',
+                detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove to continue.`,
+            });
+        }
+    }, [overdraftProductIds]);
+
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
     const effectiveViewMode: ViewMode = viewPreference === 'auto'
         ? (isQueuePanelExpanded ? 'compact' : 'visual')
@@ -447,6 +539,33 @@ export default function POSPanel({
         if (error) throw error;
     };
 
+    // Translates known RPC error strings to staff-readable messages.
+    // The backend raises these as exception message text, which Supabase JS surfaces
+    // on err.message.  Unknown errors get a generic fallback that warns about
+    // retrying to avoid accidental duplicate charges.
+    const toPaymentErrorMessage = (err: unknown): string => {
+        const raw = err instanceof Error ? err.message : String(err);
+        if (raw.includes('insufficient_stock')) {
+            return 'One or more items just sold out. Remove unavailable items and try again.';
+        }
+        if (raw.includes('order_not_editable')) {
+            return 'This order was already processed. Refresh the page before retrying.';
+        }
+        if (raw.includes('order_cancelled')) {
+            return 'This order was cancelled. Start a new transaction.';
+        }
+        if (raw.includes('event_not_active')) {
+            return 'The event is no longer active.';
+        }
+        if (raw.includes('booth_closed')) {
+            return 'The booth is closed. Open it before charging.';
+        }
+        if (raw.includes('forbidden')) {
+            return 'Permission denied. Your role cannot complete this action.';
+        }
+        return 'Payment failed. Check order history before retrying to avoid a duplicate charge.';
+    };
+
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (!canUsePos) {
             setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
@@ -463,8 +582,15 @@ export default function POSPanel({
 
         setLoading(true);
 
-        try {
-            const payloadItems = buildItemPayload();
+        // Snapshot the event ID and cart payload before the async sequence begins
+        // so closure captures a stable value even if props/state change mid-flight.
+        const eventId = activeEvent.id;
+        const payloadItems = buildItemPayload();
+
+        // The full RPC sequence (up to 3 sequential calls).  On confirmed success
+        // it clears all payment-related state; on error it throws so the outer
+        // catch can classify and display the right message.
+        const runPaymentSequence = async () => {
             if (currentOrderId) {
                 const { error: syncError } = await supabase.rpc('sync_customer_order_items_with_stock', {
                     p_order_id: currentOrderId,
@@ -495,7 +621,7 @@ export default function POSPanel({
                 if (completeError) throw completeError;
             } else {
                 const { data: walkinOrderId, error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
-                    p_event_id: activeEvent.id,
+                    p_event_id: eventId,
                     p_items: payloadItems,
                     p_payment_method: method,
                 });
@@ -504,8 +630,11 @@ export default function POSPanel({
                 await applyPricingToOrder(orderId);
             }
 
+            // Confirmed success: clear state and notify parent.
+            // Also clear any prior "unknown" warning — we now know it succeeded.
             setCart([]);
             setCurrentOrderId(null);
+            setPaymentUnknownEventId(null);
             setIsPaymentModalOpen(false);
             if (selectedQueueId) {
                 onQueueCompleted?.(selectedQueueId);
@@ -513,10 +642,52 @@ export default function POSPanel({
             onClearQueue();
             await fetchProducts();
             setToast({ tone: 'success', title: 'Payment completed' });
+        };
+
+        // Outer timeout races against the entire sequence.  If the venue WiFi stalls
+        // all three RPCs, staff would otherwise wait up to 45 s (3 × 15 s per-fetch
+        // limit) with no feedback.  At PAYMENT_TIMEOUT_MS we stop the spinner and
+        // show the "status unknown" warning so staff can check order history before
+        // deciding whether to retry.
+        //
+        // IMPORTANT: we do NOT abort the in-flight requests when the timeout fires.
+        // The DB may still commit after our UI has given up.  If it does,
+        // runPaymentSequence will eventually resolve, clear the cart, and replace
+        // the warning toast with "Payment completed" — giving staff a clear signal
+        // that the charge went through without needing a retry.
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new PaymentTimeoutError()), PAYMENT_TIMEOUT_MS)
+        );
+
+        // Keep a reference to the sequence promise so we can suppress its rejection
+        // if the timeout wins the race first.  Without this, a subsequent network
+        // error from the in-flight RPC becomes an unhandled promise rejection.
+        const sequencePromise = runPaymentSequence();
+        sequencePromise.catch(() => { /* handled by the race winner's catch block */ });
+
+        try {
+            await Promise.race([sequencePromise, timeoutPromise]);
         } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             console.error('[Payment] error:', err);
-            setToast({ tone: 'error', title: 'Payment failed', detail: errorMessage });
+
+            if (isNetworkAmbiguousError(err)) {
+                // Network abort or sequence timeout: DB commit status is unknown.
+                // Close the modal so staff cannot accidentally tap Charge again,
+                // and show a persistent warning with an order history link.
+                setIsPaymentModalOpen(false);
+                setPaymentUnknownEventId(eventId);
+                setToast({
+                    tone: 'warning',
+                    title: 'Payment status unknown',
+                    detail: 'Network interrupted. Check order history before retrying to avoid a duplicate charge.',
+                });
+            } else {
+                // Known error (insufficient_stock, order_cancelled, etc.): DB did
+                // not commit, or the commit was definitively rejected.  Safe to
+                // retry after fixing the underlying issue.
+                setPaymentUnknownEventId(null);
+                setToast({ tone: 'error', title: 'Payment failed', detail: toPaymentErrorMessage(err) });
+            }
         } finally {
             setLoading(false);
         }
@@ -598,9 +769,19 @@ export default function POSPanel({
 
                 {cart.map((item) => {
                     const promoBadges = getPromotionBadgesForProduct(item.product, promotions);
+                    const isOverdraft = overdraftProductIds.has(item.product.id);
+                    const freshProduct = productsById.get(item.product.id);
+                    const availableNow = freshProduct ? getAvailableUnits(freshProduct) : 0;
 
                     return (
-                        <div key={item.product.id} className="flex items-center justify-between p-2 bg-white border border-gray-100 rounded-lg shadow-sm">
+                        <div
+                            key={item.product.id}
+                            className={`flex items-center justify-between p-2 rounded-lg shadow-sm border ${
+                                isOverdraft
+                                    ? 'bg-red-50 border-red-300'
+                                    : 'bg-white border-gray-100'
+                            }`}
+                        >
                             <div className="flex items-center gap-2 overflow-hidden">
                                 <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden border border-gray-200 bg-gray-100">
                                     {item.product.image_url ? (
@@ -617,7 +798,12 @@ export default function POSPanel({
                                 <div className="flex flex-col min-w-0 flex-1">
                                     <span className="font-bold text-xs text-gray-800 leading-tight break-words line-clamp-2" title={item.product.name}>{item.product.name}</span>
                                     <span className="text-[10px] text-gray-500">{formatPrice(item.product.price, item.product.currency)}</span>
-                                    {!!promoBadges.length && (
+                                    {isOverdraft && (
+                                        <span className="text-[9px] font-bold text-red-600 mt-0.5">
+                                            Only {availableNow} left — reduce or remove
+                                        </span>
+                                    )}
+                                    {!isOverdraft && !!promoBadges.length && (
                                         <div className="mt-1 flex flex-wrap gap-1">
                                             {promoBadges.slice(0, 2).map((badge) => (
                                                 <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold w-fit bg-rose-50 text-rose-700 border-rose-100">
@@ -629,11 +815,13 @@ export default function POSPanel({
                                 </div>
                             </div>
                             <div className="flex flex-col items-end gap-0.5 ml-1">
-                                <span className="font-bold text-pink-600 text-xs">{formatPrice(item.product.price * item.quantity, item.product.currency)}</span>
+                                <span className={`font-bold text-xs ${isOverdraft ? 'text-red-500 line-through' : 'text-pink-600'}`}>
+                                    {formatPrice(item.product.price * item.quantity, item.product.currency)}
+                                </span>
                                 <div className="flex items-center gap-1">
                                     <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-6">
                                         <button onClick={() => decreaseQuantity(item.product.id)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px]" aria-label={`Decrease quantity of ${item.product.name}`}>-</button>
-                                        <span className="min-w-[18px] text-center font-bold text-gray-700 text-[10px]">{item.quantity}</span>
+                                        <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
                                         <button onClick={() => addToCart(item.product)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px]" aria-label={`Increase quantity of ${item.product.name}`}>+</button>
                                     </div>
                                     <button onClick={() => removeFromCart(item.product.id)} className="text-[9px] text-gray-500 hover:text-red-500" aria-label={`Remove ${item.product.name} from cart`}>✕</button>
@@ -671,15 +859,61 @@ export default function POSPanel({
                 </div>
             )}
 
+            {paymentUnknownEventId && (
+                <div className="mb-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+                    <div className="flex items-start gap-2">
+                        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                            <div className="text-xs font-black text-amber-900 uppercase tracking-wide">
+                                Payment status unknown
+                            </div>
+                            <div className="mt-1 text-[11px] font-medium text-amber-800 leading-snug">
+                                The network timed out. This payment may or may not have gone through.
+                                Check order history before charging again to avoid a duplicate.
+                            </div>
+                            <div className="mt-2 flex items-center gap-3">
+                                <a
+                                    href={`/manage-events/${paymentUnknownEventId}/history`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-black text-amber-900 underline underline-offset-2 hover:text-amber-700"
+                                >
+                                    Open order history ↗
+                                </a>
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentUnknownEventId(null)}
+                                    className="text-[10px] font-bold text-amber-700 hover:text-amber-900 border border-amber-300 rounded px-2 py-0.5 hover:bg-amber-100"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {overdraftProductIds.size > 0 && (
+                <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 font-bold text-center">
+                    ⚠️ Remove unavailable items before charging
+                </div>
+            )}
+
             <button
-                disabled={cart.length === 0 || loading || !activeEvent}
+                disabled={cart.length === 0 || loading || !activeEvent || overdraftProductIds.size > 0}
                 onClick={() => {
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
                 }}
                 className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
             >
-                {loading ? 'Processing...' : !activeEvent ? 'Event Ended' : 'Charge ' + formatPrice(pricing.total, cart[0]?.product.currency)}
+                {loading
+                    ? 'Processing...'
+                    : !activeEvent
+                    ? 'Event Ended'
+                    : overdraftProductIds.size > 0
+                    ? 'Cart has unavailable items'
+                    : 'Charge ' + formatPrice(pricing.total, cart[0]?.product.currency)}
             </button>
         </>
     );

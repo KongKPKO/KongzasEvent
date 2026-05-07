@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { CalendarDays, Loader2 } from 'lucide-react';
+import { CalendarDays, Clock, Loader2 } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
@@ -37,6 +37,31 @@ interface ManageCombinedProps {
     actorContext: ActorContext;
 }
 
+interface UpcomingEvent {
+    id: string;
+    event_name: string;
+    start_date: string;
+    event_timezone: string | null;
+}
+
+// Formats a UTC ISO start_date string into a human-readable local time string
+// using the event's configured timezone.  Used only for the upcoming-event hint.
+const formatEventStart = (startDate: string, timezone: string | null): string => {
+    const tz = timezone || 'Asia/Bangkok';
+    const date = new Date(startDate);
+    if (Number.isNaN(date.getTime())) return startDate;
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz,
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(date);
+};
+
 export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
@@ -46,6 +71,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     });
     const [eventLoading, setEventLoading] = useState(true);
     const [boothToggleLoading, setBoothToggleLoading] = useState(false);
+    const [nextUpcomingEvent, setNextUpcomingEvent] = useState<UpcomingEvent | null>(null);
     const [queues, setQueues] = useState<QueueItem[]>([]);
 
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
@@ -137,6 +163,33 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             setEventLoading(false);
         }
     }, [actorContext.artist_id]);
+
+    // Fetches the nearest future Confirmed event for this artist.
+    // Only runs when availableEvents is empty so we can explain why the POS
+    // dropdown shows nothing.  Does NOT change any filtering or security logic —
+    // list_accessible_pos_events still controls what appears in the dropdown.
+    const fetchNextUpcomingEvent = useCallback(async () => {
+        const { data } = await supabase
+            .from('events')
+            .select('id, event_name, start_date, event_timezone')
+            .eq('artist_id', actorContext.artist_id)
+            .eq('status', 'Confirmed')
+            .gt('start_date', new Date().toISOString())
+            .order('start_date', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        setNextUpcomingEvent(data ?? null);
+    }, [actorContext.artist_id]);
+
+    // Trigger the upcoming-event lookup whenever the active event list becomes
+    // empty (or clears it when active events exist so stale data is never shown).
+    useEffect(() => {
+        if (!eventLoading && availableEvents.length === 0) {
+            void fetchNextUpcomingEvent();
+        } else {
+            setNextUpcomingEvent(null);
+        }
+    }, [eventLoading, availableEvents.length, fetchNextUpcomingEvent]);
 
     const fetchQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
@@ -406,6 +459,48 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             </div>
 
             <div className="flex flex-1 overflow-hidden relative">
+                {availableEvents.length === 0 && !eventLoading && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-50/95 backdrop-blur-sm p-6">
+                        <div className="w-full max-w-sm text-center">
+                            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-50">
+                                <CalendarDays size={26} className="text-pink-400" aria-hidden="true" />
+                            </div>
+
+                            <h2 className="text-lg font-black text-gray-900">No event running right now</h2>
+
+                            {nextUpcomingEvent ? (
+                                <>
+                                    <p className="mt-2 text-sm font-medium text-gray-500">
+                                        Your next event starts soon.
+                                    </p>
+                                    <div className="mt-5 rounded-2xl border border-pink-100 bg-white p-5 text-left shadow-sm">
+                                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-500">
+                                            Up next
+                                        </div>
+                                        <div className="text-base font-black text-gray-900 leading-snug">
+                                            {nextUpcomingEvent.event_name}
+                                        </div>
+                                        <div className="mt-2 flex items-center gap-1.5 text-sm font-bold text-gray-600">
+                                            <Clock size={14} className="shrink-0 text-gray-400" aria-hidden="true" />
+                                            <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone)}</span>
+                                        </div>
+                                        <p className="mt-3 text-xs font-medium text-gray-400 leading-relaxed">
+                                            This event will appear in the POS dashboard automatically after it starts.
+                                        </p>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="mt-3 text-sm font-medium text-gray-500">
+                                    No upcoming events found.{' '}
+                                    <a href="/manage-events" className="font-bold text-pink-600 hover:underline">
+                                        Create one in Event Management.
+                                    </a>
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className={`
                     ${activeTab === 'queue' ? 'flex' : 'hidden'}
                     ${!hasPosPermission || isQueuePanelExpanded ? 'md:flex' : 'md:hidden'}

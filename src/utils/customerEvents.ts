@@ -2,6 +2,12 @@ import type { RealtimeEvent } from '../hooks/useArtistRealtime';
 
 export const customerEventStorageKey = (artistId: string) => `customerSelectedEventId:${artistId}`;
 
+// Custom event name dispatched by QueueView after writing a new ticket to
+// localStorage.  CallingNotification listens for this to pick up tickets
+// obtained in the current tab (the native 'storage' event only fires in
+// OTHER tabs, so this covers the same-tab case).
+export const TICKET_UPDATED_EVENT = 'ticket-updated' as const;
+
 export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
   return event.status === 'Confirmed' && event.start_date <= nowIso && event.end_date >= nowIso;
 };

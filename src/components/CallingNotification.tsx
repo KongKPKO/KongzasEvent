@@ -60,7 +60,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
         .from('artists')
         .select('broadcast_message')
         .eq('id', artistId)
-        .single();
+        .maybeSingle();
       if (data) setBroadcastMessage(data.broadcast_message);
     };
     fetchBroadcast();

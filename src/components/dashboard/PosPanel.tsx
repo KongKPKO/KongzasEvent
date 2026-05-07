@@ -445,7 +445,7 @@ export default function POSPanel({
             const extra = overdraftProductIds.size > 2 ? ` +${overdraftProductIds.size - 2} more` : '';
             setToast({
                 tone: 'warning',
-                title: 'Stock changed',
+                title: 'Stock updated',
                 detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove to continue.`,
             });
         }
@@ -760,7 +760,7 @@ export default function POSPanel({
             return (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80">
                     <span className="text-4xl mb-2">🛒</span>
-                    <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
+                    <p className="font-medium text-sm">{loading ? 'Loading order...' : 'Cart is empty'}</p>
                     <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">Select products first. Promotions and totals update automatically.</p>
                 </div>
             );
@@ -859,7 +859,7 @@ export default function POSPanel({
 
             {!activeEvent && (
                 <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600 font-bold text-center">
-                    ⚠️ No Active Event / Event Ended
+                    No active event
                 </div>
             )}
 

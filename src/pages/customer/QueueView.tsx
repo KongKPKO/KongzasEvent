@@ -341,14 +341,15 @@ const QueueView = () => {
 
             if (!isMounted || error) return;
             if (!data) {
-                // Row deleted server-side — clear stale id uniformly.
                 clearStoredTicketId(displayArtist.id);
                 setMyTicket(null);
+                setToast({ tone: 'warning', title: t('queueTicketRemoved'), detail: t('queueTicketRemovedDetail') });
                 return;
             }
             if (data.event_id !== activeEvent.id || data.queue_service_date !== activeServiceDate) {
                 clearStoredTicketId(displayArtist.id);
                 setMyTicket(null);
+                setToast({ tone: 'info', title: t('queueTicketExpired'), detail: t('queueTicketExpiredDetail') });
                 return;
             }
             setMyTicket(data as Ticket);

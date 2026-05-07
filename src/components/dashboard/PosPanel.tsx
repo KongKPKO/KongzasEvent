@@ -123,6 +123,7 @@ export default function POSPanel({
     const productsRef = useRef<Product[]>([]);
     const cartRef = useRef<CartItem[]>([]);
     const isFetchingRef = useRef(false);
+    const paymentInFlightRef = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -567,6 +568,7 @@ export default function POSPanel({
     };
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
+        if (paymentInFlightRef.current) return;
         if (!canUsePos) {
             setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
             return;
@@ -580,6 +582,7 @@ export default function POSPanel({
             return;
         }
 
+        paymentInFlightRef.current = true;
         setLoading(true);
 
         // Snapshot the event ID and cart payload before the async sequence begins
@@ -690,6 +693,7 @@ export default function POSPanel({
             }
         } finally {
             setLoading(false);
+            paymentInFlightRef.current = false;
         }
     };
 
@@ -1348,14 +1352,16 @@ export default function POSPanel({
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
-                                className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95"
+                                disabled={loading}
+                                className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
                                 <span className="font-bold text-emerald-700">CASH</span>
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
-                                className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95"
+                                disabled={loading}
+                                className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>
                                 <span className="font-bold text-sky-700">TRANSFER</span>

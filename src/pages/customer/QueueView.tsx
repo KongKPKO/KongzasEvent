@@ -363,6 +363,8 @@ const QueueView = () => {
 
     const handleGetTicket = async () => {
         if (!activeEvent) return;
+        if (getTicketInFlightRef.current) return;
+        getTicketInFlightRef.current = true;
 
         // In-flight guard: defeats double-tap before React re-renders the
         // disabled state after setLoading(true).
@@ -484,18 +486,20 @@ const QueueView = () => {
 
     const confirmLeaveQueue = async () => {
         if (!myTicket) return;
+        if (leaveQueueInFlightRef.current) return;
+        leaveQueueInFlightRef.current = true;
 
-        console.log(`Attempting to leave queue for ticket ${myTicket.id} with status ${myTicket.status}`);
-        const { error } = await supabase
-            .from('queues')
-            .update({ status: 'missed' })
-            .eq('id', myTicket.id);
+        try {
+            const { error } = await supabase
+                .from('queues')
+                .update({ status: 'missed' })
+                .eq('id', myTicket.id);
 
-        if (error) {
-            console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
-            setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
-            return;
-        }
+            if (error) {
+                console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
+                setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
+                return;
+            }
 
         clearStoredTicketId(displayArtist.id);
         setMyTicket(null);

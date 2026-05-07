@@ -12,6 +12,12 @@ import { calculatePromotionPricing, getPromotionBadgesForProduct, type Promotion
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
+import {
+  TICKET_UPDATED_EVENT,
+  clearStoredTicketId,
+  getStoredTicketId,
+  ticketStorageKey,
+} from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
 
 interface Product {
@@ -223,14 +229,14 @@ const MenuView = () => {
         setProductsLoaded(false);
         
         // 2.1 ✅ ตรวจสอบคิวของลูกค้าจาก LocalStorage (FIX: Scoped to Artist)
-        const localQueueId = localStorage.getItem(`ticket_id_${displayArtist.id}`);
+        const localQueueId = getStoredTicketId(displayArtist.id);
         if (localQueueId) {
             const { data: queueData } = await supabase
                 .from('queues')
                 .select('event_id, queue_number, status, queue_service_date, events(event_timezone)')
                 .eq('id', localQueueId)
-                .single();
-            
+                .maybeSingle();
+
             // Only show queue number if status is active
             if (queueData && isQueueFromToday(queueData) && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
                 if (queueData.event_id && queueData.event_id !== selectedEvent?.id) {
@@ -240,8 +246,11 @@ const MenuView = () => {
                 setUserQueueStatus(queueData.status);
                 console.log("Customer is Queue:", queueData.queue_number);
             } else {
-               if (queueData && !isQueueFromToday(queueData)) {
-                  localStorage.removeItem(`ticket_id_${displayArtist.id}`);
+               // Clear stale id when row missing (deleted server-side) or
+               // not from today's service date. Ended-state tickets are
+               // intentionally preserved so the user can close them.
+               if (!queueData || !isQueueFromToday(queueData)) {
+                  clearStoredTicketId(displayArtist.id);
                }
                setUserQueueNumber(null);
                setUserQueueStatus(queueData?.status || null);
@@ -370,15 +379,15 @@ const MenuView = () => {
   const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
-    const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+    const localQueueId = getStoredTicketId(displayArtist?.id);
     if (!localQueueId) {
         setToast({
           tone: 'warning',
           title: t('menuQueueTicketRequired'),
           detail: t('menuQueueTicketRequiredDetail'),
         });
-        navigate(`/${displayArtist?.slug || slug}/queue`); 
-        return; 
+        navigate(`/${displayArtist?.slug || slug}/queue`);
+        return;
     }
 
     if (!canConfirmOrder) {
@@ -390,7 +399,7 @@ const MenuView = () => {
   };
 
   const submitConfirmedOrder = async () => {
-    const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+    const localQueueId = getStoredTicketId(displayArtist?.id);
     if (!localQueueId) {
         setConfirmAction(null);
         setToast({ tone: 'warning', title: t('menuQueueTicketRequired'), detail: t('menuQueueTicketRequiredDetail') });
@@ -406,14 +415,27 @@ const MenuView = () => {
             .from('queues')
             .select('event_id, status, queue_service_date, events(event_timezone)')
             .eq('id', localQueueId)
-            .single();
+            .maybeSingle();
 
-        if (queueError || !queueData) {
-             throw new Error(t('menuTicketNotFound'));
+        if (queueError) {
+             throw queueError;
+        }
+        if (!queueData) {
+             // Row deleted server-side — clear stale id and surface a friendly message.
+             clearStoredTicketId(displayArtist?.id);
+             setUserQueueNumber(null);
+             setUserQueueStatus(null);
+             setToast({
+              tone: 'warning',
+              title: t('menuTicketClosed'),
+              detail: t('menuTicketClosedDetail', { status: 'expired' }),
+             });
+             navigate(`/${displayArtist?.slug || slug}/queue`);
+             return;
         }
 
         if (!isQueueFromToday(queueData)) {
-             localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
+             clearStoredTicketId(displayArtist?.id);
              setUserQueueNumber(null);
              setUserQueueStatus(null);
              setToast({
@@ -438,7 +460,7 @@ const MenuView = () => {
 
         if (!['calling', 'serving'].includes(queueData.status)) {
              if (['complete', 'missed', 'expired'].includes(queueData.status)) {
-                 localStorage.removeItem(`ticket_id_${displayArtist?.id}`);
+                 clearStoredTicketId(displayArtist?.id);
                  setToast({
                   tone: 'warning',
                   title: t('menuTicketClosed'),
@@ -522,7 +544,7 @@ const MenuView = () => {
 
   // Keep completion status in sync even when realtime events are missed.
   useEffect(() => {
-      const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
+      const localQueueId = getStoredTicketId(displayArtist?.id);
       if (!sentOrderId || !localQueueId) return;
 
       let isMounted = true;
@@ -549,18 +571,44 @@ const MenuView = () => {
       };
   }, [sentOrderId, displayArtist?.id]);
 
-  // Realtime listener for Queue Status (clears badge when complete)
+  // Realtime listener for Queue Status (clears badge when completed).
+  // Track the active ticket id in state so that cross-tab/same-tab ticket
+  // changes (TICKET_UPDATED_EVENT, native 'storage') resubscribe the channel
+  // to the right row instead of staying bound to whatever id was in storage
+  // at mount time.
+  const [menuTicketId, setMenuTicketId] = useState<string | null>(() => getStoredTicketId(displayArtist?.id));
   useEffect(() => {
-     const localQueueId = localStorage.getItem(`ticket_id_${displayArtist?.id}`);
-     if (!localQueueId || !displayArtist?.id) return;
+      if (!displayArtist?.id) {
+          setMenuTicketId(null);
+          return;
+      }
+      const sync = () => {
+          const next = getStoredTicketId(displayArtist.id);
+          setMenuTicketId((prev) => (prev !== next ? next : prev));
+      };
+      sync();
+      const handleStorage = (e: StorageEvent) => {
+          if (e.key === ticketStorageKey(displayArtist.id)) sync();
+      };
+      window.addEventListener(TICKET_UPDATED_EVENT, sync);
+      window.addEventListener('storage', handleStorage);
+      return () => {
+          window.removeEventListener(TICKET_UPDATED_EVENT, sync);
+          window.removeEventListener('storage', handleStorage);
+      };
+  }, [displayArtist?.id]);
+
+  useEffect(() => {
+     if (!menuTicketId || !displayArtist?.id) return;
 
      const channel = supabase
-         .channel(`menu-queue-status-${localQueueId}`)
+         .channel(`menu-queue-status-${menuTicketId}`)
          .on('postgres_changes',
-             { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${localQueueId}` },
+             { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${menuTicketId}` },
              (payload: any) => {
                  if (!payload.new) return;
                  const newStatus = payload.new.status;
+                 if (!newStatus) return;
                  // Read via ref so this subscription is not torn down when
                  // isOrderSent flips (order submit / cancel).
                  if (newStatus === 'complete' && isOrderSentRef.current) {
@@ -579,7 +627,7 @@ const MenuView = () => {
       return () => { supabase.removeChannel(channel); };
   // isOrderSent is intentionally omitted — read via isOrderSentRef to avoid
   // re-subscribing every time the customer submits or cancels an order.
-  }, [displayArtist?.id]);
+  }, [displayArtist?.id, menuTicketId]);
 
   // Helper to reset order state - Clear all localStorage and state
   const canConfirmOrder = userQueueStatus === 'calling' || userQueueStatus === 'serving';

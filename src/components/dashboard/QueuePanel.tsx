@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../ui';
 import type { ActorContext } from '../../types/access';
@@ -63,6 +63,11 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
+    const callNextInFlightRef = useRef(false);
+    const boothToggleInFlightRef = useRef(false);
+    const broadcastInFlightRef = useRef(false);
+    const ticketActionInFlightRef = useRef<Set<string>>(new Set());
+
     // Sync booth status from activeEvent prop
     useEffect(() => {
         if (activeEvent) {
@@ -118,29 +123,30 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
 
     // --- BROADCAST HANDLER (Consolidated with is_queue_open logic) ---
     const handleSetBroadcast = async (msg: string | null) => {
-        // Toggle off if clicking same button
+        if (broadcastInFlightRef.current) return;
+        broadcastInFlightRef.current = true;
+
         const newMessage = (msg === broadcastMessage && msg !== null) ? null : msg;
-        
-        // Determine is_queue_open based on message
-        // "Queue closed temporarily" = CLOSED, everything else = OPEN
         const newQueueOpen = newMessage === "Queue closed temporarily" ? false : true;
-        
         const previousMessage = broadcastMessage;
         const previousQueueOpen = isQueueOpen;
-        
-        // Optimistic update
+
         setBroadcastMessage(newMessage);
         setIsQueueOpen(newQueueOpen);
 
-        const { error } = await supabase.rpc('set_artist_queue_broadcast', {
-            p_artist_id: actorContext.artist_id,
-            p_message: newMessage,
-        });
+        try {
+            const { error } = await supabase.rpc('set_artist_queue_broadcast', {
+                p_artist_id: actorContext.artist_id,
+                p_message: newMessage,
+            });
 
-        if (error) {
-            console.error('Error updating broadcast/queue status:', error);
-            setBroadcastMessage(previousMessage);
-            setIsQueueOpen(previousQueueOpen);
+            if (error) {
+                console.error('Error updating broadcast/queue status:', error);
+                setBroadcastMessage(previousMessage);
+                setIsQueueOpen(previousQueueOpen);
+            }
+        } finally {
+            broadcastInFlightRef.current = false;
         }
     };
 
@@ -149,18 +155,24 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
             setToast({ tone: 'warning', title: 'No active event', detail: 'Create or activate an event before opening the booth.' });
             return;
         }
+        if (boothToggleInFlightRef.current) return;
+        boothToggleInFlightRef.current = true;
 
         const newStatus = !isBoothActive;
         setIsBoothActive(newStatus);
 
-        const { error } = await supabase.rpc('set_booth_open_status', {
-            p_event_id: activeEvent.id,
-            p_is_open: newStatus,
-        });
+        try {
+            const { error } = await supabase.rpc('set_booth_open_status', {
+                p_event_id: activeEvent.id,
+                p_is_open: newStatus,
+            });
 
-        if (error) {
-            console.error('Error updating booth status:', error);
-            setIsBoothActive(!newStatus);
+            if (error) {
+                console.error('Error updating booth status:', error);
+                setIsBoothActive(!newStatus);
+            }
+        } finally {
+            boothToggleInFlightRef.current = false;
         }
     };
 
@@ -191,15 +203,22 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
     }, [onStatusUpdated]);
 
     const handleCallNext = useCallback(() => {
+        if (callNextInFlightRef.current) return;
         const waitingList = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
         const next = waitingList[0];
-        if (next) {
-            updateStatus(next.id, 'calling');
-        }
+        if (!next) return;
+        callNextInFlightRef.current = true;
+        updateStatus(next.id, 'calling').finally(() => {
+            callNextInFlightRef.current = false;
+        });
     }, [queues, updateStatus]);
 
     const handleConfirmArrival = useCallback((ticket: QueueItem) => {
-        updateStatus(ticket.id, 'serving');
+        if (ticketActionInFlightRef.current.has(ticket.id)) return;
+        ticketActionInFlightRef.current.add(ticket.id);
+        updateStatus(ticket.id, 'serving').finally(() => {
+            ticketActionInFlightRef.current.delete(ticket.id);
+        });
         onSelectQueue({ id: ticket.id, queue_number: String(ticket.queue_number) });
     }, [updateStatus, onSelectQueue]);
 
@@ -423,7 +442,13 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
                                             </span>
                                         </div>
                                         <button
-                                            onClick={() => updateStatus(t.id, 'waiting')}
+                                            onClick={() => {
+                                                if (ticketActionInFlightRef.current.has(t.id)) return;
+                                                ticketActionInFlightRef.current.add(t.id);
+                                                updateStatus(t.id, 'waiting').finally(() => {
+                                                    ticketActionInFlightRef.current.delete(t.id);
+                                                });
+                                            }}
                                             className="text-[9px] text-pink-500 font-bold hover:underline"
                                         >
                                             Recall

@@ -304,6 +304,10 @@ const QueueView = () => {
             const data = Array.isArray(createdTicket) ? createdTicket[0] : createdTicket;
             if (data) {
                 localStorage.setItem(`ticket_id_${displayArtist.id}`, data.id);
+                // Notify CallingNotification (same tab) that a ticket now exists.
+                // The native 'storage' event only fires in OTHER tabs, so we dispatch
+                // a custom event here to cover the same-tab case.
+                window.dispatchEvent(new CustomEvent('ticket-updated'));
                 setMyTicket(data);
             }
 

@@ -10,6 +10,11 @@ An **Event Queue + POS SaaS MVP** designed for creators and service booths at hi
 ## 🚀 Project Summary
 This platform aims to solve booth congestion by allowing customers to join a virtual queue, browse digital menus, and track their status in real-time. For creators, it provides a lightweight dashboard to manage the flow of people and sales in one spot.
 
+## 💡 Why this project exists
+This project was inspired by real creator/cosplay event booth problems: long unmanaged queues, noisy LINE OpenChat queue calls, slow checkout, unclear stock status, payment mistakes, and difficult post-event tracking.
+
+The goal is to build a lightweight queue + POS tool that helps creator booths manage customer flow, call queues clearly, reduce checkout friction, and give customers a trustworthy mobile queue experience without forcing them into chat groups.
+
 ## 🔄 Main User Flows
 
 ### **For Customers**

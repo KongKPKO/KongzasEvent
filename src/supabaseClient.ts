@@ -69,6 +69,12 @@ const fetchWithTimeout: typeof fetch = async (input, init) => {
 };
 
 const resilientFetch: typeof fetch = async (input, init) => {
+  // Mutating requests (POST, PUT, PATCH, DELETE) must never be silently retried.
+  // A network abort on a mutation means the DB may have already committed the
+  // transaction — retrying would create a duplicate order or double-deduct stock.
+  const method = (init?.method || 'GET').toUpperCase();
+  const isMutating = method !== 'GET' && method !== 'HEAD';
+
   const requestInputUrl = () =>
     typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
 
@@ -80,6 +86,9 @@ const resilientFetch: typeof fetch = async (input, init) => {
     const inputUrl = requestInputUrl();
     const rewritten = rewriteToCurrentHost(inputUrl);
 
+    // Host-rewrite retry: only fires during local/LAN dev when the Supabase URL
+    // uses a Docker hostname that doesn't resolve from the current device.
+    // Safe for mutations because it only triggers on URL mismatch, not abort.
     if (rewritten && rewritten !== inputUrl) {
       const nextInput = typeof input === 'string' || input instanceof URL ? rewritten : new Request(rewritten, input);
       return await fetchWithTimeout(nextInput, init);
@@ -88,7 +97,10 @@ const resilientFetch: typeof fetch = async (input, init) => {
     const message = err instanceof Error ? err.message.toLowerCase() : '';
     const isTransientAbort = message.includes('aborted') || message.includes('failed to fetch');
 
-    if (isTransientAbort) {
+    // Never retry mutating requests on transient abort — the first attempt may
+    // have committed. The caller (handlePayment) detects abort errors and shows
+    // a "status unknown" warning instead of the normal error UI.
+    if (isTransientAbort && !isMutating) {
       return await fetchWithTimeout(input, init);
     }
 

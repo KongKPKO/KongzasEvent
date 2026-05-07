@@ -87,7 +87,52 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     }
   }, [artistId]);
 
-  // 2. Realtime Listener
+  // 2. Keep ticketId in sync when the customer joins the queue in the same tab
+  //    or in a different tab.
+  //
+  //    Problem: the initialisation effect above (dep: [artistId]) runs once on
+  //    mount. If no ticket exists yet, ticketId stays null and the realtime
+  //    subscription below is never created.  When QueueView later writes the
+  //    ticket to localStorage, artistId has not changed, so the init effect
+  //    never re-runs.
+  //
+  //    Solution:
+  //    - QueueView dispatches 'ticket-updated' (CustomEvent) immediately after
+  //      localStorage.setItem so we catch the same-tab case.
+  //    - The native 'storage' StorageEvent fires automatically for cross-tab
+  //      writes; we filter it to our specific key.
+  //
+  //    Both paths call syncTicketFromStorage, which re-reads localStorage and
+  //    updates ticketId state only when the value actually changed.
+  useEffect(() => {
+    if (!artistId) return;
+
+    const storageKey = `ticket_id_${artistId}`;
+
+    const syncTicketFromStorage = () => {
+      const stored = localStorage.getItem(storageKey);
+      // Functional update avoids stale-closure comparison and
+      // skips a re-render when the value hasn't changed.
+      setTicketId((prev) => (stored !== prev ? stored : prev));
+    };
+
+    // Same-tab: dispatched by QueueView right after the localStorage write.
+    window.addEventListener('ticket-updated', syncTicketFromStorage);
+
+    // Cross-tab: the browser fires 'storage' when a different tab modifies
+    // localStorage.  Filter to our exact key so unrelated writes are ignored.
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === storageKey) syncTicketFromStorage();
+    };
+    window.addEventListener('storage', handleStorageEvent);
+
+    return () => {
+      window.removeEventListener('ticket-updated', syncTicketFromStorage);
+      window.removeEventListener('storage', handleStorageEvent);
+    };
+  }, [artistId]);
+
+  // 3. Realtime Listener
   useEffect(() => {
     let ticketChannel: any = null;
     

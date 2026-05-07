@@ -380,7 +380,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center text-gray-500 text-[10px] py-4 italic border border-dashed border-gray-100 rounded-md">
-                                Empty
+                                No one called yet
                             </div>
                         )}
                     </div>
@@ -416,7 +416,7 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
                                 ))}
                             </ul>
                         ) : (
-                            <div className="p-4 text-center text-gray-500 text-[10px]">Queue is empty</div>
+                            <div className="p-4 text-center text-gray-500 text-[10px]">No customers waiting</div>
                         )}
                     </div>
                 </div>

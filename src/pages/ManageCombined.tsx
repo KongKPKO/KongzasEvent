@@ -70,6 +70,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         return window.localStorage.getItem(`posSelectedEventId:${actorContext.artist_id}`);
     });
     const [eventLoading, setEventLoading] = useState(true);
+    const [loadingSlow, setLoadingSlow] = useState(false);
     const [boothToggleLoading, setBoothToggleLoading] = useState(false);
     const [nextUpcomingEvent, setNextUpcomingEvent] = useState<UpcomingEvent | null>(null);
     const [queues, setQueues] = useState<QueueItem[]>([]);
@@ -97,6 +98,12 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         activeEventIdRef.current = activeEvent?.id || null;
         activeServiceDateRef.current = activeServiceDate || null;
     }, [activeEvent, activeServiceDate]);
+
+    useEffect(() => {
+        if (!eventLoading) { setLoadingSlow(false); return; }
+        const t = setTimeout(() => setLoadingSlow(true), 6000);
+        return () => clearTimeout(t);
+    }, [eventLoading]);
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!activeEvent?.id || boothToggleLoading) return;
@@ -356,7 +363,9 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
         return (
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
-                <p className="text-gray-500 text-sm font-medium">Loading workspace...</p>
+                <p className="text-gray-500 text-sm font-medium">
+                    {loadingSlow ? 'Taking longer than usual — check your connection.' : 'Loading workspace...'}
+                </p>
             </div>
         );
     }

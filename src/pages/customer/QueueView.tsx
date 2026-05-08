@@ -90,6 +90,10 @@ const QueueView = () => {
     setSelectedEventIdRef.current = setSelectedEventId;
 
     const leaveQueueInFlightRef = useRef(false);
+    // Always-current ref so the realtime DELETE handler can read myTicket
+    // without capturing a stale closure value.
+    const myTicketRef = useRef(myTicket);
+    myTicketRef.current = myTicket;
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -270,7 +274,17 @@ const QueueView = () => {
                     fetchNowServing(activeEvent.id, activeServiceDate);
                 }, 200);
 
-                // Null-guard: DELETE events have payload.new === null/undefined.
+                // Handle ticket row deleted by admin (reset, retention). payload.new
+                // is null on DELETE; read the deleted id from payload.old instead.
+                if (payload?.eventType === 'DELETE') {
+                    const deletedId = (payload.old as { id?: string } | null)?.id;
+                    if (deletedId && myTicketRef.current?.id === deletedId) {
+                        clearStoredTicketId(displayArtist.id);
+                        setMyTicket(null);
+                    }
+                    return;
+                }
+
                 const next = payload?.new as Ticket | null | undefined;
                 if (!next || !next.id) return;
 
@@ -349,7 +363,7 @@ const QueueView = () => {
             if (data.event_id !== activeEvent.id || data.queue_service_date !== activeServiceDate) {
                 clearStoredTicketId(displayArtist.id);
                 setMyTicket(null);
-                setToast({ tone: 'info', title: t('queueTicketExpired'), detail: t('queueTicketExpiredDetail') });
+                setToast({ tone: 'warning', title: t('queueTicketExpired'), detail: t('queueTicketExpiredDetail') });
                 return;
             }
             setMyTicket(data as Ticket);
@@ -444,21 +458,13 @@ const QueueView = () => {
         await refresh();
 
         // Refresh Queue Data (Now Serving + My Ticket)
+        // restoreStoredTicket handles all cases: no ticket, deleted ticket,
+        // event_id/date mismatch, and valid ticket — including when myTicket
+        // is currently null but localStorage still holds an id (cross-tab clear
+        // followed by a manual refresh before the storage event fires).
         if (activeEvent) {
             await fetchNowServing(activeEvent.id, activeServiceDate);
-            if (myTicket) {
-                const { data } = await supabase
-                    .from('queues')
-                    .select('id, event_id, queue_service_date, queue_number, status, created_at')
-                    .eq('id', myTicket.id)
-                    .maybeSingle();
-                if (!data) {
-                    clearStoredTicketId(displayArtist.id);
-                    setMyTicket(null);
-                } else if (data.event_id === activeEvent.id && data.queue_service_date === activeServiceDate) {
-                    setMyTicket(data as Ticket);
-                }
-            }
+            await restoreStoredTicket();
         }
         setLoading(false);
     };

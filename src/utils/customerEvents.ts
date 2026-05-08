@@ -25,13 +25,26 @@ export const TICKET_UPDATED_EVENT = 'ticket-updated' as const;
 
 export const ticketStorageKey = (artistId: string) => `ticket_id_${artistId}`;
 
+// Try localStorage first; fall back to sessionStorage so same-session state
+// survives storage quota exhaustion or browsers blocking localStorage
+// (e.g. storage full). Cross-tab sync via the native 'storage' event only
+// works for localStorage, but same-tab TICKET_UPDATED_EVENT still fires.
+const storageRead = (key: string): string | null => {
+  try { return localStorage.getItem(key); } catch { /* fall through */ }
+  try { return sessionStorage.getItem(key); } catch { return null; }
+};
+const storageWrite = (key: string, value: string): void => {
+  try { localStorage.setItem(key, value); return; } catch { /* fall through */ }
+  try { sessionStorage.setItem(key, value); } catch { /* both unavailable */ }
+};
+const storageDelete = (key: string): void => {
+  try { localStorage.removeItem(key); } catch { /* fall through */ }
+  try { sessionStorage.removeItem(key); } catch { /* both unavailable */ }
+};
+
 export const getStoredTicketId = (artistId: string | undefined | null): string | null => {
   if (!artistId) return null;
-  try {
-    return localStorage.getItem(ticketStorageKey(artistId));
-  } catch {
-    return null;
-  }
+  return storageRead(ticketStorageKey(artistId));
 };
 
 const dispatchTicketUpdated = () => {
@@ -44,21 +57,13 @@ const dispatchTicketUpdated = () => {
 
 export const setStoredTicketId = (artistId: string | undefined | null, ticketId: string): void => {
   if (!artistId || !ticketId) return;
-  try {
-    localStorage.setItem(ticketStorageKey(artistId), ticketId);
-  } catch {
-    return;
-  }
+  storageWrite(ticketStorageKey(artistId), ticketId);
   dispatchTicketUpdated();
 };
 
 export const clearStoredTicketId = (artistId: string | undefined | null): void => {
   if (!artistId) return;
-  try {
-    localStorage.removeItem(ticketStorageKey(artistId));
-  } catch {
-    return;
-  }
+  storageDelete(ticketStorageKey(artistId));
   dispatchTicketUpdated();
 };
 

@@ -7,6 +7,28 @@
 alter table public.queues
   add column if not exists customer_fingerprint text;
 
+comment on column public.queues.customer_fingerprint is
+  'Opaque idempotency-only browser fingerprint for create_queue_ticket. Do not expose to anon/authenticated clients.';
+
+-- Existing migrations grant broad table-level access to public.queues. A
+-- column-level REVOKE is not enough while table-level SELECT remains granted,
+-- so remove public table SELECT and grant back only the client-safe columns.
+revoke select on table public.queues from anon, authenticated;
+
+grant select (
+  id,
+  artist_id,
+  queue_number,
+  status,
+  created_at,
+  last_updated_at,
+  event_id,
+  called_at,
+  completed_at,
+  served_at,
+  queue_service_date
+) on public.queues to anon, authenticated;
+
 create unique index if not exists queues_active_customer_fingerprint_uidx
   on public.queues (artist_id, event_id, queue_service_date, customer_fingerprint)
   where event_id is not null

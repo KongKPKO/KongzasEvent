@@ -57,7 +57,17 @@ export default function EventHistory() {
             const { data: ordersData, error } = await supabase
                 .from('orders')
                 .select(`
-                    *,
+                    id,
+                    created_at,
+                    event_id,
+                    queue_id,
+                    status,
+                    total_price,
+                    payment_method,
+                    currency,
+                    subtotal_price,
+                    discount_total,
+                    pricing_breakdown,
                     queues (queue_number),
                     order_items (
                         quantity,

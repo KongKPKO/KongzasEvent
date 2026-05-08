@@ -832,7 +832,7 @@ const QueueView = () => {
                         <div className="flex flex-col gap-2 w-full animate-fade-in-up delay-100 mt-auto">
                             <Button
                                 onClick={handleRefresh}
-                                className="w-full bg-[#d63384] hover:bg-pink-700 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm"
+                                className="w-full bg-[#d63384] hover:bg-pink-700 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm touch-manipulation"
                                 aria-label={t('queueRefreshStatus')}
                             >
                                 <RefreshCcw size={16} aria-hidden="true" /> {t('queueRefreshStatus')}
@@ -840,7 +840,7 @@ const QueueView = () => {
 
                             <button
                                 onClick={handleLeaveQueue}
-                                className={`flex items-center justify-center gap-1.5 font-bold text-xs transition-all py-3 rounded-xl border ${
+                                className={`flex items-center justify-center gap-1.5 font-bold text-xs transition-all py-3 rounded-xl border touch-manipulation ${
                                     ['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase())
                                         ? 'text-gray-400 border-transparent hover:text-gray-600'
                                         : 'text-red-500 border-red-100 bg-red-50/30 hover:bg-red-50 hover:border-red-200'

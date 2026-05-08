@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# IDE / Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary / OS
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Test artifacts
+screenshots/
+debug-*.png
+.playwright-cli/
+output/
+test-results/
+playwright-report/
+
+# Public hygiene
+CreateEQ_Source_Code.md
+Menu_Image/

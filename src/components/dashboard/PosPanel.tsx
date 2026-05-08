@@ -114,6 +114,9 @@ export default function POSPanel({
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+    // Track the latest successful fetch to ignore stale results.
+    const fetchVersionRef = useRef(0);
+
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     // Non-null when the payment sequence timed out or the network aborted mid-flight
     // and we cannot confirm whether the DB committed.  Stores the event ID so the
@@ -228,10 +231,8 @@ export default function POSPanel({
 
     const fetchCurrentOrder = useCallback(async () => {
         if (!canUsePos || !activeEvent) return;
-        if (isFetchingRef.current) return;
-
-        isFetchingRef.current = true;
-        const targetQueueId = selectedQueueIdRef.current;
+        
+        const version = ++fetchVersionRef.current;
         setLoading(true);
 
         try {
@@ -241,8 +242,8 @@ export default function POSPanel({
                 .in('status', ['draft', 'confirmed'])
                 .eq('event_id', activeEvent.id);
 
-            if (targetQueueId) {
-                query = query.eq('queue_id', targetQueueId);
+            if (selectedQueueIdRef.current) {
+                query = query.eq('queue_id', selectedQueueIdRef.current);
             } else {
                 query = query.is('queue_id', null);
             }
@@ -252,15 +253,11 @@ export default function POSPanel({
                 .limit(1)
                 .maybeSingle();
 
-            if (selectedQueueIdRef.current !== targetQueueId) {
-                isFetchingRef.current = false;
-                return;
-            }
+            // Ignore if a newer fetch has started
+            if (version !== fetchVersionRef.current) return;
 
             if (error) {
                 console.error('[POS] Error fetching order:', error);
-                setLoading(false);
-                isFetchingRef.current = false;
                 return;
             }
 
@@ -275,33 +272,26 @@ export default function POSPanel({
             const currentProducts = productsRef.current;
             const items = Array.isArray((order as any).order_items) ? (order as any).order_items : [];
 
-            if (items.length > 0 && currentProducts.length > 0) {
-                const newCart: CartItem[] = items
-                    .map((item: { product_id: string; quantity: number; notes?: string }) => {
-                        const prod = currentProducts.find((p) => p.id === item.product_id);
-                        return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
-                    })
-                    .filter(Boolean) as CartItem[];
-                setCart(newCart);
-            } else {
-                setCart([]);
-            }
+            const newCart: CartItem[] = items
+                .map((item: { product_id: string; quantity: number; notes?: string }) => {
+                    const prod = currentProducts.find((p) => p.id === item.product_id);
+                    return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
+                })
+                .filter(Boolean) as CartItem[];
+            setCart(newCart);
+
         } catch (err) {
             console.error('[POS] Critical fetch order error:', err);
         } finally {
-            isFetchingRef.current = false;
-            if (selectedQueueIdRef.current === targetQueueId) {
+            if (version === fetchVersionRef.current) {
                 setLoading(false);
             }
         }
     }, [activeEvent?.id, canUsePos]);
 
     useEffect(() => {
-        setCart([]);
-        setCurrentOrderId(null);
-        setLoading(false);
-        isFetchingRef.current = false;
-
+        // Do NOT clear cart or orderId here.
+        // fetchCurrentOrder will eventually overwrite them with the correct state.
         if (activeEvent && canUsePos) {
             fetchCurrentOrder();
         }

@@ -496,13 +496,13 @@ const QueueView = () => {
         leaveQueueInFlightRef.current = true;
 
         try {
-            const { error } = await supabase
-                .from('queues')
-                .update({ status: 'missed' })
-                .eq('id', myTicket.id);
+            const { error } = await supabase.rpc('leave_queue_ticket', {
+                p_ticket_id: myTicket.id,
+                p_customer_fingerprint: getOrCreateCustomerFingerprint(displayArtist.id),
+            });
 
             if (error) {
-                console.error("Error leaving queue (DB Update Failed):", error, "Ticket ID:", myTicket.id);
+                console.error("Error leaving queue (RPC Failed):", error, "Ticket ID:", myTicket.id);
                 setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
                 return;
             }

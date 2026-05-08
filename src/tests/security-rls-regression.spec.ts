@@ -352,4 +352,80 @@ test.describe('RLS and mutation security regressions', () => {
       stock_sold: 2,
     });
   });
+
+  test('customer leave-queue path is RPC-only and ownership-checked', async () => {
+    const ownerFingerprint = `rls-leave-owner-${randomUUID()}`;
+    const otherFingerprint = `rls-leave-other-${randomUUID()}`;
+
+    const created = await anon.rpc('create_queue_ticket', {
+      p_artist_id: ids.artist,
+      p_event_id: ids.event,
+      p_customer_fingerprint: ownerFingerprint,
+    });
+    expect(created.error).toBeNull();
+    const ticket = Array.isArray(created.data) ? created.data[0] : created.data;
+    expect(ticket?.id).toBeTruthy();
+
+    const directUpdate = await anon
+      .from('queues')
+      .update({ status: 'missed' })
+      .eq('id', ticket.id);
+    expect(directUpdate.error?.message || '').toMatch(/permission denied|violates row-level security/i);
+
+    const stillActive = await service
+      .from('queues')
+      .select('status')
+      .eq('id', ticket.id)
+      .single();
+    expect(stillActive.error).toBeNull();
+    expect(stillActive.data?.status).toBe('waiting');
+
+    const wrongOwner = await anon.rpc('leave_queue_ticket', {
+      p_ticket_id: ticket.id,
+      p_customer_fingerprint: otherFingerprint,
+    });
+    expect(wrongOwner.error?.message || '').toContain('ticket_ownership_mismatch');
+
+    const missingFingerprint = await anon.rpc('leave_queue_ticket', {
+      p_ticket_id: ticket.id,
+      p_customer_fingerprint: null,
+    });
+    expect(missingFingerprint.error?.message || '').toContain('ticket_ownership_mismatch');
+
+    const leave = await anon.rpc('leave_queue_ticket', {
+      p_ticket_id: ticket.id,
+      p_customer_fingerprint: ownerFingerprint,
+    });
+    expect(leave.error).toBeNull();
+    expect(leave.data).toBe(true);
+
+    const afterLeave = await service
+      .from('queues')
+      .select('status, last_updated_at')
+      .eq('id', ticket.id)
+      .single();
+    expect(afterLeave.error).toBeNull();
+    expect(afterLeave.data?.status).toBe('missed');
+    expect(afterLeave.data?.last_updated_at).toBeTruthy();
+
+    const anonReadAfterLeave = await anon
+      .from('queues')
+      .select('id, status')
+      .eq('id', ticket.id)
+      .maybeSingle();
+    expect(anonReadAfterLeave.error).toBeNull();
+    expect(anonReadAfterLeave.data?.status).toBe('missed');
+
+    const finalizedRetry = await anon.rpc('leave_queue_ticket', {
+      p_ticket_id: ticket.id,
+      p_customer_fingerprint: ownerFingerprint,
+    });
+    expect(finalizedRetry.error?.message || '').toContain('ticket_not_active');
+
+    const missingTicket = await anon.rpc('leave_queue_ticket', {
+      p_ticket_id: randomUUID(),
+      p_customer_fingerprint: ownerFingerprint,
+    });
+    expect(missingTicket.error?.message || '').toContain('ticket_not_found');
+  });
 });

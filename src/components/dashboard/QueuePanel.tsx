@@ -152,7 +152,7 @@ export default function QueuePanel({
 
     const handleToggleBooth = async () => {
         if (!activeEvent) {
-            setToast({ tone: 'warning', title: 'No active event', detail: 'Create or activate an event before opening the booth.' });
+            setToast({ tone: 'warning', title: 'No active event', detail: 'Activate an event to open the booth.' });
             return;
         }
         if (boothToggleInFlightRef.current) return;

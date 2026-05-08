@@ -113,7 +113,11 @@ export default function POSPanel({
     const [cart, setCart] = useState<CartItem[]>([]);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+    // Track the latest fetch to ignore stale results from superseded requests.
+    const fetchVersionRef = useRef(0);
+
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     // Non-null when the payment sequence timed out or the network aborted mid-flight
     // and we cannot confirm whether the DB committed.  Stores the event ID so the
@@ -124,7 +128,6 @@ export default function POSPanel({
     const selectedQueueIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
     const cartRef = useRef<CartItem[]>([]);
-    const isFetchingRef = useRef(false);
     const paymentInFlightRef = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -228,11 +231,10 @@ export default function POSPanel({
 
     const fetchCurrentOrder = useCallback(async () => {
         if (!canUsePos || !activeEvent) return;
-        if (isFetchingRef.current) return;
 
-        isFetchingRef.current = true;
-        const targetQueueId = selectedQueueIdRef.current;
+        const version = ++fetchVersionRef.current;
         setLoading(true);
+        setFetchError(false);
 
         try {
             let query = supabase
@@ -241,8 +243,8 @@ export default function POSPanel({
                 .in('status', ['draft', 'confirmed'])
                 .eq('event_id', activeEvent.id);
 
-            if (targetQueueId) {
-                query = query.eq('queue_id', targetQueueId);
+            if (selectedQueueIdRef.current) {
+                query = query.eq('queue_id', selectedQueueIdRef.current);
             } else {
                 query = query.is('queue_id', null);
             }
@@ -252,15 +254,13 @@ export default function POSPanel({
                 .limit(1)
                 .maybeSingle();
 
-            if (selectedQueueIdRef.current !== targetQueueId) {
-                isFetchingRef.current = false;
-                return;
-            }
+            // Ignore if a newer fetch has started
+            if (version !== fetchVersionRef.current) return;
 
             if (error) {
                 console.error('[POS] Error fetching order:', error);
-                setLoading(false);
-                isFetchingRef.current = false;
+                setFetchError(true);
+                setCurrentOrderId(null);
                 return;
             }
 
@@ -275,33 +275,30 @@ export default function POSPanel({
             const currentProducts = productsRef.current;
             const items = Array.isArray((order as any).order_items) ? (order as any).order_items : [];
 
-            if (items.length > 0 && currentProducts.length > 0) {
-                const newCart: CartItem[] = items
-                    .map((item: { product_id: string; quantity: number; notes?: string }) => {
-                        const prod = currentProducts.find((p) => p.id === item.product_id);
-                        return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
-                    })
-                    .filter(Boolean) as CartItem[];
-                setCart(newCart);
-            } else {
-                setCart([]);
-            }
+            const newCart: CartItem[] = items
+                .map((item: { product_id: string; quantity: number; notes?: string }) => {
+                    const prod = currentProducts.find((p) => p.id === item.product_id);
+                    return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
+                })
+                .filter(Boolean) as CartItem[];
+            setCart(newCart);
+
         } catch (err) {
             console.error('[POS] Critical fetch order error:', err);
+            if (version === fetchVersionRef.current) {
+                setFetchError(true);
+                setCurrentOrderId(null);
+            }
         } finally {
-            isFetchingRef.current = false;
-            if (selectedQueueIdRef.current === targetQueueId) {
+            if (version === fetchVersionRef.current) {
                 setLoading(false);
             }
         }
     }, [activeEvent?.id, canUsePos]);
 
     useEffect(() => {
-        setCart([]);
-        setCurrentOrderId(null);
-        setLoading(false);
-        isFetchingRef.current = false;
-
+        // Do NOT clear cart or orderId here.
+        // fetchCurrentOrder will eventually overwrite them with the correct state.
         if (activeEvent && canUsePos) {
             fetchCurrentOrder();
         }
@@ -480,7 +477,7 @@ export default function POSPanel({
     };
 
     const addToCart = (product: Product) => {
-        if (!canUsePos) return;
+        if (!canUsePos || loading || fetchError) return;
 
         setRecentProductIds((prev) => [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 12));
 
@@ -500,12 +497,14 @@ export default function POSPanel({
     };
 
     const decreaseQuantity = (productId: string) => {
+        if (loading || fetchError) return;
         setCart((prev) => prev
             .map((item) => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
             .filter((item) => item.quantity > 0));
     };
 
     const removeFromCart = (productId: string) => {
+        if (loading || fetchError) return;
         setCart((prev) => prev.filter((item) => item.product.id !== productId));
     };
 
@@ -570,6 +569,7 @@ export default function POSPanel({
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (paymentInFlightRef.current) return;
+        if (loading || fetchError) return;
         if (!canUsePos) {
             setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
             return;
@@ -757,18 +757,37 @@ export default function POSPanel({
     };
 
     const renderCartItems = () => {
+        // We ALWAYS render the cart structure if items exist.
+        // If loading (and empty), we show a skeleton/empty state.
+        // If loading (and cart populated), we overlay the content.
         if (cart.length === 0) {
             return (
-                <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80">
+                <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80 relative">
+                    {loading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10 backdrop-blur-[1px]">
+                            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    )}
                     <span className="text-4xl mb-2">🛒</span>
-                    <p className="font-medium text-sm">{loading ? 'Loading order...' : 'Cart is empty'}</p>
+                    <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
                     <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">Select products first. Promotions and totals update automatically.</p>
                 </div>
             );
         }
 
         return (
-            <>
+            <div className="relative h-full">
+                {loading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-20 backdrop-blur-[1px]">
+                        <div className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                )}
+                {!loading && fetchError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20 backdrop-blur-[1px] gap-2 px-4">
+                        <span className="text-red-500 font-bold text-sm text-center">Failed to load order</span>
+                        <span className="text-xs text-gray-500 text-center">Select this queue again or wait for an update.</span>
+                    </div>
+                )}
                 {renderPromoHelper()}
                 {renderAppliedPromotions()}
 
@@ -825,17 +844,32 @@ export default function POSPanel({
                                 </span>
                                 <div className="flex items-center gap-1">
                                     <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-6">
-                                        <button onClick={() => decreaseQuantity(item.product.id)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px]" aria-label={`Decrease quantity of ${item.product.name}`}>-</button>
+                                        <button
+                                            disabled={loading || fetchError}
+                                            onClick={() => decreaseQuantity(item.product.id)}
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50"
+                                            aria-label={`Decrease quantity of ${item.product.name}`}
+                                        >-</button>
                                         <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
-                                        <button onClick={() => addToCart(item.product)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px]" aria-label={`Increase quantity of ${item.product.name}`}>+</button>
+                                        <button
+                                            disabled={loading || fetchError}
+                                            onClick={() => addToCart(item.product)}
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50"
+                                            aria-label={`Increase quantity of ${item.product.name}`}
+                                        >+</button>
                                     </div>
-                                    <button onClick={() => removeFromCart(item.product.id)} className="text-[9px] text-gray-500 hover:text-red-500" aria-label={`Remove ${item.product.name} from cart`}>✕</button>
+                                    <button
+                                        disabled={loading || fetchError}
+                                        onClick={() => removeFromCart(item.product.id)}
+                                        className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50"
+                                        aria-label={`Remove ${item.product.name} from cart`}
+                                    >✕</button>
                                 </div>
                             </div>
                         </div>
                     );
                 })}
-            </>
+            </div>
         );
     };
 
@@ -905,7 +939,7 @@ export default function POSPanel({
             )}
 
             <button
-                disabled={cart.length === 0 || loading || !activeEvent || overdraftProductIds.size > 0}
+                disabled={cart.length === 0 || loading || fetchError || !activeEvent || overdraftProductIds.size > 0}
                 onClick={() => {
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
@@ -914,6 +948,8 @@ export default function POSPanel({
             >
                 {loading
                     ? 'Processing...'
+                    : fetchError
+                    ? 'Order load failed'
                     : !activeEvent
                     ? 'Event Ended'
                     : overdraftProductIds.size > 0
@@ -1353,7 +1389,7 @@ export default function POSPanel({
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
-                                disabled={loading}
+                                disabled={loading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
@@ -1361,7 +1397,7 @@ export default function POSPanel({
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
-                                disabled={loading}
+                                disabled={loading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>

@@ -19,7 +19,7 @@
     "test:release:staging": "node scripts/release-check.mjs staging",
     "test:regression": "npx playwright test src/tests/regression/regression.spec.ts",
     "test:accessibility": "npx playwright test src/tests/accessibility.spec.ts",
-    "test:security": "npx playwright test src/tests/security.spec.ts src/tests/security.extend.spec.ts",
+    "test:security": "npx playwright test src/tests/security.spec.ts src/tests/security.extend.spec.ts src/tests/security-rls-regression.spec.ts",
     "test:mobile": "npx playwright test src/tests/mobile-responsive.spec.ts --project=mobile-android-chrome-pixel5 --project=mobile-ios-safari-iphone12",
     "test:api:smoke": "bash ./scripts/api-smoke-local.sh",
     "docker:test:up": "docker compose --env-file .env.docker.test -f docker-compose.test.yml up --build",

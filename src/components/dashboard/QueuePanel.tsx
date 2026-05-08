@@ -38,6 +38,7 @@ interface QueuePanelProps {
     queues: QueueItem[];  // ✅ NOW A PROP (passed from parent, already filtered - no 'serving')
     selectedQueueId: string | null;
     actorContext: ActorContext;
+    isInitialLoading?: boolean;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
     onStatusUpdated?: (id: string, updates: Partial<QueueItem>) => void;
 }
@@ -57,7 +58,15 @@ const formatElapsedTime = (dateString?: string) => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-export default function QueuePanel({ activeEvent, queues, selectedQueueId, actorContext, onSelectQueue, onStatusUpdated }: QueuePanelProps) {
+export default function QueuePanel({ 
+    activeEvent, 
+    queues, 
+    selectedQueueId, 
+    actorContext, 
+    isInitialLoading: _isInitialLoading = false,
+    onSelectQueue,
+    onStatusUpdated 
+}: QueuePanelProps) {
     const [isBoothActive, setIsBoothActive] = useState(false);
     const [isQueueOpen, setIsQueueOpen] = useState(true);
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
@@ -93,31 +102,22 @@ export default function QueuePanel({ activeEvent, queues, selectedQueueId, actor
         fetchArtistSettings();
 
         // Realtime for artist settings
-        const setupRealtime = async () => {
-            const channel = supabase
-                .channel(`queue-panel-artists-${actorContext.artist_id}`)
-                .on(
-                    'postgres_changes', 
-                    { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${actorContext.artist_id}` }, 
-                    (payload) => {
-                        if (!payload.new) return;
-                        const updatedArtist = payload.new as { broadcast_message: string | null; is_queue_open: boolean };
-                        setBroadcastMessage(updatedArtist.broadcast_message || null);
-                        setIsQueueOpen(updatedArtist.is_queue_open ?? true);
-                    }
-                )
-                .subscribe();
-
-            return channel;
-        };
-
-        let localChannel: ReturnType<typeof supabase.channel> | null = null;
-        setupRealtime().then((channel) => {
-            localChannel = channel || null;
-        });
+        const realtimeChannel = supabase
+            .channel(`queue-panel-artists-${actorContext.artist_id}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'artists', filter: `id=eq.${actorContext.artist_id}` },
+                (payload) => {
+                    if (!payload.new) return;
+                    const updatedArtist = payload.new as { broadcast_message: string | null; is_queue_open: boolean };
+                    setBroadcastMessage(updatedArtist.broadcast_message || null);
+                    setIsQueueOpen(updatedArtist.is_queue_open ?? true);
+                }
+            )
+            .subscribe();
 
         return () => {
-            if (localChannel) supabase.removeChannel(localChannel);
+            supabase.removeChannel(realtimeChannel);
         };
     }, [actorContext.artist_id]);
 

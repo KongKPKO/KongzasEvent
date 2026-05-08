@@ -2,6 +2,22 @@ import type { RealtimeEvent } from '../hooks/useArtistRealtime';
 
 export const customerEventStorageKey = (artistId: string) => `customerSelectedEventId:${artistId}`;
 
+export const posSelectedEventStorageKey = (artistId: string) => `posSelectedEventId:${artistId}`;
+
+export const clearMenuOrderState = (artistId: string | undefined | null): boolean => {
+  if (!artistId) return false;
+  try {
+    localStorage.removeItem(`cart_${artistId}`);
+    localStorage.removeItem(`orderSent_${artistId}`);
+    localStorage.removeItem(`sentOrderId_${artistId}`);
+    localStorage.removeItem(`orderCompleted_${artistId}`);
+    return true;
+  } catch (err) {
+    console.warn('Failed to clear menu order state from localStorage:', err);
+    return false;
+  }
+};
+
 // Custom event name dispatched after writing/clearing a ticket id in
 // localStorage.  Same-tab listeners (CallingNotification, QueueView, MenuView)
 // react to it; the native 'storage' event covers cross-tab.

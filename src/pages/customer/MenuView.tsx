@@ -14,6 +14,7 @@ import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
   TICKET_UPDATED_EVENT,
+  clearMenuOrderState,
   clearStoredTicketId,
   getStoredTicketId,
   ticketStorageKey,
@@ -527,14 +528,12 @@ const MenuView = () => {
           setSentOrderId(null);
           setIsOrderCompleted(false);
           
-          // Clear localStorage
-          if (contextArtist?.id) {
-            localStorage.removeItem(`cart_${contextArtist.id}`);
-            localStorage.removeItem(`orderSent_${contextArtist.id}`);
-            localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
-            localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
+          const cleared = clearMenuOrderState(contextArtist?.id);
+          if (!cleared) {
+            setToast({ tone: 'warning', title: t('menuOrderCancelled'), detail: t('menuClearOrderError') });
+          } else {
+            setToast({ tone: 'success', title: t('menuOrderCancelled') });
           }
-          setToast({ tone: 'success', title: t('menuOrderCancelled') });
       } catch (err: any) {
           setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: err.message });
       } finally {
@@ -650,12 +649,9 @@ const MenuView = () => {
       setSentOrderId(null);
       setIsOrderCompleted(false);
       
-      // Clear localStorage
-      if (contextArtist?.id) {
-        localStorage.removeItem(`cart_${contextArtist.id}`);
-        localStorage.removeItem(`orderSent_${contextArtist.id}`);
-        localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
-        localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
+      const cleared = clearMenuOrderState(contextArtist?.id);
+      if (!cleared) {
+        setToast({ tone: 'warning', title: t('menuClearOrderError') });
       }
   };
 

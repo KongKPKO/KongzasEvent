@@ -89,6 +89,7 @@ interface POSPanelProps {
     actorContext: ActorContext;
     canUsePos: boolean;
     isQueuePanelExpanded?: boolean;
+    isInitialLoading?: boolean;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
     onClearQueue: () => void;
     onQueueCompleted?: (queueId: string) => void;
@@ -102,6 +103,7 @@ export default function POSPanel({
     actorContext,
     canUsePos,
     isQueuePanelExpanded = true,
+    isInitialLoading: _isInitialLoading = false,
     onSelectQueue,
     onClearQueue,
     onQueueCompleted,
@@ -208,7 +210,7 @@ export default function POSPanel({
         if (!canUsePos || !activeEvent?.id) return;
 
         const productChannel = supabase
-            .channel(`pos-panel-products-${actorContext.artist_id}-${activeEvent?.id || 'none'}`)
+            .channel(`pos-panel-products-${actorContext.artist_id}-${activeEvent.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${actorContext.artist_id}` }, fetchProducts)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'event_products', filter: `event_id=eq.${activeEvent?.id}` }, fetchProducts)
             .subscribe();
@@ -307,9 +309,8 @@ export default function POSPanel({
         let orderChannel: RealtimeChannel | null = null;
 
         if (selectedQueueId && canUsePos) {
-            const channelName = `pos-orders-${selectedQueueId}-${Date.now()}`;
             orderChannel = supabase
-                .channel(channelName)
+                .channel(`pos-orders-${selectedQueueId}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `queue_id=eq.${selectedQueueId}` }, (payload) => {
                     if (payload.eventType === 'UPDATE') {
                         const nextStatus = (payload.new as { status?: string }).status;

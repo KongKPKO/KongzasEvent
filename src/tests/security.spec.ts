@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
 const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword123!';
 const BASE_URL = 'http://localhost:5173';
 
 // Setup Supabase Client
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
+const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Security & Vulnerability Testing', () => {

@@ -1319,10 +1319,10 @@ export default function POSPanel({
                 </div>
             </div>
 
-            <div className="md:hidden sticky bottom-0 z-20 border-t border-pink-100 bg-white/95 backdrop-blur px-3 py-2 shadow-[0_-6px_16px_rgba(15,23,42,0.08)]">
+            <div className="md:hidden sticky bottom-0 z-20 border-t border-pink-100 bg-white/95 backdrop-blur px-3 pt-2 pb-safe-bar shadow-[0_-6px_16px_rgba(15,23,42,0.08)]">
                 <button
                     onClick={() => setIsMobileCartOpen(true)}
-                    className="w-full rounded-2xl border border-pink-100 bg-gradient-to-r from-white to-pink-50 px-3 py-2.5 text-left"
+                    className="w-full rounded-2xl border border-pink-100 bg-gradient-to-r from-white to-pink-50 px-3 py-2.5 text-left touch-manipulation"
                 >
                     <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -1371,10 +1371,10 @@ export default function POSPanel({
                                 </button>
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[180px]">
+                        <div className="flex-1 overflow-y-auto overscroll-contain p-3 space-y-2 min-h-[180px]">
                             {renderCartItems()}
                         </div>
-                        <div className="shrink-0 border-t border-pink-100 bg-white p-3">
+                        <div className="shrink-0 border-t border-pink-100 bg-white px-3 pt-3 pb-safe-bar">
                             {renderCartTotals(true)}
                         </div>
                     </div>

@@ -189,7 +189,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
       <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
         <button 
           onClick={() => navigate(`/${slug}/queue`)}
-          className="pointer-events-auto w-full max-w-md bg-yellow-400 text-yellow-900 rounded-b-2xl shadow-xl shadow-yellow-400/20 py-3 px-4 flex items-center justify-between cursor-pointer border-b-2 border-x-2 border-yellow-200 animate-bounce-in text-left appearance-none"
+          className="pointer-events-auto w-full max-w-md bg-yellow-400 text-yellow-900 rounded-b-2xl shadow-xl shadow-yellow-400/20 pb-3 px-4 pt-safe-top flex items-center justify-between cursor-pointer border-b-2 border-x-2 border-yellow-200 animate-bounce-in text-left appearance-none touch-manipulation"
           aria-live="assertive"
           aria-atomic="true"
           aria-label={accessibleLabel}
@@ -238,7 +238,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
 
     return (
       <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
-        <div className={`pointer-events-auto w-full max-w-md rounded-b-2xl shadow-xl py-3 px-4 flex items-center justify-center gap-3 border-b-2 border-x-2 animate-slide-down ${theme}`}>
+        <div className={`pointer-events-auto w-full max-w-md rounded-b-2xl shadow-xl pb-3 px-4 pt-safe-top flex items-center justify-center gap-3 border-b-2 border-x-2 animate-slide-down ${theme}`}>
             <div className="bg-white/20 p-1.5 rounded-full flex-shrink-0">
               <Icon size={18} className={iconColor} />
             </div>

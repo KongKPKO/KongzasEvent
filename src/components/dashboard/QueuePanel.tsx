@@ -247,7 +247,7 @@ export default function QueuePanel({
                     {/* ✅ Stop Queue - RED when active to indicate CLOSED */}
                     <button
                         onClick={() => handleSetBroadcast("Queue closed temporarily")}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${broadcastMessage === "Queue closed temporarily"
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Queue closed temporarily"
                             ? "bg-gray-200 text-gray-700 border-gray-300 ring-2 ring-gray-500 ring-offset-1"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200"
                             }`}
@@ -258,7 +258,7 @@ export default function QueuePanel({
                     </button>
                     <button
                         onClick={() => handleSetBroadcast("Break time")}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${broadcastMessage === "Break time"
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Break time"
                             ? "bg-pink-100 text-pink-700 border-pink-200 ring-2 ring-pink-500 ring-offset-1"
                             : "bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200"
                             }`}
@@ -269,7 +269,7 @@ export default function QueuePanel({
                     </button>
                     <button
                         onClick={() => handleSetBroadcast("Urgent matter, sorry for the inconvenience")}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all ${broadcastMessage === "Urgent matter, sorry for the inconvenience"
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Urgent matter, sorry for the inconvenience"
                             ? "bg-orange-100 text-orange-700 border-orange-200 ring-2 ring-orange-500 ring-offset-1"
                             : "bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200"
                             }`}
@@ -281,7 +281,7 @@ export default function QueuePanel({
                     {broadcastMessage && (
                         <button
                             onClick={() => handleSetBroadcast(null)}
-                            className="p-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-700 transition-colors flex items-center gap-1"
+                            className="p-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-700 transition-colors flex items-center gap-1 touch-manipulation"
                             title="Clear message & Re-open queue"
                         >
                             <X size={14} />
@@ -394,7 +394,7 @@ export default function QueuePanel({
                         <h3 className="font-bold text-xs text-gray-900">Waiting List</h3>
                         <span className="bg-gray-200 text-gray-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{waitingTickets.length}</span>
                     </div>
-                    <div className="max-h-[200px] overflow-y-auto">
+                    <div className="max-h-[min(300px,40dvh)] overflow-y-auto overscroll-contain">
                         {waitingTickets.length > 0 ? (
                             <ul className="divide-y divide-gray-50">
                                 {waitingTickets.map((t, idx) => (
@@ -431,7 +431,7 @@ export default function QueuePanel({
                             </h3>
                             <span className="bg-red-100 text-red-600 text-[9px] px-1.5 py-0.5 rounded-full font-bold">{expiredTickets.length}</span>
                         </div>
-                        <div className="max-h-[120px] overflow-y-auto">
+                        <div className="max-h-[min(160px,25dvh)] overflow-y-auto overscroll-contain">
                             <ul className="divide-y divide-gray-50">
                                 {expiredTickets.map(t => (
                                     <li key={t.id} className="px-3 py-1 flex items-center justify-between">

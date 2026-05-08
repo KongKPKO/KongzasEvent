@@ -117,3 +117,25 @@ body {
   min-width: 2.75rem;
   min-height: 2.75rem;
 }
+
+/* ── Mobile / Event-Day Utilities ───────────────────────────────────── */
+
+/* Respect iPhone notch / Dynamic Island for banners pinned to top-0 */
+.pt-safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+/* Respect iPhone home-bar for bars / sheets pinned to bottom-0 */
+.pb-safe-bar {
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+}
+
+/* Prevent double-tap zoom on interactive elements */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Prevent over-scroll chain-scroll escaping a modal sheet */
+.overscroll-contain {
+  overscroll-behavior: contain;
+}

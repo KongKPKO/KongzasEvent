@@ -757,6 +757,9 @@ export default function POSPanel({
     };
 
     const renderCartItems = () => {
+        // We ALWAYS render the cart structure if items exist.
+        // If loading (and empty), we show a skeleton/empty state.
+        // If loading (and cart populated), we overlay the content.
         if (cart.length === 0) {
             return (
                 <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80 relative">
@@ -773,7 +776,12 @@ export default function POSPanel({
         }
 
         return (
-            <>
+            <div className="relative h-full">
+                {loading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-20 backdrop-blur-[1px]">
+                        <div className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                )}
                 {renderPromoHelper()}
                 {renderAppliedPromotions()}
 
@@ -830,17 +838,32 @@ export default function POSPanel({
                                 </span>
                                 <div className="flex items-center gap-1">
                                     <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-6">
-                                        <button onClick={() => decreaseQuantity(item.product.id)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px]" aria-label={`Decrease quantity of ${item.product.name}`}>-</button>
+                                        <button 
+                                            disabled={loading}
+                                            onClick={() => decreaseQuantity(item.product.id)} 
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50" 
+                                            aria-label={`Decrease quantity of ${item.product.name}`}
+                                        >-</button>
                                         <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
-                                        <button onClick={() => addToCart(item.product)} className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px]" aria-label={`Increase quantity of ${item.product.name}`}>+</button>
+                                        <button 
+                                            disabled={loading}
+                                            onClick={() => addToCart(item.product)} 
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50" 
+                                            aria-label={`Increase quantity of ${item.product.name}`}
+                                        >+</button>
                                     </div>
-                                    <button onClick={() => removeFromCart(item.product.id)} className="text-[9px] text-gray-500 hover:text-red-500" aria-label={`Remove ${item.product.name} from cart`}>✕</button>
+                                    <button 
+                                        disabled={loading}
+                                        onClick={() => removeFromCart(item.product.id)} 
+                                        className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50" 
+                                        aria-label={`Remove ${item.product.name} from cart`}
+                                    >✕</button>
                                 </div>
                             </div>
                         </div>
                     );
                 })}
-            </>
+            </div>
         );
     };
 

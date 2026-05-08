@@ -285,6 +285,10 @@ export default function POSPanel({
 
         } catch (err) {
             console.error('[POS] Critical fetch order error:', err);
+            if (version === fetchVersionRef.current) {
+                setFetchError(true);
+                setCurrentOrderId(null);
+            }
         } finally {
             if (version === fetchVersionRef.current) {
                 setLoading(false);
@@ -565,6 +569,7 @@ export default function POSPanel({
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (paymentInFlightRef.current) return;
+        if (loading || fetchError) return;
         if (!canUsePos) {
             setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
             return;
@@ -1384,7 +1389,7 @@ export default function POSPanel({
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
-                                disabled={loading}
+                                disabled={loading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
@@ -1392,7 +1397,7 @@ export default function POSPanel({
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
-                                disabled={loading}
+                                disabled={loading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>

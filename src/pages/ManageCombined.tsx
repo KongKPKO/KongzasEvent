@@ -124,7 +124,7 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
         } catch (error) {
             console.error('[ManageCombined] Error updating booth status:', error);
-            setToast({ tone: 'error', title: 'Could not update booth status', detail: 'Please try again.' });
+            setToast({ tone: 'warning', title: 'Booth update failed', detail: 'Please try again.' });
         } finally {
             setBoothToggleLoading(false);
         }

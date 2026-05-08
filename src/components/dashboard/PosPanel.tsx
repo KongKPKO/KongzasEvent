@@ -444,7 +444,7 @@ export default function POSPanel({
             setToast({
                 tone: 'warning',
                 title: 'Stock updated',
-                detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove to continue.`,
+                detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove before charging.`,
             });
         }
     }, [overdraftProductIds]);
@@ -571,15 +571,15 @@ export default function POSPanel({
         if (paymentInFlightRef.current) return;
         if (loading || fetchError) return;
         if (!canUsePos) {
-            setToast({ tone: 'error', title: 'POS access restricted', detail: 'Your role cannot charge orders.' });
+            setToast({ tone: 'error', title: 'Charge not allowed', detail: 'Your role does not have permission to charge orders.' });
             return;
         }
         if (!activeEvent) {
-            setToast({ tone: 'warning', title: 'No active event', detail: 'Cannot process payment without an active event.' });
+            setToast({ tone: 'warning', title: 'No active event', detail: 'Select or activate an event first.' });
             return;
         }
         if (cart.length === 0) {
-            setToast({ tone: 'info', title: 'Cart is empty', detail: 'Select products before charging.' });
+            setToast({ tone: 'warning', title: 'Cart is empty', detail: 'Select products before charging.' });
             return;
         }
 

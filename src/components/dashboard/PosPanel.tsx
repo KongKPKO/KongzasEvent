@@ -113,8 +113,9 @@ export default function POSPanel({
     const [cart, setCart] = useState<CartItem[]>([]);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
-    // Track the latest successful fetch to ignore stale results.
+    // Track the latest fetch to ignore stale results from superseded requests.
     const fetchVersionRef = useRef(0);
 
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
@@ -127,7 +128,6 @@ export default function POSPanel({
     const selectedQueueIdRef = useRef<string | null>(null);
     const productsRef = useRef<Product[]>([]);
     const cartRef = useRef<CartItem[]>([]);
-    const isFetchingRef = useRef(false);
     const paymentInFlightRef = useRef(false);
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -231,9 +231,10 @@ export default function POSPanel({
 
     const fetchCurrentOrder = useCallback(async () => {
         if (!canUsePos || !activeEvent) return;
-        
+
         const version = ++fetchVersionRef.current;
         setLoading(true);
+        setFetchError(false);
 
         try {
             let query = supabase
@@ -258,6 +259,8 @@ export default function POSPanel({
 
             if (error) {
                 console.error('[POS] Error fetching order:', error);
+                setFetchError(true);
+                setCurrentOrderId(null);
                 return;
             }
 
@@ -470,7 +473,7 @@ export default function POSPanel({
     };
 
     const addToCart = (product: Product) => {
-        if (!canUsePos) return;
+        if (!canUsePos || loading || fetchError) return;
 
         setRecentProductIds((prev) => [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 12));
 
@@ -490,12 +493,14 @@ export default function POSPanel({
     };
 
     const decreaseQuantity = (productId: string) => {
+        if (loading || fetchError) return;
         setCart((prev) => prev
             .map((item) => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
             .filter((item) => item.quantity > 0));
     };
 
     const removeFromCart = (productId: string) => {
+        if (loading || fetchError) return;
         setCart((prev) => prev.filter((item) => item.product.id !== productId));
     };
 
@@ -772,6 +777,12 @@ export default function POSPanel({
                         <div className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
                     </div>
                 )}
+                {!loading && fetchError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20 backdrop-blur-[1px] gap-2 px-4">
+                        <span className="text-red-500 font-bold text-sm text-center">Failed to load order</span>
+                        <span className="text-xs text-gray-500 text-center">Select this queue again or wait for an update.</span>
+                    </div>
+                )}
                 {renderPromoHelper()}
                 {renderAppliedPromotions()}
 
@@ -828,24 +839,24 @@ export default function POSPanel({
                                 </span>
                                 <div className="flex items-center gap-1">
                                     <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-6">
-                                        <button 
-                                            disabled={loading}
-                                            onClick={() => decreaseQuantity(item.product.id)} 
-                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50" 
+                                        <button
+                                            disabled={loading || fetchError}
+                                            onClick={() => decreaseQuantity(item.product.id)}
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50"
                                             aria-label={`Decrease quantity of ${item.product.name}`}
                                         >-</button>
                                         <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
-                                        <button 
-                                            disabled={loading}
-                                            onClick={() => addToCart(item.product)} 
-                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50" 
+                                        <button
+                                            disabled={loading || fetchError}
+                                            onClick={() => addToCart(item.product)}
+                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50"
                                             aria-label={`Increase quantity of ${item.product.name}`}
                                         >+</button>
                                     </div>
-                                    <button 
-                                        disabled={loading}
-                                        onClick={() => removeFromCart(item.product.id)} 
-                                        className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50" 
+                                    <button
+                                        disabled={loading || fetchError}
+                                        onClick={() => removeFromCart(item.product.id)}
+                                        className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50"
                                         aria-label={`Remove ${item.product.name} from cart`}
                                     >✕</button>
                                 </div>
@@ -923,7 +934,7 @@ export default function POSPanel({
             )}
 
             <button
-                disabled={cart.length === 0 || loading || !activeEvent || overdraftProductIds.size > 0}
+                disabled={cart.length === 0 || loading || fetchError || !activeEvent || overdraftProductIds.size > 0}
                 onClick={() => {
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
@@ -932,6 +943,8 @@ export default function POSPanel({
             >
                 {loading
                     ? 'Processing...'
+                    : fetchError
+                    ? 'Order load failed'
                     : !activeEvent
                     ? 'Event Ended'
                     : overdraftProductIds.size > 0

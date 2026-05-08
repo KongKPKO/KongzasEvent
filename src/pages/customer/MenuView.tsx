@@ -14,6 +14,7 @@ import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
   TICKET_UPDATED_EVENT,
+  clearMenuOrderState,
   clearStoredTicketId,
   getStoredTicketId,
   ticketStorageKey,
@@ -527,13 +528,7 @@ const MenuView = () => {
           setSentOrderId(null);
           setIsOrderCompleted(false);
           
-          // Clear localStorage
-          if (contextArtist?.id) {
-            localStorage.removeItem(`cart_${contextArtist.id}`);
-            localStorage.removeItem(`orderSent_${contextArtist.id}`);
-            localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
-            localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
-          }
+          clearMenuOrderState(contextArtist?.id);
           setToast({ tone: 'success', title: t('menuOrderCancelled') });
       } catch (err: any) {
           setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: err.message });
@@ -650,13 +645,7 @@ const MenuView = () => {
       setSentOrderId(null);
       setIsOrderCompleted(false);
       
-      // Clear localStorage
-      if (contextArtist?.id) {
-        localStorage.removeItem(`cart_${contextArtist.id}`);
-        localStorage.removeItem(`orderSent_${contextArtist.id}`);
-        localStorage.removeItem(`sentOrderId_${contextArtist.id}`);
-        localStorage.removeItem(`orderCompleted_${contextArtist.id}`);
-      }
+      clearMenuOrderState(contextArtist?.id);
   };
 
   if (loading) return <div className="p-8 text-center text-gray-400">{t('menuLoading')}</div>;

@@ -13,6 +13,7 @@ import { formatDateInTimeZone } from '../../utils/timezone';
 import {
     TICKET_UPDATED_EVENT,
     clearStoredTicketId,
+    getOrCreateCustomerFingerprint,
     getStoredTicketId,
     setStoredTicketId,
     ticketStorageKey,
@@ -428,6 +429,7 @@ const QueueView = () => {
             const { data: createdTicket, error: insertError } = await supabase.rpc('create_queue_ticket', {
                 p_artist_id: displayArtist.id,
                 p_event_id: activeEvent.id,
+                p_customer_fingerprint: getOrCreateCustomerFingerprint(displayArtist.id),
             });
 
             if (insertError) {

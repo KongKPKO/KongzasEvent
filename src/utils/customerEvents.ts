@@ -25,6 +25,8 @@ export const TICKET_UPDATED_EVENT = 'ticket-updated' as const;
 
 export const ticketStorageKey = (artistId: string) => `ticket_id_${artistId}`;
 
+export const customerFingerprintStorageKey = (artistId: string) => `customer_fingerprint_${artistId}`;
+
 // Try localStorage first; fall back to sessionStorage so same-session state
 // survives storage quota exhaustion or browsers blocking localStorage
 // (e.g. storage full). Cross-tab sync via the native 'storage' event only
@@ -45,6 +47,28 @@ const storageDelete = (key: string): void => {
 export const getStoredTicketId = (artistId: string | undefined | null): string | null => {
   if (!artistId) return null;
   return storageRead(ticketStorageKey(artistId));
+};
+
+const createCustomerFingerprint = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall through to a timestamp/random fallback for older browsers.
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+};
+
+export const getOrCreateCustomerFingerprint = (artistId: string | undefined | null): string | null => {
+  if (!artistId) return null;
+  const key = customerFingerprintStorageKey(artistId);
+  const stored = storageRead(key);
+  if (stored) return stored;
+
+  const next = createCustomerFingerprint();
+  storageWrite(key, next);
+  return next;
 };
 
 const dispatchTicketUpdated = () => {

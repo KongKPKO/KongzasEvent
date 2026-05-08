@@ -1,0 +1,37 @@
+diff --git a/.gitignore b/.gitignore
+index eb9dc86..14ef13e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -44,3 +44,7 @@ debug-*.png
+ output/
+ test-results/
+ playwright-report/
++
++# Public hygiene
++CreateEQ_Source_Code.md
++Menu_Image/
+diff --git a/Document/PRD_DRAFT_TH.md b/Document/PRD_DRAFT_TH.md
+index e329510..9fcbbf3 100644
+--- a/Document/PRD_DRAFT_TH.md
++++ b/Document/PRD_DRAFT_TH.md
+@@ -5,6 +5,13 @@
+ 
+ ---
+ 
++## Why this project exists
++This project was inspired by real creator/cosplay event booth problems: long unmanaged queues, noisy LINE OpenChat queue calls, slow checkout, unclear stock status, payment mistakes, and difficult post-event tracking.
++
++The goal is to build a lightweight queue + POS tool that helps creator booths manage customer flow, call queues clearly, reduce checkout friction, and give customers a trustworthy mobile queue experience without forcing them into chat groups.
++
++---
++
+ ## 1. Core Function (ฟังก์ชันหลักของระบบ)
+ ระบบจัดการคิวและระบบขายหน้าร้าน (POS) แบบครบวงจรผ่านเว็บแอปพลิเคชัน สำหรับบูธจัดแสดงสินค้า (เช่น บูธศิลปิน, คอสเพลย์) ในงานอีเวนต์ต่างๆ โดยมีจุดประสงค์เพื่อลดความแออัดหน้าบูธ ลูกค้าสามารถกดรับคิว ดูเมนูสินค้า และสั่งซื้อล่วงหน้าได้ผ่านสมาร์ทโฟนของตนเองโดยไม่ต้องติดตั้งแอปพลิเคชัน ในขณะที่ฝั่งเจ้าของบูธ/สตาฟ สามารถใช้ระบบจัดการคิวและคิดเงินได้อย่างรวดเร็ว
+ 
+diff --git a/KongzasEvent b/KongzasEvent
+index b36d572..bc0fb0a 160000
+--- a/KongzasEvent
++++ b/KongzasEvent
+@@ -1 +1 @@
+-Subproject commit b36d5726fc70a0a09ef11c930fc7ff70c8d1cc7c
++Subproject commit bc0fb0adcd1fea047f5d8d90ba9d98235f0ee2e7-dirty

@@ -62,9 +62,6 @@ const QueueView = () => {
     } = useOutletContext<CustomerOutletContext>();
     const displayArtist = contextArtist;
 
-    // Early return if no artist data
-    if (!displayArtist) return <div className="p-12 text-center text-gray-400 font-medium">{t('loading')}</div>;
-
     const [myTicket, setMyTicket] = useState<Ticket | null>(null);
     const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
     const [etaWindow, setEtaWindow] = useState<{ min: number; max: number; peopleAhead: number } | null>(null);
@@ -377,7 +374,8 @@ const QueueView = () => {
         };
     }, [activeEvent?.id, activeServiceDate, displayArtist.id, myTicket?.id]);
 
-
+    // All hooks above. Guard placed here so hook call count is unconditional.
+    if (!displayArtist) return <div className="p-12 text-center text-gray-400 font-medium">{t('loading')}</div>;
 
     const handleGetTicket = async () => {
         if (!activeEvent) return;

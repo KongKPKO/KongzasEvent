@@ -759,9 +759,14 @@ export default function POSPanel({
     const renderCartItems = () => {
         if (cart.length === 0) {
             return (
-                <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80">
+                <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-80 relative">
+                    {loading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10 backdrop-blur-[1px]">
+                            <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    )}
                     <span className="text-4xl mb-2">🛒</span>
-                    <p className="font-medium text-sm">{loading ? 'Loading order...' : 'Cart is empty'}</p>
+                    <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
                     <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">Select products first. Promotions and totals update automatically.</p>
                 </div>
             );

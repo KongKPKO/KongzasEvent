@@ -369,11 +369,6 @@ const QueueView = () => {
         if (getTicketInFlightRef.current) return;
         getTicketInFlightRef.current = true;
 
-        // In-flight guard: defeats double-tap before React re-renders the
-        // disabled state after setLoading(true).
-        if (getTicketInFlightRef.current) return;
-        getTicketInFlightRef.current = true;
-
         // Safety Check: Ensure Event hasn't ended
         const now = new Date();
         const end = new Date(activeEvent.end_date);

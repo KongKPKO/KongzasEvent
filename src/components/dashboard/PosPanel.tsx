@@ -261,9 +261,8 @@ export default function POSPanel({
         let orderChannel: RealtimeChannel | null = null;
 
         if (selectedQueueId && canUsePos) {
-            const channelName = `pos-orders-${selectedQueueId}-${Date.now()}`;
             orderChannel = supabase
-                .channel(channelName)
+                .channel(`pos-orders-${selectedQueueId}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `queue_id=eq.${selectedQueueId}` }, (payload) => {
                     if (payload.eventType === 'UPDATE') {
                         const nextStatus = (payload.new as { status?: string }).status;

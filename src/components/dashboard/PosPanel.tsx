@@ -15,6 +15,53 @@ import { normalizeProductRecord } from '../../utils/schemaCompat';
 // the loading spinner can never hang indefinitely.
 const PAYMENT_TIMEOUT_MS = 20_000;
 
+interface PricingSnapshot {
+    subtotal: number;
+    discountTotal: number;
+    total: number;
+    appliedPromotions: unknown[];
+}
+
+const createPaymentAttemptId = (): string => {
+    try {
+        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+            return crypto.randomUUID();
+        }
+    } catch {
+        // Fall through for older browser/test environments.
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+};
+
+const hashPaymentAttemptContext = (value: string): string => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+};
+
+const getOrCreatePaymentAttemptId = (storageKey: string): string => {
+    try {
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored) return stored;
+        const next = createPaymentAttemptId();
+        window.localStorage.setItem(storageKey, next);
+        return next;
+    } catch {
+        return createPaymentAttemptId();
+    }
+};
+
+const clearPaymentAttemptId = (storageKey: string): void => {
+    try {
+        window.localStorage.removeItem(storageKey);
+    } catch {
+        // Safe to ignore: inability to clear storage only affects future retry reuse.
+    }
+};
+
 // Sentinel used to distinguish a sequence-level timeout from a real RPC error
 // in the handlePayment catch block.
 class PaymentTimeoutError extends Error {
@@ -529,13 +576,13 @@ export default function POSPanel({
         notes: item.notes || '',
     }));
 
-    const applyPricingToOrder = async (orderId: string) => {
+    const applyPricingToOrder = async (orderId: string, pricingSnapshot: PricingSnapshot) => {
         const { error } = await supabase.rpc('apply_order_pricing', {
             p_order_id: orderId,
-            p_subtotal_price: pricing.subtotal,
-            p_discount_total: pricing.discountTotal,
-            p_total_price: pricing.total,
-            p_pricing_breakdown: pricing.appliedPromotions,
+            p_subtotal_price: pricingSnapshot.subtotal,
+            p_discount_total: pricingSnapshot.discountTotal,
+            p_total_price: pricingSnapshot.total,
+            p_pricing_breakdown: pricingSnapshot.appliedPromotions,
         });
         if (error) throw error;
     };
@@ -590,37 +637,60 @@ export default function POSPanel({
         // so closure captures a stable value even if props/state change mid-flight.
         const eventId = activeEvent.id;
         const payloadItems = buildItemPayload();
+        const orderIdAtPaymentStart = currentOrderId;
+        const queueIdAtPaymentStart = selectedQueueId;
+        const pricingSnapshot: PricingSnapshot = {
+            subtotal: pricing.subtotal,
+            discountTotal: pricing.discountTotal,
+            total: pricing.total,
+            appliedPromotions: pricing.appliedPromotions,
+        };
+        const paymentAttemptContext = JSON.stringify({
+            artist_id: actorContext.artist_id,
+            event_id: eventId,
+            queue_id: queueIdAtPaymentStart,
+            order_id: orderIdAtPaymentStart,
+            method,
+            items: payloadItems,
+            pricing: pricingSnapshot,
+        });
+        const paymentAttemptStorageKey = `posPaymentAttempt:${hashPaymentAttemptContext(paymentAttemptContext)}`;
+        const paymentAttemptId = getOrCreatePaymentAttemptId(paymentAttemptStorageKey);
 
         // The full RPC sequence (up to 3 sequential calls).  On confirmed success
         // it clears all payment-related state; on error it throws so the outer
         // catch can classify and display the right message.
         const runPaymentSequence = async () => {
-            if (currentOrderId) {
+            if (orderIdAtPaymentStart) {
                 const { error: syncError } = await supabase.rpc('sync_customer_order_items_with_stock', {
-                    p_order_id: currentOrderId,
+                    p_order_id: orderIdAtPaymentStart,
                     p_items: payloadItems,
+                    p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (syncError) throw syncError;
 
-                await applyPricingToOrder(currentOrderId);
+                await applyPricingToOrder(orderIdAtPaymentStart, pricingSnapshot);
 
                 const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
-                    p_order_id: currentOrderId,
+                    p_order_id: orderIdAtPaymentStart,
                     p_payment_method: method,
+                    p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (completeError) throw completeError;
-            } else if (selectedQueueId) {
+            } else if (queueIdAtPaymentStart) {
                 const { data: createdOrderId, error: createError } = await supabase.rpc('create_customer_order_with_stock', {
-                    p_queue_id: selectedQueueId,
+                    p_queue_id: queueIdAtPaymentStart,
                     p_items: payloadItems,
+                    p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (createError) throw createError;
 
                 const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
-                await applyPricingToOrder(orderId);
+                await applyPricingToOrder(orderId, pricingSnapshot);
                 const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
                     p_order_id: orderId,
                     p_payment_method: method,
+                    p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (completeError) throw completeError;
             } else {
@@ -628,14 +698,16 @@ export default function POSPanel({
                     p_event_id: eventId,
                     p_items: payloadItems,
                     p_payment_method: method,
+                    p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (walkinError) throw walkinError;
                 const orderId = Array.isArray(walkinOrderId) ? walkinOrderId[0] : walkinOrderId;
-                await applyPricingToOrder(orderId);
+                await applyPricingToOrder(orderId, pricingSnapshot);
             }
 
             // Confirmed success: clear state and notify parent.
             // Also clear any prior "unknown" warning — we now know it succeeded.
+            clearPaymentAttemptId(paymentAttemptStorageKey);
             setCart([]);
             setCurrentOrderId(null);
             setPaymentUnknownEventId(null);
@@ -689,6 +761,7 @@ export default function POSPanel({
                 // Known error (insufficient_stock, order_cancelled, etc.): DB did
                 // not commit, or the commit was definitively rejected.  Safe to
                 // retry after fixing the underlying issue.
+                clearPaymentAttemptId(paymentAttemptStorageKey);
                 setPaymentUnknownEventId(null);
                 setToast({ tone: 'error', title: 'Payment failed', detail: toPaymentErrorMessage(err) });
             }

@@ -26,15 +26,15 @@ begin
     raise exception 'order_not_found';
   end if;
 
+  if not public.has_artist_role(v_order.artist_id, array['owner', 'queue_pos']) then
+    raise exception 'forbidden';
+  end if;
+
   if v_order.status = 'completed' then
     if p_payment_idempotency_key is not null
        and v_order.payment_idempotency_key is not null
        and v_order.payment_idempotency_key <> p_payment_idempotency_key then
       raise exception 'payment_idempotency_key_conflict';
-    end if;
-
-    if not public.has_artist_role(v_order.artist_id, array['owner', 'queue_pos']) then
-      raise exception 'forbidden';
     end if;
 
     if p_payment_idempotency_key is not null and v_order.payment_idempotency_key is null then
@@ -47,10 +47,6 @@ begin
   end if;
 
   if v_order.status = 'cancelled' then
-    if not public.has_artist_role(v_order.artist_id, array['owner', 'queue_pos']) then
-      raise exception 'forbidden';
-    end if;
-
     raise exception 'order_cancelled';
   end if;
 
@@ -58,10 +54,6 @@ begin
      and v_order.payment_idempotency_key is not null
      and v_order.payment_idempotency_key <> p_payment_idempotency_key then
     raise exception 'payment_idempotency_key_conflict';
-  end if;
-
-  if not public.has_artist_role(v_order.artist_id, array['owner', 'queue_pos']) then
-    raise exception 'forbidden';
   end if;
 
   for v_item in

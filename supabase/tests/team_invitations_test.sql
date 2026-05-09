@@ -147,7 +147,8 @@ select throws_ok(
         limit 1)
      ) $$,
   null,
-  'Test 8: cancel non-pending invitation → exception'
+  'invitation is not pending (current status: cancelled)',
+  'Test 8: cancel non-pending invitation → correct error raised'
 );
 
 -- Test 9: Invitee lists their pending invitations
@@ -188,6 +189,7 @@ select throws_ok(
   $$ select public.accept_team_invitation(
        (select id from public.artist_member_invitations
         where lower(invited_email) = 'expired@external.com'
+          and status = 'pending'
         limit 1)
      ) $$,
   'invitation has expired',

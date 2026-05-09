@@ -198,7 +198,12 @@ begin
   set status       = 'cancelled',
       cancelled_at = now(),
       updated_at   = now()
-  where id = p_invitation_id;
+  where id = p_invitation_id
+    and status = 'pending';
+
+  if not found then
+    raise exception 'invitation is not pending or was already changed';
+  end if;
 
   return jsonb_build_object('result', 'cancelled');
 end;
@@ -356,3 +361,19 @@ begin
   return jsonb_build_object('result', 'declined');
 end;
 $$;
+
+-- ─── Grants ───────────────────────────────────────────────────────────────────
+
+revoke execute on function public.invite_team_member(uuid, text, text) from anon, public;
+revoke execute on function public.list_team_invitations(uuid) from anon, public;
+revoke execute on function public.cancel_team_invitation(uuid) from anon, public;
+revoke execute on function public.list_my_pending_invitations() from anon, public;
+revoke execute on function public.accept_team_invitation(uuid) from anon, public;
+revoke execute on function public.decline_team_invitation(uuid) from anon, public;
+
+grant execute on function public.invite_team_member(uuid, text, text) to authenticated;
+grant execute on function public.list_team_invitations(uuid) to authenticated;
+grant execute on function public.cancel_team_invitation(uuid) to authenticated;
+grant execute on function public.list_my_pending_invitations() to authenticated;
+grant execute on function public.accept_team_invitation(uuid) to authenticated;
+grant execute on function public.decline_team_invitation(uuid) to authenticated;

@@ -7,7 +7,7 @@ create table public.artist_member_invitations (
   artist_id     uuid        not null references public.artists(id) on delete cascade,
   invited_email text        not null,
   role          text        not null check (role in ('manager', 'seller', 'queue_staff')),
-  invited_by    uuid        references auth.users(id),
+  invited_by    uuid        references auth.users(id) on delete set null,
   status        text        not null default 'pending'
                             check (status in ('pending', 'accepted', 'declined', 'cancelled', 'expired')),
   invited_at    timestamptz not null default now(),
@@ -28,6 +28,10 @@ create unique index artist_member_invitations_pending_uidx
 -- Fast lookup when a user logs in and checks for their invitations
 create index artist_member_invitations_email_idx
   on public.artist_member_invitations (lower(invited_email));
+
+-- Efficient filtering by artist + status for dashboard queries
+create index artist_member_invitations_artist_status_idx
+  on public.artist_member_invitations (artist_id, status);
 
 -- ─── updated_at trigger ───────────────────────────────────────────────────────
 

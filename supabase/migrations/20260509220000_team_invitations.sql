@@ -239,7 +239,7 @@ begin
     select
       i.id,
       i.artist_id,
-      coalesce(a.creator_name, 'Unknown Booth') as artist_name,
+      coalesce(a.display_name, 'Unknown Booth') as artist_name,
       i.role,
       i.invited_at,
       i.expires_at

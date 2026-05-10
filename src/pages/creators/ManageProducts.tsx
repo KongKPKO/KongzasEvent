@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, ChevronUp, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -60,6 +60,7 @@ type EventCatalogDraft = Record<string, {
 }>;
 
 type ProductImageTarget = 'add' | 'edit';
+type CatalogWorkspaceTab = 'catalog' | 'event-catalog' | 'promotions' | 'import';
 type ProductConfirmAction =
    | { type: 'switch_currency'; currency: string }
    | { type: 'delete_product'; id: string; name: string }
@@ -164,10 +165,8 @@ const ManageProducts = () => {
    const [selectedCurrency, setSelectedCurrency] = useState('All'); // ✅ NEW: Currency filter
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
-   const [isAddSectionOpen, setIsAddSectionOpen] = useState(false);
-   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
-   const [isPromotionSectionOpen, setIsPromotionSectionOpen] = useState(false);
-   const [isEventCatalogOpen, setIsEventCatalogOpen] = useState(true);
+   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>('catalog');
+   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
    const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
    const [selectedEventId, setSelectedEventId] = useState('');
    const [eventCatalogDraft, setEventCatalogDraft] = useState<EventCatalogDraft>({});
@@ -479,7 +478,7 @@ const ManageProducts = () => {
             .upsert(payload, { onConflict: 'event_id,product_id' });
 
          if (error) throw error;
-         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific menu and stock.' });
+         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific catalog and stock.' });
          await fetchEventCatalog(selectedEventId);
       } catch (error: any) {
          console.error('[ManageProducts] saveEventCatalog failed:', error);
@@ -722,6 +721,7 @@ const ManageProducts = () => {
          
          await fetchProducts();
          showToast({ tone: 'success', title: 'Product added', detail: name });
+         setIsAddProductModalOpen(false);
 
       } catch (error: any) {
          console.error(error);
@@ -1101,7 +1101,7 @@ const ManageProducts = () => {
                confirmAction?.type === 'switch_currency'
                   ? `Products in other currencies will be disabled. Sold out items stay unchanged.`
                   : confirmAction?.type === 'delete_product'
-                    ? `${confirmAction.name} will be hidden from the active menu. Past orders keep their history.`
+                    ? `${confirmAction.name} will be hidden from the active catalog. Past orders keep their history.`
                     : undefined
             }
             confirmLabel={confirmAction?.type === 'delete_product' ? 'Delete' : 'Confirm'}
@@ -1121,21 +1121,45 @@ const ManageProducts = () => {
          
          {/* Page Title Wrapper */}
          <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
-            <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage Products</h1>
+            <h1 className="text-xl font-black text-gray-800 tracking-tight">Catalog Workspace</h1>
             <p className="text-sm text-pink-600 font-bold">{artistName}</p>
          </div>
 
          <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
             <section className="workspace-card mb-4 p-3">
-               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                     <p className="text-xs font-black uppercase tracking-wide text-gray-400">Quick actions</p>
-                     <p className="text-sm font-semibold text-gray-700">Jump to the creator task you need right now.</p>
+                     <p className="text-xs font-black uppercase tracking-wide text-gray-400">Catalog Workspace</p>
+                     <p className="text-sm font-semibold text-gray-700">Daily maintenance stays focused; event setup, promotions, and import live in their own tabs.</p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                     <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
+                        {([
+                           ['catalog', 'Catalog'],
+                           ['event-catalog', 'Event Catalog'],
+                           ['promotions', 'Promotions'],
+                           ['import', 'Import'],
+                        ] as const).map(([tab, label]) => (
+                           <button
+                              key={tab}
+                              type="button"
+                              onClick={() => setActiveWorkspaceTab(tab)}
+                              className={`min-h-10 rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+                                 activeWorkspaceTab === tab
+                                    ? 'bg-white text-pink-700 shadow-sm ring-1 ring-pink-100'
+                                    : 'text-gray-500 hover:bg-white/70 hover:text-gray-800'
+                              }`}
+                              aria-pressed={activeWorkspaceTab === tab}
+                           >
+                              {label}
+                           </button>
+                        ))}
+                     </div>
+                     {activeWorkspaceTab === 'catalog' && (
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                      <button
                         type="button"
-                        onClick={() => setIsAddSectionOpen(true)}
+                        onClick={() => setIsAddProductModalOpen(true)}
                         className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                      >
                         <Plus size={16} aria-hidden="true" />
@@ -1143,42 +1167,40 @@ const ManageProducts = () => {
                      </button>
                      <button
                         type="button"
-                        onClick={() => setIsBulkUploadOpen(true)}
+                        onClick={() => setActiveWorkspaceTab('import')}
                         className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
                      >
                         <Upload size={16} aria-hidden="true" />
                         Import CSV
                      </button>
-                     <button
-                        type="button"
-                        onClick={() => setIsEventCatalogOpen(true)}
-                        className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
-                     >
-                        <CalendarDays size={16} aria-hidden="true" />
-                        Event Catalog
-                     </button>
+                     </div>
+                     )}
                   </div>
                </div>
             </section>
             
-            <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-               <button
-                  type="button"
-                  onClick={() => setIsAddSectionOpen((prev) => !prev)}
-                  className="w-full px-4 py-4 flex items-start justify-between gap-4 text-left"
-               >
-                  <div>
-                     <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                        <Plus className="text-pink-500" size={18} />
-                        Add New Item
-                     </h2>
-                     <p className="mt-1 text-xs text-gray-500">Fast path for single item creation with stock and tags.</p>
+            {isAddProductModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+               <section className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white px-5 py-4">
+                     <div>
+                        <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                           <Plus className="text-pink-500" size={18} />
+                           Add Product
+                        </h2>
+                        <p className="mt-1 text-xs text-gray-500">Create one catalog item with stock, tags, status, and image.</p>
+                     </div>
+                     <button
+                        type="button"
+                        onClick={() => setIsAddProductModalOpen(false)}
+                        className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label="Close add product"
+                     >
+                        <X size={20} />
+                     </button>
                   </div>
-                  {isAddSectionOpen ? <ChevronUp className="text-gray-400 shrink-0" size={18} /> : <ChevronDown className="text-gray-400 shrink-0" size={18} />}
-               </button>
 
-               {isAddSectionOpen && (
-               <div className="border-t border-gray-100 p-4 animate-fade-in">
+               <div className="p-5 animate-fade-in">
                <form onSubmit={handleAddProduct} className="space-y-4">
                   {/* Row 1: Product Name | Price & Currency | Category */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1354,33 +1376,29 @@ const ManageProducts = () => {
 
                </form>
                </div>
-               )}
-            </section>
+               </section>
+            </div>
+            )}
 
+            {activeWorkspaceTab === 'import' && (
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-               <button
-                  type="button"
-                  onClick={() => setIsBulkUploadOpen((prev) => !prev)}
-                  className="w-full px-4 py-4 flex items-start justify-between gap-4 text-left"
-               >
+               <div className="px-4 py-4 flex items-start justify-between gap-4 text-left">
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <FileText className="text-pink-500" size={18} />
-                        Bulk Upload
+                        Import CSV
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">Import many items at once. Duplicate rows are skipped automatically.</p>
                   </div>
-                  {isBulkUploadOpen ? <ChevronUp className="text-gray-400 shrink-0" size={18} /> : <ChevronDown className="text-gray-400 shrink-0" size={18} />}
-               </button>
+               </div>
 
-               {isBulkUploadOpen && (
                   <div className="border-t border-gray-100 p-4 animate-fade-in">
                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
                            <p className="text-xs text-gray-500">
                               CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited)
                            </p>
-                           <p className="mt-1 text-[11px] text-gray-400">Use this for large menu setup. Existing duplicates will be ignored instead of inserted twice.</p>
+                           <p className="mt-1 text-[11px] text-gray-400">Use this for large catalog setup. Existing duplicates will be ignored instead of inserted twice.</p>
                         </div>
                         <div className="flex items-center gap-2">
                            <input
@@ -1402,15 +1420,12 @@ const ManageProducts = () => {
                         </div>
                      </div>
                   </div>
-               )}
             </section>
+            )}
 
+            {activeWorkspaceTab === 'promotions' && (
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-               <button
-                  type="button"
-                  onClick={() => setIsPromotionSectionOpen((prev) => !prev)}
-                  className="w-full px-4 py-4 flex items-start justify-between gap-4 text-left"
-               >
+               <div className="px-4 py-4 flex items-start justify-between gap-4 text-left">
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <Sparkles className="text-pink-500" size={18} />
@@ -1418,10 +1433,8 @@ const ManageProducts = () => {
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">Manage pricing rules separately from daily product maintenance.</p>
                   </div>
-                  {isPromotionSectionOpen ? <ChevronUp className="text-gray-400 shrink-0" size={18} /> : <ChevronDown className="text-gray-400 shrink-0" size={18} />}
-               </button>
+               </div>
 
-               {isPromotionSectionOpen && (
                   <div className="border-t border-gray-100 p-4 animate-fade-in">
                      <PromotionManager
                         artistId={artistId}
@@ -1431,15 +1444,12 @@ const ManageProducts = () => {
                         tagSuggestions={allTagSuggestions}
                      />
                   </div>
-               )}
             </section>
+            )}
 
+            {activeWorkspaceTab === 'event-catalog' && (
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-               <button
-                  type="button"
-                  onClick={() => setIsEventCatalogOpen((prev) => !prev)}
-                  className="w-full px-4 py-4 flex items-start justify-between gap-4 text-left"
-               >
+               <div className="px-4 py-4 flex items-start justify-between gap-4 text-left">
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <CalendarDays className="text-pink-500" size={18} />
@@ -1447,10 +1457,8 @@ const ManageProducts = () => {
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">Choose which products, price, and stock are available for each event booth.</p>
                   </div>
-                  {isEventCatalogOpen ? <ChevronUp className="text-gray-400 shrink-0" size={18} /> : <ChevronDown className="text-gray-400 shrink-0" size={18} />}
-               </button>
+               </div>
 
-               {isEventCatalogOpen && (
                   <div className="border-t border-gray-100 p-4 animate-fade-in space-y-4">
                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1682,11 +1690,11 @@ const ManageProducts = () => {
                            </div>
                         </div>
                      )}
-                  </div>
-               )}
-            </section>
+	                  </div>
+	            </section>
+            )}
 
-            {hasEventCatalogChanges && selectedEventId && (
+            {activeWorkspaceTab === 'event-catalog' && hasEventCatalogChanges && selectedEventId && (
                <div className="sticky bottom-4 z-30 mb-6 rounded-2xl border border-pink-200 bg-white/95 p-3 shadow-xl shadow-pink-100/70 backdrop-blur">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                      <div>
@@ -1706,6 +1714,8 @@ const ManageProducts = () => {
                </div>
             )}
 
+            {activeWorkspaceTab === 'catalog' && (
+            <>
             {/* ✅ NEW: Mixed Currency Warning */}
             {hasMixedCurrencies && (
                <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in shadow-sm">
@@ -2070,8 +2080,10 @@ const ManageProducts = () => {
             ) : (
                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
                   <span className="material-icons-outlined text-4xl text-gray-300 mb-2">restaurant_menu</span>
-                  <p className="text-gray-500">No items available. Add your first product above.</p>
+                  <p className="text-gray-500">No items available. Use Add Product to create the first catalog item.</p>
                </div>
+            )}
+            </>
             )}
 
          </main>

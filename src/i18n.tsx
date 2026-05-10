@@ -144,6 +144,7 @@ const legacyThaiText: Record<string, string> = {
   'Queue is empty': 'คิวยังว่าง',
   'Follow Me': 'ติดตาม',
   'Home': 'หน้าแรก',
+  'Menu': 'เมนู',
   'Catalog': 'แคตตาล็อก',
   'Queue': 'คิว',
   'Discover': 'ค้นหา',

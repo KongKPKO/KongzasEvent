@@ -42,15 +42,12 @@ interface Props {
 }
 
 export default function PendingInvitationBanner({ invitations, onAccepted }: Props) {
-  const dismissed = getDismissed();
-  const visible = invitations.filter((inv) => !dismissed.includes(inv.id));
-
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [acceptedIds, setAcceptedIds] = useState<string[]>([]);
-  const [localDismissed, setLocalDismissed] = useState<string[]>([]);
+  const [localDismissed, setLocalDismissed] = useState<string[]>(getDismissed);
   const [errorId, setErrorId] = useState<string | null>(null);
 
-  const shown = visible.filter(
+  const shown = invitations.filter(
     (inv) => !acceptedIds.includes(inv.id) && !localDismissed.includes(inv.id)
   );
 
@@ -80,7 +77,7 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
+    <div role="region" aria-label="Pending team invitations" className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
       {shown.map((inv) => (
         <div
           key={inv.id}
@@ -106,6 +103,8 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
               type="button"
               onClick={() => handleAccept(inv)}
               disabled={acceptingId === inv.id}
+              aria-busy={acceptingId === inv.id}
+              aria-label={`Accept invitation to join ${inv.artist_name}`}
               className="flex-1 py-1.5 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <Check size={13} />
@@ -114,6 +113,7 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
             <button
               type="button"
               onClick={() => handleNotNow(inv)}
+              aria-label={`Dismiss invitation from ${inv.artist_name} for now`}
               className="flex-1 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
             >
               Not now

@@ -94,6 +94,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [resendResultId, setResendResultId] = useState<string | null>(null);
   const [resendResultOk, setResendResultOk] = useState<boolean | null>(null);
+  const [memberActionError, setMemberActionError] = useState<string>('');
 
   const canSave = useMemo(() => email.trim().length > 3, [email]);
   const filteredEvents = useMemo(() => {
@@ -197,7 +198,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
 
       await fetchEventsAndAssignments();
     } catch (error) {
-      alert(getErrorMessage(error, 'Failed to save event access'));
+      setMemberActionError(getErrorMessage(error, 'Failed to save event access'));
     } finally {
       setSavingAssignmentsId(null);
     }
@@ -311,12 +312,12 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
           .eq('id', member.id)
       );
       if (error) {
-        alert(error.message || 'Failed to update member status');
+        setMemberActionError(error.message || 'Failed to update member status');
         return;
       }
       await fetchMembers();
     } catch (error) {
-      alert(getErrorMessage(error, 'Failed to update member status'));
+      setMemberActionError(getErrorMessage(error, 'Failed to update member status'));
     }
   };
 
@@ -339,7 +340,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       await fetchMembers();
     } catch (err) {
       console.error('[ManageTeam] update role failed:', err);
-      alert(getErrorMessage(err, 'Failed to update member role'));
+      setMemberActionError(getErrorMessage(err, 'Failed to update member role'));
     } finally {
       setUpdatingRoleId(null);
     }
@@ -357,12 +358,12 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       );
 
       if (error) {
-        alert(error.message || 'Failed to delete member');
+        setMemberActionError(error.message || 'Failed to delete member');
         return;
       }
       await fetchMembers();
     } catch (error) {
-      alert(getErrorMessage(error, 'Failed to delete member'));
+      setMemberActionError(getErrorMessage(error, 'Failed to delete member'));
     }
   };
 
@@ -479,6 +480,11 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             <Users size={14} className="text-gray-500" />
             <h2 className="text-sm font-bold text-gray-800">Current Members</h2>
           </div>
+          {memberActionError && (
+            <div className="px-4 py-2 bg-red-50 border-b border-red-100 cursor-pointer hover:bg-red-100" onClick={() => setMemberActionError('')}>
+              <p className="text-xs text-red-600">{memberActionError}</p>
+            </div>
+          )}
           {events.length > 6 && (
             <div className="border-b border-gray-100 px-4 py-3">
               <label className="relative block">

@@ -27,7 +27,7 @@ const navItems = [
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
-    { path: '/live/queue', label: 'Live (Queue/POS)', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
+    { path: '/live/queue', label: 'Live Ops', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
 ];
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner' }: AdminHeaderProps) {

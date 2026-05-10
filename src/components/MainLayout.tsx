@@ -40,7 +40,7 @@ const MainLayout: React.FC = () => {
             </div>
             <div className="flex space-x-8 items-center ml-auto">
               <NavLink to="/" icon="home" label="Home" />
-              <NavLink to="/menu" icon="coffee" label="Menu" />
+              <NavLink to="/menu" icon="coffee" label="Catalog" />
               <NavLink to="/queue" icon="people" label="Queue" />
             </div>
           </div>
@@ -64,7 +64,7 @@ const MainLayout: React.FC = () => {
             </Link>
              <Link to="/menu" className={`flex flex-col items-center justify-center ${isActive('/menu') ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
                 <span className="material-icons-round">coffee</span>
-                <span className="text-xs font-medium mt-1">Menu</span>
+                <span className="text-xs font-medium mt-1">Catalog</span>
             </Link>
              <Link to="/queue" className={`flex flex-col items-center justify-center ${isActive('/queue') ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
                 <span className="material-icons-round">people</span>

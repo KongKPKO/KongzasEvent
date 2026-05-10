@@ -126,7 +126,7 @@ const legacyThaiText: Record<string, string> = {
   'Price (Low to High)': 'ราคา (ต่ำไปสูง)',
   'Price (High to Low)': 'ราคา (สูงไปต่ำ)',
   'More categories': 'หมวดหมู่เพิ่มเติม',
-  'Current Menu': 'เมนูปัจจุบัน',
+  'Current Catalog': 'แคตตาล็อกปัจจุบัน',
   'Loading products...': 'กำลังโหลดสินค้า...',
   'Price': 'ราคา',
   'Stock': 'สต็อก',
@@ -144,7 +144,7 @@ const legacyThaiText: Record<string, string> = {
   'Queue is empty': 'คิวยังว่าง',
   'Follow Me': 'ติดตาม',
   'Home': 'หน้าแรก',
-  'Menu': 'เมนู',
+  'Catalog': 'แคตตาล็อก',
   'Queue': 'คิว',
   'Discover': 'ค้นหา',
   'Search products...': 'ค้นหาสินค้า...',
@@ -174,8 +174,8 @@ const translateLegacyString = (value: string) => {
   const activeRules = trimmed.match(/^Active Rules \((.+)\)$/);
   if (activeRules) return value.replace(trimmed, `กติกาที่ใช้งาน (${activeRules[1]})`);
 
-  const currentMenu = trimmed.match(/^Current Menu \((.+)\)$/);
-  if (currentMenu) return value.replace(trimmed, `เมนูปัจจุบัน (${currentMenu[1]})`);
+  const currentCatalog = trimmed.match(/^Current Catalog \((.+)\)$/);
+  if (currentCatalog) return value.replace(trimmed, `แคตตาล็อกปัจจุบัน (${currentCatalog[1]})`);
 
   const total = trimmed.match(/^Total: (.+)$/);
   if (total) return value.replace(trimmed, `รวม: ${total[1]}`);
@@ -242,8 +242,8 @@ const translations = {
     navApply: 'Apply',
     navApplyCreator: 'Apply as creator',
     workspaceNavEvents: 'Events',
-    workspaceNavMenu: 'Menu',
-    workspaceNavPosQueue: 'POS/Queue',
+    workspaceNavMenu: 'Catalog',
+    workspaceNavPosQueue: 'Live Ops',
     workspaceNavTeam: 'Team',
     workspaceNavApplications: 'Applications',
     workspaceRoleOwner: 'Owner',
@@ -561,8 +561,8 @@ const translations = {
     navApply: 'สมัคร',
     navApplyCreator: 'สมัครเป็น Creator',
     workspaceNavEvents: 'อีเวนต์',
-    workspaceNavMenu: 'เมนู',
-    workspaceNavPosQueue: 'POS/คิว',
+    workspaceNavMenu: 'แคตตาล็อก',
+    workspaceNavPosQueue: 'ไลฟ์ออปส์',
     workspaceNavTeam: 'ทีม',
     workspaceNavApplications: 'ใบสมัคร',
     workspaceRoleOwner: 'เจ้าของ',

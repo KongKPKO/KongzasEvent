@@ -46,7 +46,7 @@ export const Navbar = () => {
             })}
           >
             <Coffee size={28} />
-            <span className="text-xs font-bold mt-1">Menu</span>
+            <span className="text-xs font-bold mt-1">Catalog</span>
           </NavLink>
 
           <NavLink 

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
   Trash2, Plus, Calendar, MapPin, FileText,
-  BarChart2, X, User, Ticket, ExternalLink, Copy, ArrowRight
+  BarChart2, X, User, Ticket, ExternalLink, Copy, Users, ShoppingCart
 } from 'lucide-react';
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
@@ -440,7 +440,7 @@ const ManageArtist = () => {
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
                >
                  <ExternalLink size={16} aria-hidden="true" />
-                 Open public menu
+                 Open public catalog
                </a>
              </div>
            )}
@@ -627,14 +627,9 @@ const ManageArtist = () => {
                                      </div>
                                   </td>
                                   <td className="px-6 py-4">
-                                     <button
-                                       type="button"
-                                       onClick={() => navigate(`/manage-events/${evt.id}`)}
-                                       className="font-bold text-slate-900 text-sm text-left hover:text-pink-600 transition-colors"
-                                       title="Open event hub"
-                                     >
+                                     <div className="font-bold text-slate-900 text-sm">
                                        {evt.event_name}
-                                     </button>
+                                     </div>
                                      <div className="flex items-center gap-3 mt-1">
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                                           evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 
@@ -676,16 +671,6 @@ const ManageArtist = () => {
                                         </button>
 
                                         <button
-                                          onClick={() => navigate(`/manage-events/${evt.id}`)}
-                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 px-3 py-2 rounded-lg transition-colors"
-                                          title="Open event hub"
-                                          aria-label={`Open hub for ${evt.event_name}`}
-                                        >
-                                           Manage
-                                           <ArrowRight size={14} />
-                                        </button>
-
-                                        <button
                                           onClick={() => handleOpenStats(evt)}
                                           className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-pink-600 hover:bg-pink-50 px-3 py-2 rounded-lg transition-colors border border-pink-100"
                                           title="Open dashboard"
@@ -703,6 +688,26 @@ const ManageArtist = () => {
                                         >
                                            <FileText size={14} />
                                            Orders
+                                        </button>
+
+                                        <button
+                                          onClick={() => navigate(`/live/queue?eventId=${evt.id}`)}
+                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors border border-indigo-100"
+                                          title="Open live queue"
+                                          aria-label={`Open live queue for ${evt.event_name}`}
+                                        >
+                                           <Users size={14} />
+                                           Live Queue
+                                        </button>
+
+                                        <button
+                                          onClick={() => navigate(`/live/pos?eventId=${evt.id}`)}
+                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors border border-slate-200"
+                                          title="Open live POS"
+                                          aria-label={`Open live POS for ${evt.event_name}`}
+                                        >
+                                           <ShoppingCart size={14} />
+                                           Live POS
                                         </button>
 
                                         <button

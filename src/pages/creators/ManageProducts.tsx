@@ -1745,7 +1745,7 @@ const ManageProducts = () => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <PackageSearch className="text-pink-500" size={18} />
-                        Browse Current Menu
+                        Browse Current Catalog
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">Search, filter, and sort the catalog before editing or removing items.</p>
                   </div>
@@ -1905,7 +1905,7 @@ const ManageProducts = () => {
             </div>
 
             {/* PRODUCT LIST */}
-            <h2 className="text-lg font-bold text-gray-800 mb-4 px-1">Current Menu ({filteredProducts.length})</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4 px-1">Current Catalog ({filteredProducts.length})</h2>
             
             {loading ? (
                <div className="text-center py-12 text-gray-400">Loading products...</div>

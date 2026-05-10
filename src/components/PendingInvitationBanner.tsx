@@ -19,6 +19,10 @@ const ROLE_LABELS: Record<string, string> = {
   queue_staff: 'Queue Staff',
 };
 
+// sessionStorage is intentional: "Not now" hides the banner for the current
+// browser tab's lifetime (including page refreshes within the same tab).
+// The banner reappears when the user opens a new tab or starts a new browser session.
+// To permanently decline, use the /invitations settings page.
 const SESSION_KEY = 'dismissed_invitations';
 
 function getDismissed(): string[] {

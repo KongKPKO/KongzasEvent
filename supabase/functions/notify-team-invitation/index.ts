@@ -1,4 +1,34 @@
 // supabase/functions/notify-team-invitation/index.ts
+//
+// Manual test examples (requires supabase functions serve running):
+//
+// 1. Missing auth → 401:
+//    curl -s -X POST http://127.0.0.1:54321/functions/v1/notify-team-invitation \
+//      -H 'Content-Type: application/json' \
+//      -d '{"invitation_id":"<uuid>"}'
+//    Expected: {"error":"Missing or invalid authorization header"}
+//
+// 2. Unauthorized staff → 403:
+//    curl -s -X POST http://127.0.0.1:54321/functions/v1/notify-team-invitation \
+//      -H 'Authorization: Bearer <staff_jwt>' \
+//      -H 'Content-Type: application/json' \
+//      -d '{"invitation_id":"<uuid>"}'
+//    Expected: {"error":"permission denied"}
+//
+// 3. Authorized owner/manager → email delivered:
+//    curl -s -X POST http://127.0.0.1:54321/functions/v1/notify-team-invitation \
+//      -H 'Authorization: Bearer <owner_jwt>' \
+//      -H 'Content-Type: application/json' \
+//      -d '{"invitation_id":"<uuid>"}'
+//    Expected: {"ok":true,"delivered":true,"provider":"mailpit",...}
+//
+// 4. Invite creates pending row even when email fails:
+//    The invite_team_member RPC inserts artist_member_invitations before
+//    the edge function is called. Email failure (502) does NOT rollback the
+//    invitation row. ManageTeam.tsx catches the notifyError and shows
+//    "Invitation created, but the notification email failed to send." while
+//    the pending row still appears in the Pending Invitations section.
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -13,6 +43,13 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Authorization is required — no anonymous or unauthenticated calls allowed
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json({ error: "Missing or invalid authorization header" }, 401);
+    }
+    const callerToken = authHeader.slice(7);
+
     const { invitation_id } = await req.json();
     if (!invitation_id) {
       return json({ error: "invitation_id is required" }, 400);
@@ -23,11 +60,19 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceRoleKey) {
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
       return json({ error: "Server is missing Supabase service configuration" }, 500);
     }
 
+    // Service role client — used only for trusted DB reads
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Caller client — uses anon key with the caller's JWT as Authorization header,
+    // which is the correct pattern for scoped RPC calls with user context
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: `Bearer ${callerToken}` } },
+    });
 
     // Fetch invitation + artist name
     const { data: invitation, error: invError } = await supabase
@@ -45,20 +90,14 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, skipped: true, reason: "invitation is not pending" });
     }
 
-    // Verify caller is owner or manager of this artist
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const callerToken = authHeader.slice(7);
-      const callerClient = createClient(supabaseUrl, callerToken);
-      const { data: roleCheck } = await callerClient.rpc("has_artist_role", {
-        p_artist_id: invitation.artist_id,
-        p_allowed_roles: ["owner", "manager"],
-      });
-      if (!roleCheck) {
-        return json({ error: "permission denied" }, 403);
-      }
+    // Verify caller is owner or manager of this invitation's artist
+    const { data: roleCheck } = await callerClient.rpc("has_artist_role", {
+      p_artist_id: invitation.artist_id,
+      p_allowed_roles: ["owner", "manager"],
+    });
+    if (!roleCheck) {
+      return json({ error: "permission denied" }, 403);
     }
-    // Note: if no Authorization header, allow (called internally without user context)
 
     const artistName = (invitation.artists as { display_name?: string } | null)?.display_name || "a booth";
     const roleLabel = getRoleLabel(invitation.role);

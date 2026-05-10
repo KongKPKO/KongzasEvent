@@ -111,6 +111,9 @@ function App() {
   };
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isCustomerRoute = typeof window !== 'undefined'
+    ? /^\/[^/]+\/(home|join|queue-position|menu|pos)/.test(window.location.pathname)
+    : false;
   const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
 
   if (loading) {
@@ -192,7 +195,7 @@ function App() {
           </Routes>
         </Suspense>
       </div>
-      {session && (
+      {session && !isCustomerRoute && (
         <PendingInvitationBanner
           invitations={pendingInvitations}
           onAccepted={async () => {

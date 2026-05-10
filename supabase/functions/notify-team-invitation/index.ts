@@ -45,6 +45,21 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, skipped: true, reason: "invitation is not pending" });
     }
 
+    // Verify caller is owner or manager of this artist
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const callerToken = authHeader.slice(7);
+      const callerClient = createClient(supabaseUrl, callerToken);
+      const { data: roleCheck } = await callerClient.rpc("has_artist_role", {
+        p_artist_id: invitation.artist_id,
+        p_allowed_roles: ["owner", "manager"],
+      });
+      if (!roleCheck) {
+        return json({ error: "permission denied" }, 403);
+      }
+    }
+    // Note: if no Authorization header, allow (called internally without user context)
+
     const artistName = (invitation.artists as { display_name?: string } | null)?.display_name || "a booth";
     const roleLabel = getRoleLabel(invitation.role);
 

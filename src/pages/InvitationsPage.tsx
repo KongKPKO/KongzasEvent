@@ -2,15 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Bell } from 'lucide-react';
-
-interface PendingInvite {
-  id: string;
-  artist_id: string;
-  artist_name: string;
-  role: string;
-  invited_at: string;
-  expires_at: string | null;
-}
+import type { PendingInvite } from '../components/PendingInvitationBanner';
 
 const ROLE_LABELS: Record<string, string> = {
   manager: 'Manager',

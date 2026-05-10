@@ -196,10 +196,7 @@ function App() {
         <PendingInvitationBanner
           invitations={pendingInvitations}
           onAccepted={async () => {
-            await Promise.all([
-              syncSessionContext(session),
-              loadPendingInvitations(),
-            ]);
+            await syncSessionContext(session);
           }}
         />
       )}

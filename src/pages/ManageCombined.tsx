@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
@@ -36,6 +37,8 @@ export interface QueueItem {
 
 interface ManageCombinedProps {
     actorContext: ActorContext;
+    /** Optional override for initial tab — used by /live/queue and /live/pos routes */
+    initialTab?: 'queue' | 'pos';
 }
 
 interface UpcomingEvent {
@@ -63,10 +66,17 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
     }).format(date);
 };
 
-export default function ManageCombined({ actorContext }: ManageCombinedProps) {
+export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
+    // useSearchParams makes urlEventId reactive: if the URL changes while this
+    // component stays mounted (e.g. navigating from one Event Hub to another),
+    // the component picks up the new eventId without remounting.
+    const [searchParams] = useSearchParams();
+    const urlEventId = searchParams.get('eventId');
+
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
+        if (urlEventId) return urlEventId;
         if (typeof window === 'undefined') return null;
         return window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id));
     });
@@ -80,6 +90,10 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
     const hasPosPermission = canUsePos(actorContext.role);
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>(() => {
+        // Explicit route preference wins (e.g. /live/queue or /live/pos),
+        // but POS is only allowed for roles that can use POS — fall back to queue otherwise.
+        if (initialTab === 'pos' && !hasPosPermission) return 'queue';
+        if (initialTab) return initialTab;
         if (typeof window === 'undefined') return 'queue';
         return hasPosPermission && window.matchMedia('(max-width: 767px)').matches ? 'pos' : 'queue';
     });
@@ -278,6 +292,29 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
             : null;
         setActiveEvent(nextActiveEvent);
     }, [availableEvents, selectedEventId]);
+
+    // When urlEventId changes (e.g. navigating from one Event Hub to another while
+    // ManageCombined stays mounted), update selectedEventId so the right event is shown.
+    // Only fires when urlEventId is non-null — if the URL has no eventId we leave the
+    // user's current selection alone.
+    useEffect(() => {
+        if (urlEventId) {
+            setSelectedEventId(urlEventId);
+        }
+    }, [urlEventId]);
+
+    // When the URL provided an eventId AND it resolves to a real available event,
+    // persist it to localStorage so the user lands on the same event next time
+    // they navigate to /live/* without an explicit eventId in the URL.
+    useEffect(() => {
+        if (!urlEventId || typeof window === 'undefined') return;
+        if (availableEvents.some((event) => event.id === urlEventId)) {
+            window.localStorage.setItem(
+                posSelectedEventStorageKey(actorContext.artist_id),
+                urlEventId
+            );
+        }
+    }, [urlEventId, availableEvents, actorContext.artist_id]);
 
     useEffect(() => {
         setSelectedQueueId(null);

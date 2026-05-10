@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { 
-  Trash2, Plus, Calendar, MapPin, FileText, 
-  BarChart2, X, User, Ticket, ExternalLink, Copy
-} from 'lucide-react'; 
+import {
+  Trash2, Plus, Calendar, MapPin, FileText,
+  BarChart2, X, User, Ticket, ExternalLink, Copy, ArrowRight
+} from 'lucide-react';
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
@@ -627,7 +627,14 @@ const ManageArtist = () => {
                                      </div>
                                   </td>
                                   <td className="px-6 py-4">
-                                     <div className="font-bold text-slate-900 text-sm">{evt.event_name}</div>
+                                     <button
+                                       type="button"
+                                       onClick={() => navigate(`/manage-events/${evt.id}`)}
+                                       className="font-bold text-slate-900 text-sm text-left hover:text-pink-600 transition-colors"
+                                       title="Open event hub"
+                                     >
+                                       {evt.event_name}
+                                     </button>
                                      <div className="flex items-center gap-3 mt-1">
                                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                                           evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 
@@ -666,6 +673,16 @@ const ManageArtist = () => {
                                         >
                                            <span className={`w-2 h-2 rounded-full ${evt.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                                            {evt.is_booth_open ? 'Close Booth' : 'Open Booth'}
+                                        </button>
+
+                                        <button
+                                          onClick={() => navigate(`/manage-events/${evt.id}`)}
+                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 px-3 py-2 rounded-lg transition-colors"
+                                          title="Open event hub"
+                                          aria-label={`Open hub for ${evt.event_name}`}
+                                        >
+                                           Manage
+                                           <ArrowRight size={14} />
                                         </button>
 
                                         <button

@@ -1,9 +1,15 @@
 import { Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+
+/** Redirects to /live/queue while keeping the current search string (e.g. ?eventId=). */
+function LiveQueueRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/live/queue${search}`} replace />;
+}
 import { supabase } from './supabaseClient';
 import { fetchActorContext } from './utils/access';
 import type { ActorContext } from './types/access';
-import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages } from './types/access';
+import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages, canUsePos } from './types/access';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
@@ -19,6 +25,7 @@ const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
 const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
+const EventDetailHub = lazy(() => import('./pages/creators/EventDetailHub'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 import ManageLogin from './pages/ManageLogin';
@@ -102,6 +109,7 @@ function App() {
   const isOwner = canAccessOwnerPages(actorContext?.role);
   const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
+  const canSell = canUsePos(actorContext?.role);
 
   const getDefaultPath = () => {
     if (!session) return '/';
@@ -170,6 +178,10 @@ function App() {
               element={session ? (isOwner && actorContext ? <ManageTeam actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
+              path="/manage-events/:eventId"
+              element={session && actorContext ? (canUseManagement ? <EventDetailHub actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
               path="/manage-events/:eventId/history"
               element={session ? (canUseManagement ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
@@ -181,6 +193,26 @@ function App() {
               path="/manage-pos-queues"
               element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
             />
+            {/* Live Operation Mode — focused per-tab routes (Queue vs POS).
+                Both render the same ManageCombined with the correct initial tab.
+                The legacy /manage-pos-queues URL above is preserved for backward compatibility. */}
+            <Route
+              path="/live/queue"
+              element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} initialTab="queue" /> : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/live/pos"
+              element={
+                session && actorContext
+                  ? canSell
+                    ? <ManageCombined actorContext={actorContext} initialTab="pos" />
+                    : canUseQueueWorkspace
+                      ? <LiveQueueRedirect />
+                      : <Navigate to="/manage-login" replace />
+                  : <Navigate to="/manage-login" replace />
+              }
+            />
+            <Route path="/live" element={<Navigate to="/live/queue" replace />} />
 
             <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />

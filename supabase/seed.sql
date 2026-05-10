@@ -606,6 +606,19 @@ BTS Chidlom', 'A2', 'Free', 'Cancelled', true, '2026-01-21 07:40:28.038232+00', 
 
 
 --
+-- Data for Name: artist_members; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+-- Owner rows are seeded here because the migration that auto-seeds them
+-- runs before seed.sql inserts artists, so the migration's INSERT finds no rows.
+INSERT INTO "public"."artist_members" ("artist_id", "member_email", "role", "status", "created_by")
+VALUES
+	('b5bc17ad-e050-4f74-9205-5147ec350d83', 'konglnwzas@gmail.com', 'owner', 'active', 'b5bc17ad-e050-4f74-9205-5147ec350d83'),
+	('ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'kongphop.sunit@gmail.com', 'owner', 'active', 'ffddfce5-26a4-4e57-8f3e-86ace5ef45fe')
+ON CONFLICT DO NOTHING;
+
+
+--
 -- Data for Name: products; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -623,6 +636,10 @@ INSERT INTO "public"."products" ("id", "artist_id", "name", "price", "descriptio
 --
 -- Data for Name: queues; Type: TABLE DATA; Schema: public; Owner: postgres
 --
+
+-- Temporarily drop constraint so historical rows (dumped before queue_service_date was added)
+-- can be inserted, then back-fill the column from created_at and restore the constraint.
+ALTER TABLE public.queues DROP CONSTRAINT IF EXISTS queues_event_service_date_required_chk;
 
 INSERT INTO "public"."queues" ("id", "artist_id", "queue_number", "status", "created_at", "last_updated_at", "event_id", "called_at", "completed_at", "served_at") VALUES
 	('4ef79b83-b8f1-41c4-98e7-ddfa30354cff', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 1, 'expired', '2026-01-21 10:50:07.589913+00', '2026-01-21 13:21:03.875246+00', 'a73bb29d-0bdc-464b-9258-e9b75e4cabf4', NULL, NULL, NULL),
@@ -674,6 +691,16 @@ INSERT INTO "public"."queues" ("id", "artist_id", "queue_number", "status", "cre
 	('09786730-165a-43ea-9979-5e9b61683493', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 17, 'expired', '2026-01-23 07:38:39.699632+00', '2026-01-23 10:07:58.566342+00', '004c3287-d384-4424-b499-e632266dfa51', NULL, NULL, NULL),
 	('f6df91f4-ee7e-4b33-8f61-84a383908168', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 27, 'complete', '2026-01-23 09:22:14.486137+00', '2026-01-23 14:56:28.151424+00', '004c3287-d384-4424-b499-e632266dfa51', NULL, NULL, NULL),
 	('ffd57076-5a1f-4965-b18e-fba8693f3917', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 32, 'expired', '2026-01-23 15:48:30.071026+00', '2026-01-23 16:19:34.874208+00', '004c3287-d384-4424-b499-e632266dfa51', NULL, NULL, NULL);
+
+-- Back-fill queue_service_date for all rows that have an event_id (Bangkok timezone)
+UPDATE public.queues
+  SET queue_service_date = (created_at AT TIME ZONE 'Asia/Bangkok')::date
+  WHERE event_id IS NOT NULL AND queue_service_date IS NULL;
+
+-- Restore constraint
+ALTER TABLE public.queues
+  ADD CONSTRAINT queues_event_service_date_required_chk
+  CHECK (event_id IS NULL OR queue_service_date IS NOT NULL);
 
 
 --

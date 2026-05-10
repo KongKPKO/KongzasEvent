@@ -36,6 +36,8 @@ export interface QueueItem {
 
 interface ManageCombinedProps {
     actorContext: ActorContext;
+    /** Optional override for initial tab — used by /live/queue and /live/pos routes */
+    initialTab?: 'queue' | 'pos';
 }
 
 interface UpcomingEvent {
@@ -63,7 +65,7 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
     }).format(date);
 };
 
-export default function ManageCombined({ actorContext }: ManageCombinedProps) {
+export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
@@ -80,6 +82,8 @@ export default function ManageCombined({ actorContext }: ManageCombinedProps) {
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
     const hasPosPermission = canUsePos(actorContext.role);
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>(() => {
+        // Explicit route preference wins (e.g. /live/queue or /live/pos)
+        if (initialTab) return initialTab;
         if (typeof window === 'undefined') return 'queue';
         return hasPosPermission && window.matchMedia('(max-width: 767px)').matches ? 'pos' : 'queue';
     });

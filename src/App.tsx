@@ -181,6 +181,18 @@ function App() {
               path="/manage-pos-queues"
               element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
             />
+            {/* Live Operation Mode — focused per-tab routes (Queue vs POS).
+                Both render the same ManageCombined with the correct initial tab.
+                The legacy /manage-pos-queues URL above is preserved for backward compatibility. */}
+            <Route
+              path="/live/queue"
+              element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} initialTab="queue" /> : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/live/pos"
+              element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} initialTab="pos" /> : <Navigate to="/manage-login" replace />}
+            />
+            <Route path="/live" element={<Navigate to="/live/queue" replace />} />
 
             <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />

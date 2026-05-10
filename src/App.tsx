@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { supabase } from './supabaseClient';
 import { fetchActorContext } from './utils/access';
 import type { ActorContext } from './types/access';
-import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages } from './types/access';
+import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages, canUsePos } from './types/access';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
@@ -103,6 +103,7 @@ function App() {
   const isOwner = canAccessOwnerPages(actorContext?.role);
   const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
+  const canSell = canUsePos(actorContext?.role);
 
   const getDefaultPath = () => {
     if (!session) return '/';
@@ -195,7 +196,15 @@ function App() {
             />
             <Route
               path="/live/pos"
-              element={session && actorContext && canUseQueueWorkspace ? <ManageCombined actorContext={actorContext} initialTab="pos" /> : <Navigate to="/manage-login" replace />}
+              element={
+                session && actorContext
+                  ? canSell
+                    ? <ManageCombined actorContext={actorContext} initialTab="pos" />
+                    : canUseQueueWorkspace
+                      ? <Navigate to="/live/queue" replace />
+                      : <Navigate to="/manage-login" replace />
+                  : <Navigate to="/manage-login" replace />
+              }
             />
             <Route path="/live" element={<Navigate to="/live/queue" replace />} />
 

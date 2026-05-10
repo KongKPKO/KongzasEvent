@@ -66,9 +66,18 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
+    // URL `eventId` query param wins over localStorage so deep-links from the
+    // Event Hub always open the right event regardless of stale local state.
+    const urlEventId = (() => {
+        if (typeof window === 'undefined') return null;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('eventId');
+    })();
+
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(() => {
+        if (urlEventId) return urlEventId;
         if (typeof window === 'undefined') return null;
         return window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id));
     });
@@ -82,7 +91,9 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
     const hasPosPermission = canUsePos(actorContext.role);
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>(() => {
-        // Explicit route preference wins (e.g. /live/queue or /live/pos)
+        // Explicit route preference wins (e.g. /live/queue or /live/pos),
+        // but POS is only allowed for roles that can use POS — fall back to queue otherwise.
+        if (initialTab === 'pos' && !hasPosPermission) return 'queue';
         if (initialTab) return initialTab;
         if (typeof window === 'undefined') return 'queue';
         return hasPosPermission && window.matchMedia('(max-width: 767px)').matches ? 'pos' : 'queue';
@@ -282,6 +293,19 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             : null;
         setActiveEvent(nextActiveEvent);
     }, [availableEvents, selectedEventId]);
+
+    // When the URL provided an eventId AND it resolves to a real available event,
+    // persist it to localStorage so the user lands on the same event next time
+    // they navigate to /live/* without an explicit eventId in the URL.
+    useEffect(() => {
+        if (!urlEventId || typeof window === 'undefined') return;
+        if (availableEvents.some((event) => event.id === urlEventId)) {
+            window.localStorage.setItem(
+                posSelectedEventStorageKey(actorContext.artist_id),
+                urlEventId
+            );
+        }
+    }, [urlEventId, availableEvents, actorContext.artist_id]);
 
     useEffect(() => {
         setSelectedQueueId(null);

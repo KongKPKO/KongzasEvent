@@ -27,7 +27,7 @@ const navItems = [
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
-    { path: '/manage-pos-queues', label: 'Live (Queue/POS)', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
+    { path: '/live/queue', label: 'Live (Queue/POS)', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
 ];
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner' }: AdminHeaderProps) {
@@ -97,7 +97,12 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             <div className="hidden md:flex items-center gap-1">
                 {filteredNavItems.map((item) => {
                     const Icon = item.icon;
-                    const isActive = activePage === item.page || location.pathname === item.path;
+                    // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
+                    const isLiveItem = item.page === 'pos';
+                    const isActive =
+                        activePage === item.page ||
+                        location.pathname === item.path ||
+                        (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
                     
                     return (
                         <button
@@ -191,7 +196,12 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
 
                     {filteredNavItems.map((item) => {
                         const Icon = item.icon;
-                        const isActive = activePage === item.page || location.pathname === item.path;
+                        // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
+                    const isLiveItem = item.page === 'pos';
+                    const isActive =
+                        activePage === item.page ||
+                        location.pathname === item.path ||
+                        (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
                         return (
                             <button
                                 key={item.path}

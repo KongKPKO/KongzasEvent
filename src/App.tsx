@@ -23,12 +23,24 @@ const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 import ManageLogin from './pages/ManageLogin';
 import { useI18n } from './i18n';
+import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
+import InvitationsPage from './pages/InvitationsPage';
 
 function App() {
   const { t } = useI18n();
   const [session, setSession] = useState<any>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvite[]>([]);
+
+  const loadPendingInvitations = async () => {
+    try {
+      const { data } = await supabase.rpc('list_my_pending_invitations');
+      setPendingInvitations((data || []) as PendingInvite[]);
+    } catch {
+      setPendingInvitations([]);
+    }
+  };
 
   const syncSessionContext = async (nextSession: any) => {
     try {
@@ -36,10 +48,14 @@ function App() {
 
       if (!nextSession) {
         setActorContext(null);
+        setPendingInvitations([]);
         return;
       }
 
-      const ctx = await fetchActorContext();
+      const [ctx] = await Promise.all([
+        fetchActorContext(),
+        loadPendingInvitations(),
+      ]);
       setActorContext(ctx);
     } catch (error) {
       console.error('[App] Failed to sync session context:', error);
@@ -95,7 +111,10 @@ function App() {
   };
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications'].includes(currentPath);
+  const isCustomerRoute = typeof window !== 'undefined'
+    ? /^\/[^/]+\/(home|join|queue-position|menu|pos)/.test(window.location.pathname)
+    : false;
+  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
@@ -132,6 +151,10 @@ function App() {
             <Route
               path="/admin/applications"
               element={session ? <AdminApplications /> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}
+            />
+            <Route
+              path="/invitations"
+              element={session ? <InvitationsPage /> : <Navigate to="/manage-login?redirect=/invitations" replace />}
             />
 
             <Route
@@ -172,6 +195,14 @@ function App() {
           </Routes>
         </Suspense>
       </div>
+      {session && !isCustomerRoute && (
+        <PendingInvitationBanner
+          invitations={pendingInvitations}
+          onAccepted={async () => {
+            await syncSessionContext(session);
+          }}
+        />
+      )}
     </Router>
   );
 }

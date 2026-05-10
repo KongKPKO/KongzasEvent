@@ -23,12 +23,18 @@ export default function InvitationsPage() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, string>>({});
+  const [fetchError, setFetchError] = useState<string>('');
 
   const fetchInvitations = async () => {
     setLoading(true);
+    setFetchError('');
     try {
       const { data, error } = await supabase.rpc('list_my_pending_invitations');
-      if (!error) setInvitations((data || []) as PendingInvite[]);
+      if (error) {
+        setFetchError('Failed to load invitations. Please refresh.');
+      } else {
+        setInvitations((data || []) as PendingInvite[]);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,6 +85,8 @@ export default function InvitationsPage() {
 
         {loading ? (
           <p className="text-sm text-gray-500">Loading…</p>
+        ) : fetchError ? (
+          <p className="text-sm text-red-500">{fetchError}</p>
         ) : invitations.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center text-sm text-gray-400">
             No pending invitations.

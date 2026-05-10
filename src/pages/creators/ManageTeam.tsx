@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import AdminHeader from '../../components/AdminHeader';
 import { Button } from '../../components/ui';
 import type { ActorContext, ActorRole } from '../../types/access';
-import { CalendarDays, UserPlus, Users, Shield, Trash2, RefreshCcw, Search } from 'lucide-react';
+import { CalendarDays, UserPlus, Users, Shield, Trash2, RefreshCcw, Search, Clock, Send, X } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -26,6 +26,22 @@ interface EventAssignment {
   member_id: string;
   event_id: string;
 }
+
+interface PendingInvitation {
+  id: string;
+  invited_email: string;
+  role: ActorRole;
+  invited_at: string;
+  expires_at: string | null;
+}
+
+type InviteResult =
+  | 'member_added'
+  | 'invitation_sent'
+  | 'already_member'
+  | 'already_invited'
+  | 'email_failed'
+  | null;
 
 interface ManageTeamProps {
   actorContext: ActorContext;
@@ -72,6 +88,12 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ActorRole>('queue_staff');
   const [eventAccessSearch, setEventAccessSearch] = useState('');
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+  const [inviteResult, setInviteResult] = useState<InviteResult>(null);
+  const [inviteResultMsg, setInviteResultMsg] = useState<string>('');
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resendResultId, setResendResultId] = useState<string | null>(null);
+  const [resendResultOk, setResendResultOk] = useState<boolean | null>(null);
 
   const canSave = useMemo(() => email.trim().length > 3, [email]);
   const filteredEvents = useMemo(() => {
@@ -131,9 +153,21 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     }
   };
 
+  const fetchPendingInvitations = async () => {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('list_team_invitations', { p_artist_id: actorContext.artist_id })
+      );
+      if (!error) setPendingInvitations((data || []) as PendingInvitation[]);
+    } catch (err) {
+      console.error('[ManageTeam] fetch pending invitations failed:', err);
+    }
+  };
+
   useEffect(() => {
     fetchMembers();
     fetchEventsAndAssignments();
+    fetchPendingInvitations();
   }, [actorContext.artist_id]);
 
   const getMemberAssignedEventIds = (memberId: string) =>
@@ -169,71 +203,102 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     }
   };
 
-  const handleAddMember = async (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSave || adding) return;
 
     setAdding(true);
+    setInviteResult(null);
+    setInviteResultMsg('');
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const { data: userExists, error: userExistsError } = await withTimeout(
-        supabase.rpc('auth_user_exists_by_email', {
+      const { data, error } = await withTimeout(
+        supabase.rpc('invite_team_member', {
+          p_artist_id: actorContext.artist_id,
           p_email: normalizedEmail,
+          p_role: role,
         })
       );
 
-      if (userExistsError) {
-        throw userExistsError;
-      }
+      if (error) throw error;
 
-      if (!userExists) {
-        alert('This email is not found in Authentication users yet. Please create the Auth user first.');
-        return;
-      }
+      const result = (data as { result: string; invitation_id?: string }).result;
+      const invitationId = (data as { result: string; invitation_id?: string }).invitation_id;
 
-      const { data: userData, error: userError } = await withTimeout(supabase.auth.getUser());
-      if (userError) {
-        console.warn('[ManageTeam] getUser failed:', userError);
-      }
-
-      const { error } = await withTimeout(
-        supabase.from('artist_members').insert({
-          artist_id: actorContext.artist_id,
-          member_email: normalizedEmail,
-          role,
-          status: 'active',
-          created_by: userData.user?.id || null,
-        })
-      );
-
-      if (error) {
-        if (error.code === '23505') {
-          const { error: updateError } = await withTimeout(
-            supabase
-              .from('artist_members')
-              .update({ role, status: 'active' })
-              .eq('artist_id', actorContext.artist_id)
-              .eq('member_email', normalizedEmail)
+      if (result === 'invitation_sent' && invitationId) {
+        try {
+          const { error: notifyError } = await withTimeout(
+            supabase.functions.invoke('notify-team-invitation', {
+              body: { invitation_id: invitationId },
+            })
           );
-
-          if (updateError) {
-            throw updateError;
+          if (notifyError) {
+            setInviteResult('email_failed');
+            setInviteResultMsg('Invitation created, but the notification email failed to send.');
+          } else {
+            setInviteResult('invitation_sent');
+            setInviteResultMsg('Invitation sent. They can join after signing up with this email.');
           }
-        } else {
-          throw error;
+        } catch {
+          setInviteResult('email_failed');
+          setInviteResultMsg('Invitation created, but the notification email failed to send.');
         }
+        await fetchPendingInvitations();
+      } else if (result === 'member_added') {
+        setInviteResult('member_added');
+        setInviteResultMsg('Member added successfully.');
+        await fetchMembers();
+      } else if (result === 'already_member') {
+        setInviteResult('already_member');
+        setInviteResultMsg('This email is already an active member.');
+      } else if (result === 'already_invited') {
+        setInviteResult('already_invited');
+        setInviteResultMsg('An invitation already exists for this email.');
       }
 
       setEmail('');
       setRole('queue_staff');
-      await fetchMembers();
     } catch (err) {
-      console.error('[ManageTeam] add member failed:', err);
-      const message = getErrorMessage(err, 'Failed to add member');
-      alert(message);
+      console.error('[ManageTeam] invite failed:', err);
+      setInviteResult(null);
+      setInviteResultMsg(getErrorMessage(err, 'Failed to send invitation.'));
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleCancelInvitation = async (inv: PendingInvitation) => {
+    if (!confirm(`Cancel invitation for ${inv.invited_email}? They will no longer be able to accept it.`)) return;
+    try {
+      const { error } = await withTimeout(
+        supabase.rpc('cancel_team_invitation', { p_invitation_id: inv.id })
+      );
+      if (error) throw error;
+      await fetchPendingInvitations();
+    } catch (err) {
+      console.error('[ManageTeam] cancel invitation failed:', err);
+      setInviteResultMsg(getErrorMessage(err, 'Failed to cancel invitation.'));
+    }
+  };
+
+  const handleResendInvitation = async (inv: PendingInvitation) => {
+    setResendingId(inv.id);
+    setResendResultId(null);
+    setResendResultOk(null);
+    try {
+      const { error } = await withTimeout(
+        supabase.functions.invoke('notify-team-invitation', {
+          body: { invitation_id: inv.id },
+        })
+      );
+      setResendResultId(inv.id);
+      setResendResultOk(!error);
+    } catch {
+      setResendResultId(inv.id);
+      setResendResultOk(false);
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -320,49 +385,93 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
           </Button>
         </div>
 
-        <section className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-            <UserPlus size={14} />
-            Add Team Member
-          </h2>
-          <p className="mb-3 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2 text-xs font-semibold text-pink-800">
-            Add the email your staff will use to sign in. Managers can help run setup and sales, sellers can checkout orders, and queue staff can manage queue flow.
-          </p>
-          <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="space-y-1">
-              <span className="text-xs font-black uppercase tracking-wide text-gray-500">Staff email</span>
+        {/* Invite Member */}
+        <section className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+            <UserPlus size={14} className="text-gray-500" />
+            <h2 className="text-sm font-bold text-gray-800">Invite Member</h2>
+          </div>
+          <form onSubmit={handleInvite} className="px-4 py-4 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <input
                 type="email"
+                placeholder="staff@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="staff@email.com"
-                className="min-h-11 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+                onChange={(e) => { setEmail(e.target.value); setInviteResult(null); setInviteResultMsg(''); }}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-pink-200"
                 required
               />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-black uppercase tracking-wide text-gray-500">Role</span>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as ActorRole)}
-                className="min-h-11 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+                className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
               >
-              {ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
-              <p className="text-[11px] font-semibold text-gray-500">
-                {ROLE_OPTIONS.find((option) => option.value === role)?.detail}
+              <Button
+                type="submit"
+                disabled={!canSave || adding}
+                className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg disabled:opacity-50"
+              >
+                {adding ? 'Sending…' : 'Invite'}
+              </Button>
+            </div>
+            {inviteResultMsg && (
+              <p className={`text-xs ${inviteResult === 'member_added' || inviteResult === 'invitation_sent' ? 'text-green-600' : 'text-amber-600'}`}>
+                {inviteResultMsg}
               </p>
-            </label>
-            <Button
-              type="submit"
-              disabled={!canSave || adding}
-              className="self-end bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-lg text-sm font-bold disabled:bg-pink-300 min-h-11"
-            >
-              {adding ? 'Adding...' : 'Add Member'}
-            </Button>
+            )}
           </form>
+        </section>
+
+        {/* Pending Invitations */}
+        <section className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-5">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+            <Clock size={14} className="text-gray-500" />
+            <h2 className="text-sm font-bold text-gray-800">Pending Invitations</h2>
+          </div>
+          {pendingInvitations.length === 0 ? (
+            <p className="px-4 py-5 text-sm text-gray-400">No pending invitations.</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {pendingInvitations.map((inv) => (
+                <div key={inv.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{inv.invited_email}</p>
+                    <p className="text-xs text-gray-500">
+                      {getRoleLabel(inv.role)} · Invited {new Date(inv.invited_at).toLocaleDateString('en-GB')}
+                    </p>
+                    {resendResultId === inv.id && (
+                      <p className={`text-xs mt-0.5 ${resendResultOk ? 'text-green-600' : 'text-red-500'}`}>
+                        {resendResultOk ? 'Email resent.' : 'Resend failed.'}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleResendInvitation(inv)}
+                      disabled={resendingId === inv.id}
+                      className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <Send size={12} />
+                      {resendingId === inv.id ? 'Sending…' : 'Resend'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelInvitation(inv)}
+                      className="text-xs px-2.5 py-1.5 border border-red-100 rounded-lg text-red-500 hover:bg-red-50 flex items-center gap-1"
+                    >
+                      <X size={12} />
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">

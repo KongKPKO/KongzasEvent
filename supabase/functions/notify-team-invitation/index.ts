@@ -17,6 +17,9 @@ Deno.serve(async (req: Request) => {
     if (!invitation_id) {
       return json({ error: "invitation_id is required" }, 400);
     }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(invitation_id)) {
+      return json({ error: "invitation_id must be a valid UUID" }, 400);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -90,6 +93,7 @@ Deno.serve(async (req: Request) => {
         to: [invitation.invited_email],
         subject,
         html,
+        text,
       }),
     });
 

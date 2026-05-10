@@ -19,6 +19,7 @@ const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
 const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
+const EventDetailHub = lazy(() => import('./pages/creators/EventDetailHub'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 
 import ManageLogin from './pages/ManageLogin';
@@ -168,6 +169,10 @@ function App() {
             <Route
               path="/manage-team"
               element={session ? (isOwner && actorContext ? <ManageTeam actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId"
+              element={session && actorContext ? (canUseManagement ? <EventDetailHub actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/history"

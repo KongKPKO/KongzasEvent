@@ -279,6 +279,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       await fetchPendingInvitations();
     } catch (err) {
       console.error('[ManageTeam] cancel invitation failed:', err);
+      setInviteResult(null);
       setInviteResultMsg(getErrorMessage(err, 'Failed to cancel invitation.'));
     }
   };
@@ -420,7 +421,13 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
               </Button>
             </div>
             {inviteResultMsg && (
-              <p className={`text-xs ${inviteResult === 'member_added' || inviteResult === 'invitation_sent' ? 'text-green-600' : 'text-amber-600'}`}>
+              <p className={`text-xs ${
+                inviteResult === 'member_added' || inviteResult === 'invitation_sent'
+                  ? 'text-green-600'
+                  : inviteResult === 'email_failed'
+                  ? 'text-blue-600'
+                  : 'text-amber-600'
+              }`}>
                 {inviteResultMsg}
               </p>
             )}

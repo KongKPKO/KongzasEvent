@@ -1,5 +1,11 @@
 import { Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+
+/** Redirects to /live/queue while keeping the current search string (e.g. ?eventId=). */
+function LiveQueueRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/live/queue${search}`} replace />;
+}
 import { supabase } from './supabaseClient';
 import { fetchActorContext } from './utils/access';
 import type { ActorContext } from './types/access';
@@ -201,7 +207,7 @@ function App() {
                   ? canSell
                     ? <ManageCombined actorContext={actorContext} initialTab="pos" />
                     : canUseQueueWorkspace
-                      ? <Navigate to="/live/queue" replace />
+                      ? <LiveQueueRedirect />
                       : <Navigate to="/manage-login" replace />
                   : <Navigate to="/manage-login" replace />
               }

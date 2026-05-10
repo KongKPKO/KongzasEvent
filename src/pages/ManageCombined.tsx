@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
@@ -66,13 +67,11 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
-    // URL `eventId` query param wins over localStorage so deep-links from the
-    // Event Hub always open the right event regardless of stale local state.
-    const urlEventId = (() => {
-        if (typeof window === 'undefined') return null;
-        const params = new URLSearchParams(window.location.search);
-        return params.get('eventId');
-    })();
+    // useSearchParams makes urlEventId reactive: if the URL changes while this
+    // component stays mounted (e.g. navigating from one Event Hub to another),
+    // the component picks up the new eventId without remounting.
+    const [searchParams] = useSearchParams();
+    const urlEventId = searchParams.get('eventId');
 
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
     const [availableEvents, setAvailableEvents] = useState<ActiveEvent[]>([]);
@@ -293,6 +292,16 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             : null;
         setActiveEvent(nextActiveEvent);
     }, [availableEvents, selectedEventId]);
+
+    // When urlEventId changes (e.g. navigating from one Event Hub to another while
+    // ManageCombined stays mounted), update selectedEventId so the right event is shown.
+    // Only fires when urlEventId is non-null — if the URL has no eventId we leave the
+    // user's current selection alone.
+    useEffect(() => {
+        if (urlEventId) {
+            setSelectedEventId(urlEventId);
+        }
+    }, [urlEventId]);
 
     // When the URL provided an eventId AND it resolves to a real available event,
     // persist it to localStorage so the user lands on the same event next time

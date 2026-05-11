@@ -58,6 +58,7 @@ const ManageArtist = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -395,6 +396,20 @@ const ManageArtist = () => {
       navigate(`/manage-events/${event.id}/dashboard`);
   };
 
+  const handleCopyPublicUrl = async () => {
+    if (!publicPageUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(publicPageUrl);
+      setCopyFeedback('copied');
+    } catch (error) {
+      console.error('[ManageArtist] Failed to copy public URL:', error);
+      setCopyFeedback('failed');
+    }
+
+    window.setTimeout(() => setCopyFeedback('idle'), 2500);
+  };
+
 
   if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">Loading Artist Center...</div>;
   if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">Artist not found.</div>;
@@ -427,11 +442,11 @@ const ManageArtist = () => {
              <div className="flex flex-col sm:flex-row gap-2">
                <button
                  type="button"
-                 onClick={() => void navigator.clipboard?.writeText(publicPageUrl)}
+                 onClick={handleCopyPublicUrl}
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                >
                  <Copy size={16} aria-hidden="true" />
-                 Copy public URL
+                 {copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
                </button>
                <a
                  href={publicMenuUrl}

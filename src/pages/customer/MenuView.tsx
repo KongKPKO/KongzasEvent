@@ -993,7 +993,7 @@ const MenuView = () => {
                                         onClick={handleCloseCompletedOrder} 
                                         className="flex min-h-10 items-center gap-1 rounded-xl bg-green-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-green-700"
                                     >
-                                        <X size={14} /> {t('menuClose')}
+                                        <X size={14} /> {t('menuCloseCompletedOrder')}
                                     </button>
                                 </div>
                             ) : (

@@ -174,9 +174,11 @@ export default function PromotionManager({
     setBuyQuantity(String(promotion.buy_quantity || 1));
     setRewardValue(promotion.rule_type === 'discount' ? String(promotion.reward_value || '') : '');
     setRewardQuantity(promotion.rule_type === 'free_items' ? String(promotion.reward_quantity || 1) : '1');
-    window.requestAnimationFrame(() => {
-      document.getElementById('promotion-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    if (mode === 'duplicate') {
+      window.requestAnimationFrame(() => {
+        document.getElementById('promotion-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -371,7 +373,26 @@ export default function PromotionManager({
         </div>
       </div>
 
-      <form id="promotion-form" onSubmit={handleSave} className="space-y-4">
+      <div className={editingPromotionId ? 'fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-gray-950/55 p-4 backdrop-blur-sm' : ''}>
+        <div className={editingPromotionId ? 'my-6 w-full max-w-4xl rounded-2xl bg-white p-4 shadow-2xl' : ''}>
+          {editingPromotionId && (
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-lg font-black text-gray-900">Edit Promotion</h3>
+                <p className="mt-1 text-xs font-semibold text-gray-500">Update the selected promotion without changing the Add Promotion form.</p>
+              </div>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"
+                aria-label="Close edit promotion"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          )}
+
+          <form id="promotion-form" onSubmit={handleSave} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Promotion Name</label>
@@ -615,7 +636,7 @@ export default function PromotionManager({
               className="bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 py-2 px-4 rounded transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
             >
               <X size={14} />
-              Cancel Edit
+              Close
             </Button>
           )}
           <Button
@@ -624,10 +645,12 @@ export default function PromotionManager({
             className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
           >
             {saving ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
-            {saving ? 'Saving...' : editingPromotionId ? 'Save Promotion' : 'Add Promotion'}
+            {saving ? 'Saving...' : editingPromotionId ? 'Save Changes' : 'Add Promotion'}
           </Button>
         </div>
-      </form>
+          </form>
+        </div>
+      </div>
 
       <div className="mt-6">
         <div className="flex items-center gap-2 mb-3">

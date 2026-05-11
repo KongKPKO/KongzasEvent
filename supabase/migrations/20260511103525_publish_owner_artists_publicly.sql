@@ -24,6 +24,8 @@ create policy "events_public_read"
         and a.is_public = true
         and a.is_verified = true
     )
+    and events.status in ('Confirmed', 'Cancelled')
+    and events.end_date >= now()
     or public.has_artist_role(artist_id, array['owner', 'manager', 'seller', 'queue_staff'])
     or public.is_platform_admin()
   );

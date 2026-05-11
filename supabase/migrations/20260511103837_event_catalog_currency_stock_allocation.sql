@@ -1,6 +1,27 @@
 alter table public.event_products
   add column if not exists currency_override text;
 
+drop policy if exists "event_products_public_read" on public.event_products;
+
+create policy "event_products_public_read"
+  on public.event_products
+  for select
+  to anon, authenticated
+  using (
+    is_enabled = true
+    and exists (
+      select 1
+      from public.events e
+      join public.artists a on a.id = e.artist_id
+      where e.id = event_products.event_id
+        and e.artist_id = event_products.artist_id
+        and e.status in ('Confirmed', 'Cancelled')
+        and e.end_date >= now()
+        and a.is_public = true
+        and a.is_verified = true
+    )
+  );
+
 create or replace function public.enforce_event_product_allocation()
 returns trigger
 language plpgsql
@@ -123,7 +144,12 @@ begin
   end if;
 
   v_allowed :=
-    (coalesce(v_event.is_public, false) = true and coalesce(v_event.is_verified, false) = true)
+    (
+      coalesce(v_event.is_public, false) = true
+      and coalesce(v_event.is_verified, false) = true
+      and v_event.status in ('Confirmed', 'Cancelled')
+      and v_event.end_date >= now()
+    )
     or public.has_artist_role(v_event.artist_id, array['owner', 'manager', 'seller', 'queue_staff'])
     or public.is_platform_admin();
 

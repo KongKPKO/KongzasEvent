@@ -45,6 +45,7 @@ interface EventProductRecord {
   artist_id: string;
   is_enabled: boolean;
   price_override?: number | null;
+  currency_override?: string | null;
   stock_total?: number | null;
   stock_reserved?: number;
   stock_sold?: number;
@@ -55,6 +56,7 @@ type EventCatalogDraft = Record<string, {
   id?: string;
   is_enabled: boolean;
   price_override: string;
+  currency_override: string;
   is_unlimited: boolean;
   stock_total: string;
 }>;
@@ -171,6 +173,7 @@ const ManageProducts = () => {
    const [selectedEventId, setSelectedEventId] = useState('');
    const [eventCatalogDraft, setEventCatalogDraft] = useState<EventCatalogDraft>({});
    const [eventCatalogSavedDraft, setEventCatalogSavedDraft] = useState<EventCatalogDraft>({});
+   const [eventCatalogAllocatedByProduct, setEventCatalogAllocatedByProduct] = useState<Record<string, number>>({});
    const [eventCatalogLoading, setEventCatalogLoading] = useState(false);
    const [eventCatalogSaving, setEventCatalogSaving] = useState(false);
    const [eventCatalogSearch, setEventCatalogSearch] = useState('');
@@ -314,12 +317,25 @@ const ManageProducts = () => {
          eventCatalogView === 'all' ||
          (eventCatalogView === 'selling' && draft?.is_enabled) ||
          (eventCatalogView === 'hidden' && draft && !draft.is_enabled) ||
-         (eventCatalogView === 'overrides' && !!draft && (draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '')));
+         (eventCatalogView === 'overrides' && !!draft && (
+            draft.price_override.trim() !== '' ||
+            (draft.currency_override || DEFAULT_CURRENCY) !== (product.currency || DEFAULT_CURRENCY) ||
+            (!draft.is_unlimited && draft.stock_total.trim() !== '')
+         ));
 
       return matchesSearch && matchesCategory && matchesTag && matchesView;
    });
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
    const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft);
+
+   const getEventCatalogStockLimit = (product: Product) => {
+      if (product.is_unlimited) return Number.POSITIVE_INFINITY;
+      const total = product.stock_total || 0;
+      const reserved = product.stock_reserved || 0;
+      const sold = product.stock_sold || 0;
+      const allocatedElsewhere = eventCatalogAllocatedByProduct[product.id] || 0;
+      return Math.max(0, total - reserved - sold - allocatedElsewhere);
+   };
 
    const clearAllFilters = () => {
       setSearchQuery('');
@@ -339,7 +355,8 @@ const ManageProducts = () => {
             id: row?.id,
             is_enabled: row?.is_enabled ?? getEffectiveStatus(product) === 'enable',
             price_override: row?.price_override != null ? String(row.price_override) : '',
-            is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
+            currency_override: row?.currency_override || product.currency || DEFAULT_CURRENCY,
+            is_unlimited: Boolean(product.is_unlimited) && (row?.is_unlimited ?? Boolean(product.is_unlimited)),
             stock_total: row?.stock_total != null ? String(row.stock_total) : (product.stock_total != null ? String(product.stock_total) : ''),
          };
       }
@@ -370,18 +387,36 @@ const ManageProducts = () => {
       if (!eventId || products.length === 0) {
          setEventCatalogDraft({});
          setEventCatalogSavedDraft({});
+         setEventCatalogAllocatedByProduct({});
          return;
       }
 
       setEventCatalogLoading(true);
       try {
-         const { data, error } = await supabase
-            .from('event_products')
-            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited')
-            .eq('event_id', eventId);
+         const [eventCatalogRes, allocationRes] = await Promise.all([
+            supabase
+               .from('event_products')
+               .select('id, event_id, product_id, artist_id, is_enabled, price_override, currency_override, stock_total, stock_reserved, stock_sold, is_unlimited')
+               .eq('event_id', eventId),
+            supabase
+               .from('event_products')
+               .select('product_id, stock_total, is_unlimited')
+               .eq('artist_id', artistId)
+               .eq('is_enabled', true)
+               .neq('event_id', eventId),
+         ]);
 
-         if (error) throw error;
-         const nextDraft = buildDefaultCatalogDraft((data || []) as EventProductRecord[]);
+         if (eventCatalogRes.error) throw eventCatalogRes.error;
+         if (allocationRes.error) throw allocationRes.error;
+
+         const allocated = ((allocationRes.data || []) as Pick<EventProductRecord, 'product_id' | 'stock_total' | 'is_unlimited'>[]).reduce<Record<string, number>>((acc, row) => {
+            if (row.is_unlimited) return acc;
+            acc[row.product_id] = (acc[row.product_id] || 0) + (row.stock_total || 0);
+            return acc;
+         }, {});
+         setEventCatalogAllocatedByProduct(allocated);
+
+         const nextDraft = buildDefaultCatalogDraft((eventCatalogRes.data || []) as EventProductRecord[]);
          setEventCatalogDraft(nextDraft);
          setEventCatalogSavedDraft(nextDraft);
       } catch (error) {
@@ -401,6 +436,7 @@ const ManageProducts = () => {
          const fallback = {
             is_enabled: product ? getEffectiveStatus(product) === 'enable' : true,
             price_override: '',
+            currency_override: product?.currency || DEFAULT_CURRENCY,
             is_unlimited: product?.is_unlimited ?? true,
             stock_total: product?.stock_total != null ? String(product.stock_total) : '',
          };
@@ -423,6 +459,7 @@ const ManageProducts = () => {
             const fallback = {
                is_enabled: getEffectiveStatus(product) === 'enable',
                price_override: '',
+               currency_override: product.currency || DEFAULT_CURRENCY,
                is_unlimited: product.is_unlimited ?? true,
                stock_total: product.stock_total != null ? String(product.stock_total) : '',
             };
@@ -443,12 +480,19 @@ const ManageProducts = () => {
          const draft = eventCatalogDraft[product.id];
          if (!draft) return false;
          if (draft.price_override.trim() !== '' && Number(draft.price_override) < 0) return true;
-         if (!draft.is_unlimited && (draft.stock_total.trim() === '' || Number(draft.stock_total) < 0 || !Number.isInteger(Number(draft.stock_total)))) return true;
+         if (!CURRENCIES[draft.currency_override || DEFAULT_CURRENCY]) return true;
+         if (draft.is_enabled && !product.is_unlimited && draft.is_unlimited) return true;
+         if (draft.is_enabled && !draft.is_unlimited && (draft.stock_total.trim() === '' || Number(draft.stock_total) < 0 || !Number.isInteger(Number(draft.stock_total)))) return true;
+         if (draft.is_enabled && !draft.is_unlimited && Number(draft.stock_total) > getEventCatalogStockLimit(product)) return true;
          return false;
       });
 
       if (invalidProduct) {
-         showToast({ tone: 'warning', title: 'Invalid event catalog value', detail: `Check price/stock for ${invalidProduct.name}.` });
+         showToast({
+            tone: 'warning',
+            title: 'Invalid event catalog value',
+            detail: `Check price, currency, or stock for ${invalidProduct.name}. Event stock cannot exceed available central stock.`,
+         });
          return;
       }
 
@@ -458,6 +502,7 @@ const ManageProducts = () => {
             const draft = eventCatalogDraft[product.id] || {
                is_enabled: getEffectiveStatus(product) === 'enable',
                price_override: '',
+               currency_override: product.currency || DEFAULT_CURRENCY,
                is_unlimited: product.is_unlimited ?? true,
                stock_total: product.stock_total != null ? String(product.stock_total) : '',
             };
@@ -468,6 +513,7 @@ const ManageProducts = () => {
                artist_id: artistId,
                is_enabled: draft.is_enabled,
                price_override: draft.price_override.trim() === '' ? null : Number(draft.price_override),
+               currency_override: (draft.currency_override || DEFAULT_CURRENCY) === (product.currency || DEFAULT_CURRENCY) ? null : draft.currency_override,
                is_unlimited: draft.is_unlimited,
                stock_total: draft.is_unlimited ? null : Number(draft.stock_total || 0),
             };
@@ -1581,10 +1627,12 @@ const ManageProducts = () => {
                         </div>
                      ) : (
                         <div className="overflow-hidden rounded-xl border border-gray-200">
-                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_110px_140px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_110px_120px_130px_130px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
                               <div>Product</div>
                               <div>Sell</div>
                               <div>Event Price</div>
+                              <div>Currency</div>
+                              <div>Total Stock</div>
                               <div>Event Stock</div>
                            </div>
                            <div className="divide-y divide-gray-100">
@@ -1592,11 +1640,15 @@ const ManageProducts = () => {
                                  const draft = eventCatalogDraft[product.id] || {
                                     is_enabled: getEffectiveStatus(product) === 'enable',
                                     price_override: '',
+                                    currency_override: product.currency || DEFAULT_CURRENCY,
                                     is_unlimited: product.is_unlimited ?? true,
                                     stock_total: product.stock_total != null ? String(product.stock_total) : '',
                                  };
+                                 const stockLimit = getEventCatalogStockLimit(product);
+                                 const requestedStock = draft.is_unlimited ? Number.POSITIVE_INFINITY : Number(draft.stock_total || 0);
+                                 const stockOverLimit = draft.is_enabled && !product.is_unlimited && (draft.is_unlimited || requestedStock > stockLimit);
                                  return (
-                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_110px_140px_160px] gap-3 px-4 py-3 items-center">
+                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_110px_120px_130px_130px_160px] gap-3 px-4 py-3 items-center">
                                        <div className="min-w-0 flex items-center gap-3">
                                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
                                              {product.image_url ? (
@@ -1636,7 +1688,7 @@ const ManageProducts = () => {
                                                 )}
                                              </div>
                                              <div className="mt-1 text-[11px] font-semibold text-gray-500">
-                                                Global: {formatPrice(product.price, product.currency)} · {product.is_unlimited ? 'Unlimited' : `${product.stock_total || 0} stock`}
+                                                Global: {formatPrice(product.price, product.currency)} · {product.currency || DEFAULT_CURRENCY}
                                              </div>
                                           </div>
                                        </div>
@@ -1662,12 +1714,37 @@ const ManageProducts = () => {
                                           aria-label={`Event price for ${product.name}`}
                                        />
 
+                                       <select
+                                          value={draft.currency_override || product.currency || DEFAULT_CURRENCY}
+                                          onChange={(event) => updateEventCatalogDraft(product.id, { currency_override: event.target.value })}
+                                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                          aria-label={`Event currency for ${product.name}`}
+                                       >
+                                          {Object.keys(CURRENCIES).map((code) => (
+                                             <option key={`${product.id}-${code}`} value={code}>{code}</option>
+                                          ))}
+                                       </select>
+
+                                       <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs font-bold text-gray-600">
+                                          {product.is_unlimited ? (
+                                             'Unlimited'
+                                          ) : (
+                                             <>
+                                                <div>{product.stock_total || 0} central</div>
+                                                <div className="text-[11px] text-gray-400">
+                                                   {stockLimit} available
+                                                </div>
+                                             </>
+                                          )}
+                                       </div>
+
                                        <div className="space-y-2">
                                           <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
                                              <input
                                                 type="checkbox"
                                                 checked={draft.is_unlimited}
-                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: event.target.checked })}
+                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: product.is_unlimited ? event.target.checked : false })}
+                                                disabled={!product.is_unlimited}
                                                 className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                                              />
                                              Unlimited
@@ -1683,6 +1760,11 @@ const ManageProducts = () => {
                                              placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
                                              aria-label={`Event stock for ${product.name}`}
                                           />
+                                          {stockOverLimit && (
+                                             <p className="text-[11px] font-bold text-red-600">
+                                                Max available: {stockLimit}
+                                             </p>
+                                          )}
                                        </div>
                                     </div>
                                  );

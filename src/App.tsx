@@ -119,7 +119,7 @@ function App() {
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
   const isCustomerRoute = typeof window !== 'undefined'
-    ? /^\/[^/]+\/(home|join|queue-position|menu|pos)/.test(window.location.pathname)
+    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos)/.test(window.location.pathname)
     : false;
   const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
 
@@ -127,7 +127,7 @@ function App() {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
   }
 
-  if (session && !actorContext && !isWorkspaceOptionalPath) {
+  if (session && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md text-center">

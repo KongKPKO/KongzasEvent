@@ -13,6 +13,8 @@ const OWNER_EMAIL = `rls-owner-${Date.now()}@example.com`;
 const OWNER_PASSWORD = 'LocalOnlyRlsOwnerPassword123!';
 const OTHER_EMAIL = `rls-other-${Date.now()}@example.com`;
 const OTHER_PASSWORD = 'LocalOnlyRlsOtherPassword123!';
+const PUBLISH_EMAIL = `rls-publish-${Date.now()}@example.com`;
+const PUBLISH_PASSWORD = 'LocalOnlyRlsPublishPassword123!';
 
 const service = createClient(SUPABASE_URL, SERVICE_KEY);
 const anon = createClient(SUPABASE_URL, ANON_KEY);
@@ -506,13 +508,23 @@ test.describe('RLS and mutation security regressions', () => {
     });
     expect(first.error).toBeNull();
 
+    const conflictUpsert = await service.from('event_products').upsert({
+      event_id: ids.allocationEvent,
+      product_id: ids.allocationProduct,
+      artist_id: ids.artist,
+      is_enabled: true,
+      is_unlimited: false,
+      stock_total: 4,
+    }, { onConflict: 'event_id,product_id' });
+    expect(conflictUpsert.error).toBeNull();
+
     const overAllocation = await service.from('event_products').insert({
       event_id: ids.event,
       product_id: ids.allocationProduct,
       artist_id: ids.artist,
       is_enabled: true,
       is_unlimited: false,
-      stock_total: 1,
+      stock_total: 2,
     });
     expect(overAllocation.error?.message || '').toContain('event_stock_exceeds_catalog_stock');
 
@@ -521,6 +533,66 @@ test.describe('RLS and mutation security regressions', () => {
       .update({ is_enabled: false, stock_total: 0 })
       .eq('id', firstEventProduct);
     expect(disableUsedRow.error).toBeNull();
+  });
+
+  test('owner can intentionally publish a specific booth for anonymous public reads', async () => {
+    const publishArtistId = await createConfirmedUser(PUBLISH_EMAIL, PUBLISH_PASSWORD);
+    const publishClient = await signInClient(PUBLISH_EMAIL, PUBLISH_PASSWORD);
+    const publishEventId = randomUUID();
+    const publishSlug = `rls-publish-${Date.now()}`;
+    const now = new Date();
+
+    try {
+      const artistInsert = await service.from('artists').insert({
+        id: publishArtistId,
+        email: PUBLISH_EMAIL,
+        slug: publishSlug,
+        display_name: 'RLS Publish Artist',
+        is_public: false,
+        is_verified: false,
+      });
+      expect(artistInsert.error).toBeNull();
+
+      const eventInsert = await service.from('events').insert({
+        id: publishEventId,
+        artist_id: publishArtistId,
+        event_name: 'RLS Publish Event',
+        start_date: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        end_date: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+        status: 'Confirmed',
+        is_booth_open: true,
+        event_timezone: 'Asia/Bangkok',
+      });
+      expect(eventInsert.error).toBeNull();
+
+      const beforePublish = await anon
+        .from('artists')
+        .select('id')
+        .eq('slug', publishSlug)
+        .maybeSingle();
+      expect(beforePublish.error).toBeNull();
+      expect(beforePublish.data).toBeNull();
+
+      const publish = await publishClient.rpc('publish_artist_public_booth', {
+        p_artist_id: publishArtistId,
+        p_event_id: publishEventId,
+      });
+      expect(publish.error).toBeNull();
+
+      const [publishedArtist, publicEvent] = await Promise.all([
+        anon.from('artists').select('id, is_public, is_verified, published_at').eq('slug', publishSlug).single(),
+        anon.from('events').select('id, event_name').eq('id', publishEventId).single(),
+      ]);
+
+      expect(publishedArtist.error).toBeNull();
+      expect(publishedArtist.data).toMatchObject({ id: publishArtistId, is_public: true, is_verified: true });
+      expect(publishedArtist.data?.published_at).toBeTruthy();
+      expect(publicEvent.error).toBeNull();
+      expect(publicEvent.data?.event_name).toBe('RLS Publish Event');
+    } finally {
+      await service.from('events').delete().eq('id', publishEventId);
+      await service.from('artists').delete().eq('id', publishArtistId);
+    }
   });
 
   test('event currency override is applied consistently to order items and orders', async () => {

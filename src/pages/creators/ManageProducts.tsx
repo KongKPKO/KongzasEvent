@@ -328,12 +328,15 @@ const ManageProducts = () => {
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
    const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft);
 
-   const getEventCatalogStockLimit = (product: Product) => {
+   const getEventCatalogStockLimit = (
+      product: Product,
+      allocatedByProduct: Record<string, number> = eventCatalogAllocatedByProduct
+   ) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const total = product.stock_total || 0;
       const reserved = product.stock_reserved || 0;
       const sold = product.stock_sold || 0;
-      const allocatedElsewhere = eventCatalogAllocatedByProduct[product.id] || 0;
+      const allocatedElsewhere = allocatedByProduct[product.id] || 0;
       return Math.max(0, total - reserved - sold - allocatedElsewhere);
    };
 
@@ -345,19 +348,23 @@ const ManageProducts = () => {
       setSortOption('name_asc');
    };
 
-   const buildDefaultCatalogDraft = (catalogRows: EventProductRecord[] = []) => {
+   const buildDefaultCatalogDraft = (
+      catalogRows: EventProductRecord[] = [],
+      allocatedByProduct: Record<string, number> = eventCatalogAllocatedByProduct
+   ) => {
       const rowByProductId = new Map(catalogRows.map((row) => [row.product_id, row]));
       const nextDraft: EventCatalogDraft = {};
 
       for (const product of products) {
          const row = rowByProductId.get(product.id);
+         const availableStock = getEventCatalogStockLimit(product, allocatedByProduct);
          nextDraft[product.id] = {
             id: row?.id,
             is_enabled: row?.is_enabled ?? getEffectiveStatus(product) === 'enable',
             price_override: row?.price_override != null ? String(row.price_override) : '',
             currency_override: row?.currency_override || product.currency || DEFAULT_CURRENCY,
             is_unlimited: Boolean(product.is_unlimited) && (row?.is_unlimited ?? Boolean(product.is_unlimited)),
-            stock_total: row?.stock_total != null ? String(row.stock_total) : (product.stock_total != null ? String(product.stock_total) : ''),
+            stock_total: row?.stock_total != null ? String(row.stock_total) : (Number.isFinite(availableStock) ? String(availableStock) : ''),
          };
       }
 
@@ -416,7 +423,7 @@ const ManageProducts = () => {
          }, {});
          setEventCatalogAllocatedByProduct(allocated);
 
-         const nextDraft = buildDefaultCatalogDraft((eventCatalogRes.data || []) as EventProductRecord[]);
+         const nextDraft = buildDefaultCatalogDraft((eventCatalogRes.data || []) as EventProductRecord[], allocated);
          setEventCatalogDraft(nextDraft);
          setEventCatalogSavedDraft(nextDraft);
       } catch (error) {
@@ -433,12 +440,13 @@ const ManageProducts = () => {
    ) => {
       setEventCatalogDraft((prev) => {
          const product = products.find((item) => item.id === productId);
+         const stockLimit = product ? getEventCatalogStockLimit(product) : Number.POSITIVE_INFINITY;
          const fallback = {
             is_enabled: product ? getEffectiveStatus(product) === 'enable' : true,
             price_override: '',
             currency_override: product?.currency || DEFAULT_CURRENCY,
             is_unlimited: product?.is_unlimited ?? true,
-            stock_total: product?.stock_total != null ? String(product.stock_total) : '',
+            stock_total: Number.isFinite(stockLimit) ? String(stockLimit) : '',
          };
          return {
             ...prev,
@@ -456,12 +464,13 @@ const ManageProducts = () => {
       setEventCatalogDraft((prev) => {
          const next = { ...prev };
          for (const product of filteredEventCatalogProducts) {
+            const stockLimit = getEventCatalogStockLimit(product);
             const fallback = {
                is_enabled: getEffectiveStatus(product) === 'enable',
                price_override: '',
                currency_override: product.currency || DEFAULT_CURRENCY,
                is_unlimited: product.is_unlimited ?? true,
-               stock_total: product.stock_total != null ? String(product.stock_total) : '',
+               stock_total: Number.isFinite(stockLimit) ? String(stockLimit) : '',
             };
             next[product.id] = {
                ...fallback,
@@ -499,12 +508,13 @@ const ManageProducts = () => {
       setEventCatalogSaving(true);
       try {
          const payload = products.map((product) => {
+            const stockLimit = getEventCatalogStockLimit(product);
             const draft = eventCatalogDraft[product.id] || {
                is_enabled: getEffectiveStatus(product) === 'enable',
                price_override: '',
                currency_override: product.currency || DEFAULT_CURRENCY,
                is_unlimited: product.is_unlimited ?? true,
-               stock_total: product.stock_total != null ? String(product.stock_total) : '',
+               stock_total: Number.isFinite(stockLimit) ? String(stockLimit) : '',
             };
 
             return {
@@ -1637,14 +1647,14 @@ const ManageProducts = () => {
                            </div>
                            <div className="divide-y divide-gray-100">
                               {filteredEventCatalogProducts.map((product) => {
+                                 const stockLimit = getEventCatalogStockLimit(product);
                                  const draft = eventCatalogDraft[product.id] || {
                                     is_enabled: getEffectiveStatus(product) === 'enable',
                                     price_override: '',
                                     currency_override: product.currency || DEFAULT_CURRENCY,
                                     is_unlimited: product.is_unlimited ?? true,
-                                    stock_total: product.stock_total != null ? String(product.stock_total) : '',
+                                    stock_total: Number.isFinite(stockLimit) ? String(stockLimit) : '',
                                  };
-                                 const stockLimit = getEventCatalogStockLimit(product);
                                  const requestedStock = draft.is_unlimited ? Number.POSITIVE_INFINITY : Number(draft.stock_total || 0);
                                  const stockOverLimit = draft.is_enabled && !product.is_unlimited && (draft.is_unlimited || requestedStock > stockLimit);
                                  return (

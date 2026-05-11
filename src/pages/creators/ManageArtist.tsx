@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type MouseEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
   Trash2, Plus, Calendar, MapPin, FileText,
@@ -23,6 +23,9 @@ interface Artist {
   display_name: string;
   bio: string;
   image_url: string;
+  is_public?: boolean;
+  is_verified?: boolean;
+  published_at?: string | null;
 
   x_url: string;
   ig_url: string;
@@ -58,6 +61,7 @@ const ManageArtist = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPublishingPublicLink, setIsPublishingPublicLink] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
   
   // Modal State
@@ -90,7 +94,7 @@ const ManageArtist = () => {
         // 2. Fetch Artist by User ID
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
-          .select('id, slug, display_name, bio, image_url, x_url, ig_url, facebook_url, tiktok_url, email')
+          .select('id, slug, display_name, bio, image_url, is_public, is_verified, published_at, x_url, ig_url, facebook_url, tiktok_url, email')
           .eq('id', user.id)
           .single();
 
@@ -396,18 +400,87 @@ const ManageArtist = () => {
       navigate(`/manage-events/${event.id}/dashboard`);
   };
 
+  const getShareableEvent = () => {
+    const now = new Date();
+    const customerVisibleEvents = events
+      .filter((event) => event.status === 'Confirmed' && new Date(event.end_date) >= now)
+      .sort((left, right) => {
+        const openScore = Number(Boolean(right.is_booth_open)) - Number(Boolean(left.is_booth_open));
+        if (openScore !== 0) return openScore;
+        return new Date(left.start_date).getTime() - new Date(right.start_date).getTime();
+      });
+
+    return customerVisibleEvents[0] || null;
+  };
+
+  const ensurePublicBoothIsPublished = async () => {
+    if (!artist?.id || !artist.slug) {
+      throw new Error('Set a public slug before sharing this booth.');
+    }
+
+    const shareableEvent = getShareableEvent();
+    if (!shareableEvent) {
+      throw new Error('Add a confirmed, non-expired event before sharing this booth.');
+    }
+
+    const { data, error } = await supabase.rpc('publish_artist_public_booth', {
+      p_artist_id: artist.id,
+      p_event_id: shareableEvent.id,
+    });
+
+    if (error) throw error;
+
+    const publishedArtist = Array.isArray(data) ? data[0] : null;
+    if (publishedArtist) {
+      setArtist((prev) => prev ? {
+        ...prev,
+        is_public: publishedArtist.is_public,
+        is_verified: publishedArtist.is_verified,
+        published_at: publishedArtist.published_at,
+      } : prev);
+    }
+
+    return shareableEvent;
+  };
+
   const handleCopyPublicUrl = async () => {
-    if (!publicPageUrl) return;
+    if (!publicPageUrl || isPublishingPublicLink) return;
 
     try {
+      setIsPublishingPublicLink(true);
+      await ensurePublicBoothIsPublished();
       await navigator.clipboard.writeText(publicPageUrl);
       setCopyFeedback('copied');
     } catch (error) {
       console.error('[ManageArtist] Failed to copy public URL:', error);
       setCopyFeedback('failed');
+      alert(error instanceof Error ? error.message : 'Failed to publish and copy public URL.');
+    } finally {
+      setIsPublishingPublicLink(false);
     }
 
     window.setTimeout(() => setCopyFeedback('idle'), 2500);
+  };
+
+  const handleOpenPublicCatalog = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+
+    if (isPublishingPublicLink) {
+      return;
+    }
+
+    try {
+      setIsPublishingPublicLink(true);
+      await ensurePublicBoothIsPublished();
+      window.open(publicMenuUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('[ManageArtist] Failed to publish public catalog:', error);
+      setCopyFeedback('failed');
+      alert(error instanceof Error ? error.message : 'Failed to publish public catalog.');
+      window.setTimeout(() => setCopyFeedback('idle'), 2500);
+    } finally {
+      setIsPublishingPublicLink(false);
+    }
   };
 
 
@@ -443,15 +516,17 @@ const ManageArtist = () => {
                <button
                  type="button"
                  onClick={handleCopyPublicUrl}
+                 disabled={isPublishingPublicLink}
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                >
                  <Copy size={16} aria-hidden="true" />
-                 {copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
+                 {isPublishingPublicLink ? 'Publishing...' : copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
                </button>
                <a
                  href={publicMenuUrl}
                  target="_blank"
                  rel="noreferrer"
+                 onClick={handleOpenPublicCatalog}
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
                >
                  <ExternalLink size={16} aria-hidden="true" />

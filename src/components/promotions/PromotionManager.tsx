@@ -644,8 +644,8 @@ export default function PromotionManager({
             disabled={saving}
             className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
           >
-            {saving ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
-            {saving ? 'Saving...' : editingPromotionId ? 'Save Changes' : 'Add Promotion'}
+            {saving ? <Loader className="animate-spin" size={14} /> : editingPromotionId ? <Edit2 size={14} /> : <Plus size={14} />}
+            {saving ? 'Saving...' : editingPromotionId ? 'Save Promotion Changes' : 'Add Promotion'}
           </Button>
         </div>
           </form>

@@ -19,6 +19,7 @@ create policy "event_products_public_read"
         and e.end_date >= now()
         and a.is_public = true
         and a.is_verified = true
+        and a.published_at is not null
     )
   );
 
@@ -72,6 +73,7 @@ begin
   from public.event_products ep
   where ep.product_id = new.product_id
     and ep.id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
+    and not (ep.event_id = new.event_id and ep.product_id = new.product_id)
     and ep.is_enabled = true
     and ep.is_unlimited = false;
 
@@ -133,7 +135,7 @@ declare
   v_has_catalog boolean := false;
   v_allowed boolean := false;
 begin
-  select e.*, a.is_public, a.is_verified
+  select e.*, a.is_public, a.is_verified, a.published_at
   into v_event
   from public.events e
   join public.artists a on a.id = e.artist_id
@@ -147,6 +149,7 @@ begin
     (
       coalesce(v_event.is_public, false) = true
       and coalesce(v_event.is_verified, false) = true
+      and v_event.published_at is not null
       and v_event.status in ('Confirmed', 'Cancelled')
       and v_event.end_date >= now()
     )

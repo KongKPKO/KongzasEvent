@@ -1,20 +1,3 @@
--- Legacy workspaces existed before creator publication flags. If an artist has
--- an active owner membership and a slug, the Owner Workspace share link is a
--- public booth URL and must resolve for anon users.
-update public.artists a
-set is_public = true,
-    is_verified = true,
-    published_at = coalesce(a.published_at, a.created_at, now()),
-    updated_at = now()
-where coalesce(a.slug, '') <> ''
-  and exists (
-    select 1
-    from public.artist_members m
-    where m.artist_id = a.id
-      and m.status = 'active'
-      and public.normalize_artist_role(m.role) = 'owner'
-  );
-
 drop policy if exists "artists_public_read" on public.artists;
 
 create policy "artists_public_read"

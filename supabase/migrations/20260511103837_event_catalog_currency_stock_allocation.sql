@@ -32,11 +32,15 @@ begin
     return new;
   end if;
 
+  if not coalesce(new.is_enabled, true) then
+    return new;
+  end if;
+
   if coalesce(new.is_unlimited, false) then
     raise exception 'event_stock_exceeds_catalog_stock';
   end if;
 
-  v_requested := case when coalesce(new.is_enabled, true) then coalesce(new.stock_total, 0) else 0 end;
+  v_requested := coalesce(new.stock_total, 0);
 
   if v_requested < coalesce(new.stock_reserved, 0) + coalesce(new.stock_sold, 0) then
     raise exception 'event_stock_below_used_stock';
@@ -73,7 +77,9 @@ create trigger trg_event_products_allocation
   for each row
   execute function public.enforce_event_product_allocation();
 
-create or replace function public.list_event_products(p_event_id uuid)
+drop function if exists public.list_event_products(uuid);
+
+create function public.list_event_products(p_event_id uuid)
 returns table (
   id uuid,
   artist_id uuid,
@@ -239,6 +245,55 @@ set search_path = public
 as $$
 declare
   v_currency text;
+  v_distinct_count integer;
+begin
+  select oi.currency
+  into v_currency
+  from public.order_items oi
+  where oi.order_id = coalesce(new.order_id, old.order_id)
+  order by oi.id
+  limit 1;
+
+  select count(distinct oi.currency)
+  into v_distinct_count
+  from public.order_items oi
+  where oi.order_id = coalesce(new.order_id, old.order_id);
+
+  if v_distinct_count > 1 then
+    raise exception 'mixed_currency_not_allowed';
+  end if;
+
+  if v_currency is not null then
+    update public.orders
+    set currency = v_currency
+    where id = coalesce(new.order_id, old.order_id)
+      and currency is distinct from v_currency;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_orders_sync_item_currency on public.orders;
+drop trigger if exists trg_order_items_sync_order_currency on public.order_items;
+
+create trigger trg_order_items_sync_order_currency
+  after insert or update or delete on public.order_items
+  for each row
+  execute function public.sync_order_currency_from_items();
+
+create or replace function public.sync_order_currency_before_update()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_currency text;
+  v_distinct_count integer;
 begin
   select oi.currency
   into v_currency
@@ -246,6 +301,15 @@ begin
   where oi.order_id = new.id
   order by oi.id
   limit 1;
+
+  select count(distinct oi.currency)
+  into v_distinct_count
+  from public.order_items oi
+  where oi.order_id = new.id;
+
+  if v_distinct_count > 1 then
+    raise exception 'mixed_currency_not_allowed';
+  end if;
 
   if v_currency is not null then
     new.currency := v_currency;
@@ -255,9 +319,7 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_orders_sync_item_currency on public.orders;
-
 create trigger trg_orders_sync_item_currency
   before update on public.orders
   for each row
-  execute function public.sync_order_currency_from_items();
+  execute function public.sync_order_currency_before_update();

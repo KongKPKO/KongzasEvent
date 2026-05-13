@@ -36,6 +36,7 @@ interface EventOption {
   start_date: string;
   end_date: string;
   status: string;
+  currency_override?: string | null;
 }
 
 interface EventProductRecord {
@@ -45,7 +46,6 @@ interface EventProductRecord {
   artist_id: string;
   is_enabled: boolean;
   price_override?: number | null;
-  currency_override?: string | null;
   stock_total?: number | null;
   stock_reserved?: number;
   stock_sold?: number;
@@ -56,7 +56,6 @@ type EventCatalogDraft = Record<string, {
   id?: string;
   is_enabled: boolean;
   price_override: string;
-  currency_override: string;
   is_unlimited: boolean;
   stock_total: string;
 }>;
@@ -173,7 +172,9 @@ const ManageProducts = () => {
    const [selectedEventId, setSelectedEventId] = useState('');
    const [eventCatalogDraft, setEventCatalogDraft] = useState<EventCatalogDraft>({});
    const [eventCatalogSavedDraft, setEventCatalogSavedDraft] = useState<EventCatalogDraft>({});
-   const [eventCatalogAllocatedByProduct, setEventCatalogAllocatedByProduct] = useState<Record<string, number>>({});
+   const [eventCatalogStockLimitByProduct, setEventCatalogStockLimitByProduct] = useState<Record<string, number>>({});
+   const [eventCurrencyDraft, setEventCurrencyDraft] = useState('');
+   const [eventCurrencySaved, setEventCurrencySaved] = useState('');
    const [eventCatalogLoading, setEventCatalogLoading] = useState(false);
    const [eventCatalogSaving, setEventCatalogSaving] = useState(false);
    const [eventCatalogSearch, setEventCatalogSearch] = useState('');
@@ -319,7 +320,6 @@ const ManageProducts = () => {
          (eventCatalogView === 'hidden' && draft && !draft.is_enabled) ||
          (eventCatalogView === 'overrides' && !!draft && (
             draft.price_override.trim() !== '' ||
-            (draft.currency_override || DEFAULT_CURRENCY) !== (product.currency || DEFAULT_CURRENCY) ||
             (!draft.is_unlimited && draft.stock_total.trim() !== '')
          ));
 
@@ -327,14 +327,15 @@ const ManageProducts = () => {
    });
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
    const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft);
+   const hasEventCurrencyChange = eventCurrencyDraft !== eventCurrencySaved;
+   const hasPendingEventCatalogChanges = hasEventCatalogChanges || hasEventCurrencyChange;
+   const eventCurrencyLabel = eventCurrencyDraft || DEFAULT_CURRENCY;
 
    const getEventCatalogStockLimit = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
-      const total = product.stock_total || 0;
-      const reserved = product.stock_reserved || 0;
-      const sold = product.stock_sold || 0;
-      const allocatedElsewhere = eventCatalogAllocatedByProduct[product.id] || 0;
-      return Math.max(0, total - reserved - sold - allocatedElsewhere);
+      const calculatedLimit = eventCatalogStockLimitByProduct[product.id];
+      if (typeof calculatedLimit === 'number') return calculatedLimit;
+      return getAvailableUnits(product);
    };
 
    const clearAllFilters = () => {
@@ -345,29 +346,72 @@ const ManageProducts = () => {
       setSortOption('name_asc');
    };
 
-   const buildDefaultCatalogDraft = (catalogRows: EventProductRecord[] = []) => {
+   const buildEventCatalogFallback = (product: Product) => ({
+      is_enabled: getEffectiveStatus(product) === 'enable',
+      price_override: '',
+      is_unlimited: product.is_unlimited ?? true,
+      stock_total: product.stock_total != null ? String(product.stock_total) : '',
+   });
+
+   const buildDefaultCatalogDraft = (
+      catalogRows: EventProductRecord[] = [],
+      stockLimitByProduct: Record<string, number> = eventCatalogStockLimitByProduct
+   ) => {
       const rowByProductId = new Map(catalogRows.map((row) => [row.product_id, row]));
       const nextDraft: EventCatalogDraft = {};
 
       for (const product of products) {
          const row = rowByProductId.get(product.id);
+         const stockLimit = product.is_unlimited ? Number.POSITIVE_INFINITY : stockLimitByProduct[product.id];
+         const defaultStockTotal =
+            product.stock_total != null
+               ? String(Number.isFinite(stockLimit) ? Math.min(product.stock_total, stockLimit) : product.stock_total)
+               : '';
          nextDraft[product.id] = {
             id: row?.id,
             is_enabled: row?.is_enabled ?? getEffectiveStatus(product) === 'enable',
             price_override: row?.price_override != null ? String(row.price_override) : '',
-            currency_override: row?.currency_override || product.currency || DEFAULT_CURRENCY,
-            is_unlimited: Boolean(product.is_unlimited) && (row?.is_unlimited ?? Boolean(product.is_unlimited)),
-            stock_total: row?.stock_total != null ? String(row.stock_total) : (product.stock_total != null ? String(product.stock_total) : ''),
+            is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
+            stock_total: row?.stock_total != null ? String(row.stock_total) : defaultStockTotal,
          };
       }
 
       return nextDraft;
    };
 
+   const fetchEventCatalogStockLimits = async (
+      eventId: string,
+      catalogRows: EventProductRecord[] = []
+   ) => {
+      const rowByProductId = new Map(catalogRows.map((row) => [row.product_id, row]));
+      const finiteProducts = products.filter((product) => !product.is_unlimited);
+      const nextLimits: Record<string, number> = {};
+
+      await Promise.all(finiteProducts.map(async (product) => {
+         const { data, error } = await supabase.rpc('calculate_product_event_allocation_available', {
+            p_product_id: product.id,
+            p_exclude_event_id: eventId,
+         });
+
+         if (error) throw error;
+
+         const currentEventSold = rowByProductId.get(product.id)?.stock_sold || 0;
+         nextLimits[product.id] = Math.max(0, Number(data || 0) + currentEventSold);
+      }));
+
+      for (const product of products) {
+         if (product.is_unlimited) {
+            nextLimits[product.id] = Number.POSITIVE_INFINITY;
+         }
+      }
+
+      return nextLimits;
+   };
+
    const fetchEventOptions = async (artistIdValue: string) => {
       const { data, error } = await supabase
          .from('events')
-         .select('id, event_name, start_date, end_date, status')
+         .select('id, event_name, start_date, end_date, status, currency_override')
          .eq('artist_id', artistIdValue)
          .in('status', ['Confirmed', 'confirmed'])
          .order('start_date', { ascending: true });
@@ -387,38 +431,31 @@ const ManageProducts = () => {
       if (!eventId || products.length === 0) {
          setEventCatalogDraft({});
          setEventCatalogSavedDraft({});
-         setEventCatalogAllocatedByProduct({});
+         setEventCatalogStockLimitByProduct({});
+         setEventCurrencyDraft('');
+         setEventCurrencySaved('');
          return;
       }
 
       setEventCatalogLoading(true);
       try {
-         const [eventCatalogRes, allocationRes] = await Promise.all([
-            supabase
-               .from('event_products')
-               .select('id, event_id, product_id, artist_id, is_enabled, price_override, currency_override, stock_total, stock_reserved, stock_sold, is_unlimited')
-               .eq('event_id', eventId),
-            supabase
-               .from('event_products')
-               .select('product_id, stock_total, is_unlimited')
-               .eq('artist_id', artistId)
-               .eq('is_enabled', true)
-               .neq('event_id', eventId),
-         ]);
+         const { data, error } = await supabase
+            .from('event_products')
+            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .eq('event_id', eventId);
 
-         if (eventCatalogRes.error) throw eventCatalogRes.error;
-         if (allocationRes.error) throw allocationRes.error;
+         if (error) throw error;
 
-         const allocated = ((allocationRes.data || []) as Pick<EventProductRecord, 'product_id' | 'stock_total' | 'is_unlimited'>[]).reduce<Record<string, number>>((acc, row) => {
-            if (row.is_unlimited) return acc;
-            acc[row.product_id] = (acc[row.product_id] || 0) + (row.stock_total || 0);
-            return acc;
-         }, {});
-         setEventCatalogAllocatedByProduct(allocated);
-
-         const nextDraft = buildDefaultCatalogDraft((eventCatalogRes.data || []) as EventProductRecord[]);
+         const catalogRows = (data || []) as EventProductRecord[];
+         const nextStockLimits = await fetchEventCatalogStockLimits(eventId, catalogRows);
+         const nextDraft = buildDefaultCatalogDraft(catalogRows, nextStockLimits);
          setEventCatalogDraft(nextDraft);
          setEventCatalogSavedDraft(nextDraft);
+         setEventCatalogStockLimitByProduct(nextStockLimits);
+         const selectedEvent = eventOptions.find((event) => event.id === eventId);
+         const nextEventCurrency = selectedEvent?.currency_override || '';
+         setEventCurrencyDraft(nextEventCurrency);
+         setEventCurrencySaved(nextEventCurrency);
       } catch (error) {
          console.error('[ManageProducts] fetchEventCatalog failed:', error);
          showToast({ tone: 'error', title: 'Event catalog failed to load' });
@@ -433,13 +470,9 @@ const ManageProducts = () => {
    ) => {
       setEventCatalogDraft((prev) => {
          const product = products.find((item) => item.id === productId);
-         const fallback = {
-            is_enabled: product ? getEffectiveStatus(product) === 'enable' : true,
-            price_override: '',
-            currency_override: product?.currency || DEFAULT_CURRENCY,
-            is_unlimited: product?.is_unlimited ?? true,
-            stock_total: product?.stock_total != null ? String(product.stock_total) : '',
-         };
+         const fallback = product
+            ? buildEventCatalogFallback(product)
+            : { is_enabled: true, price_override: '', is_unlimited: true, stock_total: '' };
          return {
             ...prev,
             [productId]: {
@@ -456,13 +489,7 @@ const ManageProducts = () => {
       setEventCatalogDraft((prev) => {
          const next = { ...prev };
          for (const product of filteredEventCatalogProducts) {
-            const fallback = {
-               is_enabled: getEffectiveStatus(product) === 'enable',
-               price_override: '',
-               currency_override: product.currency || DEFAULT_CURRENCY,
-               is_unlimited: product.is_unlimited ?? true,
-               stock_total: product.stock_total != null ? String(product.stock_total) : '',
-            };
+            const fallback = buildEventCatalogFallback(product);
             next[product.id] = {
                ...fallback,
                ...(prev[product.id] || {}),
@@ -480,51 +507,89 @@ const ManageProducts = () => {
          const draft = eventCatalogDraft[product.id];
          if (!draft) return false;
          if (draft.price_override.trim() !== '' && Number(draft.price_override) < 0) return true;
-         if (!CURRENCIES[draft.currency_override || DEFAULT_CURRENCY]) return true;
-         if (draft.is_enabled && !product.is_unlimited && draft.is_unlimited) return true;
-         if (draft.is_enabled && !draft.is_unlimited && (draft.stock_total.trim() === '' || Number(draft.stock_total) < 0 || !Number.isInteger(Number(draft.stock_total)))) return true;
-         if (draft.is_enabled && !draft.is_unlimited && Number(draft.stock_total) > getEventCatalogStockLimit(product)) return true;
+         if (!draft.is_unlimited && (draft.stock_total.trim() === '' || Number(draft.stock_total) < 0 || !Number.isInteger(Number(draft.stock_total)))) return true;
          return false;
       });
 
       if (invalidProduct) {
+         showToast({ tone: 'warning', title: 'Invalid event catalog value', detail: `Check price/stock for ${invalidProduct.name}.` });
+         return;
+      }
+
+      const overAllocatedProduct = products.find((product) => {
+         const draft = eventCatalogDraft[product.id];
+         if (!draft || !draft.is_enabled || draft.is_unlimited || product.is_unlimited) return false;
+         const stockLimit = getEventCatalogStockLimit(product);
+         return Number.isFinite(stockLimit) && Number(draft.stock_total || 0) > stockLimit;
+      });
+
+      if (overAllocatedProduct) {
+         const stockLimit = getEventCatalogStockLimit(overAllocatedProduct);
          showToast({
             tone: 'warning',
-            title: 'Invalid event catalog value',
-            detail: `Check price, currency, or stock for ${invalidProduct.name}. Event stock cannot exceed available central stock.`,
+            title: 'Event stock exceeds available stock',
+            detail: `${overAllocatedProduct.name} can allocate up to ${stockLimit} for this event.`,
          });
+         return;
+      }
+
+      if (!hasPendingEventCatalogChanges) {
+         showToast({ tone: 'success', title: 'Event catalog already saved' });
          return;
       }
 
       setEventCatalogSaving(true);
       try {
-         const payload = products.map((product) => {
-            const draft = eventCatalogDraft[product.id] || {
-               is_enabled: getEffectiveStatus(product) === 'enable',
-               price_override: '',
-               currency_override: product.currency || DEFAULT_CURRENCY,
-               is_unlimited: product.is_unlimited ?? true,
-               stock_total: product.stock_total != null ? String(product.stock_total) : '',
-            };
+         const hasExistingCatalog = Object.values(eventCatalogSavedDraft).some((draft) => !!draft?.id);
+         const payload = products.flatMap((product) => {
+            const fallback = buildEventCatalogFallback(product);
+            const draft = eventCatalogDraft[product.id] || fallback;
+            const savedDraft = eventCatalogSavedDraft[product.id];
+            const comparison = savedDraft || fallback;
+            const rowChanged =
+               draft.is_enabled !== comparison.is_enabled ||
+               draft.price_override !== comparison.price_override ||
+               draft.is_unlimited !== comparison.is_unlimited ||
+               draft.stock_total !== comparison.stock_total;
 
-            return {
-               event_id: selectedEventId,
+            if (hasExistingCatalog && !rowChanged) {
+               return [];
+            }
+
+            const stockChanged =
+               !savedDraft?.id ||
+               draft.is_unlimited !== savedDraft.is_unlimited ||
+               draft.stock_total !== savedDraft.stock_total;
+            const item: Record<string, string | number | boolean | null> = {
                product_id: product.id,
-               artist_id: artistId,
                is_enabled: draft.is_enabled,
                price_override: draft.price_override.trim() === '' ? null : Number(draft.price_override),
-               currency_override: (draft.currency_override || DEFAULT_CURRENCY) === (product.currency || DEFAULT_CURRENCY) ? null : draft.currency_override,
-               is_unlimited: draft.is_unlimited,
-               stock_total: draft.is_unlimited ? null : Number(draft.stock_total || 0),
             };
+
+            if (!savedDraft?.id || draft.is_unlimited !== savedDraft.is_unlimited) {
+               item.is_unlimited = draft.is_unlimited;
+            }
+
+            if (stockChanged) {
+               item.stock_total = draft.is_unlimited ? null : Number(draft.stock_total || 0);
+            }
+
+            return [item];
          });
 
-         const { error } = await supabase
-            .from('event_products')
-            .upsert(payload, { onConflict: 'event_id,product_id' });
+         if (payload.length > 0 || hasEventCurrencyChange) {
+            const { error } = await supabase.rpc('save_event_catalog', {
+               p_event_id: selectedEventId,
+               p_items: payload,
+               p_currency_override: eventCurrencyDraft || null,
+               p_update_event_currency: hasEventCurrencyChange,
+            });
 
-         if (error) throw error;
-         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific catalog and stock.' });
+            if (error) throw error;
+         }
+
+         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific menu and stock.' });
+         await fetchEventOptions(artistId);
          await fetchEventCatalog(selectedEventId);
       } catch (error: any) {
          console.error('[ManageProducts] saveEventCatalog failed:', error);
@@ -585,6 +650,20 @@ const ManageProducts = () => {
          setEventCatalogDraft({});
       }
    }, [selectedEventId, products.length]);
+
+   useEffect(() => {
+      if (!selectedEventId) {
+         setEventCurrencyDraft('');
+         setEventCurrencySaved('');
+         return;
+      }
+
+      const nextEventCurrency = selectedEventOption?.currency_override || '';
+      if (!hasEventCurrencyChange) {
+         setEventCurrencyDraft(nextEventCurrency);
+      }
+      setEventCurrencySaved(nextEventCurrency);
+   }, [selectedEventId, selectedEventOption?.currency_override]);
 
    const getProductImageUrl = (dbValue: string, width: number = 400) => {
       if (!dbValue) return '';
@@ -1527,6 +1606,21 @@ const ManageProducts = () => {
                               </span>
                            )}
                         </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                           <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event currency</label>
+                           <select
+                              value={eventCurrencyDraft}
+                              onChange={(event) => setEventCurrencyDraft(event.target.value)}
+                              className="min-w-[220px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                              disabled={!selectedEventId}
+                              aria-label="Select event currency"
+                           >
+                              <option value="">Use product currency</option>
+                              {Object.keys(CURRENCIES).sort().map((code) => (
+                                 <option key={code} value={code}>{code}</option>
+                              ))}
+                           </select>
+                        </div>
                         <button
                            type="button"
                            onClick={() => void saveEventCatalog()}
@@ -1534,16 +1628,16 @@ const ManageProducts = () => {
                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
                         >
                            {eventCatalogSaving ? <Loader className="animate-spin" size={14} /> : <Save size={14} />}
-                           {hasEventCatalogChanges ? 'Save Changes' : 'Saved'}
+                           {hasPendingEventCatalogChanges ? 'Save Changes' : 'Saved'}
                         </button>
                      </div>
 
                      <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                        hasEventCatalogChanges
+                        hasPendingEventCatalogChanges
                            ? 'border-pink-200 bg-pink-50 text-pink-800'
                            : 'border-gray-200 bg-gray-50 text-gray-600'
                      }`}>
-                        {hasEventCatalogChanges
+                        {hasPendingEventCatalogChanges
                            ? 'You have unsaved event catalog changes. Save before opening POS for this event.'
                            : 'Event catalog is saved. POS and customer menu will use this setup.'}
                      </div>
@@ -1627,12 +1721,11 @@ const ManageProducts = () => {
                         </div>
                      ) : (
                         <div className="overflow-hidden rounded-xl border border-gray-200">
-                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_110px_120px_130px_130px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_90px_130px_150px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
                               <div>Product</div>
                               <div>Sell</div>
                               <div>Event Price</div>
-                              <div>Currency</div>
-                              <div>Total Stock</div>
+                              <div>Central / Available</div>
                               <div>Event Stock</div>
                            </div>
                            <div className="divide-y divide-gray-100">
@@ -1640,15 +1733,19 @@ const ManageProducts = () => {
                                  const draft = eventCatalogDraft[product.id] || {
                                     is_enabled: getEffectiveStatus(product) === 'enable',
                                     price_override: '',
-                                    currency_override: product.currency || DEFAULT_CURRENCY,
                                     is_unlimited: product.is_unlimited ?? true,
                                     stock_total: product.stock_total != null ? String(product.stock_total) : '',
                                  };
                                  const stockLimit = getEventCatalogStockLimit(product);
-                                 const requestedStock = draft.is_unlimited ? Number.POSITIVE_INFINITY : Number(draft.stock_total || 0);
-                                 const stockOverLimit = draft.is_enabled && !product.is_unlimited && (draft.is_unlimited || requestedStock > stockLimit);
+                                 const eventStockValue = Number(draft.stock_total || 0);
+                                 const stockOverLimit =
+                                    draft.is_enabled &&
+                                    !product.is_unlimited &&
+                                    !draft.is_unlimited &&
+                                    Number.isFinite(stockLimit) &&
+                                    eventStockValue > stockLimit;
                                  return (
-                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_110px_120px_130px_130px_160px] gap-3 px-4 py-3 items-center">
+                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_90px_130px_150px_160px] gap-3 px-4 py-3 items-center">
                                        <div className="min-w-0 flex items-center gap-3">
                                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
                                              {product.image_url ? (
@@ -1688,7 +1785,7 @@ const ManageProducts = () => {
                                                 )}
                                              </div>
                                              <div className="mt-1 text-[11px] font-semibold text-gray-500">
-                                                Global: {formatPrice(product.price, product.currency)} · {product.currency || DEFAULT_CURRENCY}
+                                                Global: {formatPrice(product.price, product.currency)} · Event currency: {eventCurrencyLabel}
                                              </div>
                                           </div>
                                        </div>
@@ -1714,24 +1811,20 @@ const ManageProducts = () => {
                                           aria-label={`Event price for ${product.name}`}
                                        />
 
-                                       <select
-                                          value={draft.currency_override || product.currency || DEFAULT_CURRENCY}
-                                          onChange={(event) => updateEventCatalogDraft(product.id, { currency_override: event.target.value })}
-                                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                          aria-label={`Event currency for ${product.name}`}
-                                       >
-                                          {Object.keys(CURRENCIES).map((code) => (
-                                             <option key={`${product.id}-${code}`} value={code}>{code}</option>
-                                          ))}
-                                       </select>
-
-                                       <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs font-bold text-gray-600">
+                                       <div className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                                          stockOverLimit
+                                             ? 'border border-red-200 bg-red-50 text-red-700'
+                                             : 'bg-gray-50 text-gray-600'
+                                       }`}>
                                           {product.is_unlimited ? (
-                                             'Unlimited'
+                                             <>
+                                                <div>Unlimited</div>
+                                                <div className="mt-0.5 text-[11px] font-semibold text-gray-500">No allocation cap</div>
+                                             </>
                                           ) : (
                                              <>
                                                 <div>{product.stock_total || 0} central</div>
-                                                <div className="text-[11px] text-gray-400">
+                                                <div className="mt-0.5 text-[11px] font-semibold">
                                                    {stockLimit} available
                                                 </div>
                                              </>
@@ -1752,17 +1845,22 @@ const ManageProducts = () => {
                                           <input
                                              type="number"
                                              min="0"
+                                             max={Number.isFinite(stockLimit) ? stockLimit : undefined}
                                              step="1"
                                              value={draft.stock_total}
                                              onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
                                              disabled={draft.is_unlimited}
-                                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200 disabled:bg-gray-100 disabled:text-gray-400"
+                                             className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
+                                                stockOverLimit
+                                                   ? 'border-red-300 bg-red-50 focus:ring-red-100'
+                                                   : 'border-gray-200 focus:ring-pink-200'
+                                             }`}
                                              placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
                                              aria-label={`Event stock for ${product.name}`}
                                           />
                                           {stockOverLimit && (
                                              <p className="text-[11px] font-bold text-red-600">
-                                                Max available: {stockLimit}
+                                                Max {stockLimit} available for this event
                                              </p>
                                           )}
                                        </div>
@@ -1776,7 +1874,7 @@ const ManageProducts = () => {
 	            </section>
             )}
 
-            {activeWorkspaceTab === 'event-catalog' && hasEventCatalogChanges && selectedEventId && (
+            {activeWorkspaceTab === 'event-catalog' && hasPendingEventCatalogChanges && selectedEventId && (
                <div className="sticky bottom-4 z-30 mb-6 rounded-2xl border border-pink-200 bg-white/95 p-3 shadow-xl shadow-pink-100/70 backdrop-blur">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                      <div>

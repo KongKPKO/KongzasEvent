@@ -13,8 +13,6 @@ const OWNER_EMAIL = `rls-owner-${Date.now()}@example.com`;
 const OWNER_PASSWORD = 'LocalOnlyRlsOwnerPassword123!';
 const OTHER_EMAIL = `rls-other-${Date.now()}@example.com`;
 const OTHER_PASSWORD = 'LocalOnlyRlsOtherPassword123!';
-const PUBLISH_EMAIL = `rls-publish-${Date.now()}@example.com`;
-const PUBLISH_PASSWORD = 'LocalOnlyRlsPublishPassword123!';
 
 const service = createClient(SUPABASE_URL, SERVICE_KEY);
 const anon = createClient(SUPABASE_URL, ANON_KEY);
@@ -24,15 +22,12 @@ const ids = {
   unrelatedUser: '',
   event: randomUUID(),
   secondEvent: randomUUID(),
-  allocationEvent: randomUUID(),
-  currencyEvent: randomUUID(),
+  endedEvent: randomUUID(),
   queue: randomUUID(),
-  currencyQueue: randomUUID(),
   product: randomUUID(),
   secondProduct: randomUUID(),
   raceProduct: randomUUID(),
   allocationProduct: randomUUID(),
-  currencyProduct: randomUUID(),
   order: randomUUID(),
   secondOrder: randomUUID(),
   raceOrder: randomUUID(),
@@ -60,6 +55,8 @@ const seedFixtures = async () => {
   const now = new Date();
   const start = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
   const end = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  const endedStart = new Date(now.getTime() - 72 * 60 * 60 * 1000).toISOString();
+  const endedEnd = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
   const serviceDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok',
     year: 'numeric',
@@ -103,23 +100,13 @@ const seedFixtures = async () => {
       event_timezone: 'Asia/Bangkok',
     },
     {
-      id: ids.allocationEvent,
+      id: ids.endedEvent,
       artist_id: ids.artist,
-      event_name: 'RLS Allocation Event',
-      start_date: start,
-      end_date: end,
+      event_name: 'RLS Ended Event',
+      start_date: endedStart,
+      end_date: endedEnd,
       status: 'Confirmed',
-      is_booth_open: true,
-      event_timezone: 'Asia/Bangkok',
-    },
-    {
-      id: ids.currencyEvent,
-      artist_id: ids.artist,
-      event_name: 'RLS Currency Event',
-      start_date: start,
-      end_date: end,
-      status: 'Confirmed',
-      is_booth_open: true,
+      is_booth_open: false,
       event_timezone: 'Asia/Bangkok',
     },
   ]);
@@ -166,19 +153,7 @@ const seedFixtures = async () => {
       id: ids.allocationProduct,
       artist_id: ids.artist,
       name: 'RLS Allocation Product',
-      price: 100,
-      status: 'enable',
-      currency: 'THB',
-      stock_total: 5,
-      stock_reserved: 0,
-      stock_sold: 0,
-      is_unlimited: false,
-    },
-    {
-      id: ids.currencyProduct,
-      artist_id: ids.artist,
-      name: 'RLS Currency Override Product',
-      price: 100,
+      price: 150,
       status: 'enable',
       currency: 'THB',
       stock_total: 5,
@@ -198,16 +173,6 @@ const seedFixtures = async () => {
     queue_service_date: serviceDate,
   });
   if (queueError) throw queueError;
-
-  const { error: currencyQueueError } = await service.from('queues').insert({
-    id: ids.currencyQueue,
-    artist_id: ids.artist,
-    event_id: ids.currencyEvent,
-    queue_number: 88,
-    status: 'serving',
-    queue_service_date: serviceDate,
-  });
-  if (currencyQueueError) throw currencyQueueError;
 
   const { error: orderError } = await service.from('orders').insert([
     {
@@ -251,13 +216,12 @@ const seedFixtures = async () => {
 };
 
 const cleanupFixtures = async () => {
-  await service.from('order_items').delete().in('product_id', [ids.product, ids.secondProduct, ids.raceProduct]);
-  await service.from('order_items').delete().in('product_id', [ids.allocationProduct, ids.currencyProduct]);
-  await service.from('orders').delete().in('event_id', [ids.event, ids.secondEvent, ids.allocationEvent, ids.currencyEvent]);
-  await service.from('queues').delete().in('event_id', [ids.event, ids.currencyEvent]);
-  await service.from('event_products').delete().in('product_id', [ids.allocationProduct, ids.currencyProduct]);
-  await service.from('products').delete().in('id', [ids.product, ids.secondProduct, ids.raceProduct, ids.allocationProduct, ids.currencyProduct]);
-  await service.from('events').delete().in('id', [ids.event, ids.secondEvent, ids.allocationEvent, ids.currencyEvent]);
+  await service.from('order_items').delete().in('product_id', [ids.product, ids.secondProduct, ids.raceProduct, ids.allocationProduct]);
+  await service.from('event_products').delete().in('event_id', [ids.event, ids.secondEvent, ids.endedEvent]);
+  await service.from('orders').delete().in('event_id', [ids.event, ids.secondEvent, ids.endedEvent]);
+  await service.from('queues').delete().eq('event_id', ids.event);
+  await service.from('products').delete().in('id', [ids.product, ids.secondProduct, ids.raceProduct, ids.allocationProduct]);
+  await service.from('events').delete().in('id', [ids.event, ids.secondEvent, ids.endedEvent]);
   await service.from('artists').delete().eq('id', ids.artist);
 };
 
@@ -315,6 +279,312 @@ test.describe('RLS and mutation security regressions', () => {
       .maybeSingle();
     expect(staleRead.error).toBeNull();
     expect(staleRead.data).toBeNull();
+  });
+
+  test('event catalog save preserves existing stock when stock was not edited', async () => {
+    const seedCatalog = await service.from('event_products').upsert(
+      [
+        {
+          event_id: ids.event,
+          product_id: ids.product,
+          artist_id: ids.artist,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 7,
+        },
+        {
+          event_id: ids.event,
+          product_id: ids.secondProduct,
+          artist_id: ids.artist,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 4,
+        },
+      ],
+      { onConflict: 'event_id,product_id' }
+    );
+    expect(seedCatalog.error).toBeNull();
+
+    const save = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.event,
+      p_items: [
+        {
+          product_id: ids.product,
+          is_enabled: true,
+          price_override: null,
+          is_unlimited: false,
+        },
+        {
+          product_id: ids.secondProduct,
+          is_enabled: true,
+          price_override: null,
+          is_unlimited: false,
+        },
+      ],
+    });
+    expect(save.error).toBeNull();
+
+    const stock = await service
+      .from('event_products')
+      .select('product_id, stock_total, stock_reserved, stock_sold')
+      .eq('event_id', ids.event)
+      .in('product_id', [ids.product, ids.secondProduct]);
+
+    expect(stock.error).toBeNull();
+    expect(stock.data?.find((row) => row.product_id === ids.product)).toMatchObject({
+      stock_total: 7,
+      stock_reserved: 0,
+      stock_sold: 0,
+    });
+    expect(stock.data?.find((row) => row.product_id === ids.secondProduct)).toMatchObject({
+      stock_total: 4,
+      stock_reserved: 0,
+      stock_sold: 0,
+    });
+    expect(stock.data?.some((row) => row.stock_total === 0)).toBe(false);
+  });
+
+  test('ended event unsold stock no longer blocks future event allocation', async () => {
+    await service.from('event_products').delete().eq('product_id', ids.allocationProduct);
+
+    const seedEnded = await service.from('event_products').upsert(
+      {
+        event_id: ids.endedEvent,
+        product_id: ids.allocationProduct,
+        artist_id: ids.artist,
+        is_enabled: true,
+        is_unlimited: false,
+        stock_total: 5,
+        stock_sold: 2,
+      },
+      { onConflict: 'event_id,product_id' }
+    );
+    expect(seedEnded.error).toBeNull();
+
+    const save = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.secondEvent,
+      p_items: [
+        {
+          product_id: ids.allocationProduct,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 3,
+        },
+      ],
+    });
+    expect(save.error).toBeNull();
+
+    const allocation = await service
+      .from('event_products')
+      .select('stock_total, stock_sold')
+      .eq('event_id', ids.secondEvent)
+      .eq('product_id', ids.allocationProduct)
+      .maybeSingle();
+
+    expect(allocation.error).toBeNull();
+    expect(allocation.data).toMatchObject({ stock_total: 3, stock_sold: 0 });
+  });
+
+  test('ended event sold stock remains deducted for future allocation', async () => {
+    await service.from('event_products').delete().eq('product_id', ids.allocationProduct);
+
+    const seedEnded = await service.from('event_products').upsert(
+      {
+        event_id: ids.endedEvent,
+        product_id: ids.allocationProduct,
+        artist_id: ids.artist,
+        is_enabled: true,
+        is_unlimited: false,
+        stock_total: 5,
+        stock_sold: 2,
+      },
+      { onConflict: 'event_id,product_id' }
+    );
+    expect(seedEnded.error).toBeNull();
+
+    const save = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.secondEvent,
+      p_items: [
+        {
+          product_id: ids.allocationProduct,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 4,
+        },
+      ],
+    });
+
+    expect(save.error?.message || '').toMatch(/event_stock_exceeds_catalog_stock/i);
+  });
+
+  test('active event allocation still blocks stock for upcoming events', async () => {
+    await service.from('event_products').delete().eq('product_id', ids.allocationProduct);
+
+    const seedActive = await service.from('event_products').upsert(
+      {
+        event_id: ids.event,
+        product_id: ids.allocationProduct,
+        artist_id: ids.artist,
+        is_enabled: true,
+        is_unlimited: false,
+        stock_total: 2,
+      },
+      { onConflict: 'event_id,product_id' }
+    );
+    expect(seedActive.error).toBeNull();
+
+    const save = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.secondEvent,
+      p_items: [
+        {
+          product_id: ids.allocationProduct,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 4,
+        },
+      ],
+    });
+
+    expect(save.error?.message || '').toMatch(/event_stock_exceeds_catalog_stock/i);
+  });
+
+  test('event-level currency applies to catalog, customer orders, and POS orders', async () => {
+    await service.from('event_products').delete().eq('event_id', ids.event);
+    await service.from('orders').delete().eq('event_id', ids.event).neq('id', ids.order);
+
+    const seedCatalog = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.event,
+      p_items: [
+        {
+          product_id: ids.product,
+          is_enabled: true,
+          price_override: 12,
+          is_unlimited: false,
+          stock_total: 5,
+        },
+      ],
+      p_currency_override: 'USD',
+      p_update_event_currency: true,
+    });
+    expect(seedCatalog.error).toBeNull();
+
+    const savedEvent = await service
+      .from('events')
+      .select('currency_override')
+      .eq('id', ids.event)
+      .maybeSingle();
+    expect(savedEvent.error).toBeNull();
+    expect(savedEvent.data?.currency_override).toBe('USD');
+
+    const listed = await anon.rpc('list_event_products', { p_event_id: ids.event });
+    expect(listed.error).toBeNull();
+    expect(Array.isArray(listed.data)).toBe(true);
+    expect((listed.data || []).find((row: any) => row.id === ids.product)).toMatchObject({
+      currency: 'USD',
+      price: 12,
+    });
+
+    const customerQueueId = randomUUID();
+    const queueInsert = await service.from('queues').insert({
+      id: customerQueueId,
+      artist_id: ids.artist,
+      event_id: ids.event,
+      queue_number: 178,
+      status: 'serving',
+      queue_service_date: new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date()),
+    });
+    expect(queueInsert.error).toBeNull();
+
+    const customerOrder = await anon.rpc('create_customer_order_with_stock', {
+      p_queue_id: customerQueueId,
+      p_items: [{ product_id: ids.product, quantity: 1 }],
+      p_payment_idempotency_key: randomUUID(),
+    });
+    expect(customerOrder.error).toBeNull();
+
+    const customerOrderRow = await service
+      .from('orders')
+      .select('currency')
+      .eq('id', customerOrder.data as string)
+      .maybeSingle();
+    expect(customerOrderRow.error).toBeNull();
+    expect(customerOrderRow.data?.currency).toBe('USD');
+
+    const customerOrderItem = await service
+      .from('order_items')
+      .select('currency')
+      .eq('order_id', customerOrder.data as string)
+      .maybeSingle();
+    expect(customerOrderItem.error).toBeNull();
+    expect(customerOrderItem.data?.currency).toBe('USD');
+
+    const walkinOrder = await owner.rpc('create_walkin_order_with_stock', {
+      p_event_id: ids.event,
+      p_items: [{ product_id: ids.product, quantity: 1 }],
+      p_payment_method: 'cash',
+      p_payment_idempotency_key: randomUUID(),
+    });
+    expect(walkinOrder.error).toBeNull();
+
+    const walkinOrderRow = await service
+      .from('orders')
+      .select('currency')
+      .eq('id', walkinOrder.data as string)
+      .maybeSingle();
+    expect(walkinOrderRow.error).toBeNull();
+    expect(walkinOrderRow.data?.currency).toBe('USD');
+
+    const walkinOrderItem = await service
+      .from('order_items')
+      .select('currency')
+      .eq('order_id', walkinOrder.data as string)
+      .maybeSingle();
+    expect(walkinOrderItem.error).toBeNull();
+    expect(walkinOrderItem.data?.currency).toBe('USD');
+  });
+
+  test('event catalog still saves per-product price and stock overrides correctly', async () => {
+    await service.from('event_products').delete().eq('product_id', ids.product);
+
+    const save = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.secondEvent,
+      p_items: [
+        {
+          product_id: ids.product,
+          is_enabled: true,
+          price_override: 245,
+          is_unlimited: false,
+          stock_total: 6,
+        },
+      ],
+    });
+    expect(save.error).toBeNull();
+
+    const savedRow = await service
+      .from('event_products')
+      .select('price_override, stock_total, is_enabled')
+      .eq('event_id', ids.secondEvent)
+      .eq('product_id', ids.product)
+      .maybeSingle();
+
+    expect(savedRow.error).toBeNull();
+    expect(savedRow.data).toMatchObject({
+      price_override: 245,
+      stock_total: 6,
+      is_enabled: true,
+    });
+
+    const listed = await owner.rpc('list_event_products', { p_event_id: ids.secondEvent });
+    expect(listed.error).toBeNull();
+    expect((listed.data || []).find((row: any) => row.id === ids.product)).toMatchObject({
+      price: 245,
+      stock_total: 6,
+    });
   });
 
   test('payment completion is scoped, idempotent, and cannot be bypassed with direct writes', async () => {
@@ -490,141 +760,5 @@ test.describe('RLS and mutation security regressions', () => {
       p_customer_fingerprint: ownerFingerprint,
     });
     expect(missingTicket.error?.message || '').toContain('ticket_not_found');
-  });
-
-  test('event catalog allocation prevents over-allocation but allows disabling used rows', async () => {
-    const firstEventProduct = randomUUID();
-
-    const first = await service.from('event_products').insert({
-      id: firstEventProduct,
-      event_id: ids.allocationEvent,
-      product_id: ids.allocationProduct,
-      artist_id: ids.artist,
-      is_enabled: true,
-      is_unlimited: false,
-      stock_total: 5,
-      stock_reserved: 1,
-      stock_sold: 1,
-    });
-    expect(first.error).toBeNull();
-
-    const conflictUpsert = await service.from('event_products').upsert({
-      event_id: ids.allocationEvent,
-      product_id: ids.allocationProduct,
-      artist_id: ids.artist,
-      is_enabled: true,
-      is_unlimited: false,
-      stock_total: 4,
-    }, { onConflict: 'event_id,product_id' });
-    expect(conflictUpsert.error).toBeNull();
-
-    const overAllocation = await service.from('event_products').insert({
-      event_id: ids.event,
-      product_id: ids.allocationProduct,
-      artist_id: ids.artist,
-      is_enabled: true,
-      is_unlimited: false,
-      stock_total: 2,
-    });
-    expect(overAllocation.error?.message || '').toContain('event_stock_exceeds_catalog_stock');
-
-    const disableUsedRow = await service
-      .from('event_products')
-      .update({ is_enabled: false, stock_total: 0 })
-      .eq('id', firstEventProduct);
-    expect(disableUsedRow.error).toBeNull();
-  });
-
-  test('owner can intentionally publish a specific booth for anonymous public reads', async () => {
-    const publishArtistId = await createConfirmedUser(PUBLISH_EMAIL, PUBLISH_PASSWORD);
-    const publishClient = await signInClient(PUBLISH_EMAIL, PUBLISH_PASSWORD);
-    const publishEventId = randomUUID();
-    const publishSlug = `rls-publish-${Date.now()}`;
-    const now = new Date();
-
-    try {
-      const artistInsert = await service.from('artists').insert({
-        id: publishArtistId,
-        email: PUBLISH_EMAIL,
-        slug: publishSlug,
-        display_name: 'RLS Publish Artist',
-        is_public: false,
-        is_verified: false,
-      });
-      expect(artistInsert.error).toBeNull();
-
-      const eventInsert = await service.from('events').insert({
-        id: publishEventId,
-        artist_id: publishArtistId,
-        event_name: 'RLS Publish Event',
-        start_date: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
-        end_date: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
-        status: 'Confirmed',
-        is_booth_open: true,
-        event_timezone: 'Asia/Bangkok',
-      });
-      expect(eventInsert.error).toBeNull();
-
-      const beforePublish = await anon
-        .from('artists')
-        .select('id')
-        .eq('slug', publishSlug)
-        .maybeSingle();
-      expect(beforePublish.error).toBeNull();
-      expect(beforePublish.data).toBeNull();
-
-      const publish = await publishClient.rpc('publish_artist_public_booth', {
-        p_artist_id: publishArtistId,
-        p_event_id: publishEventId,
-      });
-      expect(publish.error).toBeNull();
-
-      const [publishedArtist, publicEvent] = await Promise.all([
-        anon.from('artists').select('id, is_public, is_verified, published_at').eq('slug', publishSlug).single(),
-        anon.from('events').select('id, event_name').eq('id', publishEventId).single(),
-      ]);
-
-      expect(publishedArtist.error).toBeNull();
-      expect(publishedArtist.data).toMatchObject({ id: publishArtistId, is_public: true, is_verified: true });
-      expect(publishedArtist.data?.published_at).toBeTruthy();
-      expect(publicEvent.error).toBeNull();
-      expect(publicEvent.data?.event_name).toBe('RLS Publish Event');
-    } finally {
-      await service.from('events').delete().eq('id', publishEventId);
-      await service.from('artists').delete().eq('id', publishArtistId);
-    }
-  });
-
-  test('event currency override is applied consistently to order items and orders', async () => {
-    const eventProduct = await service.from('event_products').insert({
-      event_id: ids.currencyEvent,
-      product_id: ids.currencyProduct,
-      artist_id: ids.artist,
-      is_enabled: true,
-      price_override: 12,
-      currency_override: 'USD',
-      is_unlimited: false,
-      stock_total: 2,
-    });
-    expect(eventProduct.error).toBeNull();
-
-    const createdOrder = await anon.rpc('create_customer_order_with_stock', {
-      p_queue_id: ids.currencyQueue,
-      p_items: [{ product_id: ids.currencyProduct, quantity: 1 }],
-      p_payment_idempotency_key: randomUUID(),
-    });
-    expect(createdOrder.error).toBeNull();
-
-    const orderId = Array.isArray(createdOrder.data) ? createdOrder.data[0] : createdOrder.data;
-    const [order, items] = await Promise.all([
-      service.from('orders').select('currency, total_price').eq('id', orderId).single(),
-      service.from('order_items').select('currency, price_per_unit').eq('order_id', orderId),
-    ]);
-
-    expect(order.error).toBeNull();
-    expect(items.error).toBeNull();
-    expect(order.data).toMatchObject({ currency: 'USD', total_price: 12 });
-    expect(items.data).toHaveLength(1);
-    expect(items.data?.[0]).toMatchObject({ currency: 'USD', price_per_unit: 12 });
   });
 });

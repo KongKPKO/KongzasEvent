@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Card, Button } from '../components/ui';
-import { KeyRound, Mail, AlertCircle } from 'lucide-react';
+import { KeyRound, Mail, AlertCircle, Send } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchActorContext } from '../utils/access';
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
+import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
+
+interface AccessibleEvent {
+  id: string;
+}
 
 const ManageLogin = () => {
   const { t } = useI18n();
@@ -14,8 +19,47 @@ const ManageLogin = () => {
   const redirectTo = searchParams.get('redirect');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [magicLoading, setMagicLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [magicMsg, setMagicMsg] = useState<string | null>(null);
+
+  const getStaffRedirectUrl = () => `${window.location.origin}/manage-login?staff=1`;
+
+  const getLivePathForRole = async (role?: ActorRole | null) => {
+    if (role !== 'seller' && role !== 'queue_staff') return '/manage-pos-queues';
+
+    const { data } = await supabase.rpc('list_accessible_pos_events');
+    const firstEvent = ((data || []) as AccessibleEvent[])[0];
+    const query = firstEvent?.id ? `?eventId=${firstEvent.id}` : '';
+
+    return role === 'seller'
+      ? `/live/pos${query}`
+      : `/live/queue${query}`;
+  };
+
+  const routeAfterAuth = async () => {
+    const ctx = await fetchActorContext();
+    const [{ data: isAdmin }, { data: invites }] = await Promise.all([
+      supabase.rpc('is_platform_admin'),
+      supabase.rpc('list_my_pending_invitations'),
+    ]);
+
+    if (redirectTo === '/admin/applications' && isAdmin) {
+      navigate('/admin/applications');
+    } else if (canAccessManagementPages(ctx?.role)) {
+      navigate('/manage-events');
+    } else if (canAccessQueuePages(ctx?.role)) {
+      navigate(await getLivePathForRole(ctx?.role));
+    } else if ((invites || []).length > 0) {
+      navigate('/invitations');
+    } else if (isAdmin) {
+      navigate('/admin/applications');
+    } else {
+      setErrorMsg(t('loginNoWorkspace'));
+    }
+  };
 
   // Check if already logged in
   useEffect(() => {
@@ -27,20 +71,8 @@ const ManageLogin = () => {
         if (error) throw error;
         if (!isMounted || !data.session) return;
 
-        const ctx = await fetchActorContext();
         if (!isMounted) return;
-
-        const { data: isAdmin } = await supabase.rpc('is_platform_admin');
-
-        if (redirectTo === '/admin/applications' && isAdmin) {
-          navigate('/admin/applications');
-        } else if (canAccessManagementPages(ctx?.role)) {
-          navigate('/manage-events');
-        } else if (canAccessQueuePages(ctx?.role)) {
-          navigate('/manage-pos-queues');
-        } else if (isAdmin) {
-          navigate('/admin/applications');
-        }
+        await routeAfterAuth();
       } catch (error) {
         console.error('[ManageLogin] getSession failed:', error);
       }
@@ -69,25 +101,42 @@ const ManageLogin = () => {
         return;
       }
 
-      const ctx = await fetchActorContext();
-      const { data: isAdmin } = await supabase.rpc('is_platform_admin');
-
-      if (redirectTo === '/admin/applications' && isAdmin) {
-        navigate('/admin/applications');
-      } else if (canAccessManagementPages(ctx?.role)) {
-        navigate('/manage-events');
-      } else if (canAccessQueuePages(ctx?.role)) {
-        navigate('/manage-pos-queues');
-      } else if (isAdmin) {
-        navigate('/admin/applications');
-      } else {
-        setErrorMsg(t('loginNoWorkspace'));
-      }
+      await routeAfterAuth();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
       setErrorMsg(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStaffMagicLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMagicLoading(true);
+    setErrorMsg(null);
+    setMagicMsg(null);
+
+    try {
+      const normalizedEmail = staffEmail.trim().toLowerCase();
+      const { error } = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: getStaffRedirectUrl(),
+          shouldCreateUser: false,
+        },
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        return;
+      }
+
+      setMagicMsg('Magic link sent. Open the email to return to your assigned event workspace.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not send magic link.';
+      setErrorMsg(message);
+    } finally {
+      setMagicLoading(false);
     }
   };
 
@@ -162,6 +211,49 @@ const ManageLogin = () => {
               {loading ? t('loginSubmitting') : t('loginSubmit')}
             </Button>
           </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-100" />
+            <span className="text-[11px] font-black uppercase tracking-wide text-gray-400">Staff magic link</span>
+            <div className="h-px flex-1 bg-gray-100" />
+          </div>
+
+          <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
+            <p className="text-xs leading-5 text-gray-500">
+              Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.
+            </p>
+            <div>
+              <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">Staff email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="email"
+                  id="staff-login-email"
+                  name="staff-email"
+                  autoComplete="email"
+                  spellCheck={false}
+                  value={staffEmail}
+                  onChange={(e) => setStaffEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                  placeholder="staff@example.com"
+                  required
+                />
+              </div>
+            </div>
+            {magicMsg && (
+              <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                {magicMsg}
+              </p>
+            )}
+            <Button
+              type="submit"
+              className="w-full border border-pink-100 bg-pink-50 py-3 font-bold text-pink-700 hover:bg-pink-100"
+              disabled={magicLoading || staffEmail.trim().length < 4}
+            >
+              <Send size={16} />
+              {magicLoading ? 'Sending magic link…' : 'Send staff magic link'}
+            </Button>
+          </form>
         </Card>
 
         <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4 text-center text-sm text-gray-600 shadow-sm">
@@ -169,6 +261,12 @@ const ManageLogin = () => {
           <Link to="/creator/register" className="font-black text-pink-700 hover:text-pink-800">
             {t('loginApplyAccess')}
           </Link>
+          <div className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">
+            Invited as staff?{' '}
+            <Link to="/staff-signup" className="font-black text-pink-700 hover:text-pink-800">
+              Create a staff account
+            </Link>
+          </div>
         </div>
       </div>
     </div>

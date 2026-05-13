@@ -37,12 +37,14 @@ export default function InvitationsPage() {
   const handleAccept = async (inv: PendingInvite) => {
     setActionId(inv.id);
     try {
-      const { error } = await supabase.rpc('accept_team_invitation', {
+      const { data, error } = await supabase.rpc('accept_team_invitation', {
         p_invitation_id: inv.id,
       });
       if (error) throw error;
-      // Reload so App.tsx re-runs loadInitialSession → fetchActorContext picks up the new member row
-      window.location.href = '/';
+      const redirectPath = typeof data === 'object' && data && 'redirect_path' in data
+        ? String((data as { redirect_path?: string }).redirect_path || '/')
+        : '/';
+      window.location.href = redirectPath;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to accept invitation.';
       setMessages((m) => ({ ...m, [inv.id]: msg }));

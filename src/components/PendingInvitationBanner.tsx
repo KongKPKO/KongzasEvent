@@ -11,6 +11,7 @@ export interface PendingInvite {
   role: string;
   invited_at: string;
   expires_at: string | null;
+  event_ids?: string[];
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -61,12 +62,16 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
     setAcceptingId(inv.id);
     setErrorId(null);
     try {
-      const { error } = await supabase.rpc('accept_team_invitation', {
+      const { data, error } = await supabase.rpc('accept_team_invitation', {
         p_invitation_id: inv.id,
       });
       if (error) throw error;
       setAcceptedIds((prev) => [...prev, inv.id]);
       onAccepted();
+      const redirectPath = typeof data === 'object' && data && 'redirect_path' in data
+        ? String((data as { redirect_path?: string }).redirect_path || '')
+        : '';
+      if (redirectPath) window.location.href = redirectPath;
     } catch (err) {
       console.error('[PendingInvitationBanner] accept failed:', err);
       setErrorId(inv.id);

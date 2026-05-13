@@ -18,6 +18,7 @@ interface AdminHeaderProps {
     activePage: VisiblePage;
     activeEvent?: ActiveEvent | null;
     actorRole?: ActorRole;
+    userEmail?: string | null;
 }
 
 // Navigation Items Config
@@ -30,20 +31,29 @@ const navItems = [
     { path: '/live/queue', label: 'Live Ops', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
 ];
 
-export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner' }: AdminHeaderProps) {
+export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner', userEmail: contextEmail = null }: AdminHeaderProps) {
     const { t } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [userEmail, setUserEmail] = useState<string | null>(null);
+    const [userEmail, setUserEmail] = useState<string | null>(contextEmail);
     const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
     const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
 
     useEffect(() => {
         const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user?.email) {
-                setUserEmail(user.email);
+            if (contextEmail) {
+                setUserEmail(contextEmail);
+            } else {
+                const { data: sessionData } = await supabase.auth.getSession();
+                if (sessionData.session?.user?.email) {
+                    setUserEmail(sessionData.session.user.email);
+                }
+
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user?.email) {
+                    setUserEmail(user.email);
+                }
             }
 
             const { data: adminAccess, error } = await supabase.rpc('is_platform_admin');
@@ -52,7 +62,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             }
         };
         fetchUser();
-    }, []);
+    }, [contextEmail]);
 
     const roleLabelMapping: Record<string, string> = {
         owner: t('workspaceRoleOwner'),
@@ -62,7 +72,8 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
     };
     
     const displayRole = actorRole ? (roleLabelMapping[actorRole] || actorRole) : 'Admin';
-    const firstLetter = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
+    const displayEmail = userEmail || contextEmail || 'Signed in';
+    const firstLetter = displayEmail ? displayEmail.charAt(0).toUpperCase() : 'U';
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -146,7 +157,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         {firstLetter}
                     </div>
                     <div className="hidden lg:flex flex-col items-start leading-none max-w-[140px]">
-                        <span className="text-[11px] font-semibold text-gray-700 truncate w-full">{userEmail || 'Loading...'}</span>
+                        <span className="text-[11px] font-semibold text-gray-700 truncate w-full">{displayEmail}</span>
                         <div className="flex items-center gap-1 mt-0.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                             <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wide">{displayRole}</span>
@@ -154,7 +165,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                     </div>
                     {/* Tooltip for smaller desktop screens */}
                     <div className="absolute top-10 right-0 lg:hidden bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                        {userEmail} • {displayRole}
+                        {displayEmail} • {displayRole}
                     </div>
                 </div>
 
@@ -188,7 +199,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                             {firstLetter}
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]">{userEmail || 'Loading...'}</span>
+                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]">{displayEmail}</span>
                             <span className="text-xs font-medium text-blue-600 uppercase mt-0.5">{displayRole}</span>
                         </div>
                     </div>

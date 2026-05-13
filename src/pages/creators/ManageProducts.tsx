@@ -9,6 +9,8 @@ import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
 import { getAuthUserSafe } from '../../utils/auth';
+import { fetchActorContext } from '../../utils/access';
+import type { ActorContext } from '../../types/access';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
@@ -193,6 +195,7 @@ const ManageProducts = () => {
    
    const [artistId, setArtistId] = useState<string>('');
    const [artistName, setArtistName] = useState<string>('');
+   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
 
    const categories = [
       "A3", "A4", "Badge", "Cheki", "Keychain", 
@@ -240,18 +243,36 @@ const ManageProducts = () => {
       setToast(message);
    };
 
+   const resolveWorkspaceContext = async () => {
+      const user = await getAuthUserSafe();
+      if (!user) {
+         navigate('/manage-login');
+         return null;
+      }
+
+      const ctx = await fetchActorContext();
+      if (!ctx?.artist_id) {
+         navigate('/manage-login');
+         return null;
+      }
+
+      setActorContext(ctx);
+      setArtistId(ctx.artist_id);
+      return ctx;
+   };
+
    // ✅ NEW: Fix Mixed Currencies (Batch Update)
    const handleSwitchAll = async (targetCurrency: string) => {
       setLoading(true);
       try {
-         const user = await getAuthUserSafe();
-         if (!user) throw new Error('Not authenticated');
+         const ctx = actorContext || await resolveWorkspaceContext();
+         if (!ctx) throw new Error('Not authenticated');
 
          // 1. Enable targets
          await supabase
             .from('products')
             .update({ status: 'enable' })
-            .eq('artist_id', user.id)
+            .eq('artist_id', ctx.artist_id)
             .eq('currency', targetCurrency)
             .neq('status', 'soldout'); // Keep soldout as soldout? Or enable? 'enable' usually resets soldout. Let's assume enable all means reset soldout too? Or just enable disabled ones. Safe to just set 'enable'.
 
@@ -259,7 +280,7 @@ const ManageProducts = () => {
          await supabase
             .from('products')
             .update({ status: 'disable' })
-            .eq('artist_id', user.id)
+            .eq('artist_id', ctx.artist_id)
             .neq('currency', targetCurrency);
          
          await fetchProducts();
@@ -602,30 +623,24 @@ const ManageProducts = () => {
    const fetchProducts = async () => {
       setLoading(true);
       try {
-         const user = await getAuthUserSafe();
-         
-         // Fix: Force redirect if no session to prevent "Artist not found" errors
-         if (!user) {
-            navigate('/manage-login');
-            return;
-         }
+         const ctx = await resolveWorkspaceContext();
+         if (!ctx) return;
 
-         setArtistId(user.id);
-         await fetchEventOptions(user.id);
+         await fetchEventOptions(ctx.artist_id);
 
          // Fetch Artist Name
          const { data: artist } = await supabase
             .from('artists')
             .select('display_name')
-            .eq('id', user.id)
-            .single();
+            .eq('id', ctx.artist_id)
+            .maybeSingle();
          
          if (artist) setArtistName(artist.display_name);
 
          const { data, error } = await supabase
             .from('products')
             .select('*')
-            .eq('artist_id', user.id)
+            .eq('artist_id', ctx.artist_id)
             .is('deleted_at', null)
             .order('created_at', { ascending: false });
 
@@ -794,8 +809,8 @@ const ManageProducts = () => {
 
       setUploading(true);
       try {
-         const user = await getAuthUserSafe();
-         if (!user) throw new Error('Not authenticated');
+         const ctx = actorContext || await resolveWorkspaceContext();
+         if (!ctx) throw new Error('Not authenticated');
 
          // 1. Upload image if provided
          let filePath = '';
@@ -816,7 +831,7 @@ const ManageProducts = () => {
          const { error: dbError } = await supabase
             .from('products')
             .insert([{
-               artist_id: user.id,
+               artist_id: ctx.artist_id,
                name,
                price: parseFloat(price),
                description,
@@ -1017,8 +1032,8 @@ const ManageProducts = () => {
             );
             const importedKeys = new Set<string>();
 
-            const user = await getAuthUserSafe();
-            if (!user) {
+            const ctx = actorContext || await resolveWorkspaceContext();
+            if (!ctx) {
                showToast({ tone: 'error', title: 'Not authenticated' });
                return;
             }
@@ -1140,7 +1155,7 @@ const ManageProducts = () => {
                importedKeys.add(duplicateKey);
 
                validItems.push({
-                  artist_id: user.id,
+                  artist_id: ctx.artist_id,
                   name: name,
                   price: price,
                   currency: currency, // ✅ FIX: Now uses currency from CSV
@@ -1213,7 +1228,7 @@ const ManageProducts = () => {
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
          {/* ✅ NEW: Unified Admin Header */}
-         <AdminHeader activePage="menu" />
+         <AdminHeader activePage="menu" actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
          <Toast message={toast} onClose={() => setToast(null)} />
          <ConfirmDialog
             open={!!confirmAction}

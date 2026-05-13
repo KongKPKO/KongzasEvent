@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
+import { fetchActorContext } from '../../utils/access';
+import type { ActorContext } from '../../types/access';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
 import {
   formatDateTimeForInput,
@@ -58,6 +60,7 @@ const ManageArtist = () => {
   const browserTimeZone = getBrowserTimeZone();
   
   const [artist, setArtist] = useState<Artist | null>(null);
+  const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -91,14 +94,23 @@ const ManageArtist = () => {
            return;
         }
 
-        // 2. Fetch Artist by User ID
+        const ctx = await fetchActorContext();
+        if (!ctx?.artist_id) {
+          navigate('/manage-login');
+          return;
+        }
+        if (isMounted) setActorContext(ctx);
+
+        // 2. Fetch Artist by workspace ID. Manager/staff accounts do not own
+        // an artists row, so auth user id is not the artist id for them.
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
           .select('id, slug, display_name, bio, image_url, is_public, is_verified, published_at, x_url, ig_url, facebook_url, tiktok_url, email')
-          .eq('id', user.id)
-          .single();
+          .eq('id', ctx.artist_id)
+          .maybeSingle();
 
         if (artistError) throw artistError;
+        if (!artistData) throw new Error('Artist workspace not found.');
 
         if (isMounted && artistData) {
           setArtist(artistData);
@@ -500,7 +512,7 @@ const ManageArtist = () => {
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
        
        {/* ✅ Unified Admin Header */}
-       <AdminHeader activePage="events" />
+       <AdminHeader activePage="events" actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
 
       {/* Main Content */}
       <div className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">

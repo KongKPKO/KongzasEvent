@@ -26,6 +26,7 @@ const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
 const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
+const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
 import ManageLogin from './pages/ManageLogin';
 import { useI18n } from './i18n';
@@ -121,9 +122,14 @@ function App() {
   const isCustomerRoute = typeof window !== 'undefined'
     ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos)/.test(window.location.pathname)
     : false;
-  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
+  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
 
   if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
+  }
+
+  if (session && !actorContext && pendingInvitations.length > 0 && !isWorkspaceOptionalPath && !isCustomerRoute) {
+    window.location.replace('/invitations');
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
   }
 
@@ -154,6 +160,7 @@ function App() {
           <Routes>
             <Route path="/manage-login" element={<ManageLogin />} />
             <Route path="/creator/register" element={<CreatorRegister />} />
+            <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/admin/applications"

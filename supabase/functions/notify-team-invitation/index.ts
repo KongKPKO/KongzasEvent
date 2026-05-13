@@ -15,7 +15,7 @@
 //      -d '{"invitation_id":"<uuid>"}'
 //    Expected: {"error":"permission denied"}
 //
-// 3. Authorized owner/manager → email delivered:
+// 3. Authorized owner → email delivered:
 //    curl -s -X POST http://127.0.0.1:54321/functions/v1/notify-team-invitation \
 //      -H 'Authorization: Bearer <owner_jwt>' \
 //      -H 'Content-Type: application/json' \
@@ -74,6 +74,11 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: `Bearer ${callerToken}` } },
     });
 
+    const { data: caller, error: callerError } = await callerClient.auth.getUser();
+    if (callerError || !caller.user) {
+      return json({ error: "Missing or invalid authorization header" }, 401);
+    }
+
     // Fetch invitation + artist name
     const { data: invitation, error: invError } = await supabase
       .from("artist_member_invitations")
@@ -90,10 +95,12 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, skipped: true, reason: "invitation is not pending" });
     }
 
-    // Verify caller is owner or manager of this invitation's artist
+    // Verify caller is owner of this invitation's artist.
+    // Team/invite management is owner-only; managers can operate events but
+    // cannot resend or manage workspace invitations.
     const { data: roleCheck } = await callerClient.rpc("has_artist_role", {
       p_artist_id: invitation.artist_id,
-      p_allowed_roles: ["owner", "manager"],
+      p_allowed_roles: ["owner"],
     });
     if (!roleCheck) {
       return json({ error: "permission denied" }, 403);
@@ -102,9 +109,11 @@ Deno.serve(async (req: Request) => {
     const artistName = (invitation.artists as { display_name?: string } | null)?.display_name || "a booth";
     const roleLabel = getRoleLabel(invitation.role);
 
+    const appUrl = Deno.env.get("APPLICATION_SITE_URL") || Deno.env.get("PUBLIC_SITE_URL") || "http://localhost:5174";
+    const inviteUrl = `${appUrl.replace(/\/$/, "")}/staff-signup?email=${encodeURIComponent(invitation.invited_email)}&workspace=${encodeURIComponent(artistName)}`;
     const subject = `You've been invited to join ${artistName} on NireQ`;
-    const html = buildInviteHtml(artistName, roleLabel);
-    const text = buildInviteText(artistName, roleLabel);
+    const html = buildInviteHtml(artistName, roleLabel, inviteUrl);
+    const text = buildInviteText(artistName, roleLabel, inviteUrl);
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
@@ -188,7 +197,7 @@ function escapeHtml(str: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildInviteHtml(artistName: string, roleLabel: string): string {
+function buildInviteHtml(artistName: string, roleLabel: string, inviteUrl: string): string {
   return `
 <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;max-width:520px">
   <h1 style="font-size:20px;margin:0 0 12px">
@@ -196,9 +205,13 @@ function buildInviteHtml(artistName: string, roleLabel: string): string {
   </h1>
   <p>You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p>
   <p>
-    To accept this invitation, sign up or log in using
-    <strong>this exact email address</strong>.
-    Once logged in, you will see a prompt to accept the invitation.
+    To accept this invitation, create a staff account or log in using
+    <strong>this exact email address</strong>. This will not create a creator page.
+  </p>
+  <p>
+    <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;background:#db2777;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">
+      Create staff account
+    </a>
   </p>
   <p style="color:#6b7280;font-size:13px">
     If you did not expect this invitation, you can ignore this email.
@@ -206,14 +219,15 @@ function buildInviteHtml(artistName: string, roleLabel: string): string {
 </div>`;
 }
 
-function buildInviteText(artistName: string, roleLabel: string): string {
+function buildInviteText(artistName: string, roleLabel: string, inviteUrl: string): string {
   return [
     `You've been invited to join ${artistName} on NireQ`,
     "",
     `Role: ${roleLabel}`,
     "",
-    "To accept this invitation, sign up or log in using this exact email address.",
-    "Once logged in, you will see a prompt to accept the invitation.",
+    "To accept this invitation, create a staff account or log in using this exact email address.",
+    "This will not create a creator page.",
+    inviteUrl,
     "",
     "If you did not expect this invitation, you can ignore this email.",
   ].join("\n");

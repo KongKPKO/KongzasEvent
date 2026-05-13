@@ -19,6 +19,29 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
   const email = userData.user.email?.toLowerCase() || null;
   let artistId: string | null = null;
 
+  if (email) {
+    const { data: memberContext } = await withTimeout(
+      supabase
+        .from('artist_members')
+        .select('artist_id, role, member_email')
+        .eq('status', 'active')
+        .ilike('member_email', email)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      8000
+    );
+
+    if (memberContext?.artist_id && memberContext.role) {
+      return {
+        artist_id: memberContext.artist_id,
+        role: memberContext.role as ActorContext['role'],
+        is_owner: memberContext.role === 'owner',
+        member_email: memberContext.member_email || email,
+      };
+    }
+  }
+
   const { data: ownedArtist } = await withTimeout(
     supabase
       .from('artists')

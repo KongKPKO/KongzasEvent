@@ -33,6 +33,7 @@ interface PendingInvitation {
   role: ActorRole;
   invited_at: string;
   expires_at: string | null;
+  event_ids?: string[];
 }
 
 type InviteResult =
@@ -87,6 +88,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const [savingAssignmentsId, setSavingAssignmentsId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ActorRole>('queue_staff');
+  const [inviteEventIds, setInviteEventIds] = useState<string[]>([]);
   const [eventAccessSearch, setEventAccessSearch] = useState('');
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [inviteResult, setInviteResult] = useState<InviteResult>(null);
@@ -96,7 +98,11 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const [resendResultOk, setResendResultOk] = useState<boolean | null>(null);
   const [memberActionError, setMemberActionError] = useState<string>('');
 
-  const canSave = useMemo(() => email.trim().length > 3, [email]);
+  const inviteRequiresEventAccess = role === 'seller' || role === 'queue_staff';
+  const canSave = useMemo(
+    () => email.trim().length > 3 && (!inviteRequiresEventAccess || inviteEventIds.length > 0),
+    [email, inviteEventIds.length, inviteRequiresEventAccess]
+  );
   const filteredEvents = useMemo(() => {
     const query = eventAccessSearch.trim().toLowerCase();
     if (!query) return events;
@@ -174,6 +180,18 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const getMemberAssignedEventIds = (memberId: string) =>
     new Set(assignments.filter((assignment) => assignment.member_id === memberId).map((assignment) => assignment.event_id));
 
+  const getEventName = (eventId: string) => events.find((event) => event.id === eventId)?.event_name || 'Event';
+
+  const getInvitationRedirectUrl = () => `${window.location.origin}/invitations`;
+
+  const toggleInviteEvent = (eventId: string) => {
+    setInviteEventIds((current) =>
+      current.includes(eventId)
+        ? current.filter((id) => id !== eventId)
+        : [...current, eventId]
+    );
+  };
+
   const saveMemberAssignments = async (member: TeamMember, nextEventIds: string[]) => {
     setSavingAssignmentsId(member.id);
     try {
@@ -219,6 +237,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
           p_artist_id: actorContext.artist_id,
           p_email: normalizedEmail,
           p_role: role,
+          p_event_ids: inviteRequiresEventAccess ? inviteEventIds : [],
         })
       );
 
@@ -228,22 +247,40 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       const invitationId = (data as { result: string; invitation_id?: string }).invitation_id;
 
       if (result === 'invitation_sent' && invitationId) {
-        try {
-          const { error: notifyError } = await withTimeout(
-            supabase.functions.invoke('notify-team-invitation', {
-              body: { invitation_id: invitationId },
+        if (role === 'seller' || role === 'queue_staff') {
+          const { error: magicLinkError } = await withTimeout(
+            supabase.auth.signInWithOtp({
+              email: normalizedEmail,
+              options: {
+                emailRedirectTo: getInvitationRedirectUrl(),
+              },
             })
           );
-          if (notifyError) {
+          if (magicLinkError) {
             setInviteResult('email_failed');
-            setInviteResultMsg('Invitation created, but the notification email failed to send.');
+            setInviteResultMsg('Invitation created, but the magic link email failed to send. Use Resend after checking auth email settings.');
           } else {
             setInviteResult('invitation_sent');
-            setInviteResultMsg('Invitation sent. They can join after signing up with this email.');
+            setInviteResultMsg('Magic link sent. Staff can open the email, accept the invite, and work only the selected event access.');
           }
-        } catch {
-          setInviteResult('email_failed');
-          setInviteResultMsg('Invitation created, but the notification email failed to send.');
+        } else {
+          try {
+            const { error: notifyError } = await withTimeout(
+              supabase.functions.invoke('notify-team-invitation', {
+                body: { invitation_id: invitationId },
+              })
+            );
+            if (notifyError) {
+              setInviteResult('email_failed');
+              setInviteResultMsg('Invitation created, but the notification email failed to send.');
+            } else {
+              setInviteResult('invitation_sent');
+              setInviteResultMsg('Manager invitation sent. They can create a password staff account without a creator profile.');
+            }
+          } catch {
+            setInviteResult('email_failed');
+            setInviteResultMsg('Invitation created, but the notification email failed to send.');
+          }
         }
         await fetchPendingInvitations();
       } else if (result === 'member_added') {
@@ -260,6 +297,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
 
       setEmail('');
       setRole('queue_staff');
+      setInviteEventIds([]);
     } catch (err) {
       console.error('[ManageTeam] invite failed:', err);
       setInviteResult(null);
@@ -289,11 +327,20 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     setResendResultId(null);
     setResendResultOk(null);
     try {
-      const { error } = await withTimeout(
-        supabase.functions.invoke('notify-team-invitation', {
-          body: { invitation_id: inv.id },
-        })
-      );
+      const { error } = inv.role === 'seller' || inv.role === 'queue_staff'
+        ? await withTimeout(
+            supabase.auth.signInWithOtp({
+              email: inv.invited_email,
+              options: {
+                emailRedirectTo: getInvitationRedirectUrl(),
+              },
+            })
+          )
+        : await withTimeout(
+            supabase.functions.invoke('notify-team-invitation', {
+              body: { invitation_id: inv.id },
+            })
+          );
       setResendResultId(inv.id);
       setResendResultOk(!error);
     } catch {
@@ -405,7 +452,11 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
               />
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as ActorRole)}
+                onChange={(e) => {
+                  const nextRole = e.target.value as ActorRole;
+                  setRole(nextRole);
+                  if (nextRole === 'manager') setInviteEventIds([]);
+                }}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
               >
                 {ROLE_OPTIONS.map((opt) => (
@@ -420,6 +471,52 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                 {adding ? 'Sending…' : 'Invite'}
               </Button>
             </div>
+            <p className="text-xs text-gray-500">
+              {role === 'manager'
+                ? 'Managers use a password staff account and can manage events, catalog, promotions, POS, and queue for every event. Team access stays owner-only.'
+                : 'Seller and queue staff receive a magic link and can only access the events selected below.'}
+            </p>
+            {inviteRequiresEventAccess && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                    <CalendarDays size={12} />
+                    Event access required
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInviteEventIds(events.map((event) => event.id))}
+                    className="text-[11px] font-black text-pink-600 hover:text-pink-700"
+                  >
+                    Select all listed
+                  </button>
+                </div>
+                {events.length === 0 ? (
+                  <p className="text-xs font-semibold text-amber-700">Create a confirmed event before inviting event-limited staff.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {events.map((event) => {
+                      const checked = inviteEventIds.includes(event.id);
+                      return (
+                        <label key={`invite-${event.id}`} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                          checked ? 'border-pink-200 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleInviteEvent(event.id)}
+                          />
+                          {event.event_name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {inviteEventIds.length === 0 && (
+                  <p className="mt-2 text-[11px] font-semibold text-red-500">Select at least one event for this role.</p>
+                )}
+              </div>
+            )}
             {inviteResultMsg && (
               <p className={`text-xs ${
                 inviteResult === 'member_added' || inviteResult === 'invitation_sent'
@@ -451,6 +548,11 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                     <p className="text-xs text-gray-500">
                       {getRoleLabel(inv.role)} · Invited {new Date(inv.invited_at).toLocaleDateString('en-GB')}
                     </p>
+                    {inv.event_ids && inv.event_ids.length > 0 && (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        Event access: {inv.event_ids.map(getEventName).join(', ')}
+                      </p>
+                    )}
                     {resendResultId === inv.id && (
                       <p className={`text-xs mt-0.5 ${resendResultOk ? 'text-green-600' : 'text-red-500'}`}>
                         {resendResultOk ? 'Email resent.' : 'Resend failed.'}
@@ -565,7 +667,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                   </div>
                   </div>
 
-                  {member.role !== 'owner' && events.length > 0 && (
+                  {(member.role === 'seller' || member.role === 'queue_staff') && events.length > 0 && (
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="text-[11px] font-black uppercase tracking-wide text-gray-500 flex items-center gap-1.5">

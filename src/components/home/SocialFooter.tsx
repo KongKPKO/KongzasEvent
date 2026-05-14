@@ -1,5 +1,6 @@
 
 import { Instagram, Facebook, Music2, Mail } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 interface SocialFooterProps {
   artist: {
@@ -18,6 +19,7 @@ const XIcon = ({ size = 20, className = "" }: { size?: number, className?: strin
 );
 
 const SocialFooter = ({ artist }: SocialFooterProps) => {
+  const { t } = useI18n();
   const socialLinks = [
     { icon: <XIcon size={20} />, url: artist.x_url, label: 'X', hoverClass: 'hover:bg-black' },
     { icon: <Instagram size={20} />, url: artist.ig_url, label: 'Instagram', hoverClass: 'hover:bg-[#d62976]' },
@@ -32,7 +34,7 @@ const SocialFooter = ({ artist }: SocialFooterProps) => {
       <div className="px-8 mt-6">
         <div className="flex items-center gap-4 mb-4">
            <div className="h-px bg-gray-200 flex-1"></div>
-           <span className="text-xs font-bold text-black uppercase tracking-widest">Follow Me</span>
+           <span className="text-xs font-bold text-black uppercase tracking-widest">{t('creatorFollowMe')}</span>
            <div className="h-px bg-gray-200 flex-1"></div>
         </div>
         <div className="mb-4 flex items-center justify-center gap-3">

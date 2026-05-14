@@ -14,6 +14,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { ConfirmDialog, Toast } from '../components/ui/Feedback';
 import { LanguageToggle, useI18n } from '../i18n';
+import { invokeNotificationFunction } from '../utils/edgeFunctions';
 
 type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -138,9 +139,7 @@ export default function AdminApplications() {
   }, [navigate]);
 
   const sendDecisionEmail = async (applicationId: string, event: 'approved' | 'rejected') => {
-    const { error } = await supabase.functions.invoke('notify-creator-application', {
-      body: { applicationId, event },
-    });
+    const { error } = await invokeNotificationFunction('notify-creator-application', { applicationId, event });
 
     if (error) {
       setToast({

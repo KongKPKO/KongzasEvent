@@ -93,11 +93,16 @@ function App() {
     void loadInitialSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      void syncSessionContext(nextSession);
-
       if (event === 'PASSWORD_RECOVERY') {
         window.location.replace('/reset-password');
+        return;
       }
+
+      if (event === 'INITIAL_SESSION') return;
+
+      window.setTimeout(() => {
+        if (isMounted) void syncSessionContext(nextSession);
+      }, 0);
     });
 
     return () => {

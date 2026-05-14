@@ -4,6 +4,7 @@ import AdminHeader from '../../components/AdminHeader';
 import { Button } from '../../components/ui';
 import type { ActorContext, ActorRole } from '../../types/access';
 import { CalendarDays, UserPlus, Users, Shield, Trash2, RefreshCcw, Search, Clock, Send, X } from 'lucide-react';
+import { invokeNotificationFunction } from '../../utils/edgeFunctions';
 
 interface TeamMember {
   id: string;
@@ -266,9 +267,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
         } else {
           try {
             const { error: notifyError } = await withTimeout(
-              supabase.functions.invoke('notify-team-invitation', {
-                body: { invitation_id: invitationId },
-              })
+              invokeNotificationFunction('notify-team-invitation', { invitation_id: invitationId })
             );
             if (notifyError) {
               setInviteResult('email_failed');
@@ -337,9 +336,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             })
           )
         : await withTimeout(
-            supabase.functions.invoke('notify-team-invitation', {
-              body: { invitation_id: inv.id },
-            })
+            invokeNotificationFunction('notify-team-invitation', { invitation_id: inv.id })
           );
       setResendResultId(inv.id);
       setResendResultOk(!error);

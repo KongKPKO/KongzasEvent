@@ -587,6 +587,55 @@ test.describe('RLS and mutation security regressions', () => {
     });
   });
 
+  test('POS sale from event allocation does not re-trigger allocation overage', async () => {
+    await service.from('event_products').delete().eq('product_id', ids.allocationProduct);
+
+    const seedCatalog = await owner.rpc('save_event_catalog', {
+      p_event_id: ids.secondEvent,
+      p_items: [
+        {
+          product_id: ids.allocationProduct,
+          is_enabled: true,
+          is_unlimited: false,
+          stock_total: 5,
+        },
+      ],
+    });
+    expect(seedCatalog.error).toBeNull();
+
+    const paymentKey = randomUUID();
+    const walkinOrder = await owner.rpc('create_walkin_order_with_stock', {
+      p_event_id: ids.secondEvent,
+      p_items: [{ product_id: ids.allocationProduct, quantity: 1 }],
+      p_payment_method: 'cash',
+      p_payment_idempotency_key: paymentKey,
+    });
+    expect(walkinOrder.error).toBeNull();
+
+    const pricing = await owner.rpc('apply_order_pricing', {
+      p_order_id: walkinOrder.data as string,
+      p_subtotal_price: 150,
+      p_discount_total: 0,
+      p_total_price: 150,
+      p_pricing_breakdown: [],
+    });
+    expect(pricing.error).toBeNull();
+
+    const eventStock = await service
+      .from('event_products')
+      .select('stock_total, stock_sold, stock_reserved')
+      .eq('event_id', ids.secondEvent)
+      .eq('product_id', ids.allocationProduct)
+      .maybeSingle();
+
+    expect(eventStock.error).toBeNull();
+    expect(eventStock.data).toMatchObject({
+      stock_total: 5,
+      stock_sold: 1,
+      stock_reserved: 0,
+    });
+  });
+
   test('payment completion is scoped, idempotent, and cannot be bypassed with direct writes', async () => {
     const directUpdate = await owner
       .from('orders')

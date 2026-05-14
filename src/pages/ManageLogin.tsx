@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Card, Button } from '../components/ui';
 import { KeyRound, Mail, AlertCircle, Send } from 'lucide-react';
@@ -27,7 +27,9 @@ const ManageLogin = () => {
 
   const getStaffRedirectUrl = () => `${window.location.origin}/manage-login?staff=1`;
 
-  const getLivePathForRole = async (role?: ActorRole | null) => {
+  const routeInFlightRef = useRef(false);
+
+  const getLivePathForRole = useCallback(async (role?: ActorRole | null) => {
     if (role !== 'seller' && role !== 'queue_staff') return '/manage-pos-queues';
 
     const { data } = await supabase.rpc('list_accessible_pos_events');
@@ -37,53 +39,70 @@ const ManageLogin = () => {
     return role === 'seller'
       ? `/live/pos${query}`
       : `/live/queue${query}`;
-  };
+  }, []);
 
-  const routeAfterAuth = async () => {
-    const ctx = await fetchActorContext();
-    const [{ data: isAdmin }, { data: invites }] = await Promise.all([
-      supabase.rpc('is_platform_admin'),
-      supabase.rpc('list_my_pending_invitations'),
-    ]);
+  const routeAfterAuth = useCallback(async () => {
+    if (routeInFlightRef.current) return;
+    routeInFlightRef.current = true;
 
-    if (redirectTo === '/admin/applications' && isAdmin) {
-      navigate('/admin/applications');
-    } else if (canAccessManagementPages(ctx?.role)) {
-      navigate('/manage-events');
-    } else if (canAccessQueuePages(ctx?.role)) {
-      navigate(await getLivePathForRole(ctx?.role));
-    } else if ((invites || []).length > 0) {
-      navigate('/invitations');
-    } else if (isAdmin) {
-      navigate('/admin/applications');
-    } else {
-      setErrorMsg(t('loginNoWorkspace'));
+    try {
+      const ctx = await fetchActorContext();
+      const [{ data: isAdmin }, { data: invites }] = await Promise.all([
+        supabase.rpc('is_platform_admin'),
+        supabase.rpc('list_my_pending_invitations'),
+      ]);
+
+      if (redirectTo === '/admin/applications' && isAdmin) {
+        navigate('/admin/applications');
+      } else if (canAccessManagementPages(ctx?.role)) {
+        navigate('/manage-events');
+      } else if (canAccessQueuePages(ctx?.role)) {
+        navigate(await getLivePathForRole(ctx?.role));
+      } else if ((invites || []).length > 0) {
+        navigate('/invitations');
+      } else if (isAdmin) {
+        navigate('/admin/applications');
+      } else {
+        setErrorMsg(t('loginNoWorkspace'));
+      }
+    } finally {
+      routeInFlightRef.current = false;
     }
-  };
+  }, [getLivePathForRole, navigate, redirectTo, t]);
 
-  // Check if already logged in
   useEffect(() => {
-     let isMounted = true;
+    let isMounted = true;
 
-     const hydrate = async () => {
+    const routeAfterAuthLockReleases = () => {
+      window.setTimeout(() => {
+        if (isMounted) void routeAfterAuth();
+      }, 0);
+    };
+
+    const initialTimer = window.setTimeout(async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
-        if (!isMounted || !data.session) return;
-
-        if (!isMounted) return;
-        await routeAfterAuth();
+        if (data.session) routeAfterAuthLockReleases();
       } catch (error) {
         console.error('[ManageLogin] getSession failed:', error);
       }
-     };
+    }, 0);
 
-     void hydrate();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!nextSession) return;
+      if (event === 'PASSWORD_RECOVERY') return;
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        routeAfterAuthLockReleases();
+      }
+    });
 
-     return () => {
+    return () => {
       isMounted = false;
-     };
-  }, [navigate, redirectTo]);
+      window.clearTimeout(initialTimer);
+      subscription.unsubscribe();
+    };
+  }, [routeAfterAuth]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

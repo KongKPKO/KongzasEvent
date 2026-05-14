@@ -121,3 +121,5 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     fetch: resilientFetch,
   },
 });
+
+export const supabaseAnonKey = supabaseKey;

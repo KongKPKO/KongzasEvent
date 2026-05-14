@@ -1,4 +1,4 @@
-import { useEffect, Suspense, lazy, useMemo, useState } from 'react';
+import { useEffect, Suspense, lazy, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { ShoppingBag, Users } from 'lucide-react';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
@@ -53,6 +53,15 @@ const normalizeEventBooth = (event?: NearbyCreatorEventRecord | null) => {
   return event.booth_number || null;
 };
 
+const shuffleNearbyCreatorIds = (artistIds: string[]) => {
+  const shuffled = [...artistIds];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+};
+
 const Home = () => {
   const { t } = useI18n();
   // Midnight Watcher
@@ -103,11 +112,6 @@ const Home = () => {
     .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
 
   const nextUpEventId = selectedEvent?.id || sortedValidEvents[0]?.id;
-  const focusLocations = useMemo(
-    () => Array.from(new Set(visibleEvents.map((event) => event.location?.trim()).filter(Boolean))) as string[],
-    [visibleEvents]
-  );
-
   useEffect(() => {
     const loadNearbyCreators = async () => {
       if (!displayArtist?.id) return;
@@ -118,7 +122,8 @@ const Home = () => {
         .select('*')
         .in('status', ['Confirmed', 'confirmed'])
         .gte('end_date', todayStr)
-        .order('start_date', { ascending: true });
+        .order('start_date', { ascending: true })
+        .limit(24);
 
       if (error || !upcomingEvents) {
         setNearbyCreators([]);
@@ -126,22 +131,13 @@ const Home = () => {
       }
 
       const groupedByArtist = new Map<string, NearbyCreatorEventRecord>();
-      const sameLocationArtists = new Set<string>();
 
       for (const event of upcomingEvents as NearbyCreatorEventRecord[]) {
         if (event.artist_id === displayArtist.id) continue;
         if (!groupedByArtist.has(event.artist_id)) groupedByArtist.set(event.artist_id, event);
-        const eventLocation = normalizeEventLocation(event);
-        if (eventLocation && focusLocations.includes(eventLocation.trim())) sameLocationArtists.add(event.artist_id);
       }
 
-      const prioritizedArtistIds = Array.from(groupedByArtist.keys())
-        .sort((left, right) => {
-          const leftPriority = sameLocationArtists.has(left) ? 1 : 0;
-          const rightPriority = sameLocationArtists.has(right) ? 1 : 0;
-          return rightPriority - leftPriority;
-        })
-        .slice(0, 8);
+      const prioritizedArtistIds = shuffleNearbyCreatorIds(Array.from(groupedByArtist.keys())).slice(0, 8);
 
       if (prioritizedArtistIds.length === 0) {
         setNearbyCreators([]);
@@ -151,7 +147,9 @@ const Home = () => {
       const { data: artistsData, error: artistsError } = await supabase
         .from('artists')
         .select('id, slug, display_name, bio, image_url')
-        .in('id', prioritizedArtistIds);
+        .in('id', prioritizedArtistIds)
+        .eq('is_public', true)
+        .not('published_at', 'is', null);
 
       if (artistsError || !artistsData) {
         setNearbyCreators([]);
@@ -175,13 +173,14 @@ const Home = () => {
             is_booth_open: event.is_booth_open,
           };
         })
-        .filter(Boolean) as NearbyCreator[];
+        .filter(Boolean)
+        .slice(0, 2) as NearbyCreator[];
 
       setNearbyCreators(creators);
     };
 
     void loadNearbyCreators();
-  }, [displayArtist?.id, focusLocations]);
+  }, [displayArtist?.id]);
 
   return (
     <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">
@@ -246,13 +245,13 @@ const Home = () => {
          <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} />
       </Suspense>
 
-      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
-         <CreatorDirectory creators={nearbyCreators} />
-      </Suspense>
-
       {/* Social Footer - Lazy Loaded */}
       <Suspense fallback={<div className="h-10"></div>}>
          <SocialFooter artist={displayArtist} />
+      </Suspense>
+
+      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
+         <CreatorDirectory creators={nearbyCreators} />
       </Suspense>
 
     </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n } from '../i18n';
+import { invokeNotificationFunction } from '../utils/edgeFunctions';
 
 type FormState = {
   email: string;
@@ -149,9 +150,7 @@ export default function CreatorRegister() {
       if (applicationError) throw applicationError;
 
       if (application?.id) {
-        const { error: notifyError } = await supabase.functions.invoke('notify-creator-application', {
-          body: { applicationId: application.id },
-        });
+        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId: application.id });
         if (notifyError) {
           console.warn('[CreatorRegister] Notification failed:', notifyError);
         }

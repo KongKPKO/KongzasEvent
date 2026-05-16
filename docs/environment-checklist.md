@@ -79,6 +79,23 @@ npm run test:security
 npm run test:mobile
 ```
 
+## Local Supabase Backup / Restore Note
+
+When backing up local Supabase Storage, remember that the object rows in Postgres and the binary files in the storage volume are only part of the full picture. Copying storage files back with `docker cp` can leave the files present on disk while the Storage API still fails to serve them because file-level metadata is missing.
+
+Symptom to recognize:
+
+- `storage.objects` rows still exist.
+- Files still exist under the storage volume.
+- Public image URLs return `500`, and storage logs show `ENODATA` / `The extended attribute does not exist`.
+
+After any local restore:
+
+1. Restore the database and storage files.
+2. Open at least one known public object URL, not just the app UI.
+3. If files exist but public URLs return `500` with missing extended-attribute errors, re-upload the affected objects through the Storage API from the backup payloads so Supabase rebuilds the storage metadata.
+4. Treat a restore as complete only after both database counts and real public object URLs work.
+
 ## Promote To DEV / Staging
 
 Use DEV after local is clean and the feature needs a realistic cloud pass: Auth emails, Storage, Edge Functions, public URL behavior, approval flows, or phone testing without local networking issues.

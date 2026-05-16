@@ -2459,7 +2459,7 @@ const ManageProducts = () => {
                               <Button
                                  type="button"
                                  onClick={() => editFileInputRef.current?.click()}
-                                 className="rounded-lg border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-bold text-pink-700 hover:bg-pink-100"
+                                 className="rounded-lg border border-pink-600 bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700"
                               >
                                  Change image
                               </Button>
@@ -2475,7 +2475,7 @@ const ManageProducts = () => {
                               setEditingProduct(null);
                               setEditFile(null);
                            }}
-                           className="px-6 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                           className="rounded-lg border border-gray-700 bg-gray-700 px-6 py-2 text-white transition-colors hover:bg-gray-800"
                         >
                            Cancel
                         </Button>

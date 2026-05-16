@@ -266,7 +266,7 @@ const ManageLogin = () => {
             )}
             <Button
               type="submit"
-              className="w-full border border-pink-100 bg-pink-50 py-3 font-bold text-pink-700 hover:bg-pink-100"
+              className="w-full border border-pink-700 bg-pink-700 py-3 font-bold text-white hover:bg-pink-800"
               disabled={magicLoading || staffEmail.trim().length < 4}
             >
               <Send size={16} />

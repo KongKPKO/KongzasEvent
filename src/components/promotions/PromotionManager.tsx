@@ -633,7 +633,7 @@ export default function PromotionManager({
             <Button
               type="button"
               onClick={resetForm}
-              className="bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 py-2 px-4 rounded transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
+              className="flex h-9 items-center gap-2 rounded border border-gray-700 bg-gray-700 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-gray-800 active:scale-95"
             >
               <X size={14} />
               Close
@@ -645,7 +645,7 @@ export default function PromotionManager({
             className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
           >
             {saving ? <Loader className="animate-spin" size={14} /> : editingPromotionId ? <Edit2 size={14} /> : <Plus size={14} />}
-            {saving ? 'Saving...' : editingPromotionId ? 'Save Promotion Changes' : 'Add Promotion'}
+            {saving ? 'Saving...' : editingPromotionId ? 'Save Edit Promotion' : 'Add Promotion'}
           </Button>
         </div>
           </form>

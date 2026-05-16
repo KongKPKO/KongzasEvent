@@ -358,12 +358,6 @@ const ManageLogin = () => {
           <Link to="/creator/register" className="font-black text-pink-700 hover:text-pink-800">
             {t('loginApplyAccess')}
           </Link>
-          <div className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">
-            Invited as staff?{' '}
-            <Link to="/staff-signup" className="font-black text-pink-700 hover:text-pink-800">
-              Create a staff account
-            </Link>
-          </div>
         </div>
       </div>
     </div>

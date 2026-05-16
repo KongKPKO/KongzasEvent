@@ -45,7 +45,7 @@ export default function StaffSignup() {
         setMessage('Account created. Check your email, confirm the account, then accept the invitation.');
       }
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : 'Could not create staff account.');
+      setErrorMsg(error instanceof Error ? error.message : 'Could not create manager account.');
     } finally {
       setLoading(false);
     }
@@ -63,14 +63,14 @@ export default function StaffSignup() {
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-pink-50 text-pink-600">
             <UserPlus size={24} />
           </div>
-          <h1 className="text-2xl font-black text-gray-900">Create Staff Account</h1>
+          <h1 className="text-2xl font-black text-gray-900">Create Manager Account</h1>
           {workspaceName ? (
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              You've been invited to join <span className="font-bold text-gray-800">{workspaceName}</span>. Create a staff account with this email to accept the workspace invitation.
+              You've received a manager invitation to join <span className="font-bold text-gray-800">{workspaceName}</span>. Create a manager account with this email to accept the workspace invitation.
             </p>
           ) : (
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              This account is only for joining an invited booth workspace. It will not create a creator profile or public booth page.
+              This account is only for accepting a manager invitation. It will not create a creator profile or public booth page.
             </p>
           )}
 
@@ -142,7 +142,7 @@ export default function StaffSignup() {
               disabled={!canSubmit || loading}
               className="mt-2 w-full bg-pink-600 py-3 font-bold text-white hover:bg-pink-700 disabled:opacity-50"
             >
-              {loading ? 'Creating account…' : 'Create staff account'}
+              {loading ? 'Creating account…' : 'Create manager account'}
             </Button>
           </form>
         </Card>

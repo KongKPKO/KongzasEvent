@@ -277,6 +277,19 @@ test.describe('Regression Suite @regression', () => {
         await expect(page.getByText('Forgot password?')).not.toBeVisible();
     });
 
+    test('Manage login does not expose public staff account creation link', async ({ page }) => {
+        await expect(page.getByText('Invited as staff?')).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Create a staff account' })).toHaveCount(0);
+    });
+
+    test('Manager invitation signup uses manager-specific copy', async ({ page }) => {
+        await page.goto('/staff-signup?email=manager@example.com&workspace=NireQ');
+
+        await expect(page.getByRole('heading', { name: 'Create Manager Account' })).toBeVisible();
+        await expect(page.getByText(/manager invitation/i)).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Create manager account' })).toBeVisible();
+    });
+
     test('R1. Critical Path: Admin Setup -> Customer Queue -> POS Payment', async ({ browser }) => {
         // 1. Setup Data
         const userId = await getUserId();

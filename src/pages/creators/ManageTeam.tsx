@@ -274,7 +274,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
               setInviteResultMsg('Invitation created, but the notification email failed to send.');
             } else {
               setInviteResult('invitation_sent');
-              setInviteResultMsg('Manager invitation sent. They can create a password staff account without a creator profile.');
+              setInviteResultMsg('Manager invitation sent. They can create a password-based manager account without a creator profile.');
             }
           } catch {
             setInviteResult('email_failed');
@@ -470,7 +470,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             </div>
             <p className="text-xs text-gray-500">
               {role === 'manager'
-                ? 'Managers use a password staff account and can manage events, catalog, promotions, POS, and queue for every event. Team access stays owner-only.'
+                ? 'Managers use a password-based manager account and can manage events, catalog, promotions, POS, and queue for every event. Team access stays owner-only.'
                 : 'Seller and queue staff receive a magic link and can only access the events selected below.'}
             </p>
             {inviteRequiresEventAccess && (

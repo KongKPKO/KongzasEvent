@@ -266,6 +266,17 @@ test.describe('Regression Suite @regression', () => {
         await page.goto('/manage-login');
     });
 
+    test('Login defaults to creator mode and can switch to staff mode', async ({ page }) => {
+        await expect(page.getByText('Creator / Manager Login')).toBeVisible();
+        await expect(page.getByText('Staff Login')).not.toBeVisible();
+        await expect(page.getByText('Forgot password?')).toBeVisible();
+
+        await page.getByRole('tab', { name: 'Staff' }).click();
+        await expect(page.getByText('Staff Login')).toBeVisible();
+        await expect(page.getByText('Creator / Manager Login')).not.toBeVisible();
+        await expect(page.getByText('Forgot password?')).not.toBeVisible();
+    });
+
     test('R1. Critical Path: Admin Setup -> Customer Queue -> POS Payment', async ({ browser }) => {
         // 1. Setup Data
         const userId = await getUserId();

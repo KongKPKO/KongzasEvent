@@ -63,8 +63,15 @@ export const removeEventStock = async (eventProductId: string, quantity: number)
 };
 
 export const getStockAdjustmentErrorMessage = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error || '');
-  if (message.includes('insufficient_catalog_available_stock')) return 'Catalog stock is not sufficient for this change.';
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : String(error || '');
+  if (message.includes('insufficient_catalog_available_stock')) {
+    return 'Not enough central stock available. Add stock to the catalog first, then add it to this event.';
+  }
   if (message.includes('event_stock_below_reserved_or_sold')) return 'You can only remove stock that is not reserved or sold.';
   if (message.includes('stock_removal_reason_required')) return 'Choose a reason before removing stock.';
   if (message.includes('invalid_stock_quantity')) return 'Enter a whole number greater than zero.';

@@ -128,6 +128,14 @@ const parseTagsInput = (value: string) =>
 
 const formatTagsInput = (tags?: string[]) => (tags || []).join(', ');
 
+const getEventCatalogSaveErrorMessage = (error: unknown) => {
+   const message = error instanceof Error ? error.message : String(error || '');
+   if (message.includes('event_stock_exceeds_catalog_stock')) {
+      return 'This product has already been added to the event. Use Remove to return units to central stock first, then remove them from central stock if needed.';
+   }
+   return message || 'Event catalog could not be saved.';
+};
+
 const getCsvValue = (row: Record<string, unknown>, aliases: string[]) => {
    for (const alias of aliases) {
       const value = row[alias];
@@ -205,6 +213,7 @@ const ManageProducts = () => {
    const [stockActionQuantity, setStockActionQuantity] = useState('');
    const [stockActionReason, setStockActionReason] = useState('');
    const [stockActionSaving, setStockActionSaving] = useState(false);
+   const [stockActionError, setStockActionError] = useState('');
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -642,7 +651,13 @@ const ManageProducts = () => {
          await fetchEventCatalog(selectedEventId);
       } catch (error: any) {
          console.error('[ManageProducts] saveEventCatalog failed:', error);
-         showToast({ tone: 'error', title: 'Failed to save event catalog', detail: error.message });
+         showToast({
+            tone: 'error',
+            title: error?.message?.includes('event_stock_exceeds_catalog_stock')
+               ? 'Cannot edit allocated event stock directly'
+               : 'Failed to save event catalog',
+            detail: getEventCatalogSaveErrorMessage(error),
+         });
       } finally {
          setEventCatalogSaving(false);
       }
@@ -687,23 +702,33 @@ const ManageProducts = () => {
       setStockAction(action);
       setStockActionQuantity('');
       setStockActionReason('');
+      setStockActionError('');
    };
    const closeStockAction = () => {
       setStockAction(null);
       setStockActionQuantity('');
       setStockActionReason('');
+      setStockActionError('');
    };
    const handleStockAction = async () => {
       if (!stockAction) return;
       const quantity = Number(stockActionQuantity);
       if (!Number.isInteger(quantity) || quantity <= 0) {
-         showToast({ tone: 'warning', title: 'Invalid stock quantity', detail: 'Enter a whole number greater than zero.' });
+         setStockActionError('Enter a whole number greater than zero.');
          return;
       }
       if (stockAction.scope === 'catalog' && stockAction.kind === 'remove' && !stockActionReason.trim()) {
-         showToast({ tone: 'warning', title: 'Reason required', detail: 'Choose a reason before removing stock.' });
+         setStockActionError('Choose a reason before removing stock.');
          return;
       }
+      if (stockAction.scope === 'event' && stockAction.kind === 'add') {
+         const summary = getProductStockSummary(stockAction.product);
+         if (quantity > summary.available) {
+            setStockActionError('Not enough central stock available. Add stock to the catalog first, then add it to this event.');
+            return;
+         }
+      }
+      setStockActionError('');
       setStockActionSaving(true);
       try {
          if (stockAction.scope === 'catalog') {
@@ -724,7 +749,7 @@ const ManageProducts = () => {
          showToast({ tone: 'success', title: 'Stock updated' });
          closeStockAction();
       } catch (error) {
-         showToast({ tone: 'error', title: 'Stock update failed', detail: getStockAdjustmentErrorMessage(error) });
+         setStockActionError(getStockAdjustmentErrorMessage(error));
       } finally {
          setStockActionSaving(false);
       }
@@ -1350,7 +1375,7 @@ const ManageProducts = () => {
                         <X size={20} />
                      </button>
                   </div>
-                  <div className="mt-5 space-y-4">
+                     <div className="mt-5 space-y-4">
                      <div>
                         <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Quantity</label>
                         <input
@@ -1358,7 +1383,10 @@ const ManageProducts = () => {
                            min="1"
                            step="1"
                            value={stockActionQuantity}
-                           onChange={(event) => setStockActionQuantity(event.target.value)}
+                           onChange={(event) => {
+                              setStockActionQuantity(event.target.value);
+                              if (stockActionError) setStockActionError('');
+                           }}
                            className="w-full rounded-lg border border-gray-200 px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
                         />
                      </div>
@@ -1401,8 +1429,10 @@ const ManageProducts = () => {
                               const reserved = draft?.stock_reserved || 0;
                               const sold = draft?.stock_sold || 0;
                               const removable = Math.max(allocated - reserved - sold, 0);
+                              const summary = getProductStockSummary(stockAction.product);
                               return (
                                  <>
+                                    {stockAction.kind === 'add' && <div>Central available: {summary.available}</div>}
                                     <div>Allocated to event: {allocated}</div>
                                     <div>Reserved: {reserved}</div>
                                     <div>Sold: {sold}</div>
@@ -1413,6 +1443,11 @@ const ManageProducts = () => {
                            })()
                         )}
                      </div>
+                     {stockActionError && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                           {stockActionError}
+                        </div>
+                     )}
                   </div>
                   <div className="mt-5 flex justify-end gap-2">
                      <Button type="button" onClick={closeStockAction} className="rounded-lg border border-gray-200 bg-white px-4 py-2 font-bold text-gray-700 hover:bg-gray-50">
@@ -1424,7 +1459,11 @@ const ManageProducts = () => {
                         disabled={stockActionSaving}
                         className="rounded-lg bg-pink-600 px-4 py-2 font-bold text-white hover:bg-pink-700 disabled:bg-pink-300"
                      >
-                        {stockActionSaving ? 'Saving...' : stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'}
+                        {stockActionSaving
+                           ? 'Saving...'
+                           : stockAction.scope === 'catalog'
+                             ? stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'
+                             : stockAction.kind === 'add' ? 'Add to event' : 'Remove from event'}
                      </Button>
                   </div>
                </section>
@@ -1908,12 +1947,12 @@ const ManageProducts = () => {
                         </div>
                      ) : (
                         <div className="overflow-hidden rounded-xl border border-gray-200">
-                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_90px_130px_150px_160px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_170px_150px_160px_140px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
                               <div>Product</div>
-                              <div>Sell</div>
-                              <div>Event Price</div>
+                              <div>Sell / Event Price</div>
                               <div>Central / Available</div>
                               <div>Event Stock</div>
+                              <div>Actions</div>
                            </div>
                            <div className="divide-y divide-gray-100">
                               {filteredEventCatalogProducts.map((product) => {
@@ -1925,6 +1964,7 @@ const ManageProducts = () => {
                                  };
                                  const stockLimit = getEventCatalogStockLimit(product);
                                  const eventStockValue = Number(draft.stock_total || 0);
+                                 const hasAllocatedEventStock = !!draft.id && !draft.is_unlimited;
                                  const stockOverLimit =
                                     draft.is_enabled &&
                                     !product.is_unlimited &&
@@ -1932,7 +1972,7 @@ const ManageProducts = () => {
                                     Number.isFinite(stockLimit) &&
                                     eventStockValue > stockLimit;
                                  return (
-                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_90px_130px_150px_160px] gap-3 px-4 py-3 items-center">
+                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_170px_150px_160px_140px] gap-3 px-4 py-3 items-start">
                                        <div className="min-w-0 flex items-center gap-3">
                                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
                                              {product.image_url ? (
@@ -1977,26 +2017,28 @@ const ManageProducts = () => {
                                           </div>
                                        </div>
 
-                                       <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
-                                          <input
-                                             type="checkbox"
-                                             checked={draft.is_enabled}
-                                             onChange={(event) => updateEventCatalogDraft(product.id, { is_enabled: event.target.checked })}
-                                             className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                                          />
-                                          Sell
-                                       </label>
+                                       <div className="space-y-2">
+                                          <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
+                                             <input
+                                                type="checkbox"
+                                                checked={draft.is_enabled}
+                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_enabled: event.target.checked })}
+                                                className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                             />
+                                             Sell
+                                          </label>
 
-                                       <input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          value={draft.price_override}
-                                          onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
-                                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                          placeholder={String(product.price)}
-                                          aria-label={`Event price for ${product.name}`}
-                                       />
+                                          <input
+                                             type="number"
+                                             min="0"
+                                             step="0.01"
+                                             value={draft.price_override}
+                                             onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
+                                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                             placeholder={String(product.price)}
+                                             aria-label={`Event price for ${product.name}`}
+                                          />
+                                       </div>
 
                                        <div className={`rounded-lg px-3 py-2 text-xs font-bold ${
                                           stockOverLimit
@@ -2024,7 +2066,7 @@ const ManageProducts = () => {
                                                 type="checkbox"
                                                 checked={draft.is_unlimited}
                                                 onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: product.is_unlimited ? event.target.checked : false })}
-                                                disabled={!product.is_unlimited}
+                                                disabled={!product.is_unlimited || hasAllocatedEventStock}
                                                 className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
                                              />
                                              Unlimited
@@ -2036,7 +2078,7 @@ const ManageProducts = () => {
                                              step="1"
                                              value={draft.stock_total}
                                              onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
-                                             disabled={draft.is_unlimited}
+                                             disabled={draft.is_unlimited || hasAllocatedEventStock}
                                              className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
                                                 stockOverLimit
                                                    ? 'border-red-300 bg-red-50 focus:ring-red-100'
@@ -2055,26 +2097,31 @@ const ManageProducts = () => {
                                                 Max {stockLimit} available for this event
                                              </p>
                                           )}
-                                          {draft.id && !draft.is_unlimited && (
-                                             <div className="flex flex-wrap gap-1.5">
+                                       </div>
+
+                                       <div className="pt-0.5">
+                                          {draft.id && !draft.is_unlimited ? (
+                                             <div className="flex flex-col gap-1.5">
                                                 <button
                                                    type="button"
                                                    onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
-                                                   className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
+                                                   className="rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
                                                 >
                                                    Add to event
                                                 </button>
                                                 <button
                                                    type="button"
                                                    onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
-                                                   className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-black text-gray-700 hover:bg-gray-200"
+                                                   className="rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-black text-gray-700 hover:bg-gray-200"
                                                 >
-                                                   Remove
+                                                   Remove from event
                                                 </button>
                                              </div>
+                                          ) : (
+                                             <div className="text-[11px] font-semibold text-gray-400">No actions</div>
                                           )}
                                        </div>
-                                    </div>
+                                   </div>
                                  );
                               })}
                            </div>

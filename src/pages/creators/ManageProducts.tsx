@@ -15,6 +15,15 @@ import { normalizeProductRecord } from '../../utils/schemaCompat';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
+import {
+   addCatalogStock,
+   addEventStock,
+   fetchProductStockSummaries,
+   getStockAdjustmentErrorMessage,
+   removeCatalogStock,
+   removeEventStock,
+   type ProductStockSummary,
+} from '../../lib/stockAdjustments';
 
 interface Product {
   id: string;
@@ -60,6 +69,8 @@ type EventCatalogDraft = Record<string, {
   price_override: string;
   is_unlimited: boolean;
   stock_total: string;
+  stock_reserved?: number;
+  stock_sold?: number;
 }>;
 
 type ProductImageTarget = 'add' | 'edit';
@@ -67,6 +78,10 @@ type CatalogWorkspaceTab = 'catalog' | 'event-catalog' | 'promotions' | 'import'
 type ProductConfirmAction =
    | { type: 'switch_currency'; currency: string }
    | { type: 'delete_product'; id: string; name: string }
+   | null;
+type StockAction =
+   | { scope: 'catalog'; kind: 'add' | 'remove'; product: Product }
+   | { scope: 'event'; kind: 'add' | 'remove'; product: Product; eventProductId: string }
    | null;
 
 const PRODUCT_IMAGE_ACCEPT = 'image/png, image/jpeg, image/webp, image/heic, image/heif, .heic, .heif';
@@ -185,6 +200,11 @@ const ManageProducts = () => {
    const [eventCatalogView, setEventCatalogView] = useState<'all' | 'selling' | 'hidden' | 'overrides'>('all');
    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
    const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
+   const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
+   const [stockAction, setStockAction] = useState<StockAction>(null);
+   const [stockActionQuantity, setStockActionQuantity] = useState('');
+   const [stockActionReason, setStockActionReason] = useState('');
+   const [stockActionSaving, setStockActionSaving] = useState(false);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -233,6 +253,12 @@ const ManageProducts = () => {
       if (product.status === 'soldout') return 'soldout';
       if (!product.is_unlimited && getAvailableUnits(product) <= 0) return 'soldout';
       return 'enable';
+   };
+   const getProductStockSummary = (product: Product) => stockSummaries[product.id] || {
+      product_id: product.id,
+      on_hand: product.stock_total || 0,
+      allocated: 0,
+      available: getAvailableUnits(product),
    };
 
    const enabledProducts = products.filter(p => getEffectiveStatus(p) === 'enable');
@@ -394,6 +420,8 @@ const ManageProducts = () => {
             price_override: row?.price_override != null ? String(row.price_override) : '',
             is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
             stock_total: row?.stock_total != null ? String(row.stock_total) : defaultStockTotal,
+            stock_reserved: row?.stock_reserved || 0,
+            stock_sold: row?.stock_sold || 0,
          };
       }
 
@@ -646,11 +674,59 @@ const ManageProducts = () => {
 
          if (!error && data) {
             setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
+            const summaries = await fetchProductStockSummaries(ctx.artist_id);
+            setStockSummaries(Object.fromEntries(summaries.map((summary) => [summary.product_id, summary])));
          }
       } catch (error) {
          console.error('[ManageProducts] fetchProducts failed:', error);
       } finally {
          setLoading(false);
+      }
+   };
+   const openStockAction = (action: StockAction) => {
+      setStockAction(action);
+      setStockActionQuantity('');
+      setStockActionReason('');
+   };
+   const closeStockAction = () => {
+      setStockAction(null);
+      setStockActionQuantity('');
+      setStockActionReason('');
+   };
+   const handleStockAction = async () => {
+      if (!stockAction) return;
+      const quantity = Number(stockActionQuantity);
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+         showToast({ tone: 'warning', title: 'Invalid stock quantity', detail: 'Enter a whole number greater than zero.' });
+         return;
+      }
+      if (stockAction.scope === 'catalog' && stockAction.kind === 'remove' && !stockActionReason.trim()) {
+         showToast({ tone: 'warning', title: 'Reason required', detail: 'Choose a reason before removing stock.' });
+         return;
+      }
+      setStockActionSaving(true);
+      try {
+         if (stockAction.scope === 'catalog') {
+            const summary = stockAction.kind === 'add'
+               ? await addCatalogStock(stockAction.product.id, quantity, stockActionReason)
+               : await removeCatalogStock(stockAction.product.id, quantity, stockActionReason);
+            setStockSummaries((prev) => ({ ...prev, [summary.product_id]: summary }));
+            await fetchProducts();
+         } else {
+            if (stockAction.kind === 'add') {
+               await addEventStock(stockAction.eventProductId, quantity);
+            } else {
+               await removeEventStock(stockAction.eventProductId, quantity);
+            }
+            await fetchProducts();
+            await fetchEventCatalog(selectedEventId);
+         }
+         showToast({ tone: 'success', title: 'Stock updated' });
+         closeStockAction();
+      } catch (error) {
+         showToast({ tone: 'error', title: 'Stock update failed', detail: getStockAdjustmentErrorMessage(error) });
+      } finally {
+         setStockActionSaving(false);
       }
    };
 
@@ -1257,6 +1333,102 @@ const ManageProducts = () => {
                onConfirm={handleCroppedImage}
                onError={(message) => showToast({ tone: 'error', title: 'Image export failed', detail: message })}
             />
+         )}
+         {stockAction && (
+            <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+               <section className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+                  <div className="flex items-start justify-between gap-4">
+                     <div>
+                        <h2 className="text-lg font-black text-gray-900">
+                           {stockAction.scope === 'catalog'
+                              ? stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'
+                              : stockAction.kind === 'add' ? 'Add to event' : 'Remove from event'}
+                        </h2>
+                        <p className="mt-1 text-sm font-semibold text-gray-500">{stockAction.product.name}</p>
+                     </div>
+                     <button type="button" onClick={closeStockAction} className="text-gray-400 hover:text-gray-700" aria-label="Close stock action">
+                        <X size={20} />
+                     </button>
+                  </div>
+                  <div className="mt-5 space-y-4">
+                     <div>
+                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Quantity</label>
+                        <input
+                           type="number"
+                           min="1"
+                           step="1"
+                           value={stockActionQuantity}
+                           onChange={(event) => setStockActionQuantity(event.target.value)}
+                           className="w-full rounded-lg border border-gray-200 px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                        />
+                     </div>
+                     {stockAction.scope === 'catalog' && stockAction.kind === 'remove' && (
+                        <div>
+                           <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Reason</label>
+                           <select
+                              value={stockActionReason}
+                              onChange={(event) => setStockActionReason(event.target.value)}
+                              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                           >
+                              <option value="">Select reason</option>
+                              <option value="damaged">Damaged</option>
+                              <option value="lost">Lost</option>
+                              <option value="count_correction">Count correction</option>
+                              <option value="other">Other</option>
+                           </select>
+                        </div>
+                     )}
+                     <div className="rounded-xl bg-gray-50 p-3 text-sm font-semibold text-gray-700">
+                        {stockAction.scope === 'catalog' ? (
+                           (() => {
+                              const summary = getProductStockSummary(stockAction.product);
+                              const quantity = Number(stockActionQuantity || 0);
+                              return (
+                                 <>
+                                    <div>On hand: {summary.on_hand}</div>
+                                    <div>Allocated: {summary.allocated}</div>
+                                    <div>Available: {summary.available}</div>
+                                    <div className="mt-2 font-black text-gray-900">
+                                       After {stockAction.kind === 'add' ? 'add' : 'remove'}: {stockAction.kind === 'add' ? summary.on_hand + quantity : summary.on_hand - quantity}
+                                    </div>
+                                 </>
+                              );
+                           })()
+                        ) : (
+                           (() => {
+                              const draft = eventCatalogDraft[stockAction.product.id];
+                              const allocated = Number(draft?.stock_total || 0);
+                              const reserved = draft?.stock_reserved || 0;
+                              const sold = draft?.stock_sold || 0;
+                              const removable = Math.max(allocated - reserved - sold, 0);
+                              return (
+                                 <>
+                                    <div>Allocated to event: {allocated}</div>
+                                    <div>Reserved: {reserved}</div>
+                                    <div>Sold: {sold}</div>
+                                    <div>Available at event: {removable}</div>
+                                    {stockAction.kind === 'remove' && <div className="mt-2 font-black text-gray-900">Returned to catalog after remove: {Number(stockActionQuantity || 0)}</div>}
+                                 </>
+                              );
+                           })()
+                        )}
+                     </div>
+                  </div>
+                  <div className="mt-5 flex justify-end gap-2">
+                     <Button type="button" onClick={closeStockAction} className="rounded-lg border border-gray-200 bg-white px-4 py-2 font-bold text-gray-700 hover:bg-gray-50">
+                        Cancel
+                     </Button>
+                     <Button
+                        type="button"
+                        onClick={() => void handleStockAction()}
+                        disabled={stockActionSaving}
+                        className="rounded-lg bg-pink-600 px-4 py-2 font-bold text-white hover:bg-pink-700 disabled:bg-pink-300"
+                     >
+                        {stockActionSaving ? 'Saving...' : stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'}
+                     </Button>
+                  </div>
+               </section>
+            </div>
          )}
          
          {/* Page Title Wrapper */}
@@ -1873,10 +2045,33 @@ const ManageProducts = () => {
                                              placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
                                              aria-label={`Event stock for ${product.name}`}
                                           />
+                                          {!draft.is_unlimited && (
+                                             <div className="text-[11px] font-semibold text-gray-500">
+                                                Reserved {draft.stock_reserved || 0} · Sold {draft.stock_sold || 0}
+                                             </div>
+                                          )}
                                           {stockOverLimit && (
                                              <p className="text-[11px] font-bold text-red-600">
                                                 Max {stockLimit} available for this event
                                              </p>
+                                          )}
+                                          {draft.id && !draft.is_unlimited && (
+                                             <div className="flex flex-wrap gap-1.5">
+                                                <button
+                                                   type="button"
+                                                   onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
+                                                   className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
+                                                >
+                                                   Add to event
+                                                </button>
+                                                <button
+                                                   type="button"
+                                                   onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
+                                                   className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-black text-gray-700 hover:bg-gray-200"
+                                                >
+                                                   Remove
+                                                </button>
+                                             </div>
                                           )}
                                        </div>
                                     </div>
@@ -2166,9 +2361,14 @@ const ManageProducts = () => {
                                        )}
                                     </div>
                                  )}
-                                 <p className="text-[10px] font-semibold text-gray-500 mt-1">
-                                    Stock: {product.is_unlimited ? 'Unlimited' : `${getAvailableUnits(product)} available`}
-                                 </p>
+                                 {!product.is_unlimited && (() => {
+                                    const summary = getProductStockSummary(product);
+                                    return (
+                                       <p className="mt-1 text-[10px] font-semibold text-gray-500">
+                                          On hand {summary.on_hand} · Available {summary.available}
+                                       </p>
+                                    );
+                                 })()}
                               </div>
                               
                               {/* Mobile Actions (Always Visible) */}
@@ -2235,11 +2435,18 @@ const ManageProducts = () => {
                                     <span className="font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
                                  </td>
                                  <td className="px-6 py-4">
-                                    <span className="font-semibold text-gray-700 text-sm">
-                                       {product.is_unlimited
-                                          ? 'Unlimited'
-                                          : `${getAvailableUnits(product)} / ${product.stock_total || 0}`}
-                                    </span>
+                                    {product.is_unlimited ? (
+                                       <span className="text-sm font-semibold text-gray-700">Unlimited</span>
+                                    ) : (() => {
+                                       const summary = getProductStockSummary(product);
+                                       return (
+                                          <div className="text-xs font-semibold text-gray-700">
+                                             <div><span className="text-gray-400">On hand</span> {summary.on_hand}</div>
+                                             <div><span className="text-gray-400">Allocated</span> {summary.allocated}</div>
+                                             <div><span className="text-gray-400">Available</span> {summary.available}</div>
+                                          </div>
+                                       );
+                                    })()}
                                  </td>
                                  <td className="px-6 py-4">
                                     {effectiveStatus === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}
@@ -2248,6 +2455,22 @@ const ManageProducts = () => {
                                  </td>
                                  <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2 transition-opacity">
+                                       {!product.is_unlimited && (
+                                          <>
+                                             <button
+                                                onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
+                                                className="workspace-action min-h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
+                                             >
+                                                Add stock
+                                             </button>
+                                             <button
+                                                onClick={() => openStockAction({ scope: 'catalog', kind: 'remove', product })}
+                                                className="workspace-action min-h-8 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-black text-gray-700 hover:bg-gray-100"
+                                             >
+                                                Remove
+                                             </button>
+                                          </>
+                                       )}
                                        <button 
                                           onClick={() => handleEditClick(product)}
                                           className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -2409,25 +2632,34 @@ const ManageProducts = () => {
 
                         <div>
                            <label className="block text-sm font-medium text-gray-700 mb-2">Stock</label>
-                           <div className="flex items-center gap-2 mb-2">
-                              <input
-                                 id="edit-is-unlimited"
-                                 type="checkbox"
-                                 checked={isUnlimited}
-                                 onChange={(e) => setIsUnlimited(e.target.checked)}
-                              />
-                              <label htmlFor="edit-is-unlimited" className="text-sm text-gray-600">Unlimited</label>
-                           </div>
-                           <input
-                              type="number"
-                              value={stockTotal}
-                              onChange={(e) => setStockTotal(e.target.value)}
-                              disabled={isUnlimited}
-                              min="0"
-                              step="1"
-                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:text-gray-400"
-                              placeholder={isUnlimited ? 'Unlimited stock' : 'Enter stock quantity'}
-                           />
+                           {editingProduct.is_unlimited ? (
+                              <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-600">Unlimited</div>
+                           ) : (() => {
+                              const summary = getProductStockSummary(editingProduct);
+                              return (
+                                 <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700">
+                                    <div>On hand: {summary.on_hand}</div>
+                                    <div>Allocated: {summary.allocated}</div>
+                                    <div>Available: {summary.available}</div>
+                                    <div className="mt-3 flex gap-2">
+                                       <Button
+                                          type="button"
+                                          onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product: editingProduct })}
+                                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                                       >
+                                          Add stock
+                                       </Button>
+                                       <Button
+                                          type="button"
+                                          onClick={() => openStockAction({ scope: 'catalog', kind: 'remove', product: editingProduct })}
+                                          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100"
+                                       >
+                                          Remove stock
+                                       </Button>
+                                    </div>
+                                 </div>
+                              );
+                           })()}
                         </div>
                      </div>
 

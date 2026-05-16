@@ -23,6 +23,18 @@ export class LoginPage {
     return this.page.getByRole('button', { name: 'Forgot password?' });
   }
 
+  get resetPasswordModal() {
+    return this.page.getByRole('dialog', { name: 'Reset password' });
+  }
+
+  get resetEmailInput() {
+    return this.page.getByLabel('Reset email');
+  }
+
+  get sendResetLinkButton() {
+    return this.page.getByRole('button', { name: 'Send reset link' });
+  }
+
   get staffMagicLinkButton() {
     return this.page.getByRole('button', { name: /Send staff magic link/i });
   }

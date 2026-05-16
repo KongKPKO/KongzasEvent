@@ -89,11 +89,14 @@ test.describe('Extended Security Behaviors', () => {
     await page.goto(`${BASE_URL}/manage-login`);
 
     await page.getByRole('button', { name: 'Forgot password?' }).click();
-    await expect(page.getByText('Enter your email first.')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Reset password' })).toBeVisible();
 
-    await page.getByLabel('Email').fill('unknown@example.com');
-    await page.getByRole('button', { name: 'Forgot password?' }).click();
-    await expect(page.getByText(/If an account exists for this email/i)).toBeVisible();
+    await page.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(page.getByText('Please enter your creator or manager email first.')).toBeVisible();
+
+    await page.getByLabel('Reset email').fill('unknown@example.com');
+    await page.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(page.getByRole('dialog', { name: 'Reset password' }).getByText(/If an account exists for this email/i)).toBeVisible();
   });
 
   // 3) XSS in query params should be treated as text somewhere visible (no script execution)

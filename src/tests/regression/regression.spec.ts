@@ -277,6 +277,18 @@ test.describe('Regression Suite @regression', () => {
         await expect(page.getByText('Forgot password?')).not.toBeVisible();
     });
 
+    test('Forgot password opens a blank reset modal', async ({ page }) => {
+        await page.getByLabel('Email').fill('creator@example.com');
+        await page.getByRole('button', { name: 'Forgot password?' }).click();
+
+        const resetDialog = page.getByRole('dialog', { name: 'Reset password' });
+        await expect(resetDialog).toBeVisible();
+        await expect(resetDialog.locator('input[type="email"]')).toHaveValue('');
+
+        await resetDialog.locator('button[type="submit"]').click();
+        await expect(page.getByText('Please enter your creator or manager email first.')).toBeVisible();
+    });
+
     test('Manage login does not expose public staff account creation link', async ({ page }) => {
         await expect(page.getByText('Invited as staff?')).toHaveCount(0);
         await expect(page.getByRole('link', { name: 'Create a staff account' })).toHaveCount(0);

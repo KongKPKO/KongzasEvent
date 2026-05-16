@@ -85,6 +85,20 @@ test.describe('Extended Security Behaviors', () => {
     }
   });
 
+  test('Security: Password reset feedback is neutral and validates missing email', async ({ page }) => {
+    await page.goto(`${BASE_URL}/manage-login`);
+
+    await page.getByRole('button', { name: 'Forgot password?' }).click();
+    await expect(page.getByRole('dialog', { name: 'Reset password' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(page.getByText('Please enter your creator or manager email first.')).toBeVisible();
+
+    await page.getByLabel('Reset email').fill('unknown@example.com');
+    await page.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(page.getByRole('dialog', { name: 'Reset password' }).getByText(/If an account exists for this email/i)).toBeVisible();
+  });
+
   // 3) XSS in query params should be treated as text somewhere visible (no script execution)
   test('Security: XSS in query string should not execute', async ({ page }) => {
     const payload = '<svg onload=alert(1) />';

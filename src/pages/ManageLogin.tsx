@@ -12,6 +12,8 @@ interface AccessibleEvent {
   id: string;
 }
 
+type LoginMode = 'creator' | 'staff';
+
 const ManageLogin = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -20,10 +22,16 @@ const ManageLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [staffEmail, setStaffEmail] = useState('');
+  const [loginMode, setLoginMode] = useState<LoginMode>('creator');
   const [loading, setLoading] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [magicMsg, setMagicMsg] = useState<string | null>(null);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetErrorMsg, setResetErrorMsg] = useState<string | null>(null);
 
   const getStaffRedirectUrl = () => `${window.location.origin}/manage-login?staff=1`;
 
@@ -159,6 +167,58 @@ const ManageLogin = () => {
     }
   };
 
+  const switchLoginMode = (nextMode: LoginMode) => {
+    setLoginMode(nextMode);
+    setErrorMsg(null);
+    setMagicMsg(null);
+    setResetMsg(null);
+
+    if (nextMode === 'staff') {
+      setIsResetModalOpen(false);
+      setResetEmail('');
+      setResetErrorMsg(null);
+    }
+  };
+
+  const openResetModal = () => {
+    setIsResetModalOpen(true);
+    setResetEmail('');
+    setResetErrorMsg(null);
+    setResetMsg(null);
+  };
+
+  const closeResetModal = () => {
+    setIsResetModalOpen(false);
+    setResetEmail('');
+    setResetErrorMsg(null);
+    setResetMsg(null);
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalizedEmail = resetEmail.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setResetErrorMsg(t('passwordResetEmailRequired'));
+      return;
+    }
+
+    setResetLoading(true);
+    setResetErrorMsg(null);
+    setResetMsg(null);
+
+    try {
+      await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      setResetMsg(t('passwordResetSentNeutral'));
+    } catch (error) {
+      console.error('[ManageLogin] resetPasswordForEmail failed:', error);
+      setResetMsg(t('passwordResetSentNeutral'));
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -171,9 +231,38 @@ const ManageLogin = () => {
         </div>
 
         <Card className="p-8 shadow-xl border-gray-100 bg-white">
+          <div role="tablist" aria-label="Login mode" className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={loginMode === 'creator'}
+              onClick={() => switchLoginMode('creator')}
+              className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
+                loginMode === 'creator'
+                  ? 'bg-white text-pink-700 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Creator / Manager
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={loginMode === 'staff'}
+              onClick={() => switchLoginMode('staff')}
+              className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
+                loginMode === 'staff'
+                  ? 'bg-white text-pink-700 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Staff
+            </button>
+          </div>
+
           <h2 className="text-xl font-bold mb-6 text-gray-800 flex items-center gap-2">
             <KeyRound className="text-pink-600" />
-            {t('loginTitle')}
+            {loginMode === 'creator' ? t('creatorManagerLoginTitle') : t('staffLoginTitle')}
           </h2>
 
           {errorMsg && (
@@ -183,96 +272,102 @@ const ManageLogin = () => {
             </div>
           )}
 
-          <form onSubmit={handleLogin} aria-label={t('loginTitle')} data-testid="creator-login-form" className="space-y-4">
-            <div>
-              <label htmlFor="login-email" className="block text-sm font-bold text-gray-700 mb-1">{t('loginEmail')}</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="email"
-                  id="login-email"
-                  name="email"
-                  autoComplete="email"
-                  spellCheck={false}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
-                  placeholder={t('loginEmailPlaceholder')}
-                  required
-                />
+          {loginMode === 'creator' ? (
+            <form onSubmit={handleLogin} aria-label={t('creatorManagerLoginTitle')} data-testid="creator-login-form" className="space-y-4">
+              <div>
+                <label htmlFor="login-email" className="block text-sm font-bold text-gray-700 mb-1">{t('loginEmail')}</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="email"
+                    id="login-email"
+                    name="email"
+                    autoComplete="email"
+                    spellCheck={false}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    placeholder={t('loginEmailPlaceholder')}
+                    required
+                  />
+                </div>
               </div>
-            </div>
-            
-            <div>
-              <label htmlFor="login-password" className="block text-sm font-bold text-gray-700 mb-1">{t('loginPassword')}</label>
-              <div className="relative">
-                 <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="password"
-                  id="login-password"
-                  name="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
-                  placeholder={t('loginPasswordPlaceholder')}
-                  required
-                />
+
+              <div>
+                <label htmlFor="login-password" className="block text-sm font-bold text-gray-700 mb-1">{t('loginPassword')}</label>
+                <div className="relative">
+                   <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="password"
+                    id="login-password"
+                    name="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    placeholder={t('loginPasswordPlaceholder')}
+                    required
+                  />
+                </div>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={openResetModal}
+                    disabled={resetLoading}
+                    className="text-sm font-bold text-pink-700 hover:text-pink-800 disabled:text-pink-300"
+                  >
+                    {t('forgotPassword')}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <Button 
-              type="submit" 
-              data-testid="creator-login-submit"
-              className="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 mt-4"
-              disabled={loading}
-            >
-              {loading ? t('loginSubmitting') : t('loginSubmit')}
-            </Button>
-          </form>
-
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-100" />
-            <span className="text-[11px] font-black uppercase tracking-wide text-gray-400">Staff magic link</span>
-            <div className="h-px flex-1 bg-gray-100" />
-          </div>
-
-          <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
-            <p className="text-xs leading-5 text-gray-500">
-              Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.
-            </p>
-            <div>
-              <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">Staff email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="email"
-                  id="staff-login-email"
-                  name="staff-email"
-                  autoComplete="email"
-                  spellCheck={false}
-                  value={staffEmail}
-                  onChange={(e) => setStaffEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
-                  placeholder="staff@example.com"
-                  required
-                />
-              </div>
-            </div>
-            {magicMsg && (
-              <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                {magicMsg}
+              <Button 
+                type="submit" 
+                data-testid="creator-login-submit"
+                className="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 mt-4"
+                disabled={loading}
+              >
+                {loading ? t('loginSubmitting') : t('loginSubmit')}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
+              <p className="text-xs leading-5 text-gray-500">
+                Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.
               </p>
-            )}
-            <Button
-              type="submit"
-              className="w-full border border-pink-700 bg-pink-700 py-3 font-bold text-white hover:bg-pink-800"
-              disabled={magicLoading || staffEmail.trim().length < 4}
-            >
-              <Send size={16} />
-              {magicLoading ? 'Sending magic link…' : 'Send staff magic link'}
-            </Button>
-          </form>
+              <div>
+                <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">Staff email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="email"
+                    id="staff-login-email"
+                    name="staff-email"
+                    autoComplete="email"
+                    spellCheck={false}
+                    value={staffEmail}
+                    onChange={(e) => setStaffEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    placeholder="staff@example.com"
+                    required
+                  />
+                </div>
+              </div>
+              {magicMsg && (
+                <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  {magicMsg}
+                </p>
+              )}
+              <Button
+                type="submit"
+                className="w-full border border-pink-700 bg-pink-700 py-3 font-bold text-white hover:bg-pink-800"
+                disabled={magicLoading || staffEmail.trim().length < 4}
+              >
+                <Send size={16} />
+                {magicLoading ? 'Sending magic link…' : 'Send staff magic link'}
+              </Button>
+            </form>
+          )}
         </Card>
 
         <div className="mt-5 rounded-xl border border-gray-200 bg-white p-4 text-center text-sm text-gray-600 shadow-sm">
@@ -280,14 +375,67 @@ const ManageLogin = () => {
           <Link to="/creator/register" className="font-black text-pink-700 hover:text-pink-800">
             {t('loginApplyAccess')}
           </Link>
-          <div className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">
-            Invited as staff?{' '}
-            <Link to="/staff-signup" className="font-black text-pink-700 hover:text-pink-800">
-              Create a staff account
-            </Link>
-          </div>
         </div>
       </div>
+
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+          <form onSubmit={handleForgotPassword} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <h2 id="reset-password-title" className="text-lg font-black text-gray-900">Reset password</h2>
+            <p className="mt-2 text-sm font-medium text-gray-600">
+              Enter your creator or manager email and we'll send a reset link.
+            </p>
+            <div className="mt-4">
+              <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">Reset email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="email"
+                  id="reset-email"
+                  name="reset-email"
+                  autoComplete="email"
+                  spellCheck={false}
+                  value={resetEmail}
+                  onChange={(e) => {
+                    setResetEmail(e.target.value);
+                    setResetErrorMsg(null);
+                  }}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                  placeholder={t('loginEmailPlaceholder')}
+                />
+              </div>
+            </div>
+            {resetErrorMsg && (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                {resetErrorMsg}
+              </div>
+            )}
+            {resetMsg && (
+              <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">
+                {resetMsg}
+              </div>
+            )}
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={closeResetModal}
+                disabled={resetLoading}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-50"
+              >
+                {resetLoading ? t('sendPasswordReset') : 'Send reset link'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

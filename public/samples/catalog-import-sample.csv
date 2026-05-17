@@ -1,0 +1,5 @@
+name,price,category,tags,description,currency,status,stock,is_unlimited
+Mini Acrylic Stand,350,Standy,"genshin, acrylic","Acrylic stand 10cm",THB,enable,30,false
+Blind Box Keychain,180,Gacha,"keychain|blind box","Random character keychain",THB,enable,,true
+A3 Poster Set,500,A3,"poster; print","Set of 3 matte posters",THB,enable,15,false
+Sold Out Sample,200,Other,sample,"Example sold out item",THB,soldout,0,false

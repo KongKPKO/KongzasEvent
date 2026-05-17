@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "target": "createeq",
+    "target": "nireqapp",
     "public": "dist",
     "ignore": [
       "firebase.json",

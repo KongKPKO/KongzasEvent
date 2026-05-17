@@ -687,6 +687,7 @@ const QueueView = () => {
 
     // NOTE: artist prop from useArtistRealtime now contains is_queue_open
     const isQueueOpen = displayArtist?.is_queue_open ?? true; // Default to true if undefined
+    const isQueueUnavailable = !activeEvent || !isBoothOpen || !isQueueOpen;
     const queueActionGuidance = (() => {
         if (!myTicket) {
             if (!isQueueOpen) {
@@ -778,43 +779,45 @@ const QueueView = () => {
             {/* Content Area with Padding */}
             <div className="w-full px-4 mt-4 flex flex-col items-center flex-1">
                 {/* NOW SERVING INDICATOR (Compact) */}
-                <motion.div
-                    className="w-full rounded-[1.75rem] border border-pink-100 bg-gray-950 p-5 shadow-xl shadow-pink-100 mb-4 relative overflow-hidden group"
-                    whileTap={{ scale: 0.99 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
-                    <div className="relative flex flex-row items-center justify-between">
-                        <div className="flex flex-col items-start gap-1">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
-                                <span className="text-[10px] font-black text-pink-100 uppercase tracking-widest leading-tight">{t('queueNowServing')}</span>
-                            </span>
-                            {activeEvent?.queueing_area?.trim() && (
-                                <span className="mt-1 text-[11px] font-bold text-gray-400">{activeEvent.queueing_area.trim()}</span>
-                            )}
-                        </div>
-
-                        <div 
-                            className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}
-                            aria-live="polite"
-                            aria-atomic="true"
-                            role="status"
-                        >
-                            <span className="sr-only">
-                                {nowServingNumber 
-                                    ? `Now serving queue number ${nowServingNumber}` 
-                                    : "No queue is currently being served"}
-                            </span>
-                            <span aria-hidden="true">
-                                {nowServingNumber ? (
-                                    <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
-                                ) : (
-                                    <span className="text-3xl text-gray-600">--</span>
+                {!isQueueUnavailable && (
+                    <motion.div
+                        className="w-full rounded-[1.75rem] border border-pink-100 bg-gray-950 p-5 shadow-xl shadow-pink-100 mb-4 relative overflow-hidden group"
+                        whileTap={{ scale: 0.99 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    >
+                        <div className="relative flex flex-row items-center justify-between">
+                            <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
+                                    <span className="text-[10px] font-black text-pink-100 uppercase tracking-widest leading-tight">{t('queueNowServing')}</span>
+                                </span>
+                                {activeEvent?.queueing_area?.trim() && (
+                                    <span className="mt-1 text-[11px] font-bold text-gray-400">{activeEvent.queueing_area.trim()}</span>
                                 )}
-                            </span>
+                            </div>
+
+                            <div
+                                className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}
+                                aria-live="polite"
+                                aria-atomic="true"
+                                role="status"
+                            >
+                                <span className="sr-only">
+                                    {nowServingNumber
+                                        ? `Now serving queue number ${nowServingNumber}`
+                                        : "No queue is currently being served"}
+                                </span>
+                                <span aria-hidden="true">
+                                    {nowServingNumber ? (
+                                        <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
+                                    ) : (
+                                        <span className="text-sm font-black uppercase tracking-widest text-gray-400">Waiting</span>
+                                    )}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                </motion.div>
+                    </motion.div>
+                )}
 
                 <div className={`w-full rounded-2xl border px-4 py-3 mb-4 ${
                     queueActionGuidance.tone === 'pink' ? 'bg-pink-50 border-pink-100' :
@@ -858,7 +861,7 @@ const QueueView = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full flex-1 flex flex-col justify-start pt-8 pb-8">
+                    <div className={`w-full flex-1 flex flex-col justify-start pb-8 ${isQueueUnavailable ? 'pt-3' : 'pt-8'}`}>
                         <div className="rounded-[2rem] border border-pink-100 bg-white p-6 text-center shadow-xl shadow-pink-50 mb-4">
                             <div className={`mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl ${!isQueueOpen ? 'bg-red-50 text-red-500' : 'bg-pink-50 text-pink-600'
                                 }`}>
@@ -891,17 +894,31 @@ const QueueView = () => {
                             </p>
                         </div>
 
-                        {/* Hide Button if Queue is Closed (Paused) */}
-                        {isQueueOpen && (
+                        {isQueueUnavailable && (
+                            <div className="mb-4 overflow-hidden rounded-2xl border border-pink-100 bg-white/80 px-4 py-3 text-center shadow-sm">
+                                <AnimatePresence mode="popLayout">
+                                    <motion.div
+                                        key={factIndex}
+                                        initial={{ y: 12, opacity: 0 }}
+                                        animate={{ y: 0, opacity: 1 }}
+                                        exit={{ y: -12, opacity: 0 }}
+                                        transition={{ duration: 0.35 }}
+                                        className="text-xs font-bold leading-relaxed text-pink-600"
+                                    >
+                                        {funFacts[factIndex]}
+                                    </motion.div>
+                                </AnimatePresence>
+                            </div>
+                        )}
+
+                        {/* Hide Button if Queue is Closed (Paused or booth unavailable) */}
+                        {isQueueOpen && activeEvent && isBoothOpen && (
                             <Button
                                 onClick={handleGetTicket}
-                                disabled={!activeEvent || !isBoothOpen || loading}
-                                className={`w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 ${activeEvent && isBoothOpen
-                                    ? 'bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white'
-                                    : 'bg-gray-300 text-gray-500 shadow-none cursor-not-allowed'
-                                    }`}
+                                disabled={loading}
+                                className="w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed"
                             >
-                                {activeEvent && isBoothOpen ? t('queueGetTicket') : (eventStatusMessage || t('customerBoothClosed'))}
+                                {t('queueGetTicket')}
                             </Button>
                         )}
                     </div>

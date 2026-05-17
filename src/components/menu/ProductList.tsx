@@ -1,5 +1,5 @@
 
-import { ShoppingBag, Plus, Minus } from 'lucide-react';
+import { ImageOff, ShoppingBag, Plus, Minus } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
@@ -125,7 +125,12 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                            className="h-full w-full object-contain p-2"
                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
                         />
-                     ) : (<div className="flex h-full w-full items-center justify-center text-xs font-bold text-gray-300">{t('productNoImage')}</div>)}
+                     ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
+                           <ImageOff size={24} strokeWidth={1.8} aria-hidden="true" />
+                           <span className="max-w-[80%] truncate text-xs font-black text-gray-500">{product.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                     )}
                      {soldOut && (
                         <motion.div
                            className="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
@@ -152,11 +157,11 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                   </div>
                   <div className="flex flex-1 flex-col justify-between p-3">
                      <div className="mb-2">
-                        <h3 className="line-clamp-2 text-[13px] font-black leading-tight text-gray-950">{product.name}</h3>
+                        <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-950">{product.name}</h3>
                         {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
                      </div>
                      <div className="flex flex-col gap-2">
-                        <div className="text-base font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
+                        <div className="text-lg font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
                         <div className="flex min-h-4 items-center justify-between gap-2">
                            {!product.is_unlimited ? (
                               <div className="text-[10px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
@@ -172,7 +177,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
                                  soldOut || isOrderSent
                                     ? 'bg-gray-100 text-gray-400'
-                                    : 'bg-gray-950 text-white shadow-md shadow-gray-200 active:scale-95'
+                                    : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-md shadow-pink-100 active:scale-95'
                               }`}
                            >
                               <ShoppingBag size={16} /> {t('productAdd')}

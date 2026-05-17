@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import AdminHeader from '../../components/AdminHeader';
 import { Button } from '../../components/ui';
 import type { ActorContext, ActorRole } from '../../types/access';
-import { CalendarDays, UserPlus, Users, Shield, Trash2, RefreshCcw, Search, Clock, Send, X } from 'lucide-react';
+import { CalendarDays, UserPlus, Users, Shield, Trash2, Search, Clock, Send, X } from 'lucide-react';
 import { invokeNotificationFunction } from '../../utils/edgeFunctions';
 
 interface TeamMember {
@@ -421,14 +421,6 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             <h1 className="text-xl font-black text-gray-800">Team Access</h1>
             <p className="text-sm text-gray-500">Manage queue roles for your booth team.</p>
           </div>
-          <Button
-            type="button"
-            onClick={fetchMembers}
-            className="text-xs px-3 py-2 border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-1.5"
-          >
-            <RefreshCcw size={14} />
-            Refresh
-          </Button>
         </div>
 
         {/* Invite Member */}

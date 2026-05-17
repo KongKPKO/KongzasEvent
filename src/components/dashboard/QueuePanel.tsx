@@ -343,7 +343,11 @@ export default function QueuePanel({
                 <Button
                     onClick={handleCallNext}
                     disabled={!nextTicket}
-                    className={`w-full py-3 text-base rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${!nextTicket ? 'bg-gray-100 text-gray-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-200'}`}
+                    className={`w-full py-3 text-base rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                        !nextTicket
+                            ? '!bg-gray-200 !bg-none !text-gray-400 !shadow-none cursor-not-allowed hover:!bg-gray-200 hover:!shadow-none hover:!translate-y-0'
+                            : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-md shadow-pink-200'
+                    }`}
                 >
                     <Play size={18} fill="currentColor" />
                     <span className="font-black">Call Next {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>

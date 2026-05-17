@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download } from 'lucide-react';
 import Papa from 'papaparse';
 import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -1752,6 +1752,14 @@ const ManageProducts = () => {
                            <p className="mt-1 text-[11px] text-gray-400">Use this for large catalog setup. Existing duplicates will be ignored instead of inserted twice.</p>
                         </div>
                         <div className="flex items-center gap-2">
+                           <a
+                              href="/samples/catalog-import-sample.csv"
+                              download="catalog-import-sample.csv"
+                              className="inline-flex h-9 items-center gap-2 rounded-lg border border-pink-200 bg-white px-4 py-2 text-xs font-bold text-pink-700 shadow-sm transition-all active:scale-95 hover:bg-pink-50"
+                           >
+                              <Download size={14} aria-hidden="true" />
+                              Download sample
+                           </a>
                            <input
                               type="file"
                               ref={csvInputRef}

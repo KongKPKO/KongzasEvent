@@ -55,6 +55,49 @@ interface Event {
   status: 'Confirmed' | 'Cancelled' | 'Ended';
 }
 
+const getEventDateParts = (dateString: string, timeZone?: string | null) => {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: timeZone || getBrowserTimeZone(),
+  }).formatToParts(date);
+
+  return {
+    day: parts.find((part) => part.type === 'day')?.value || '',
+    month: parts.find((part) => part.type === 'month')?.value || '',
+    year: parts.find((part) => part.type === 'year')?.value || '',
+  };
+};
+
+const formatEventDateRange = (event: Event) => {
+  const start = getEventDateParts(event.start_date, event.event_timezone);
+  const end = getEventDateParts(event.end_date, event.event_timezone);
+  if (!start || !end) {
+    return { primary: '-', secondary: '' };
+  }
+
+  if (start.day === end.day && start.month === end.month && start.year === end.year) {
+    return { primary: `${start.day} ${start.month}`, secondary: start.year };
+  }
+
+  if (start.month === end.month && start.year === end.year) {
+    return { primary: `${start.day}-${end.day} ${start.month}`, secondary: start.year };
+  }
+
+  if (start.year === end.year) {
+    return { primary: `${start.day} ${start.month}-${end.day} ${end.month}`, secondary: start.year };
+  }
+
+  return {
+    primary: `${start.day} ${start.month} ${start.year}-${end.day} ${end.month} ${end.year}`,
+    secondary: '',
+  };
+};
+
 const ManageArtist = () => {
   const navigate = useNavigate();
   const browserTimeZone = getBrowserTimeZone();
@@ -716,15 +759,17 @@ const ManageArtist = () => {
                          </thead>
                          <tbody className="divide-y divide-gray-50">
                             {visibleEvents
-                              .map((evt) => (
+                              .map((evt) => {
+                               const eventDateRange = formatEventDateRange(evt);
+                               return (
                                <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
-                                  <td className="px-6 py-4">
-                                     <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-slate-800">
-                                           {new Date(evt.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                  <td className="px-6 py-4 min-w-[96px]">
+                                     <div className="flex flex-col" title={`${eventDateRange.primary}${eventDateRange.secondary ? ` ${eventDateRange.secondary}` : ''}`}>
+                                        <span className="max-w-[88px] text-sm font-bold leading-tight text-slate-800">
+                                           {eventDateRange.primary}
                                         </span>
                                         <span className="text-[10px] text-gray-400 font-medium">
-                                           {new Date(evt.start_date).getFullYear()}
+                                           {eventDateRange.secondary}
                                         </span>
                                      </div>
                                   </td>
@@ -832,7 +877,8 @@ const ManageArtist = () => {
                                       </div>
                                    </td>
                                 </tr>
-                            ))}
+                              );
+                            })}
                          </tbody>
                       </table>
                    )}

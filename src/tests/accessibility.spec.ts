@@ -1,48 +1,36 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { createClient } from '@supabase/supabase-js';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 
-const TEST_EMAIL = process.env.TEST_EMAIL || 'local-admin-user@example.com';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'local-accessibility-admin@example.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const BASE_URL = 'http://localhost:5173';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const ARTIST_SLUG = 'test1';
+const ARTIST_SLUG = 'test-accessibility-admin';
 
 test.describe('Accessibility Testing (WCAG 2.1)', () => {
 
   test.beforeAll(async () => {
     console.log('♿️ Accessibility Test: Seeding Data...');
-    let userId = '';
-    
-    const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
-    if (signUpData.user) userId = signUpData.user.id;
-    else {
-      const { data: signInData } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
-      if (signInData.user) userId = signInData.user.id;
-    }
+    const { userId, service } = await ensureOwnerArtistFixture({
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      slug: ARTIST_SLUG,
+      displayName: 'Accessibility Test Artist',
+    });
 
-    if (userId) {
-      await supabase.from('artists').upsert({
-        id: userId, email: TEST_EMAIL, slug: ARTIST_SLUG, 
-        display_name: 'Accessibility Test Artist', is_queue_open: true
-      });
-      
-      await supabase.from('events').delete().eq('artist_id', userId);
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 1);
-      
-      await supabase.from('events').insert({
-        artist_id: userId,
-        event_name: 'Accessibility Test Event',
-        start_date: new Date().toISOString(),
-        end_date: futureDate.toISOString(),
-        status: 'Confirmed',
-        is_booth_open: true
-      });
-    }
+    await service.from('events').delete().eq('artist_id', userId);
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 1);
+
+    const { error } = await service.from('events').insert({
+      artist_id: userId,
+      event_name: 'Accessibility Test Event',
+      start_date: new Date().toISOString(),
+      end_date: futureDate.toISOString(),
+      status: 'Confirmed',
+      is_booth_open: true,
+    });
+    if (error) throw error;
   });
 
   test('Accessibility: Customer Queue Page should have no critical violations', async ({ page }) => {
@@ -108,7 +96,7 @@ test.describe('Accessibility Testing (WCAG 2.1)', () => {
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);
     await page.getByRole('button', { name: /Login/i }).click();
-    await expect(page.getByText('Logout', { exact: false }).first()).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20000 });
     
     await page.goto(`${BASE_URL}/manage-pos-queues`);
     await page.waitForLoadState('networkidle');

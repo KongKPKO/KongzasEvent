@@ -1,62 +1,38 @@
 import { test, expect } from '@playwright/test';
-import { createClient } from '@supabase/supabase-js';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 
-const TEST_EMAIL = process.env.TEST_EMAIL || 'local-admin-user@example.com';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'local-resilience-admin@example.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const BASE_URL = 'http://localhost:5173'; // หรือ URL ที่ใช้รันจริง
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || ''; 
-
-// Setup Supabase Client for Seeding
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const ARTIST_SLUG = 'test-resilience-admin';
 const SUPABASE_API_PATTERN = '**/rest/v1/**'; 
 
 test.describe('Resilience & Chaos Testing', () => {
 
   test.beforeAll(async () => {
       console.log('⚡️ Resilience Test: Seeding Data...');
-      let userId = '';
-      
-      // 1. Get User ID (Sign Up or Sign In)
-      const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
-      if (signUpData.user) userId = signUpData.user.id;
-      else {
-          const { data: signInData } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
-          if (signInData.user) userId = signInData.user.id;
-      }
+      const { userId, service } = await ensureOwnerArtistFixture({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+          slug: ARTIST_SLUG,
+          displayName: 'Resilience Test Artist',
+      });
 
-      if (userId) {
-          // 2. Upsert Artist (Update first to avoid conflict)
-          const { error: updateError, data } = await supabase.from('artists').update({
-              slug: 'test1', 
-              display_name: 'Resilience Test Artist', 
-              is_queue_open: true, 
-              updated_at: new Date().toISOString()
-          }).eq('id', userId).select();
+      const today = new Date().toISOString().split('T')[0];
+      await service.from('events').delete().eq('artist_id', userId);
 
-          if (updateError || !data || data.length === 0) {
-              // If update failed (row doesn't exist), Insert
-              await supabase.from('artists').insert({
-                  id: userId, email: TEST_EMAIL, slug: 'test1', display_name: 'Resilience Test Artist', is_queue_open: true, updated_at: new Date().toISOString()
-              });
-          }
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 1);
 
-          // 3. Reset & Create Event
-          const today = new Date().toISOString().split('T')[0];
-          await supabase.from('events').delete().eq('artist_id', userId);
-          
-          const futureDate = new Date();
-          futureDate.setDate(futureDate.getDate() + 1);
-
-          await supabase.from('events').insert({
-              artist_id: userId, 
-              event_name: 'Resilience Chaos Event', 
-              start_date: today + ' 00:00:00', 
-              end_date: futureDate.toISOString(), 
-              status: 'Confirmed', 
-              is_booth_open: true // ✅ เปิดร้านไว้ เพื่อให้หน้า Admin เห็น UI ครบ
-          });
-      }
+      const { error } = await service.from('events').insert({
+          artist_id: userId,
+          event_name: 'Resilience Chaos Event',
+          start_date: today + ' 00:00:00',
+          end_date: futureDate.toISOString(),
+          status: 'Confirmed',
+          is_booth_open: true,
+      });
+      if (error) throw error;
   });
 
 test.beforeEach(async ({ page }) => {
@@ -107,7 +83,7 @@ test.beforeEach(async ({ page }) => {
   });
 
   test('Customer View: Should keep displaying status when Offline', async ({ page, context }) => {
-    const customerUrl = `${BASE_URL}/test1/queue`; 
+    const customerUrl = `${BASE_URL}/${ARTIST_SLUG}/queue`;
     
     // Wait for initial data
     const dataPromise = page.waitForResponse(

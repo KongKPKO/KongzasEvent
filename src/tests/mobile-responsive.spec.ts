@@ -1,67 +1,46 @@
 import { test, expect, devices } from '@playwright/test';
-import { createClient } from '@supabase/supabase-js';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 
-const TEST_EMAIL = process.env.TEST_EMAIL || 'local-admin-user@example.com';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'local-mobile-admin@example.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const BASE_URL = 'http://localhost:5173';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const ARTIST_SLUG = 'test1';
-
-async function ensureArtistFixture(userId: string) {
-  await supabase.from('artists').upsert({
-    id: userId,
-    email: TEST_EMAIL,
-    slug: ARTIST_SLUG,
-    display_name: 'Mobile Test Artist',
-    is_queue_open: true,
-  });
-}
+const ARTIST_SLUG = 'test-mobile-admin';
 
 test.describe('Mobile Responsive Testing', () => {
 
   test.beforeAll(async () => {
     console.log('📱 Mobile Responsive Test: Seeding Data...');
-    let userId = '';
-    
-    // Auth
-    const { data: signUpData } = await supabase.auth.signUp({ email: TEST_EMAIL, password: TEST_PASSWORD });
-    if (signUpData.user) userId = signUpData.user.id;
-    else {
-      const { data: signInData } = await supabase.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PASSWORD });
-      if (signInData.user) userId = signInData.user.id;
-    }
+    const { userId, service } = await ensureOwnerArtistFixture({
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      slug: ARTIST_SLUG,
+      displayName: 'Mobile Test Artist',
+    });
 
-    if (userId) {
-      await ensureArtistFixture(userId);
-      
-      // Cleanup & Create Event
-      await supabase.from('events').delete().eq('artist_id', userId);
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 1);
-      
-      await supabase.from('events').insert({
-        artist_id: userId,
-        event_name: 'Mobile Test Event',
-        start_date: new Date().toISOString(),
-        end_date: futureDate.toISOString(),
-        status: 'Confirmed',
-        is_booth_open: true
-      });
+    await service.from('events').delete().eq('artist_id', userId);
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 1);
 
-      // Cleanup & Create Products for Grid Test
-      await supabase.from('products').delete().eq('artist_id', userId);
-      const products = Array.from({ length: 6 }).map((_, i) => ({
-        artist_id: userId,
-        name: `Mobile Item ${i + 1}`,
-        price: 100 + (i * 10),
-        status: 'enable',
-        image_url: null
-      }));
-      await supabase.from('products').insert(products);
-    }
+    const eventInsert = await service.from('events').insert({
+      artist_id: userId,
+      event_name: 'Mobile Test Event',
+      start_date: new Date().toISOString(),
+      end_date: futureDate.toISOString(),
+      status: 'Confirmed',
+      is_booth_open: true,
+    });
+    if (eventInsert.error) throw eventInsert.error;
+
+    await service.from('products').delete().eq('artist_id', userId);
+    const products = Array.from({ length: 6 }).map((_, i) => ({
+      artist_id: userId,
+      name: `Mobile Item ${i + 1}`,
+      price: 100 + (i * 10),
+      status: 'enable',
+      image_url: null,
+    }));
+    const productInsert = await service.from('products').insert(products);
+    if (productInsert.error) throw productInsert.error;
   });
 
   // ... Existing Tests ...
@@ -96,8 +75,8 @@ test.describe('Mobile Responsive Testing', () => {
     await page.fill('input[type="password"]', TEST_PASSWORD);
     await page.getByRole('button', { name: /Login/i }).click();
     
-    // On mobile, "Logout" text might be hidden or inside menu. 
-    // Check for Menu button or simply that we are redirected.
+    // On mobile, sign out may live inside the workspace menu, so the redirect is
+    // the stable post-login signal before we navigate to POS explicitly.
     await expect(page).not.toHaveURL(/.*login/);
     // Be flexible about where it redirects (likely manage-events or manage-products)
     // We will explicitly go to POS next anyway

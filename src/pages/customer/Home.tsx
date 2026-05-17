@@ -84,9 +84,6 @@ const Home = () => {
     refresh();
   }, [currentDate, refresh]);
 
-  // Early return if no artist data
-  if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
-  
   const now = new Date().toISOString();
   
   // Show only non-expired events that should remain visible to customers.
@@ -181,6 +178,9 @@ const Home = () => {
 
     void loadNearbyCreators();
   }, [displayArtist?.id]);
+
+  // Early return after hooks so React receives the same hook order every render.
+  if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
 
   return (
     <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">

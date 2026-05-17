@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle } from 'lucide-react';
+import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
@@ -507,6 +507,14 @@ export default function POSPanel({
         selectedTag !== 'All' ||
         selectedQuickFilter !== 'all' ||
         sortBy !== 'name';
+    const canChargeOrder = cart.length > 0 && !loading && !fetchError && !!activeEvent && overdraftProductIds.size === 0;
+
+    const renderImageFallback = (name: string, compact = false) => (
+        <div className={`w-full h-full flex ${compact ? 'items-center justify-center' : 'flex-col items-center justify-center gap-1'} bg-gray-100 text-gray-400`}>
+            <ImageOff size={compact ? 16 : 22} aria-hidden="true" />
+            {!compact && <span className="text-[10px] font-black text-gray-500">{name.charAt(0).toUpperCase()}</span>}
+        </div>
+    );
 
     const clearProductFilters = () => {
         setSearchQuery('');
@@ -888,9 +896,7 @@ export default function POSPanel({
                                             className="w-full h-full object-cover"
                                             onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Img'; }}
                                         />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-500">No Img</div>
-                                    )}
+                                    ) : renderImageFallback(item.product.name, true)}
                                 </div>
                                 <div className="flex flex-col min-w-0 flex-1">
                                     <span className="font-bold text-xs text-gray-800 leading-tight break-words line-clamp-2" title={item.product.name}>{item.product.name}</span>
@@ -1012,12 +1018,12 @@ export default function POSPanel({
             )}
 
             <button
-                disabled={cart.length === 0 || loading || fetchError || !activeEvent || overdraftProductIds.size > 0}
+                disabled={!canChargeOrder}
                 onClick={() => {
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
                 }}
-                className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
+                className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
             >
                 {loading
                     ? 'Processing...'
@@ -1027,6 +1033,8 @@ export default function POSPanel({
                     ? 'Event Ended'
                     : overdraftProductIds.size > 0
                     ? 'Cart has unavailable items'
+                    : cart.length === 0
+                    ? 'Charge ' + formatPrice(0, cart[0]?.product.currency)
                     : 'Charge ' + formatPrice(pricing.total, cart[0]?.product.currency)}
             </button>
         </>
@@ -1049,40 +1057,49 @@ export default function POSPanel({
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
-                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                    <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={onClearQueue}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
+                            className={`flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition-all ${
                                 !selectedQueueId
-                                    ? 'bg-pink-600 text-white shadow-md shadow-pink-200'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    ? 'border-pink-600 bg-pink-600 text-white shadow-md shadow-pink-200'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                             }`}
                         >
                             <User size={16} />
                             <span>Walk-in</span>
                         </button>
 
-                        {servingQueues.map((queue) => {
-                            const isSelected = selectedQueueId === queue.id;
-                            return (
+                        <div className="min-w-0">
+                            {servingQueues.length > 0 ? (
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                                    {servingQueues.map((queue) => {
+                                        const isSelected = selectedQueueId === queue.id;
+                                        return (
+                                            <button
+                                                key={queue.id}
+                                                onClick={() => onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) })}
+                                                className={`flex min-h-10 min-w-full items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
+                                                    isSelected
+                                                        ? 'border-pink-600 bg-pink-600 text-white shadow-md shadow-pink-200'
+                                                        : 'border-green-200 bg-white text-green-700 hover:bg-green-50'
+                                                }`}
+                                            >
+                                                <CheckCircle size={14} className={isSelected ? 'text-white' : 'text-green-500'} />
+                                                <span>Queue #{queue.queue_number}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
                                 <button
-                                    key={queue.id}
-                                    onClick={() => onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) })}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
-                                        isSelected
-                                            ? 'bg-pink-600 text-white shadow-md shadow-pink-200'
-                                            : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                                    }`}
+                                    disabled
+                                    className="flex min-h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-400"
                                 >
-                                    <CheckCircle size={14} className={isSelected ? 'text-white' : 'text-green-500'} />
-                                    <span>Queue #{queue.queue_number}</span>
+                                    From Queue
                                 </button>
-                            );
-                        })}
-
-                        {servingQueues.length === 0 && (
-                            <div className="text-xs text-gray-500 italic px-2">No queues serving</div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -1258,7 +1275,7 @@ export default function POSPanel({
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
-                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
+                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
                                 {filteredProducts.map((product) => (
                                     (() => {
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
@@ -1286,11 +1303,7 @@ export default function POSPanel({
                                                                     decoding="async"
                                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
                                                                 />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                                                    <PackageX size={18} aria-hidden="true" />
-                                                                </div>
-                                                            )}
+                                                            ) : renderImageFallback(product.name, true)}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-start justify-between gap-2">
@@ -1347,12 +1360,7 @@ export default function POSPanel({
                                                                 decoding="async"
                                                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
                                                             />
-                                                        ) : (
-                                                            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-xs font-bold text-gray-400">
-                                                                <PackageX size={22} aria-hidden="true" />
-                                                                No image
-                                                            </div>
-                                                        )}
+                                                        ) : renderImageFallback(product.name)}
                                                     </div>
                                                     <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>

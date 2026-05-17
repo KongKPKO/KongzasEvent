@@ -109,9 +109,9 @@ const Home = () => {
   // Pick the first non-cancelled event from the visible list.
   const sortedValidEvents = visibleEvents
     .filter(e => e.status !== 'Cancelled')
-    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+    .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
 
-  const nextUpEventId = selectedEvent?.id || sortedValidEvents[0]?.id;
+  const nextUpEventId = sortedValidEvents[0]?.id || selectedEvent?.id;
   useEffect(() => {
     const loadNearbyCreators = async () => {
       if (!displayArtist?.id) return;
@@ -197,9 +197,10 @@ const Home = () => {
         title={displayArtist.display_name || 'Artist Name'}
         avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
         avatarDisplay="stacked"
+        compactStacked
       >
         {displayArtist.bio && (
-          <div className="text-gray-500 font-medium text-xs leading-relaxed max-w-[280px] mx-auto mb-3 whitespace-pre-line">
+          <div className="text-gray-500 font-medium text-xs leading-relaxed max-w-[300px] mx-auto mb-2 line-clamp-2 whitespace-pre-line">
             {displayArtist.bio}
           </div>
         )}
@@ -221,7 +222,7 @@ const Home = () => {
           )}
         </div>
 
-        <div className="mx-auto mt-4 grid max-w-[320px] grid-cols-2 gap-2">
+        <div className="mx-auto mt-3 grid max-w-[320px] grid-cols-2 gap-2">
           <Link
             to={`/${displayArtist.slug}/menu`}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-100 transition active:scale-95"

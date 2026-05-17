@@ -6,15 +6,20 @@ interface CustomerHeaderProps {
   title: string;
   avatarUrl?: string; // New prop for avatar
   avatarDisplay?: 'stacked' | 'inline'; // New prop for layout
+  compactStacked?: boolean;
   children?: ReactNode; // For Bio, Status Badge, or Subtitle
   className?: string; // For additional styling if needed
 }
 
-const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className = "", transparent = false }: CustomerHeaderProps & { transparent?: boolean }) => {
+const CustomerHeader = ({ title, avatarUrl, avatarDisplay, compactStacked = false, children, className = "", transparent = false }: CustomerHeaderProps & { transparent?: boolean }) => {
+  const avatarSizeClass = compactStacked ? 'w-24 h-24' : 'w-32 h-32';
+  const avatarPixelSize = compactStacked ? 96 : 128;
+  const avatarTransformSize = compactStacked ? 192 : 256;
+
   return (
     <div className={`sticky top-0 z-30 transition-all ${transparent ? '' : 'bg-white/95 backdrop-blur-sm shadow-sm'} ${className}`}>
       {/* Added pt-8 for "Move Down" fix (12-16px more breathing room), pb-3 for spacing */}
-      <div className="pt-8 pb-3 px-6 text-center w-full max-w-md mx-auto">
+      <div className={`px-6 text-center w-full max-w-md mx-auto ${compactStacked ? 'pt-5 pb-3' : 'pt-8 pb-3'}`}>
          
          {/* Avatar rendering: STACKED */}
          {avatarDisplay === 'stacked' && (
@@ -23,15 +28,15 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, children, className =
                   <img 
                      // Optimization: Use 256x256 for 2x density on 128px display + Fetch Priority High
                      // Fix: Remove existing transformation params before adding new ones to avoid stacking
-                     src={`${avatarUrl.split('?')[0]}?tr=w-256,h-256`} 
+                     src={`${avatarUrl.split('?')[0]}?tr=w-${avatarTransformSize},h-${avatarTransformSize}`} 
                      alt={title} 
-                     width="128"
-                     height="128"
-                     className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md bg-gray-100"
+                     width={avatarPixelSize}
+                     height={avatarPixelSize}
+                     className={`${avatarSizeClass} rounded-full object-cover border-4 border-white shadow-md bg-gray-100`}
                   />
                ) : (
-                  <div className="w-32 h-32 rounded-full bg-pink-100 flex items-center justify-center border-4 border-white shadow-md">
-                     <span className="text-5xl font-black text-pink-500">{title.charAt(0)}</span>
+                  <div className={`${avatarSizeClass} rounded-full bg-pink-100 flex items-center justify-center border-4 border-white shadow-md`}>
+                     <span className={`${compactStacked ? 'text-4xl' : 'text-5xl'} font-black text-pink-500`}>{title.charAt(0)}</span>
                   </div>
                )}
             </div>

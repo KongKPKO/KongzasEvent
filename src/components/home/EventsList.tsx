@@ -100,18 +100,20 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
 
                   <div className={`flex items-start gap-4 ${isCancelled ? 'opacity-50' : ''}`}>
                     <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border shrink-0
-                        ${isNextUp && !isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
-                      <span className={`text-[10px] font-bold uppercase ${isNextUp && !isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
+                        ${!isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
+                      <span className={`text-[10px] font-bold uppercase ${!isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
                       <span className="text-2xl font-black text-gray-900 leading-none">{day}</span>
                     </div>
 
                     <div className="flex-1 space-y-2 pt-0.5">
                       <h4 className="font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h4>
                       <div className="space-y-1.5 text-gray-500 text-xs font-medium">
-                        <div className="flex items-start gap-2">
-                          <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
-                          <span>{event.location || '-'}</span>
-                        </div>
+                        {event.location && (
+                          <div className="flex items-start gap-2">
+                            <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
+                            <span>{event.location}</span>
+                          </div>
+                        )}
                         {event.booth_detail && (
                           <div className="flex items-start gap-2">
                             <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />

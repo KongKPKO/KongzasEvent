@@ -244,14 +244,18 @@ export default function QueuePanel({
 
                 {/* Broadcast Controls */}
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <div className="basis-full text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">
+                        Status shown to customers
+                    </div>
                     {/* ✅ Stop Queue - RED when active to indicate CLOSED */}
                     <button
                         onClick={() => handleSetBroadcast("Queue closed temporarily")}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Queue closed temporarily"
                             ? "bg-gray-200 text-gray-700 border-gray-300 ring-2 ring-gray-500 ring-offset-1"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200"
-                            }`}
+                        }`}
                         aria-label="Stop queue temporarily"
+                        title="Pause new queue tickets on the customer queue page."
                     >
                         <PauseCircle size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">หยุดรับคิว</span>
@@ -261,8 +265,9 @@ export default function QueuePanel({
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Break time"
                             ? "bg-pink-100 text-pink-700 border-pink-200 ring-2 ring-pink-500 ring-offset-1"
                             : "bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200"
-                            }`}
+                        }`}
                         aria-label="Set break time message"
+                        title="Show customers that the booth is taking a short break."
                     >
                         <Coffee size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">พักเบรค</span>
@@ -272,8 +277,9 @@ export default function QueuePanel({
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-all touch-manipulation ${broadcastMessage === "Urgent matter, sorry for the inconvenience"
                             ? "bg-orange-100 text-orange-700 border-orange-200 ring-2 ring-orange-500 ring-offset-1"
                             : "bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200"
-                            }`}
+                        }`}
                         aria-label="Set urgent message"
+                        title="Show customers that service is delayed by an urgent matter."
                     >
                         <AlertCircle size={14} aria-hidden="true" />
                         <span className="hidden sm:inline">ติดธุระ</span>
@@ -309,13 +315,6 @@ export default function QueuePanel({
                     </div>
                 </div>
 
-                {/* Active Event Badge */}
-                {activeEvent && (
-                    <div className="mt-3 bg-pink-50/50 border border-pink-100 rounded p-1.5 text-center">
-                        <div className="text-xs font-bold text-pink-700 uppercase tracking-wider mb-0.5">Active Event</div>
-                        <div className="font-bold text-sm text-gray-900 leading-tight">{activeEvent.event_name}</div>
-                    </div>
-                )}
                 {!activeEvent && (
                     <div className="mt-3 bg-gray-50 border border-gray-200 rounded p-1.5 text-center text-xs text-gray-500">
                         No Active Event Today

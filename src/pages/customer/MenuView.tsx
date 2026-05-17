@@ -688,8 +688,8 @@ const MenuView = () => {
 
       <div className="sticky top-0 z-40 w-full max-w-md border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
          <div className="px-4 pb-3 pt-3">
-            <div className="flex items-center justify-between gap-3">
-               <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="space-y-2">
+               <div className="flex min-w-0 items-center gap-3">
                   {displayArtist?.image_url ? (
                      <img
                         src={displayArtist.image_url}
@@ -709,7 +709,7 @@ const MenuView = () => {
                   </div>
                </div>
 
-               <div className="flex shrink-0 flex-col items-end gap-1">
+               <div className="flex items-center justify-between gap-2 pl-14">
                   <button
                      type="button"
                      onClick={() => navigate(`/${displayArtist?.slug || slug}/queue`)}

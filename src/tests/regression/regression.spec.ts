@@ -1,19 +1,20 @@
 import { test, expect, Page, Locator } from '@playwright/test';
 import { CustomerPage } from '../e2e/pages/CustomerPage';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSupabaseTestEnv } from '../helpers/localSupabaseEnv';
+import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
 
 // --- CONFIGURATION ---
 const ADMIN_EMAIL = process.env.TEST_EMAIL || 'local-test-user@example.com';
 const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
 const ARTIST_SLUG = process.env.TEST_SLUG || 'testy';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
-const SUPABASE_KEY = process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || '';
-
+const { url: SUPABASE_URL, anonKey: ANON_KEY, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const authSupabase = createClient(SUPABASE_URL, ANON_KEY);
 
 // --- HELPER 1: Get User ID ---
 async function getUserId() {
-    const { data } = await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+    const { data } = await authSupabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
     return data.user?.id;
 }
 
@@ -89,13 +90,13 @@ async function ensureBoothOpen(page: Page) {
 }
 
 async function findFirstPosProductCard(page: Page) {
-    const grid = page.locator('[aria-label="Product grid"]').first();
-    await expect(grid).toBeVisible({ timeout: 20000 });
+    const productRegion = page.locator('[aria-label="Product grid"], [aria-label="Product list"]').first();
+    await expect(productRegion).toBeVisible({ timeout: 20000 });
 
-    const visualCard = grid.locator('.group > button').first();
+    const visualCard = productRegion.locator('.group > button').first();
     if (await visualCard.isVisible().catch(() => false)) return visualCard;
 
-    const compactCard = grid.locator('button').filter({
+    const compactCard = productRegion.locator('button').filter({
         hasNot: page.locator('button[aria-label^="Pin"], button[aria-label^="Unpin"]'),
     }).first();
     await expect(compactCard).toBeVisible({ timeout: 10000 });
@@ -164,9 +165,12 @@ async function findProductEditButton(page: Page, productName: string) {
     return namedEdit;
 }
 
+const getEditStatusSelect = (page: Page) =>
+    page.getByText('Status', { exact: true }).locator('..').locator('select');
+
 // --- HELPER 7: Ensure POS panel active across devices (handles mobile tab + visibility) ---
 async function ensurePosPanelActive(page: Page) {
-    const grid = page.locator('[aria-label="Product grid"]').first();
+    const productRegion = page.locator('[aria-label="Product grid"], [aria-label="Product list"]').first();
     const cart = page.locator('[aria-label="Shopping cart"]').first();
     const searchInput = page.getByLabel(/Search products/i).first();
 
@@ -207,10 +211,10 @@ async function ensurePosPanelActive(page: Page) {
         await clickPosTabVariants();
         await page.waitForTimeout(300);
 
-        const anyVisible = (await posPane.isVisible().catch(() => false)) || (await grid.isVisible().catch(() => false)) || (await cart.isVisible().catch(() => false)) || (await searchInput.isVisible().catch(() => false));
-        const anyCssVisible = (await cssVisible(posPane)) || (await cssVisible(grid)) || (await cssVisible(cart)) || (await cssVisible(searchInput));
+        const anyVisible = (await posPane.isVisible().catch(() => false)) || (await productRegion.isVisible().catch(() => false)) || (await cart.isVisible().catch(() => false)) || (await searchInput.isVisible().catch(() => false));
+        const anyCssVisible = (await cssVisible(posPane)) || (await cssVisible(productRegion)) || (await cssVisible(cart)) || (await cssVisible(searchInput));
         if (anyVisible || anyCssVisible) {
-            if (await grid.isVisible().catch(() => false)) await grid.scrollIntoViewIfNeeded().catch(() => {});
+            if (await productRegion.isVisible().catch(() => false)) await productRegion.scrollIntoViewIfNeeded().catch(() => {});
             if (await cart.isVisible().catch(() => false)) await cart.scrollIntoViewIfNeeded().catch(() => {});
             if (await searchInput.isVisible().catch(() => false)) await searchInput.scrollIntoViewIfNeeded().catch(() => {});
             if (await posPane.isVisible().catch(() => false)) await posPane.scrollIntoViewIfNeeded().catch(() => {});
@@ -260,6 +264,15 @@ async function clickChargeButton(page: Page) {
 
 test.describe('Regression Suite @regression', () => {
     test.setTimeout(180000);
+
+    test.beforeAll(async () => {
+        await ensureOwnerArtistFixture({
+            email: ADMIN_EMAIL,
+            password: ADMIN_PASSWORD,
+            slug: ARTIST_SLUG,
+            displayName: 'Regression Test Artist',
+        });
+    });
 
     test.beforeEach(async ({ page }) => {
         // Land on login to prime session for some flows
@@ -442,7 +455,7 @@ test.describe('Regression Suite @regression', () => {
 
          // Toggle to DISABLED
          await editButton.click();
-         await page.getByLabel('Status').selectOption('disable'); 
+         await getEditStatusSelect(page).selectOption('disable');
          await page.getByRole('button', { name: 'Save Changes' }).click();
 
          // Wait briefly for list refresh
@@ -459,7 +472,7 @@ test.describe('Regression Suite @regression', () => {
          // Re-open edit with the helper again
          editButton = await findProductEditButton(page, TEST_PROD);
          await editButton.click();
-         await page.getByLabel('Status').selectOption('soldout'); 
+         await getEditStatusSelect(page).selectOption('soldout');
          await page.getByRole('button', { name: 'Save Changes' }).click();
 
          await page.waitForTimeout(1000);
@@ -497,6 +510,7 @@ test.describe('Regression Suite @regression', () => {
 
         const toggle = page.locator('[data-testid="booth-toggle"]').first();
         await expect(toggle).toBeEnabled({ timeout: 20000 });
+        page.once('dialog', (dialog) => dialog.accept());
         await toggle.click();
         if (initialText.includes('Open')) {
             await expect(status).toHaveText(/Booth Closed/i);
@@ -538,8 +552,8 @@ test.describe('Regression Suite @regression', () => {
 
          // Walk-in tab is default or not required to interact; proceed with grid
          
-         const grid = page.locator('[aria-label="Product grid"]');
-         await expect(grid).toBeVisible({ timeout: 20000 });
+         const productRegion = page.locator('[aria-label="Product grid"], [aria-label="Product list"]').first();
+         await expect(productRegion).toBeVisible({ timeout: 20000 });
 
          const firstProduct = await findFirstPosProductCard(page);
          await firstProduct.click();

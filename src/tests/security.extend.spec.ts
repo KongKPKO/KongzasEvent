@@ -125,10 +125,9 @@ test.describe('Extended Security Behaviors', () => {
     for (const pattern of patterns) {
       await page.getByPlaceholder('Search products...').fill(pattern);
       await page.waitForTimeout(500);
-      // Grid should still render or show empty state but not crash
-      const grid = page.locator('[aria-label="Product grid"]');
-      const emptyState = page.getByText(/No products found|Products/i);
-      expect((await grid.count()) + (await emptyState.count())).toBeGreaterThan(0);
+      // Catalog workspace should stay rendered after hostile-looking input.
+      await expect(page.getByText('Browse Current Catalog', { exact: true })).toBeVisible();
+      await expect(page.getByText(/Current Catalog \(\d+\)/)).toBeVisible();
     }
   });
 

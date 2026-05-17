@@ -2,15 +2,24 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from './pages/LoginPage';
 import { CustomerPage } from './pages/CustomerPage';
 import { createClient } from '@supabase/supabase-js';
+import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
+import { resolveSupabaseTestEnv } from '../helpers/localSupabaseEnv';
 
 // --- CONFIGURATION ---
-const ADMIN_EMAIL = process.env.TEST_EMAIL || 'local-admin-user@example.com';
+const ADMIN_EMAIL = process.env.TEST_EMAIL || 'local-full-service-admin@example.com';
 const ADMIN_PASSWORD = process.env.TEST_PASSWORD || 'LocalOnlyTestPassword123!';
-const ARTIST_SLUG = process.env.TEST_SLUG || 'test1';
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321', 
-  process.env.TEST_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || ''
-);
+const ARTIST_SLUG = process.env.TEST_SLUG || 'test-full-service-admin';
+const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+test.beforeAll(async () => {
+  await ensureOwnerArtistFixture({
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    slug: ARTIST_SLUG,
+    displayName: 'Full Service Test Artist',
+  });
+});
 
 test.beforeEach(async ({ page }) => {
   // Validate Slug Exists
@@ -42,7 +51,7 @@ test.describe('The Full Service Loop (Unified POS & Queue)', () => {
     await loginPage.goto();
     await loginPage.login(ADMIN_EMAIL, ADMIN_PASSWORD);
     await expect(adminPage).not.toHaveURL(/.*login/); 
-    await expect(adminPage.getByText('Logout', { exact: false }).first()).toBeVisible({ timeout: 20000 });
+    await expect(adminPage.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20000 });
     
     // 1.2 Get User ID from LocalStorage (fixed key extraction)
     const sessionStr = await adminPage.evaluate(() => {

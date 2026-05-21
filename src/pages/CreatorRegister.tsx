@@ -109,6 +109,8 @@ export default function CreatorRegister() {
 
     try {
       const email = form.email.trim().toLowerCase();
+      await supabase.auth.signOut({ scope: 'local' });
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password: form.password,

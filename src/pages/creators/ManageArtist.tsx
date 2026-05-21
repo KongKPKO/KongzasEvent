@@ -440,6 +440,16 @@ const ManageArtist = () => {
         .eq('artist_id', artist.id);
 
       if (error) throw error;
+      if (nextOpen) {
+        const { error: queueError } = await supabase.rpc('set_artist_queue_broadcast', {
+          p_artist_id: artist.id,
+          p_message: null,
+        });
+
+        if (queueError) {
+          console.warn('Booth opened but queue intake did not resume:', queueError);
+        }
+      }
 
       setEvents((prev) => prev.map((evt) => (
         evt.id === eventId ? { ...evt, is_booth_open: nextOpen } : evt

@@ -167,10 +167,29 @@ export default function QueuePanel({
                 p_is_open: newStatus,
             });
 
-            if (error) {
-                console.error('Error updating booth status:', error);
-                setIsBoothActive(!newStatus);
+            if (error) throw error;
+
+            if (newStatus) {
+                const { error: queueError } = await supabase.rpc('set_artist_queue_broadcast', {
+                    p_artist_id: actorContext.artist_id,
+                    p_message: null,
+                });
+
+                if (queueError) {
+                    console.error('Error reopening queue intake:', queueError);
+                    setToast({
+                        tone: 'warning',
+                        title: 'Booth opened',
+                        detail: 'Queue intake is still paused. Clear the customer status to reopen queueing.',
+                    });
+                } else {
+                    setBroadcastMessage(null);
+                    setIsQueueOpen(true);
+                }
             }
+        } catch (error) {
+            console.error('Error updating booth status:', error);
+            setIsBoothActive(!newStatus);
         } finally {
             boothToggleInFlightRef.current = false;
         }

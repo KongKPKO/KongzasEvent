@@ -135,6 +135,21 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 .eq('artist_id', actorContext.artist_id);
 
             if (error) throw error;
+            if (nextOpen) {
+                const { error: queueError } = await supabase.rpc('set_artist_queue_broadcast', {
+                    p_artist_id: actorContext.artist_id,
+                    p_message: null,
+                });
+
+                if (queueError) {
+                    console.warn('[ManageCombined] Booth opened but queue intake did not resume:', queueError);
+                    setToast({
+                        tone: 'warning',
+                        title: 'Booth opened',
+                        detail: 'Queue intake is still paused. Clear the customer status to reopen queueing.',
+                    });
+                }
+            }
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
         } catch (error) {
             console.error('[ManageCombined] Error updating booth status:', error);

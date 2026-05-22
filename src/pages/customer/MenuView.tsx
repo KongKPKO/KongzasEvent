@@ -694,6 +694,9 @@ const MenuView = () => {
                      <img
                         src={displayArtist.image_url}
                         alt={displayArtist?.display_name || 'Creator'}
+                        width="44"
+                        height="44"
+                        decoding="async"
                         className="h-11 w-11 shrink-0 rounded-2xl border border-pink-100 bg-pink-50 object-cover shadow-sm"
                      />
                   ) : (

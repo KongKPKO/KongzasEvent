@@ -120,6 +120,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                            src={getProductImageUrl(product.image_url, 300)}
                            alt={product.name}
                            loading={isFirst ? "eager" : "lazy"}
+                           decoding="async"
                            width="300"
                            height="300"
                            className="h-full w-full object-contain p-2"

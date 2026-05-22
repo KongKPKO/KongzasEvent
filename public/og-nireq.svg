@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Nireq</title>
+  <desc id="desc">Event queue and booth checkout for creators</desc>
+  <rect width="1200" height="630" fill="#fff7fb"/>
+  <rect x="78" y="78" width="1044" height="474" rx="42" fill="#ffffff" stroke="#fbcfe8" stroke-width="3"/>
+  <rect x="130" y="130" width="104" height="104" rx="28" fill="#db2777"/>
+  <text x="182" y="199" text-anchor="middle" font-family="Arial, sans-serif" font-size="60" font-weight="900" fill="#ffffff">N</text>
+  <circle cx="222" cy="216" r="11" fill="#fbcfe8"/>
+  <text x="270" y="194" font-family="Arial, sans-serif" font-size="76" font-weight="900" fill="#111827">Nireq</text>
+  <text x="132" y="330" font-family="Arial, sans-serif" font-size="48" font-weight="800" fill="#111827">Event queue and booth checkout</text>
+  <text x="132" y="390" font-family="Arial, sans-serif" font-size="36" font-weight="600" fill="#4b5563">Built for creator booths, artist alleys, and pop-up events.</text>
+  <text x="132" y="480" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#db2777">nireqapp.com</text>
+</svg>

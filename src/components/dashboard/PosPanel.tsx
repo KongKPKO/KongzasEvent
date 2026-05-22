@@ -1298,6 +1298,8 @@ export default function POSPanel({
                                                                 <img
                                                                     src={getProductImage(product.image_url)}
                                                                     alt={product.name}
+                                                                    width="56"
+                                                                    height="56"
                                                                     className="w-full h-full object-cover"
                                                                     loading="lazy"
                                                                     decoding="async"

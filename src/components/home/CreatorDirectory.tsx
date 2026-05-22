@@ -45,6 +45,10 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                 <img
                   src={resolveAvatarUrl(creator.image_url)}
                   alt={creator.display_name}
+                  width="88"
+                  height="88"
+                  loading="lazy"
+                  decoding="async"
                   className="w-[88px] h-[88px] rounded-[26px] object-cover bg-gray-100 shrink-0"
                 />
               ) : (

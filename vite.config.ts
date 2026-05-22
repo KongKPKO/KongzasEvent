@@ -10,10 +10,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Event Queue - Artist Alley',
-        short_name: 'Queue',
-        description: 'Real-time Event Queue Management',
-        theme_color: '#6366f1',
+        name: 'Nireq',
+        short_name: 'Nireq',
+        description: 'Event queue and booth checkout for creators',
+        theme_color: '#db2777',
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -32,6 +32,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg}'],
+        globIgnores: ['**/heic2any-*.js'],
         // Don't cache API calls or Firestore
         navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^https:\/\/firestore\.googleapis\.com/],
         runtimeCaching: [
@@ -58,6 +59,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes('/node_modules/heic2any/')) {
+            return 'heic2any'
+          }
           if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router-dom/')) {
             return 'vendor-react'
           }

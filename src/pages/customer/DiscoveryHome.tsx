@@ -372,6 +372,10 @@ function CreatorAvatar({ creator, compact }: { creator: DiscoveryRow; compact: b
       <img
         src={creator.image_url}
         alt={creator.display_name}
+        width={compact ? 80 : 96}
+        height={compact ? 80 : 96}
+        loading="lazy"
+        decoding="async"
         onError={() => setFailed(true)}
         className={`${sizeClass} shrink-0 object-cover bg-pink-50`}
       />

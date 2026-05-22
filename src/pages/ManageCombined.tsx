@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { CalendarDays, ChevronDown, Clock, Loader2 } from 'lucide-react';
+import { CalendarDays, ChevronDown, Clock, Loader2, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
@@ -46,6 +46,68 @@ interface UpcomingEvent {
     event_name: string;
     start_date: string;
     event_timezone: string | null;
+}
+
+type RealtimeStatus = 'idle' | 'connecting' | 'connected' | 'degraded';
+type LiveConnectionTone = 'ok' | 'syncing' | 'offline';
+
+interface LiveConnectionState {
+    tone: LiveConnectionTone;
+    label: string;
+    detail: string;
+}
+
+const getLiveConnectionState = (
+    browserOnline: boolean,
+    eventRealtimeStatus: RealtimeStatus,
+    queueRealtimeStatus: RealtimeStatus,
+    hasActiveEvent: boolean
+): LiveConnectionState => {
+    if (!browserOnline) {
+        return {
+            tone: 'offline',
+            label: 'Offline',
+            detail: 'This device is offline. Changes may not update until the connection returns.',
+        };
+    }
+
+    const eventReady = eventRealtimeStatus === 'connected';
+    const queueReady = !hasActiveEvent || queueRealtimeStatus === 'connected';
+
+    if (eventReady && queueReady) {
+        return {
+            tone: 'ok',
+            label: 'Live synced',
+            detail: 'Realtime event and queue updates are connected.',
+        };
+    }
+
+    return {
+        tone: 'syncing',
+        label: 'Reconnecting',
+        detail: 'Realtime updates may lag. Refresh if the screen looks stale.',
+    };
+};
+
+function LiveConnectionBadge({ state, compact = false }: { state: LiveConnectionState; compact?: boolean }) {
+    const toneClass = state.tone === 'ok'
+        ? 'border-green-200 bg-green-50 text-green-700'
+        : state.tone === 'offline'
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : 'border-amber-200 bg-amber-50 text-amber-700';
+    const Icon = state.tone === 'ok' ? Wifi : state.tone === 'offline' ? WifiOff : RefreshCw;
+
+    return (
+        <span
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${toneClass}`}
+            title={state.detail}
+            aria-label={`${state.label}. ${state.detail}`}
+            data-testid={compact ? 'live-connection-badge-mobile' : 'live-connection-badge'}
+        >
+            <Icon size={compact ? 12 : 13} className={state.tone === 'syncing' ? 'animate-spin' : ''} aria-hidden="true" />
+            <span>{state.label}</span>
+        </span>
+    );
 }
 
 // Formats a UTC ISO start_date string into a human-readable local time string
@@ -102,6 +164,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         return !window.matchMedia('(max-width: 767px)').matches;
     });
     const [isMobileBoothControlsOpen, setIsMobileBoothControlsOpen] = useState(false);
+    const [browserOnline, setBrowserOnline] = useState(() => {
+        if (typeof navigator === 'undefined') return true;
+        return navigator.onLine;
+    });
+    const [eventRealtimeStatus, setEventRealtimeStatus] = useState<RealtimeStatus>('connecting');
+    const [queueRealtimeStatus, setQueueRealtimeStatus] = useState<RealtimeStatus>('idle');
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     const activeEventIdRef = useRef<string | null>(null);
@@ -109,6 +177,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     const activeServiceDate = activeEvent
         ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
         : null;
+    const liveConnectionState = getLiveConnectionState(
+        browserOnline,
+        eventRealtimeStatus,
+        queueRealtimeStatus,
+        Boolean(activeEvent?.id)
+    );
 
     useEffect(() => {
         activeEventIdRef.current = activeEvent?.id || null;
@@ -120,6 +194,19 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         const t = setTimeout(() => setLoadingSlow(true), 6000);
         return () => clearTimeout(t);
     }, [eventLoading]);
+
+    useEffect(() => {
+        const handleOnline = () => setBrowserOnline(true);
+        const handleOffline = () => setBrowserOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!activeEvent?.id || boothToggleLoading) return;
@@ -292,14 +379,20 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     useEffect(() => {
         fetchActiveEvents();
+        setEventRealtimeStatus('connecting');
 
         const channel = supabase.channel(`manage-combined-events-${actorContext.artist_id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `artist_id=eq.${actorContext.artist_id}` }, () => {
                 fetchActiveEvents();
             })
-            .subscribe();
+            .subscribe((status) => {
+                setEventRealtimeStatus(status === 'SUBSCRIBED' ? 'connected' : 'degraded');
+            });
 
-        return () => { supabase.removeChannel(channel); };
+        return () => {
+            setEventRealtimeStatus('idle');
+            supabase.removeChannel(channel);
+        };
     }, [fetchActiveEvents, actorContext.artist_id]);
 
     useEffect(() => {
@@ -371,7 +464,11 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [activeEvent?.id, expireStaleCallingQueues]);
 
     useEffect(() => {
-        if (!activeEvent?.id) return;
+        if (!activeEvent?.id) {
+            setQueueRealtimeStatus('idle');
+            return;
+        }
+        setQueueRealtimeStatus('connecting');
 
         const channel = supabase
             .channel(`manage-combined-queues-${actorContext.artist_id}-${activeEvent.id}`)
@@ -400,9 +497,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                setQueueRealtimeStatus(status === 'SUBSCRIBED' ? 'connected' : 'degraded');
+            });
 
         return () => {
+            setQueueRealtimeStatus('idle');
             supabase.removeChannel(channel);
         };
     }, [actorContext.artist_id, activeEvent?.id, activeServiceDate]);
@@ -451,6 +551,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}>
                                 {activeEvent ? `Active Event: ${activeEvent.event_name}` : 'No active event'}
                             </span>
+                            <LiveConnectionBadge state={liveConnectionState} />
                         </div>
                     </div>
 
@@ -569,6 +670,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}>
                                 {activeEvent ? activeEvent.event_name : 'No active event'}
                             </span>
+                            <LiveConnectionBadge state={liveConnectionState} compact />
                         </div>
                     )}
                 </div>

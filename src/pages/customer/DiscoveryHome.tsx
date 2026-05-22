@@ -59,9 +59,8 @@ const formatEventDate = (value: string | null | undefined, locale: string, fallb
 
 const demoNamePattern = /(test|demo|performance|security|resilience|accessibility|network|mobile)/i;
 
-const isPublicCreator = (creator: Pick<DiscoveryRow, 'slug' | 'display_name' | 'bio'>) => {
+const isPublicCreator = (creator: Pick<DiscoveryRow, 'slug' | 'display_name'>) => {
   if (demoNamePattern.test(creator.display_name) || demoNamePattern.test(creator.slug)) return false;
-  if (creator.bio && demoNamePattern.test(creator.bio)) return false;
   return true;
 };
 

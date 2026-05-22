@@ -1275,7 +1275,7 @@ export default function POSPanel({
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
-                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
+                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5 md:gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-3')}>
                                 {filteredProducts.map((product) => (
                                     (() => {
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
@@ -1346,13 +1346,13 @@ export default function POSPanel({
                                         return (
                                                 <div
                                                     key={product.id}
-                                                    className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200 hover:shadow-md"
+                                                    className="bg-white rounded-xl md:rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200 hover:shadow-md"
                                                 >
                                                     <button
                                                     onClick={() => addToCart(product)}
                                                     className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col"
                                                 >
-                                                    <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
+                                                    <div className="w-full aspect-[2/1] md:aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
                                                         {product.image_url ? (
                                                             <img
                                                                 src={getProductImage(product.image_url)}
@@ -1364,22 +1364,22 @@ export default function POSPanel({
                                                             />
                                                         ) : renderImageFallback(product.name)}
                                                     </div>
-                                                    <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
+                                                    <div className="flex flex-col px-2.5 pb-2.5 pt-2 md:px-3 md:pb-3 md:pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>
-                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{product.name}</h3>
-                                                            <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
-                                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                            <h3 className="font-black text-gray-900 text-[13px] md:text-sm leading-tight w-full line-clamp-2 min-h-[2rem] md:min-h-[2.25rem]" title={product.name}>{product.name}</h3>
+                                                            <p className="mt-0.5 text-[10px] md:text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
+                                                            <div className="mt-1.5 md:mt-2 flex flex-wrap gap-1">
                                                                 {promoBadges.slice(0, 2).map((badge) => (
                                                                     <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
                                                                 ))}
                                                                 {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">Low</span>}
                                                             </div>
                                                         </div>
-                                                        <div className="mt-3 flex items-end justify-between gap-2">
+                                                        <div className="mt-2 md:mt-3 flex items-end justify-between gap-2">
                                                             <div className="text-[10px] font-bold text-gray-500">
                                                                 {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
                                                             </div>
-                                                            <div className="text-base font-black text-pink-600">
+                                                            <div className="text-sm md:text-base font-black text-pink-600">
                                                                 {formatPrice(product.price, product.currency)}
                                                             </div>
                                                         </div>
@@ -1387,7 +1387,7 @@ export default function POSPanel({
                                                 </button>
                                                 <button
                                                     onClick={() => togglePinnedProduct(product.id)}
-                                                    className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
+                                                    className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 icon-touch min-w-8 min-h-8 md:min-w-9 md:min-h-9 rounded-lg md:rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
                                                     aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
                                                 >
                                                     <Pin size={12} />

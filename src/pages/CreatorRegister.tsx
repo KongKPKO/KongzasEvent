@@ -131,28 +131,27 @@ export default function CreatorRegister() {
       }
 
       const { data: application, error: applicationError } = await supabase
-        .from('creator_applications')
-        .insert({
-          auth_user_id: userId,
-          email,
-          contact_name: form.contactName.trim(),
-          creator_name: form.creatorName.trim(),
-          desired_slug: form.desiredSlug.trim(),
-          primary_social_url: form.primarySocialUrl.trim(),
-          website_url: normalizeOptionalUrl(form.websiteUrl),
-          instagram_url: normalizeOptionalUrl(form.instagramUrl),
-          x_url: normalizeOptionalUrl(form.xUrl),
-          facebook_url: normalizeOptionalUrl(form.facebookUrl),
-          tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
-          application_note: form.applicationNote.trim(),
+        .rpc('submit_creator_application', {
+          p_auth_user_id: userId,
+          p_email: email,
+          p_contact_name: form.contactName.trim(),
+          p_creator_name: form.creatorName.trim(),
+          p_desired_slug: form.desiredSlug.trim(),
+          p_primary_social_url: form.primarySocialUrl.trim(),
+          p_website_url: normalizeOptionalUrl(form.websiteUrl),
+          p_instagram_url: normalizeOptionalUrl(form.instagramUrl),
+          p_x_url: normalizeOptionalUrl(form.xUrl),
+          p_facebook_url: normalizeOptionalUrl(form.facebookUrl),
+          p_tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
+          p_application_note: form.applicationNote.trim(),
         })
-        .select('id')
         .single();
 
       if (applicationError) throw applicationError;
 
-      if (application?.id) {
-        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId: application.id });
+      const applicationId = (application as { id?: string } | null)?.id;
+      if (applicationId) {
+        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId });
         if (notifyError) {
           console.warn('[CreatorRegister] Notification failed:', notifyError);
         }

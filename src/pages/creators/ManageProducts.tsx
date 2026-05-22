@@ -83,6 +83,12 @@ type StockAction =
    | { scope: 'catalog'; kind: 'add' | 'remove'; product: Product }
    | { scope: 'event'; kind: 'add' | 'remove'; product: Product; eventProductId: string }
    | null;
+type CsvImportIssue = {
+   row: number | null;
+   field: string;
+   message: string;
+   value?: string;
+};
 
 const PRODUCT_IMAGE_ACCEPT = 'image/png, image/jpeg, image/webp, image/heic, image/heif, .heic, .heif';
 const PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
@@ -214,6 +220,7 @@ const ManageProducts = () => {
    const [stockActionReason, setStockActionReason] = useState('');
    const [stockActionSaving, setStockActionSaving] = useState(false);
    const [stockActionError, setStockActionError] = useState('');
+   const [csvImportIssues, setCsvImportIssues] = useState<CsvImportIssue[]>([]);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1101,6 +1108,7 @@ const ManageProducts = () => {
    const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      setCsvImportIssues([]);
 
       if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
          showToast({ tone: 'warning', title: 'Invalid file type', detail: 'Please upload a CSV file.' });
@@ -1121,7 +1129,19 @@ const ManageProducts = () => {
             }
 
             const validItems: any[] = [];
-            const errors: string[] = [];
+            const issues: CsvImportIssue[] = results.errors.map((parseError) => ({
+               row: typeof parseError.row === 'number' ? parseError.row + 2 : null,
+               field: 'CSV',
+               message: parseError.message,
+            }));
+            const addIssue = (rowIndex: number, field: string, message: string, value?: unknown) => {
+               issues.push({
+                  row: rowIndex + 2,
+                  field,
+                  message,
+                  value: value === undefined || value === null ? undefined : String(value),
+               });
+            };
 
             const existingKeys = new Set(
                products.map(product => buildProductDuplicateKey({
@@ -1163,7 +1183,7 @@ const ManageProducts = () => {
                   const missing = [];
                   if (!name) missing.push('name');
                   if (!priceRaw) missing.push('price');
-                  errors.push(`Row ${index + 2}: Missing required field(s): ${missing.join(', ')}`);
+                  addIssue(index, missing.join(', '), 'Missing required field(s)');
                   return;
                }
 
@@ -1172,7 +1192,7 @@ const ManageProducts = () => {
                const price = parseFloat(priceClean);
 
                if (isNaN(price) || price <= 0) {
-                  errors.push(`Row ${index + 2}: Invalid price value "${priceRaw}"`);
+                  addIssue(index, 'price', 'Must be a number greater than 0', priceRaw);
                   return;
                }
 
@@ -1198,7 +1218,7 @@ const ManageProducts = () => {
                   const stockClean = String(stockRaw).replace(/,/g, '');
                   const stockNumber = Number(stockClean);
                   if (!Number.isInteger(stockNumber) || stockNumber < 0) {
-                     errors.push(`Row ${index + 2}: Invalid stock value "${stockRaw}" (must be integer >= 0)`);
+                     addIssue(index, 'stock', 'Must be a whole number greater than or equal to 0', stockRaw);
                      return;
                   }
                   parsedStock = stockNumber;
@@ -1206,7 +1226,7 @@ const ManageProducts = () => {
 
                const parsedUnlimited = parseBoolean(unlimitedRaw);
                if (unlimitedRaw !== undefined && unlimitedRaw !== null && String(unlimitedRaw).trim() !== '' && parsedUnlimited === null) {
-                  errors.push(`Row ${index + 2}: Invalid is_unlimited value "${unlimitedRaw}" (use true/false, 1/0, yes/no)`);
+                  addIssue(index, 'is_unlimited', 'Use true/false, 1/0, or yes/no', unlimitedRaw);
                   return;
                }
 
@@ -1218,7 +1238,7 @@ const ManageProducts = () => {
                   stockTotalItem = null;
                } else if (parsedUnlimited === false) {
                   if (parsedStock === null) {
-                     errors.push(`Row ${index + 2}: Missing stock value while is_unlimited is false`);
+                     addIssue(index, 'stock', 'Required when is_unlimited is false');
                      return;
                   }
                   isUnlimitedItem = false;
@@ -1244,12 +1264,12 @@ const ManageProducts = () => {
                });
 
                if (existingKeys.has(duplicateKey)) {
-                  errors.push(`Row ${index + 2}: Duplicate product already exists`);
+                  addIssue(index, 'name/category/tags', 'Duplicate product already exists');
                   return;
                }
 
                if (importedKeys.has(duplicateKey)) {
-                  errors.push(`Row ${index + 2}: Duplicate row in CSV upload`);
+                  addIssue(index, 'name/category/tags', 'Duplicate row in this CSV upload');
                   return;
                }
 
@@ -1270,11 +1290,7 @@ const ManageProducts = () => {
                });
             });
 
-            // Log errors to console for debugging
-            if (errors.length > 0) {
-               console.warn('CSV Upload Validation Errors:');
-               errors.forEach(err => console.warn(err));
-            }
+            setCsvImportIssues(issues);
 
             if (validItems.length > 0) {
                try {
@@ -1283,8 +1299,13 @@ const ManageProducts = () => {
                   
                   if (error) throw error;
 
-                  const message = `Successfully uploaded ${validItems.length} item(s)!${errors.length > 0 ? `\n\n${errors.length} row(s) skipped. Check console for details.` : ''}`;
-                  showToast({ tone: 'success', title: 'CSV upload complete', detail: message });
+                  showToast({
+                     tone: 'success',
+                     title: 'CSV upload complete',
+                     detail: issues.length > 0
+                        ? `Uploaded ${validItems.length} item(s). Skipped ${issues.length} row issue(s); see details below.`
+                        : `Uploaded ${validItems.length} item(s).`,
+                  });
                   if (csvInputRef.current) csvInputRef.current.value = '';
                   await fetchProducts();
                } catch (err: any) {
@@ -1297,14 +1318,15 @@ const ManageProducts = () => {
                showToast({
                   tone: 'warning',
                   title: 'No valid rows found',
-                  detail: errors.length > 0
-                     ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '')
+                  detail: issues.length > 0
+                     ? issues.slice(0, 3).map((issue) => `Row ${issue.row ?? '-'} ${issue.field}: ${issue.message}`).join('\n') + (issues.length > 3 ? `\n... and ${issues.length - 3} more issue(s).` : '')
                      : "Ensure CSV has 'name' and 'price' columns (optional: stock, is_unlimited)."
                });
             }
          },
          error: (err: Error) => {
             console.error('CSV Parse Error:', err);
+            setCsvImportIssues([{ row: null, field: 'CSV', message: err.message }]);
             showToast({ tone: 'error', title: 'Failed to parse CSV file' });
          }
    });
@@ -1778,6 +1800,43 @@ const ManageProducts = () => {
                            </Button>
                         </div>
                      </div>
+                     {csvImportIssues.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="csv-import-issues">
+                           <div className="flex items-start gap-2">
+                              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
+                              <div className="min-w-0 flex-1">
+                                 <div className="text-xs font-black text-amber-900">
+                                    {csvImportIssues.length} CSV issue{csvImportIssues.length === 1 ? '' : 's'} found
+                                 </div>
+                                 <p className="mt-1 text-[11px] font-medium text-amber-800">
+                                    Fix the row and field below, then upload the CSV again.
+                                 </p>
+                              </div>
+                           </div>
+
+                           <div className="mt-3 max-h-60 overflow-y-auto rounded-lg border border-amber-100 bg-white">
+                              {csvImportIssues.slice(0, 10).map((issue, index) => (
+                                 <div
+                                    key={`${issue.row ?? 'file'}-${issue.field}-${index}`}
+                                    className="grid grid-cols-[64px_minmax(80px,120px)_1fr] gap-2 border-b border-amber-50 px-3 py-2 text-left text-[11px] last:border-b-0"
+                                 >
+                                    <span className="font-black text-gray-700">{issue.row ? `Row ${issue.row}` : 'File'}</span>
+                                    <span className="truncate font-bold text-pink-700">{issue.field}</span>
+                                    <span className="text-gray-600">
+                                       {issue.message}
+                                       {issue.value ? <span className="ml-1 text-gray-400">({issue.value})</span> : null}
+                                    </span>
+                                 </div>
+                              ))}
+                           </div>
+
+                           {csvImportIssues.length > 10 && (
+                              <p className="mt-2 text-[11px] font-bold text-amber-800">
+                                 Showing first 10 issues. Fix these first and upload again to continue.
+                              </p>
+                           )}
+                        </div>
+                     )}
                   </div>
             </section>
             )}

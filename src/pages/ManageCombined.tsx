@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { CalendarDays, Clock, Loader2 } from 'lucide-react';
+import { CalendarDays, ChevronDown, Clock, Loader2 } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
@@ -101,6 +101,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         if (typeof window === 'undefined') return true;
         return !window.matchMedia('(max-width: 767px)').matches;
     });
+    const [isMobileBoothControlsOpen, setIsMobileBoothControlsOpen] = useState(false);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     const activeEventIdRef = useRef<string | null>(null);
@@ -428,8 +429,8 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             <Toast message={toast} onClose={() => setToast(null)} />
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
-            <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="shrink-0 border-b border-gray-200 bg-white">
+                <div className="hidden md:flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Booth Status</div>
                         <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -492,6 +493,84 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                     : 'Open Booth'}
                         </button>
                     </div>
+                </div>
+
+                <div className="md:hidden px-3 py-2">
+                    <div className="flex items-center gap-2">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                            <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />
+                            <span className="sr-only">Select POS event</span>
+                            <select
+                                value={activeEvent?.id || ''}
+                                onChange={(event) => handleSelectedEventChange(event.target.value)}
+                                disabled={availableEvents.length === 0}
+                                data-testid="pos-event-selector-mobile"
+                                className="min-w-0 w-full bg-transparent text-sm font-black text-gray-900 outline-none disabled:text-gray-400"
+                                aria-label="Select POS event"
+                            >
+                                {availableEvents.length === 0 && <option value="">No active event</option>}
+                                {availableEvents.map((event) => (
+                                    <option key={event.id} value={event.id}>
+                                        {event.event_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <button
+                            type="button"
+                            disabled={!activeEvent || boothToggleLoading}
+                            onClick={() => handleBoothToggle(!activeEvent?.is_booth_open)}
+                            data-testid="booth-toggle-mobile"
+                            className={`h-11 shrink-0 rounded-xl px-3 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                activeEvent?.is_booth_open
+                                    ? 'bg-gray-900 text-white hover:bg-black'
+                                    : 'bg-pink-600 text-white hover:bg-pink-700'
+                            }`}
+                        >
+                            {boothToggleLoading
+                                ? '...'
+                                : activeEvent?.is_booth_open
+                                    ? 'Close'
+                                    : 'Open'}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsMobileBoothControlsOpen((open) => !open)}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600"
+                            aria-label={isMobileBoothControlsOpen ? 'Hide booth details' : 'Show booth details'}
+                            aria-expanded={isMobileBoothControlsOpen}
+                        >
+                            <ChevronDown
+                                size={18}
+                                className={`transition-transform ${isMobileBoothControlsOpen ? 'rotate-180' : ''}`}
+                                aria-hidden="true"
+                            />
+                        </button>
+                    </div>
+
+                    {isMobileBoothControlsOpen && (
+                        <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+                            <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
+                                activeEvent?.is_booth_open
+                                    ? 'border-green-200 bg-green-50 text-green-700'
+                                    : 'border-gray-200 bg-gray-100 text-gray-600'
+                            }`}>
+                                <span className={`h-2 w-2 rounded-full ${activeEvent?.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                <span data-testid="booth-status">
+                                    {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                                </span>
+                            </span>
+                            <span className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-bold border ${
+                                activeEvent
+                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
+                                    : 'border-gray-200 bg-gray-100 text-gray-500'
+                            }`}>
+                                {activeEvent ? activeEvent.event_name : 'No active event'}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 

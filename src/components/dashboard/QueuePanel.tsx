@@ -4,7 +4,7 @@ import { Button } from '../ui';
 import type { ActorContext } from '../../types/access';
 import { 
     LayoutDashboard, Bell, RotateCcw, Play, 
-    Coffee, AlertCircle, PauseCircle, X 
+    Coffee, AlertCircle, PauseCircle, X, ChevronDown
 } from 'lucide-react';
 import { Toast } from '../ui/Feedback';
 
@@ -70,6 +70,7 @@ export default function QueuePanel({
     const [isBoothActive, setIsBoothActive] = useState(false);
     const [isQueueOpen, setIsQueueOpen] = useState(true);
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
+    const [isMobileControlsOpen, setIsMobileControlsOpen] = useState(false);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
     const callNextInFlightRef = useRef(false);
@@ -253,16 +254,30 @@ export default function QueuePanel({
         <div className="flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
             {/* Header */}
-            <div className="p-4 border-b border-gray-100 bg-white shrink-0">
-                <div className="flex items-center justify-between mb-3">
+            <div className="p-3 md:p-4 border-b border-gray-100 bg-white shrink-0">
+                <div className="flex items-center justify-between gap-3 md:mb-3">
                     <h2 className="text-base font-bold flex items-center gap-2 text-gray-800">
                         <LayoutDashboard className="text-pink-500" size={18} />
                         Queue Control
                     </h2>
+                    <button
+                        type="button"
+                        onClick={() => setIsMobileControlsOpen((open) => !open)}
+                        className="md:hidden inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-[11px] font-black text-gray-700"
+                        aria-expanded={isMobileControlsOpen}
+                        aria-label={isMobileControlsOpen ? 'Hide queue status controls' : 'Show queue status controls'}
+                    >
+                        Controls
+                        <ChevronDown
+                            size={14}
+                            className={`transition-transform ${isMobileControlsOpen ? 'rotate-180' : ''}`}
+                            aria-hidden="true"
+                        />
+                    </button>
                 </div>
 
                 {/* Broadcast Controls */}
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className={`${isMobileControlsOpen ? 'flex' : 'hidden'} md:flex items-center gap-2 mt-3 md:mt-0 mb-3 flex-wrap`}>
                     <div className="basis-full text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">
                         Status shown to customers
                     </div>
@@ -316,7 +331,7 @@ export default function QueuePanel({
                 </div>
 
                 {/* Toggle Controls - Only Booth toggle remains */}
-                <div className="flex items-center gap-4 text-[10px]">
+                <div className={`${isMobileControlsOpen ? 'flex' : 'hidden'} md:flex items-center gap-4 text-[10px]`}>
 
                     <div className="flex items-center gap-2">
                         <span className={`font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-700' : 'text-gray-500'}`}>

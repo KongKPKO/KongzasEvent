@@ -183,8 +183,6 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
 
   const getEventName = (eventId: string) => events.find((event) => event.id === eventId)?.event_name || 'Event';
 
-  const getInvitationRedirectUrl = () => `${window.location.origin}/invitations`;
-
   const toggleInviteEvent = (eventId: string) => {
     setInviteEventIds((current) =>
       current.includes(eventId)
@@ -248,38 +246,24 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       const invitationId = (data as { result: string; invitation_id?: string }).invitation_id;
 
       if (result === 'invitation_sent' && invitationId) {
-        if (role === 'seller' || role === 'queue_staff') {
-          const { error: magicLinkError } = await withTimeout(
-            supabase.auth.signInWithOtp({
-              email: normalizedEmail,
-              options: {
-                emailRedirectTo: getInvitationRedirectUrl(),
-              },
-            })
+        try {
+          const { error: notifyError } = await withTimeout(
+            invokeNotificationFunction('notify-team-invitation', { invitation_id: invitationId })
           );
-          if (magicLinkError) {
-            setInviteResult('email_failed');
-            setInviteResultMsg('Invitation created, but the magic link email failed to send. Use Resend after checking auth email settings.');
-          } else {
-            setInviteResult('invitation_sent');
-            setInviteResultMsg('Magic link sent. Staff can open the email, accept the invite, and work only the selected event access.');
-          }
-        } else {
-          try {
-            const { error: notifyError } = await withTimeout(
-              invokeNotificationFunction('notify-team-invitation', { invitation_id: invitationId })
-            );
-            if (notifyError) {
-              setInviteResult('email_failed');
-              setInviteResultMsg('Invitation created, but the notification email failed to send.');
-            } else {
-              setInviteResult('invitation_sent');
-              setInviteResultMsg('Manager invitation sent. They can create a password-based manager account without a creator profile.');
-            }
-          } catch {
+          if (notifyError) {
             setInviteResult('email_failed');
             setInviteResultMsg('Invitation created, but the notification email failed to send.');
+          } else {
+            setInviteResult('invitation_sent');
+            setInviteResultMsg(
+              role === 'manager'
+                ? 'Manager invitation sent. They can create a password-based team account without a creator profile.'
+                : 'Team invitation sent. Staff can create or use a password-based account and work only the selected event access.'
+            );
           }
+        } catch {
+          setInviteResult('email_failed');
+          setInviteResultMsg('Invitation created, but the notification email failed to send.');
         }
         await fetchPendingInvitations();
       } else if (result === 'member_added') {
@@ -326,18 +310,9 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     setResendResultId(null);
     setResendResultOk(null);
     try {
-      const { error } = inv.role === 'seller' || inv.role === 'queue_staff'
-        ? await withTimeout(
-            supabase.auth.signInWithOtp({
-              email: inv.invited_email,
-              options: {
-                emailRedirectTo: getInvitationRedirectUrl(),
-              },
-            })
-          )
-        : await withTimeout(
-            invokeNotificationFunction('notify-team-invitation', { invitation_id: inv.id })
-          );
+      const { error } = await withTimeout(
+        invokeNotificationFunction('notify-team-invitation', { invitation_id: inv.id })
+      );
       setResendResultId(inv.id);
       setResendResultOk(!error);
     } catch {
@@ -462,8 +437,8 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             </div>
             <p className="text-xs text-gray-500">
               {role === 'manager'
-                ? 'Managers use a password-based manager account and can manage events, catalog, promotions, POS, and queue for every event. Team access stays owner-only.'
-                : 'Seller and queue staff receive a magic link and can only access the events selected below.'}
+                ? 'Managers use a password-based team account and can manage events, catalog, promotions, POS, and queue for every event. Team access stays owner-only.'
+                : 'Seller and queue staff use a password-based team account and can only access the events selected below.'}
             </p>
             {inviteRequiresEventAccess && (
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">

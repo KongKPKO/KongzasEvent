@@ -205,12 +205,12 @@ function buildInviteHtml(artistName: string, roleLabel: string, inviteUrl: strin
   </h1>
   <p>You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p>
   <p>
-    To accept this invitation, create a manager account or log in using
+    To accept this invitation, create a team account or log in using
     <strong>this exact email address</strong>. This will not create a creator page.
   </p>
   <p>
     <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;background:#db2777;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">
-      Create manager account
+      Open team invitation
     </a>
   </p>
   <p style="color:#6b7280;font-size:13px">
@@ -225,7 +225,7 @@ function buildInviteText(artistName: string, roleLabel: string, inviteUrl: strin
     "",
     `Role: ${roleLabel}`,
     "",
-    "To accept this invitation, create a manager account or log in using this exact email address.",
+    "To accept this invitation, create a team account or log in using this exact email address.",
     "This will not create a creator page.",
     inviteUrl,
     "",

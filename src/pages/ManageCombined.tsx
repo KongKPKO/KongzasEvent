@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { CalendarDays, ChevronDown, Clock, Loader2, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { CalendarDays, CheckCircle, ChevronDown, Clock, Loader2, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
@@ -513,6 +513,27 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const servingQueues = filteredQueues.filter(q => q.status === 'serving');
     const otherQueues = filteredQueues.filter(q => q.status !== 'serving');
+    const handleMobileFromQueue = () => {
+        if (selectedQueueId) {
+            setActiveTab('pos');
+            return;
+        }
+
+        const nextServingQueue = servingQueues[0];
+        if (!nextServingQueue) {
+            setToast({
+                tone: 'info',
+                title: 'No queue customer yet',
+                detail: 'Call or select a queue first, then switch to From Queue.',
+            });
+            return;
+        }
+
+        setSelectedQueueId(nextServingQueue.id);
+        setSelectedQueueNumber(String(nextServingQueue.queue_number));
+        setActiveTab('pos');
+    };
+
     if (eventLoading) {
         return (
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
@@ -676,29 +697,65 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 </div>
             </div>
 
-            <div className="md:hidden sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
-                <button
-                    onClick={() => setActiveTab('queue')}
-                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                        activeTab === 'queue'
-                            ? 'bg-pink-50 text-pink-600 border border-pink-200'
-                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                >
-                    Queue Control
-                </button>
-                {hasPosPermission && (
+            <div className="md:hidden sticky top-0 z-20 grid grid-cols-2 gap-2 border-b border-gray-200 bg-white p-2 shrink-0" data-testid="pos-switcher">
+                <div className="grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">
+                    <button
+                        onClick={() => setActiveTab('queue')}
+                        className={`min-h-10 rounded-lg px-2 text-[12px] font-black transition-colors ${
+                            activeTab === 'queue'
+                                ? 'bg-white text-pink-600 shadow-sm'
+                                : 'text-gray-600 hover:bg-white/70'
+                        }`}
+                    >
+                        Queue
+                    </button>
                     <button
                         onClick={() => setActiveTab('pos')}
-                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                        disabled={!hasPosPermission}
+                        aria-label="POS / Order"
+                        className={`min-h-10 rounded-lg px-2 text-[12px] font-black transition-colors disabled:opacity-40 ${
                             activeTab === 'pos'
-                                ? 'bg-pink-50 text-pink-600 border border-pink-200'
-                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                                ? 'bg-white text-pink-600 shadow-sm'
+                                : 'text-gray-600 hover:bg-white/70'
                         }`}
                         data-testid="pos-tab"
                     >
-                        POS / Order
+                        POS
                     </button>
+                </div>
+
+                {hasPosPermission && (
+                    <div className="grid grid-cols-2 gap-1 rounded-xl border border-pink-100 bg-pink-50/50 p-1">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedQueueId(null);
+                                setSelectedQueueNumber(null);
+                                setActiveTab('pos');
+                            }}
+                            className={`min-h-10 rounded-lg px-2 text-[12px] font-black transition-colors inline-flex items-center justify-center gap-1 ${
+                                !selectedQueueId
+                                    ? 'bg-pink-600 text-white shadow-sm'
+                                    : 'text-pink-700 hover:bg-white/80'
+                            }`}
+                        >
+                            <User size={13} aria-hidden="true" />
+                            Walk-in
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleMobileFromQueue}
+                            aria-label="From Queue"
+                            className={`min-h-10 rounded-lg px-2 text-[12px] font-black transition-colors inline-flex items-center justify-center gap-1 ${
+                                selectedQueueId
+                                    ? 'bg-pink-600 text-white shadow-sm'
+                                    : 'text-pink-700 hover:bg-white/80'
+                            }`}
+                        >
+                            <CheckCircle size={13} aria-hidden="true" />
+                            {selectedQueueId ? `#${selectedQueueNumber}` : 'From Q'}
+                        </button>
+                    </div>
                 )}
             </div>
 

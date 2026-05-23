@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
+import { User, CheckCircle, Grid2x2, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
@@ -125,8 +125,6 @@ interface QueueItem {
 
 type SortType = 'name' | 'price_low' | 'price_high';
 type QuickFilter = 'all' | 'promo' | 'low_stock' | 'recent' | 'pinned';
-type ViewMode = 'compact' | 'visual';
-type ViewPreference = 'auto' | ViewMode;
 
 interface POSPanelProps {
     activeEvent: ActiveEvent | null;
@@ -182,11 +180,6 @@ export default function POSPanel({
     const [selectedTag, setSelectedTag] = useState<string>('All');
     const [sortBy, setSortBy] = useState<SortType>('name');
     const [selectedQuickFilter, setSelectedQuickFilter] = useState<QuickFilter>('all');
-    const [viewPreference, setViewPreference] = useState<ViewPreference>(() => {
-        if (typeof window === 'undefined') return 'auto';
-        const savedPreference = window.localStorage.getItem('posViewPreference') as ViewPreference | null;
-        return savedPreference || 'auto';
-    });
     const [pinnedProductIds, setPinnedProductIds] = useState<string[]>(() => {
         if (typeof window === 'undefined') return [];
         try {
@@ -209,11 +202,6 @@ export default function POSPanel({
     useEffect(() => {
         cartRef.current = cart;
     }, [cart]);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        window.localStorage.setItem('posViewPreference', viewPreference);
-    }, [viewPreference]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -497,10 +485,6 @@ export default function POSPanel({
     }, [overdraftProductIds]);
 
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
-    const effectiveViewMode: ViewMode = viewPreference === 'auto'
-        ? (isQueuePanelExpanded ? 'compact' : 'visual')
-        : viewPreference;
-    const isVisualProductGrid = effectiveViewMode === 'visual';
     const hasActiveProductFilters =
         searchQuery.trim().length > 0 ||
         selectedCategory !== 'All' ||
@@ -1179,31 +1163,6 @@ export default function POSPanel({
                                 <option value="price_low">Price ↑</option>
                                 <option value="price_high">Price ↓</option>
                             </select>
-                            <div className="hidden md:flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label="Product browser layout">
-                                <button
-                                    onClick={() => setViewPreference('auto')}
-                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black ${viewPreference === 'auto' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Auto product layout"
-                                >
-                                    Auto
-                                </button>
-                                <button
-                                    onClick={() => setViewPreference('visual')}
-                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'visual' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Fast grid product view"
-                                >
-                                    <Grid2x2 size={16} />
-                                    Grid
-                                </button>
-                                <button
-                                    onClick={() => setViewPreference('compact')}
-                                    className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'compact' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Detail list product view"
-                                >
-                                    <Rows3 size={16} />
-                                    List
-                                </button>
-                            </div>
                         </div>
                         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
                             {quickFilters.map((filter) => {
@@ -1271,77 +1230,17 @@ export default function POSPanel({
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-2.5 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'}>
+                    <div className="flex-1 overflow-y-auto p-2.5 md:p-4 min-h-0" tabIndex={0} role="region" aria-label="Product grid">
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
-                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2 md:gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3')}>
+                            <div className={isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2 md:gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3'}>
                                 {filteredProducts.map((product) => (
                                     (() => {
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
                                         const available = getAvailableUnits(product);
                                         const lowStock = isLowStock(product);
                                         const isPinned = pinnedProductIds.includes(product.id);
-
-                                        if (effectiveViewMode === 'compact') {
-                                            return (
-                                                <div
-                                                    key={product.id}
-                                                    className="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 flex items-center gap-3"
-                                                >
-                                                    <button
-                                                        onClick={() => addToCart(product)}
-                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                                                    >
-                                                        <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
-                                                            {product.image_url ? (
-                                                                <img
-                                                                    src={getProductImage(product.image_url)}
-                                                                    alt={product.name}
-                                                                    width="56"
-                                                                    height="56"
-                                                                    className="w-full h-full object-cover"
-                                                                    loading="lazy"
-                                                                    decoding="async"
-                                                                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
-                                                                />
-                                                            ) : renderImageFallback(product.name, true)}
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="min-w-0">
-                                                                    <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{product.name}</div>
-                                                                    <div className="text-[11px] text-gray-500 break-words">{(product.category || 'Other').trim() || 'Other'}</div>
-                                                                </div>
-                                                                <div className="text-right shrink-0">
-                                                                    <div className="font-black text-pink-600 text-sm">{formatPrice(product.price, product.currency)}</div>
-                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? `${available} left` : 'Unlimited'}</div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                                                                {promoBadges.slice(0, 2).map((badge) => (
-                                                                    <span key={badge.id} className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-rose-50 text-rose-700 border-rose-100">
-                                                                        {badge.shortLabel}
-                                                                    </span>
-                                                                ))}
-                                                                {lowStock && (
-                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-100">
-                                                                        Low stock
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => togglePinnedProduct(product.id)}
-                                                        className={`p-2 rounded-lg border ${isPinned ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200'}`}
-                                                        aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
-                                                    >
-                                                        <Pin size={14} />
-                                                    </button>
-                                                </div>
-                                            );
-                                        }
 
                                         return (
                                                 <div

@@ -1381,10 +1381,10 @@ export default function POSPanel({
                                                     </div>
                                                     <div className="flex flex-col px-2 pb-1.5 pt-1.5 md:px-3 md:pb-3 md:pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>
-                                                            <h3 className="font-black text-gray-900 text-[12px] md:text-sm leading-tight w-full line-clamp-2 min-h-[1.75rem] md:min-h-[2.25rem]" title={product.name}>{product.name}</h3>
+                                                            <h3 className="font-black text-gray-900 text-[12px] md:text-sm leading-tight w-full line-clamp-2 md:min-h-[2.25rem]" title={product.name}>{product.name}</h3>
                                                             <p className="hidden md:block mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
                                                         </div>
-                                                        <div className="mt-1 md:mt-3 flex items-end justify-between gap-2">
+                                                        <div className="mt-0.5 md:mt-3 flex items-end justify-between gap-2">
                                                             <div className="text-[9px] md:text-[10px] font-bold text-gray-500">
                                                                 {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
                                                             </div>

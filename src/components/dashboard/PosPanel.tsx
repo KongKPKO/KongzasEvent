@@ -1363,19 +1363,28 @@ export default function POSPanel({
                                                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
                                                             />
                                                         ) : renderImageFallback(product.name)}
+                                                        <div className="absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-3rem)] flex-wrap gap-1">
+                                                            {promoBadges.slice(0, 2).map((badge) => (
+                                                                <span
+                                                                    key={badge.id}
+                                                                    className="inline-flex items-center rounded-full bg-rose-50/95 px-1.5 py-0.5 text-[9px] font-black text-rose-700 shadow-sm ring-1 ring-rose-100 backdrop-blur"
+                                                                >
+                                                                    {badge.shortLabel}
+                                                                </span>
+                                                            ))}
+                                                            {lowStock && (
+                                                                <span className="hidden md:inline-flex items-center rounded-full bg-amber-50/95 px-1.5 py-0.5 text-[9px] font-black text-amber-700 shadow-sm ring-1 ring-amber-100 backdrop-blur">
+                                                                    Low
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-col px-2 pb-2 pt-1.5 md:px-3 md:pb-3 md:pt-2.5 justify-between flex-1 min-w-0">
+                                                    <div className="flex flex-col px-2 pb-1.5 pt-1.5 md:px-3 md:pb-3 md:pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>
                                                             <h3 className="font-black text-gray-900 text-[12px] md:text-sm leading-tight w-full line-clamp-2 min-h-[1.75rem] md:min-h-[2.25rem]" title={product.name}>{product.name}</h3>
-                                                            <p className="mt-0.5 text-[9px] md:text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
-                                                            <div className="mt-1 md:mt-2 flex flex-wrap gap-1">
-                                                                {promoBadges.slice(0, 2).map((badge) => (
-                                                                    <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
-                                                                ))}
-                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">Low</span>}
-                                                            </div>
+                                                            <p className="hidden md:block mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
                                                         </div>
-                                                        <div className="mt-1.5 md:mt-3 flex items-end justify-between gap-2">
+                                                        <div className="mt-1 md:mt-3 flex items-end justify-between gap-2">
                                                             <div className="text-[9px] md:text-[10px] font-bold text-gray-500">
                                                                 {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
                                                             </div>
@@ -1387,10 +1396,14 @@ export default function POSPanel({
                                                 </button>
                                                 <button
                                                     onClick={() => togglePinnedProduct(product.id)}
-                                                    className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 icon-touch min-w-8 min-h-8 md:min-w-9 md:min-h-9 rounded-lg md:rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
+                                                    className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 flex min-h-7 min-w-7 items-center justify-center rounded-full shadow-sm ring-1 backdrop-blur transition-all md:min-h-9 md:min-w-9 ${
+                                                        isPinned
+                                                            ? 'bg-pink-600 text-white ring-pink-200'
+                                                            : 'bg-white/95 text-gray-400 ring-pink-100 hover:text-pink-600'
+                                                    }`}
                                                     aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
                                                 >
-                                                    <Pin size={12} />
+                                                    <Pin size={12} className="rotate-45 md:h-3.5 md:w-3.5" />
                                                 </button>
                                             </div>
                                         );

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CalendarDays, MapPin, Search, Sparkles, Ticket, UsersRound } from 'lucide-react';
+import { ArrowRight, CalendarDays, Mail, MapPin, Search, Sparkles, Ticket, UsersRound } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { LanguageToggle, useI18n } from '../../i18n';
@@ -314,6 +314,32 @@ export default function DiscoveryHome() {
           )}
         </section>
       </main>
+
+      <footer className="border-t border-pink-100 bg-white/70">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-sm font-bold text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+          <p>{t('homeSupportContact')}</p>
+          <div className="flex items-center gap-2">
+            <a
+              href="mailto:konglnwzas@gmail.com"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-pink-100 bg-white px-3 text-pink-700 shadow-sm transition hover:border-pink-200 hover:bg-pink-50"
+              aria-label="Email Nireq support"
+            >
+              <Mail size={16} />
+              <span>Email</span>
+            </a>
+            <a
+              href="https://www.facebook.com/kongzas/"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-pink-100 bg-white px-3 text-pink-700 shadow-sm transition hover:border-pink-200 hover:bg-pink-50"
+              aria-label="Open Nireq support Facebook"
+            >
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-pink-600 text-[11px] font-black leading-none text-white">f</span>
+              <span>Facebook</span>
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, KeyRound, Mail, UserPlus } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Button, Card } from '../components/ui';
+import { PasswordChecklist } from '../components/auth/PasswordChecklist';
+import { isStrongPassword } from '../utils/passwordPolicy';
 
 export default function StaffSignup() {
   const navigate = useNavigate();
@@ -15,7 +17,8 @@ export default function StaffSignup() {
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const canSubmit = email.trim().length > 3 && password.length >= 8 && password === confirmPassword;
+  const passwordStrong = isStrongPassword(password);
+  const canSubmit = email.trim().length > 3 && passwordStrong && password === confirmPassword;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -23,7 +26,7 @@ export default function StaffSignup() {
     setMessage('');
 
     if (!canSubmit) {
-      setErrorMsg('Use the invited email and a matching password with at least 8 characters.');
+      setErrorMsg('Use the invited email and a password that passes every requirement.');
       return;
     }
 
@@ -115,10 +118,11 @@ export default function StaffSignup() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-pink-500"
-                  placeholder="At least 8 characters"
+                  placeholder="8+ chars, Aa, 1, symbol"
                   required
                 />
               </div>
+              <PasswordChecklist password={password} confirmPassword={confirmPassword} />
             </div>
 
             <div>

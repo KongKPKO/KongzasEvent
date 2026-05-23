@@ -4,6 +4,8 @@ import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldC
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n } from '../i18n';
 import { invokeNotificationFunction } from '../utils/edgeFunctions';
+import { PasswordChecklist } from '../components/auth/PasswordChecklist';
+import { isStrongPassword } from '../utils/passwordPolicy';
 
 type FormState = {
   email: string;
@@ -59,7 +61,8 @@ export default function CreatorRegister() {
   const slugValid = /^[a-z0-9][a-z0-9-]{2,38}[a-z0-9]$/.test(form.desiredSlug);
   const hasSocialProof = form.primarySocialUrl.trim().startsWith('http');
   const noteValid = form.applicationNote.trim().length >= 20;
-  const passwordsMatch = form.password.length >= 8 && form.password === form.confirmPassword;
+  const passwordStrong = isStrongPassword(form.password);
+  const passwordsMatch = passwordStrong && form.password === form.confirmPassword;
   const incompleteReasons = [
     !form.email.trim() && t('registerErrEmail'),
     !passwordsMatch && t('registerErrPassword'),
@@ -263,8 +266,20 @@ export default function CreatorRegister() {
               <Field label={t('registerContactName')} required>
                 <IconInput id="creator-contact-name" name="contactName" icon={<UserRound size={17} />} value={form.contactName} onChange={(value) => updateField('contactName', value)} placeholder={t('registerContactNamePlaceholder')} />
               </Field>
-              <Field label={t('registerPassword')} required hint={t('registerPasswordHint')}>
+              <Field label={t('registerPassword')} required>
                 <IconInput id="creator-password" name="password" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.password} onChange={(value) => updateField('password', value)} placeholder={t('registerPasswordPlaceholder')} />
+                <PasswordChecklist
+                  password={form.password}
+                  confirmPassword={form.confirmPassword}
+                  labels={{
+                    length: t('passwordRuleLength'),
+                    lowercase: t('passwordRuleLowercase'),
+                    uppercase: t('passwordRuleUppercase'),
+                    number: t('passwordRuleNumber'),
+                    special: t('passwordRuleSpecial'),
+                    match: t('passwordRuleMatch'),
+                  }}
+                />
               </Field>
               <Field label={t('registerConfirmPassword')} required>
                 <IconInput id="creator-confirm-password" name="confirmPassword" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.confirmPassword} onChange={(value) => updateField('confirmPassword', value)} placeholder={t('registerConfirmPasswordPlaceholder')} />

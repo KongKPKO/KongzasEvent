@@ -55,7 +55,8 @@ Rationale:
 References:
 
 - Bank of Thailand PromptPay: https://www.bot.or.th/en/financial-innovation/digital-finance/digital-payment/promptpay.html
-- Bank of Thailand Payment Systems Act oversight: https://www.bot.or.th/th/our-roles/payment-systems/back-up-payment.html
+- Bank of Thailand Payment Systems Act overview: https://www.bot.or.th/th/our-roles/payment-systems/back-up-payment.html
+- Bank of Thailand regulated payment business provider list: https://www.bot.or.th/th/our-roles/payment-systems/payment-act-oversight/business-provider.html
 
 ## MVP Scope
 
@@ -95,6 +96,25 @@ Stock/production quantity is reserved when the customer submits payment evidence
 
 This fits creator pre-orders better because an unpaid cart should not affect the production plan. It also limits fake/no-action orders. A fake slip can still reserve stock temporarily, but the seller can reject it and release the stock immediately.
 
+### Current implementation impact
+
+The current pre-order RPC must be actively changed, not merely wrapped with a payment table.
+
+Current `create_preorder_with_stock` behavior:
+
+- Creates the order as `status = confirmed`.
+- Sets `pickup_status = awaiting_pickup`.
+- Increments `stock_reserved` during order creation.
+
+New behavior:
+
+- Creates the order as not pickup-ready.
+- Creates `order_payments.payment_status = awaiting_payment`.
+- Leaves `pickup_status = not_required` or a non-ready equivalent until seller payment confirmation.
+- Does not increment `stock_reserved` until payment evidence submission.
+
+Existing pickup/cancel/expire RPCs also need updated guards because they currently expect `status = confirmed` and `pickup_status = awaiting_pickup`. Under the new model, only `payment_confirmed` orders should reach `awaiting_pickup`. Submitted-but-unconfirmed payment evidence needs its own release/expiry path.
+
 ## Status Model
 
 ### Order lifecycle
@@ -116,6 +136,7 @@ Use a payment-specific status:
 - `payment_submitted`: customer uploaded evidence, stock reserved, counts toward production draft.
 - `payment_confirmed`: seller checked bank account and confirmed payment, stock remains reserved, ready for pickup.
 - `payment_rejected`: seller rejected payment evidence, stock released, removed from production totals.
+- `payment_expired`: submitted payment evidence was not confirmed before the review deadline, stock released, removed from production totals.
 
 Future optional status:
 
@@ -140,6 +161,7 @@ If an order has `payment_submitted` but not `payment_confirmed`, it should not b
 | Slip/evidence uploaded | `payment_submitted` | Yes | Yes, as "submitted/unconfirmed" | Warn or block |
 | Seller confirms after bank check | `payment_confirmed` | Yes | Yes, as confirmed | Yes |
 | Seller rejects evidence | `payment_rejected` | Released | No | No |
+| Submitted evidence expires unreviewed | `payment_expired` | Released | No | No |
 | Seller cancels confirmed payment order | `cancelled` | Released | No | No |
 | Event ends/no-show expired | `expired` | Released if not picked up | No active production impact | No |
 | Picked up | `payment_confirmed` + `picked_up` | Converted to sold | Historical only | Completed |
@@ -282,6 +304,25 @@ Reject action:
 - Updates payment status to `payment_rejected`.
 - Updates order/pickup state to non-fulfillable.
 
+### Submitted payment expiry
+
+Because stock is reserved at payment evidence submission, there must be a release path for unreviewed `payment_submitted` orders.
+
+Default policy:
+
+- Use `event_payment_methods.payment_deadline_at` when configured.
+- Otherwise use `events.preorder_closes_at` as the payment deadline.
+- Apply a default 24-hour review grace period after the deadline.
+- Owner/manager can manually expire submitted evidence before the automatic expiry if the seller has checked and decided not to honor it.
+
+Expiry action:
+
+- Finds `payment_submitted` orders older than the deadline plus grace period.
+- Releases reserved stock exactly once.
+- Sets `payment_status = payment_expired`.
+- Sets order/pickup state to non-fulfillable.
+- Records an audit event with actor `system` for automatic expiry or the staff user for manual expiry.
+
 ### Production dashboard
 
 This is the main missing seller surface before event day.
@@ -390,22 +431,69 @@ New table:
 - `confirmed_by uuid`
 - `rejected_at timestamptz`
 - `rejected_by uuid`
+- `expired_at timestamptz`
 - `review_note text`
 - `created_at timestamptz`
 - `updated_at timestamptz`
 
 Constraints:
 
-- `payment_status in ('awaiting_payment', 'payment_submitted', 'payment_confirmed', 'payment_rejected')`
+- `payment_status in ('awaiting_payment', 'payment_submitted', 'payment_confirmed', 'payment_rejected', 'payment_expired')`
 - `amount_expected >= 0`
 - `confirmed_at` only when status is `payment_confirmed`
 - `rejected_at` only when status is `payment_rejected`
+- `expired_at` only when status is `payment_expired`
 
 RLS:
 
 - Customers should not directly select arbitrary payment rows.
 - Public receipt/payment status should be returned through a receipt RPC that requires order id + pickup code or a separate receipt token.
 - Staff reads through role-checked RPCs or RLS scoped to their event role.
+
+`order_payments` is the current-state row. It remains unique by `order_id` so the app can load the latest payment state cheaply. It must not be the only audit source.
+
+### `payment_review_events`
+
+New append-only audit table:
+
+- `id uuid primary key`
+- `order_id uuid not null references orders(id)`
+- `order_payment_id uuid references order_payments(id)`
+- `event_id uuid not null references events(id)`
+- `artist_id uuid not null`
+- `event_type text not null`
+- `from_status text`
+- `to_status text`
+- `slip_url text`
+- `actor_user_id uuid`
+- `actor_role text`
+- `note text`
+- `metadata jsonb default '{}'::jsonb`
+- `created_at timestamptz default now()`
+
+Allowed `event_type` values:
+
+- `created`
+- `evidence_submitted`
+- `evidence_resubmitted`
+- `payment_confirmed`
+- `payment_rejected`
+- `payment_expired`
+- `stock_reserved`
+- `stock_released`
+
+Rules:
+
+- Inserts happen inside the same transaction as the state/stock change.
+- Customer resubmission after rejection must append a new `evidence_resubmitted` event and preserve the prior rejection event.
+- Confirm/reject/expire actions must append review events instead of overwriting history.
+- Staff UI can show the latest `order_payments` state and optionally expand audit history later.
+
+RLS:
+
+- No anon direct select.
+- Owner/manager/seller can read events for their event.
+- Inserts should be via RPC only.
 
 ### Customer contact fields
 
@@ -427,6 +515,7 @@ Validation happens in RPC:
 RLS:
 
 - Anon must not directly read contact fields from `orders`.
+- Migration must explicitly revoke anon column access for `customer_phone`, `customer_social`, and `customer_email`, following the existing column-level hardening pattern for `customer_name` and `customer_contact`.
 - Receipt RPC returns only the matching customer's own receipt.
 - Staff pages use role checks.
 
@@ -484,6 +573,7 @@ Rules:
 - Set `payment_status = payment_submitted`.
 - Set `submitted_at = now()`.
 - Keep order status not fully confirmed.
+- Append `payment_review_events` entries for evidence submission and stock reservation.
 
 Return:
 
@@ -509,6 +599,7 @@ Rules:
 - Set pickup status to `awaiting_pickup`.
 - Record reviewer and timestamp.
 - Store optional note.
+- Append a `payment_confirmed` audit event.
 
 ### `reject_preorder_payment`
 
@@ -526,6 +617,48 @@ Rules:
 - Set order status/pickup status to non-fulfillable.
 - Record reviewer and timestamp.
 - Store note.
+- Append `payment_rejected` and `stock_released` audit events.
+
+### `expire_submitted_preorder_payments`
+
+Inputs:
+
+- `p_event_id uuid`
+- `p_grace_hours integer default 24`
+
+Rules:
+
+- Automatic/system execution is allowed through a privileged service path.
+- Manual execution requires owner/manager role.
+- Finds `payment_submitted` pre-orders whose payment deadline plus grace period has passed.
+- Releases reserved stock exactly once.
+- Sets payment status to `payment_expired`.
+- Sets order/pickup state to non-fulfillable.
+- Appends `payment_expired` and `stock_released` audit events.
+
+Return:
+
+- `expired_count integer`
+- `released_stock_count integer`
+
+### Existing pickup/cancel/expire RPC updates
+
+`mark_preorder_picked_up`:
+
+- Must require `order_payments.payment_status = payment_confirmed`.
+- Must only operate on orders already in `pickup_status = awaiting_pickup`.
+- Must not allow `payment_submitted`, `payment_rejected`, or `payment_expired` orders to be picked up.
+
+`cancel_preorder_with_stock`:
+
+- Must release stock only when the order currently has reserved stock.
+- Must handle `payment_submitted` and `payment_confirmed` without double-release.
+- Must append stock release/payment cancellation audit events when payment evidence existed.
+
+`expire_preorders_for_event`:
+
+- Keeps the existing no-show pickup expiry behavior for `payment_confirmed` orders that reached `awaiting_pickup`.
+- Must not be the only expiry path. `payment_submitted` orders use `expire_submitted_preorder_payments`.
 
 ### `list_preorder_production_summary`
 
@@ -580,7 +713,15 @@ Recommended:
 - Upload through signed upload URL or authenticated RPC/Edge Function if needed.
 - Staff view through signed URLs generated only for role-checked users.
 
-If private storage is too large for the first pass, do not silently use a public bucket. Make the risk explicit and keep the file path unguessable, but the preferred design is private storage.
+This is new infrastructure for this repo. Existing image buckets are public product/avatar buckets, so `PaymentEvidence` must be treated as its own implementation task with:
+
+- bucket creation migration
+- private bucket setting
+- upload policy or signed upload URL flow
+- signed read URL flow for role-checked staff
+- tests that anon cannot read payment evidence objects
+
+Do not fallback to a public bucket for slip/payment evidence. A public evidence bucket is not an acceptable MVP shortcut because slips can contain names, account details, transfer metadata, and other personal data. If private storage cannot be implemented in the same phase, defer slip upload rather than making slips public.
 
 ## Privacy and PDPA Notes
 
@@ -593,6 +734,8 @@ We use your contact and payment evidence only to manage this pre-order, payment 
 Operational requirements:
 
 - Do not expose contact/slip data through anon table selects.
+- Explicitly revoke anon column access to all new PII columns on `orders`, especially `customer_phone`, `customer_social`, and `customer_email`.
+- Do not grant anon direct select on `order_payments.slip_url` or any `payment_review_events` rows.
 - Keep access scoped by event role.
 - Store audit records for payment confirmation/rejection.
 - Keep retention policy open for now, but add an admin future task to remove old slip evidence after a defined period.
@@ -646,15 +789,17 @@ Do not build provider-specific assumptions into the MVP schema.
 
 1. Customer contact and desktop pre-order layout.
 2. Payment method settings for event.
-3. Order creation changes: no stock reservation until evidence submission.
-4. Payment instructions/receipt states.
-5. Payment evidence upload and private storage.
-6. Submit evidence RPC that reserves stock.
-7. Seller payment review queue.
-8. Confirm/reject RPCs with stock release.
-9. Production dashboard and CSV export.
-10. Pickup payment status integration.
-11. Regression and DB behavior tests.
+3. Private `PaymentEvidence` storage bucket, signed upload/read URL path, and storage RLS/policy tests.
+4. Data migration for `order_payments`, `payment_review_events`, contact fields, and explicit PII column-level grants/revokes.
+5. Order creation changes: no stock reservation until evidence submission, no immediate `confirmed`/`awaiting_pickup`.
+6. Payment instructions/receipt states.
+7. Payment evidence upload.
+8. Submit evidence RPC that reserves stock and appends audit events.
+9. Seller payment review queue.
+10. Confirm/reject/expire-submitted RPCs with stock release and audit events.
+11. Production dashboard and CSV export.
+12. Pickup payment status integration.
+13. Regression and DB behavior tests.
 
 ## Testing Requirements
 
@@ -671,10 +816,15 @@ Do not build provider-specific assumptions into the MVP schema.
 - Rejecting payment releases reserved stock.
 - Rejecting twice is idempotent or fails safely without double-release.
 - Resubmitting after rejection reserves stock exactly once for the new submitted evidence.
+- Expiring submitted payment evidence releases reserved stock exactly once.
+- Existing no-show pickup expiry still works for confirmed awaiting-pickup pre-orders.
 - Confirming rejected payment is blocked unless resubmission flow explicitly allows it.
 - Pickup is blocked or warned for unconfirmed payment.
 - Pickup converts confirmed reserved stock to sold stock.
 - Anon cannot directly select customer contact or slip URL.
+- Anon cannot select `customer_phone`, `customer_social`, or `customer_email` from `orders`.
+- Anon cannot read private payment evidence storage objects.
+- Payment review events are appended for submit, resubmit, confirm, reject, expire, reserve, and release actions.
 - Receipt RPC only returns matching order/code.
 - Unauthorized role cannot confirm/reject payment.
 
@@ -686,7 +836,9 @@ Do not build provider-specific assumptions into the MVP schema.
 - Customer can create order and land on payment instructions.
 - Slip upload moves receipt to waiting-for-confirmation state.
 - Seller review page can confirm and reject.
+- Seller review page can expire old submitted evidence.
 - Production dashboard product totals update after submit/confirm/reject.
+- Production dashboard product totals update after submitted evidence expires.
 - Pickup list shows payment-confirmed orders as ready.
 - Pickup list warns/blocks submitted but unconfirmed orders.
 
@@ -695,14 +847,18 @@ Do not build provider-specific assumptions into the MVP schema.
 - Customers can place pre-orders on desktop without mobile-style friction.
 - A pre-order cannot be submitted without customer name and at least one contact channel.
 - Creating a pre-order does not reserve stock or count toward production totals.
+- Creating a pre-order does not immediately set the order to `confirmed` or `awaiting_pickup`.
 - Uploading payment evidence reserves stock and counts toward production as submitted/unconfirmed.
 - Seller can confirm payment after checking their bank app; confirmed orders become pickup-ready.
 - Seller can reject payment evidence; rejected orders release reserved stock and leave production totals.
+- Submitted payment evidence that remains unreviewed past the deadline plus grace period can be expired and releases stock.
 - Seller can see a production dashboard with product-level submitted vs confirmed quantities.
 - Seller can export production and customer/order CSVs.
 - Pickup staff can clearly see whether payment is confirmed before handing over goods.
 - NireQ never claims to hold money, verify settlement, or process payment in manual mode.
 - Contact and slip evidence are protected by role checks and not exposed through anon table reads.
+- Payment evidence is stored in a private bucket; public storage is not allowed for this MVP.
+- Payment review history is append-only, so resubmission after rejection does not erase previous review events.
 
 ## Open Product Defaults
 

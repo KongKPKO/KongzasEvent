@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
 import { useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -13,6 +13,14 @@ import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
+  cancelCustomerPreorderBeforePayment,
+  createPreorder,
+  getPreorderErrorMessage,
+  notifyPreorderPayment,
+  submitPaymentEvidence,
+  uploadPaymentEvidence,
+} from '../../lib/preorders';
+import {
   TICKET_UPDATED_EVENT,
   clearMenuOrderState,
   clearStoredTicketId,
@@ -20,6 +28,7 @@ import {
   ticketStorageKey,
 } from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
+import type { PaymentStatus, PreorderPaymentMethod } from '../../types/preorder';
 
 interface Product {
   id: string;
@@ -39,6 +48,18 @@ interface Product {
 
 type CartItems = Record<string, number>;
 type CartItemNames = Record<string, string>;
+type PreorderCustomerForm = { name: string; phone: string; social: string; email: string; note: string };
+type PreorderReceiptState = {
+  orderId: string;
+  pickupCode: string;
+  totalPrice: number;
+  currency: string;
+  pickupInstructions: string;
+  paymentStatus: PaymentStatus;
+  paymentMethods: PreorderPaymentMethod[];
+  paymentDeadlineAt: string | null;
+  submittedAt?: string | null;
+};
 
 const getQueueEventTimeZone = (queueData: any): string => {
   const eventData = Array.isArray(queueData?.events) ? queueData.events[0] : queueData?.events;
@@ -49,6 +70,19 @@ const isQueueFromToday = (queueData: any): boolean => {
   if (!queueData?.queue_service_date) return true;
   return queueData.queue_service_date === formatDateInTimeZone(new Date(), getQueueEventTimeZone(queueData));
 };
+
+const createClientRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 const MenuView = () => {
   const { t } = useI18n();
@@ -111,8 +145,13 @@ const MenuView = () => {
   const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
     return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
   });
+  const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', note: '' });
+  const [preorderReceipt, setPreorderReceipt] = useState<PreorderReceiptState | null>(null);
+  const [paymentSlipFile, setPaymentSlipFile] = useState<File | null>(null);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
-  const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | 'cancel_preorder' | null>(null);
   const clearCart = () => {
     setCart({});
     setCartItemNames({});
@@ -192,6 +231,28 @@ const MenuView = () => {
     return firstProduct?.currency;
   }, [cart, productById]);
 
+  const isPreorderMode = selectedEvent?.selling_mode === 'preorder';
+  const preorderWindowOpen = useMemo(() => {
+    if (!isPreorderMode || selectedEvent?.status !== 'Confirmed') return false;
+    const opensAt = selectedEvent?.preorder_opens_at ? new Date(selectedEvent.preorder_opens_at).getTime() : null;
+    const closesAt = selectedEvent?.preorder_closes_at ? new Date(selectedEvent.preorder_closes_at).getTime() : null;
+    const eventEndsAt = selectedEvent?.end_date ? new Date(selectedEvent.end_date).getTime() : null;
+    if (opensAt && nowMs < opensAt) return false;
+    if (closesAt && nowMs >= closesAt) return false;
+    if (eventEndsAt && nowMs >= eventEndsAt) return false;
+    return true;
+  }, [isPreorderMode, nowMs, selectedEvent?.end_date, selectedEvent?.preorder_closes_at, selectedEvent?.preorder_opens_at, selectedEvent?.status]);
+  const preorderGuidance = preorderWindowOpen ? t('menuPreorderGuidanceOpen') : t('menuPreorderGuidanceNotOpen');
+  const preorderReceiptStorageKey = contextArtist?.id && selectedEvent?.id
+    ? `preorderReceipt_${contextArtist.id}_${selectedEvent.id}`
+    : null;
+  const preorderCustomerStorageKey = contextArtist?.id ? `preorderCustomer_${contextArtist.id}` : null;
+  const preorderContactDisplay = useMemo(
+    () => [preorderCustomer.phone, preorderCustomer.social, preorderCustomer.email].map((value) => value.trim()).filter(Boolean).join(' · '),
+    [preorderCustomer.email, preorderCustomer.phone, preorderCustomer.social]
+  );
+  const hasValidPreorderEmail = isValidEmail(preorderCustomer.email);
+
   const fetchPromotions = async (artistId: string, eventId?: string | null) => {
     const { data, error } = await supabase.rpc('list_active_promotions', {
       p_artist_id: artistId,
@@ -213,6 +274,68 @@ const MenuView = () => {
       localStorage.setItem(`cart_${contextArtist.id}`, JSON.stringify({ items: cart, names: cartItemNames }));
     }
   }, [cart, cartItemNames, contextArtist?.id]);
+
+  useEffect(() => {
+    if (!isPreorderMode) return;
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 60000);
+    return () => window.clearInterval(intervalId);
+  }, [isPreorderMode]);
+
+  useEffect(() => {
+    if (!preorderCustomerStorageKey) return;
+    const saved = localStorage.getItem(preorderCustomerStorageKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      setPreorderCustomer({
+        name: typeof parsed?.name === 'string' ? parsed.name : '',
+        phone: typeof parsed?.phone === 'string' ? parsed.phone : '',
+        social: typeof parsed?.social === 'string' ? parsed.social : typeof parsed?.contact === 'string' ? parsed.contact : '',
+        email: typeof parsed?.email === 'string' ? parsed.email : '',
+        note: typeof parsed?.note === 'string' ? parsed.note : '',
+      });
+    } catch {
+      setPreorderCustomer({ name: '', phone: '', social: '', email: '', note: '' });
+    }
+  }, [preorderCustomerStorageKey]);
+
+  useEffect(() => {
+    if (!preorderCustomerStorageKey) return;
+    localStorage.setItem(preorderCustomerStorageKey, JSON.stringify(preorderCustomer));
+  }, [preorderCustomer, preorderCustomerStorageKey]);
+
+  useEffect(() => {
+    if (!preorderReceiptStorageKey) {
+      setPreorderReceipt(null);
+      return;
+    }
+    const saved = localStorage.getItem(preorderReceiptStorageKey);
+    if (!saved) {
+      setPreorderReceipt(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed?.orderId && parsed?.pickupCode) {
+        setPreorderReceipt({
+          orderId: parsed.orderId,
+          pickupCode: parsed.pickupCode,
+          totalPrice: Number(parsed.totalPrice || 0),
+          currency: parsed.currency || 'THB',
+          pickupInstructions: parsed.pickupInstructions || '',
+          paymentStatus: parsed.paymentStatus || 'awaiting_payment',
+          paymentMethods: Array.isArray(parsed.paymentMethods) ? parsed.paymentMethods : [],
+          paymentDeadlineAt: parsed.paymentDeadlineAt || null,
+          submittedAt: parsed.submittedAt || null,
+        });
+      } else {
+        setPreorderReceipt(null);
+      }
+    } catch {
+      setPreorderReceipt(null);
+    }
+  }, [preorderReceiptStorageKey]);
 
   // --- Persist order states to localStorage ---
   useEffect(() => {
@@ -352,7 +475,7 @@ const MenuView = () => {
   };
 
   const updateQuantity = (productId: string, delta: number, productName?: string) => {
-    if (isOrderSent) return;
+    if (isOrderSent || preorderReceipt) return;
     setCart(prev => {
       const current = prev[productId] || 0;
       const product = productById.get(productId);
@@ -380,6 +503,33 @@ const MenuView = () => {
   const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
+    if (isPreorderMode) {
+      if (!preorderWindowOpen) {
+        setToast({ tone: 'warning', title: t('menuPreorderClosed'), detail: preorderGuidance });
+        return;
+      }
+      if (!preorderCustomer.name.trim()) {
+        setToast({
+          tone: 'warning',
+          title: t('menuPreorderNameRequired'),
+          detail: t('menuPreorderNameRequiredDetail'),
+        });
+        setIsCartOpen(true);
+        return;
+      }
+      if (!hasValidPreorderEmail) {
+        setToast({
+          tone: 'warning',
+          title: 'Email required',
+          detail: 'Please enter a valid email address so we can send payment and review updates.',
+        });
+        setIsCartOpen(true);
+        return;
+      }
+      setConfirmAction('submit_order');
+      return;
+    }
+
     const localQueueId = getStoredTicketId(displayArtist?.id);
     if (!localQueueId) {
         setToast({
@@ -400,6 +550,11 @@ const MenuView = () => {
   };
 
   const submitConfirmedOrder = async () => {
+    if (isPreorderMode) {
+      await submitConfirmedPreorder();
+      return;
+    }
+
     const localQueueId = getStoredTicketId(displayArtist?.id);
     if (!localQueueId) {
         setConfirmAction(null);
@@ -503,6 +658,127 @@ const MenuView = () => {
         console.error(err);
     } finally {
         setSubmitting(false);
+    }
+  };
+
+  const submitConfirmedPreorder = async () => {
+    setConfirmAction(null);
+    if (!selectedEvent?.id) {
+      setToast({ tone: 'warning', title: t('menuPreorderClosed'), detail: t('menuPreorderGuidanceNotOpen') });
+      return;
+    }
+    if (!preorderWindowOpen) {
+      setToast({ tone: 'warning', title: t('menuPreorderClosed'), detail: preorderGuidance });
+      return;
+    }
+    if (!preorderCustomer.name.trim()) {
+      setToast({
+        tone: 'warning',
+        title: t('menuPreorderNameRequired'),
+        detail: t('menuPreorderNameRequiredDetail'),
+      });
+      setIsCartOpen(true);
+      return;
+    }
+    if (!hasValidPreorderEmail) {
+      setToast({
+        tone: 'warning',
+        title: 'Email required',
+        detail: 'Please enter a valid email address so we can send payment and review updates.',
+      });
+      setIsCartOpen(true);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await createPreorder({
+        eventId: selectedEvent.id,
+        items: Object.entries(cart)
+          .filter(([, qty]) => qty > 0)
+          .map(([productId, qty]) => ({ product_id: productId, quantity: qty, notes: '' })),
+        customerName: preorderCustomer.name.trim(),
+        customerContact: preorderContactDisplay,
+        customerPhone: preorderCustomer.phone.trim(),
+        customerSocial: preorderCustomer.social.trim(),
+        customerEmail: preorderCustomer.email.trim(),
+        customerNote: preorderCustomer.note.trim(),
+        clientRequestId: createClientRequestId(),
+      });
+
+      const receipt: PreorderReceiptState = {
+        orderId: result.order_id,
+        pickupCode: result.pickup_code,
+        totalPrice: result.total_price,
+        currency: result.currency,
+        pickupInstructions: result.pickup_instructions || selectedEvent.preorder_pickup_instructions || '',
+        paymentStatus: result.payment_status,
+        paymentMethods: Array.isArray(result.payment_methods) ? result.payment_methods : [],
+        paymentDeadlineAt: result.payment_deadline_at,
+        submittedAt: null,
+      };
+      setPreorderReceipt(receipt);
+      if (preorderReceiptStorageKey) {
+        localStorage.setItem(preorderReceiptStorageKey, JSON.stringify(receipt));
+      }
+      setIsCartOpen(false);
+      clearCart();
+      setToast({ tone: 'success', title: t('menuPreorderSentToast'), detail: t('menuPreorderSentDetail') });
+    } catch (err) {
+      setToast({ tone: 'error', title: t('menuPreorderFailed'), detail: getPreorderErrorMessage(err) });
+      console.error(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitPaymentEvidence = async () => {
+    if (!selectedEvent?.id || !preorderReceipt || !paymentSlipFile) {
+      setToast({ tone: 'warning', title: 'Payment evidence required', detail: 'Please choose your transfer slip before submitting.' });
+      return;
+    }
+
+    setPaymentSubmitting(true);
+    try {
+      const slipPath = await uploadPaymentEvidence({
+        eventId: selectedEvent.id,
+        orderId: preorderReceipt.orderId,
+        pickupCode: preorderReceipt.pickupCode,
+        file: paymentSlipFile,
+      });
+      const result = await submitPaymentEvidence({
+        orderId: preorderReceipt.orderId,
+        pickupCode: preorderReceipt.pickupCode,
+        slipUrl: slipPath,
+        clientRequestId: createClientRequestId(),
+      });
+      const nextReceipt: PreorderReceiptState = {
+        ...preorderReceipt,
+        paymentStatus: result.payment_status,
+        submittedAt: result.submitted_at,
+      };
+      setPreorderReceipt(nextReceipt);
+      setPaymentSlipFile(null);
+      if (preorderReceiptStorageKey) {
+        localStorage.setItem(preorderReceiptStorageKey, JSON.stringify(nextReceipt));
+      }
+      const { error: notifyError } = await notifyPreorderPayment({
+        orderId: preorderReceipt.orderId,
+        pickupCode: preorderReceipt.pickupCode,
+        event: 'submitted',
+      });
+      setToast({
+        tone: notifyError ? 'warning' : 'success',
+        title: 'Payment submitted',
+        detail: notifyError
+          ? 'Your items are reserved while the seller checks the transfer. Email delivery failed, but the pre-order is still submitted.'
+          : 'Your items are reserved while the seller checks the transfer. We sent the order details to your email.',
+      });
+    } catch (error) {
+      setToast({ tone: 'error', title: 'Payment submit failed', detail: getPreorderErrorMessage(error) });
+      console.error(error);
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
@@ -635,6 +911,10 @@ const MenuView = () => {
     : userQueueNumber
       ? t('menuQueueGuidanceWaiting')
       : t('menuQueueGuidanceNeedTicket');
+  const canSubmitSelection = isPreorderMode ? preorderWindowOpen : canConfirmOrder;
+  const orderGuidance = isPreorderMode ? preorderGuidance : queueGuidance;
+  const orderStatusReadyLabel = isPreorderMode ? t('menuPreorderReady') : t('menuReadyConfirm');
+  const orderStatusWaitingLabel = isPreorderMode ? t('menuPreorderClosed') : t('menuSelectionOnly');
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -655,16 +935,54 @@ const MenuView = () => {
       }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-400">{t('menuLoading')}</div>;
+  const handleStartNewPreorder = () => {
+    if (preorderReceiptStorageKey) localStorage.removeItem(preorderReceiptStorageKey);
+    setPreorderReceipt(null);
+    setPaymentSlipFile(null);
+  };
+
+  const handleCancelPreorderBeforePayment = () => {
+    if (!preorderReceipt) return;
+    setConfirmAction('cancel_preorder');
+  };
+
+  const cancelConfirmedPreorder = async () => {
+    if (!preorderReceipt) return;
+    setConfirmAction(null);
+    setSubmitting(true);
+    try {
+      await cancelCustomerPreorderBeforePayment(preorderReceipt.orderId, preorderReceipt.pickupCode);
+      handleStartNewPreorder();
+      setToast({
+        tone: 'success',
+        title: 'Pre-order cancelled',
+        detail: 'Your pending pre-order was cancelled before payment evidence was submitted.',
+      });
+    } catch (error) {
+      setToast({ tone: 'error', title: 'Cancel failed', detail: getPreorderErrorMessage(error) });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const preorderPaymentMethod = preorderReceipt?.paymentMethods.find((method) => method.is_enabled) || preorderReceipt?.paymentMethods[0] || null;
+  const preorderPaymentSubmitted = preorderReceipt?.paymentStatus === 'payment_submitted' || preorderReceipt?.paymentStatus === 'payment_confirmed';
+  const preorderPaymentConfirmed = preorderReceipt?.paymentStatus === 'payment_confirmed';
+  const preorderCanCancelBeforePayment = preorderReceipt?.paymentStatus === 'awaiting_payment';
+  const preorderCanStartOver = preorderReceipt
+    ? ['payment_rejected', 'payment_expired', 'payment_cancelled'].includes(preorderReceipt.paymentStatus)
+    : false;
+
+  if (loading) return <main className="p-8 text-center text-gray-600">{t('menuLoading')}</main>;
 
   return (
-    <div className="min-h-screen bg-[#fff7fb] relative max-w-md mx-auto shadow-2xl overflow-hidden border-x border-pink-50">
+    <main className="relative mx-auto min-h-screen w-full max-w-md overflow-hidden border-x border-pink-50 bg-pink-50 shadow-2xl lg:max-w-none lg:overflow-visible lg:border-x-0 lg:shadow-none">
       <Toast message={toast} onClose={() => setToast(null)} />
       <ConfirmDialog
         open={confirmAction === 'submit_order'}
-        title={t('menuConfirmOrderTitle')}
+        title={isPreorderMode ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')}
         detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(pricing.total, cartCurrency)}`}
-        confirmLabel={t('menuConfirmOrderButton')}
+        confirmLabel={isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}
         loading={submitting}
         onConfirm={submitConfirmedOrder}
         onCancel={() => setConfirmAction(null)}
@@ -679,17 +997,27 @@ const MenuView = () => {
         onConfirm={cancelConfirmedOrder}
         onCancel={() => setConfirmAction(null)}
       />
+      <ConfirmDialog
+        open={confirmAction === 'cancel_preorder'}
+        title="Cancel pre-order?"
+        detail="This will remove the pending pre-order before payment evidence is submitted. You can place a new one afterwards."
+        confirmLabel="Cancel pre-order"
+        tone="danger"
+        loading={submitting}
+        onConfirm={cancelConfirmedPreorder}
+        onCancel={() => setConfirmAction(null)}
+      />
        
        {!isConnected && (
-         <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest fixed top-0 left-0 right-0 z-[60] max-w-md mx-auto">
+         <div className="fixed left-0 right-0 top-0 z-[60] mx-auto max-w-md bg-red-500 py-1 text-center text-[10px] font-bold uppercase tracking-widest text-white lg:max-w-none">
             {t('customerOffline')}
          </div>
        )}
 
-      <div className="sticky top-0 z-40 w-full max-w-md border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
-         <div className="px-4 pb-3 pt-3">
-            <div className="space-y-2">
-               <div className="flex min-w-0 items-center gap-3">
+      <div className="sticky top-0 z-40 w-full border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
+         <div className="mx-auto max-w-md px-4 pb-3 pt-3 lg:max-w-6xl lg:px-6">
+            <div className="space-y-2 lg:flex lg:items-center lg:justify-between lg:gap-4 lg:space-y-0">
+               <div className="flex min-w-0 items-center gap-3 lg:flex-1">
                   {displayArtist?.image_url ? (
                      <img
                         src={displayArtist.image_url}
@@ -702,37 +1030,44 @@ const MenuView = () => {
                      </div>
                   )}
                   <div className="min-w-0">
-                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-500">{t('customerNavMerch')}</div>
+                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-700">{t('customerNavMerch')}</div>
                      <h1 className="truncate text-lg font-black leading-6 text-gray-950">
                         {displayArtist?.display_name || 'Menu'}
                      </h1>
                   </div>
                </div>
 
-               <div className="flex items-center justify-between gap-2 pl-14">
-                  <button
-                     type="button"
-                     onClick={() => navigate(`/${displayArtist?.slug || slug}/queue`)}
-                     className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition active:scale-95 ${
-                        userQueueNumber
-                           ? 'border-pink-200 bg-pink-50 text-pink-700'
-                           : 'border-gray-200 bg-white text-gray-600'
-                     }`}
-                  >
-                     <Ticket size={14} aria-hidden="true" />
-                     <span>{userQueueNumber ? `Q #${userQueueNumber}` : t('menuQueueNumber')}</span>
-                  </button>
-                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[9px] font-black leading-tight ${
-                     canConfirmOrder
+               <div className="flex items-center justify-between gap-2 pl-14 lg:pl-0">
+                  {isPreorderMode ? (
+                     <div className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700">
+                        <ShoppingBag size={14} aria-hidden="true" />
+                        <span>{t('menuPreorderMode')}</span>
+                     </div>
+                  ) : (
+                     <button
+                        type="button"
+                        onClick={() => navigate(`/${displayArtist?.slug || slug}/queue`)}
+                        className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition active:scale-95 ${
+                           userQueueNumber
+                              ? 'border-pink-200 bg-pink-50 text-pink-700'
+                              : 'border-gray-200 bg-white text-gray-600'
+                        }`}
+                     >
+                        <Ticket size={14} aria-hidden="true" />
+                        <span>{userQueueNumber ? `Q #${userQueueNumber}` : t('menuQueueNumber')}</span>
+                     </button>
+                  )}
+                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[9px] font-black leading-tight lg:max-w-[280px] lg:px-3 lg:py-2 lg:text-left lg:text-[11px] ${
+                     canSubmitSelection
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : 'border-amber-200 bg-amber-50 text-amber-700'
                   }`}>
-                     {queueGuidance}
+                     {orderGuidance}
                   </div>
                </div>
             </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex gap-2 lg:grid lg:grid-cols-[minmax(260px,1fr)_170px_170px_150px]">
                <label className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-pink-400" size={17} />
                   <input
@@ -741,8 +1076,34 @@ const MenuView = () => {
                      placeholder={t('menuSearchPlaceholder')}
                      value={searchQuery}
                      onChange={(e) => setSearchQuery(e.target.value)}
-                     className="h-11 w-full rounded-2xl border border-pink-100 bg-[#fff7fb] py-2 pl-10 pr-3 text-sm font-bold text-gray-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
+                     className="h-11 w-full rounded-2xl border border-pink-100 bg-pink-50 py-2 pl-10 pr-3 text-sm font-bold text-pink-950 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
                   />
+               </label>
+               <label className="relative hidden lg:block">
+                  <select
+                     value={selectedCategory}
+                     onChange={(e) => setSelectedCategory(e.target.value)}
+                     className="h-11 w-full appearance-none rounded-2xl border border-pink-100 bg-white px-3 pr-8 text-xs font-black text-gray-700 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                     aria-label={t('menuCategory')}
+                  >
+                     {uniqueCategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat === 'All' ? t('menuAll') : cat}</option>
+                     ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+               </label>
+               <label className="relative hidden lg:block">
+                  <select
+                     value={selectedTag}
+                     onChange={(e) => setSelectedTag(e.target.value)}
+                     className="h-11 w-full appearance-none rounded-2xl border border-pink-100 bg-white px-3 pr-8 text-xs font-black text-gray-700 outline-none transition focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                     aria-label={t('menuFilterByTag')}
+                  >
+                     {uniqueTags.map(tag => (
+                        <option key={tag} value={tag}>{tag === 'All' ? t('menuAllTags') : tag}</option>
+                     ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                </label>
                <label className="relative w-[126px] shrink-0">
                   <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -774,20 +1135,20 @@ const MenuView = () => {
                {hasActiveFilters && (
                   <button
                      onClick={clearFilters}
-                     className="min-h-9 shrink-0 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700 transition active:scale-95"
+                     className="min-h-11 shrink-0 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700 transition active:scale-95"
                   >
                      {t('menuClearFilters')}
                   </button>
                )}
             </div>
 
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-2 lg:hidden">
                <div className="no-scrollbar flex flex-1 gap-2 overflow-x-auto">
                   {quickCategoryChips.map(cat => (
                      <button
                         key={cat}
                         onClick={() => setSelectedCategory(cat)}
-                        className={`min-h-9 min-w-11 shrink-0 rounded-full px-3 text-xs font-black transition active:scale-95 ${
+                        className={`min-h-11 min-w-11 shrink-0 rounded-full px-3 text-xs font-black transition active:scale-95 ${
                            selectedCategory === cat
                               ? 'bg-pink-600 text-white shadow-md shadow-pink-100'
                               : 'border border-gray-200 bg-white text-gray-600'
@@ -805,7 +1166,7 @@ const MenuView = () => {
                            const nextValue = e.target.value;
                            if (nextValue !== 'More') setSelectedCategory(nextValue);
                         }}
-                        className="h-9 w-full appearance-none rounded-full border border-gray-200 bg-white px-3 pr-7 text-xs font-black text-gray-700 outline-none focus:ring-4 focus:ring-pink-100"
+                        className="min-h-11 w-full appearance-none rounded-full border border-gray-200 bg-white px-3 pr-7 text-xs font-black text-gray-700 outline-none focus:ring-4 focus:ring-pink-100"
                         aria-label={t('menuMoreCategories')}
                      >
                         <option value="More" disabled>{t('menuMore')}</option>
@@ -819,7 +1180,7 @@ const MenuView = () => {
             </div>
 
             {uniqueTags.length > 1 && (
-               <div className="mt-2">
+               <div className="mt-2 lg:hidden">
                   <div className="relative">
                      <select
                         value={selectedTag}
@@ -858,30 +1219,55 @@ const MenuView = () => {
          </div>
       </div>
 
-       {/* --- MENU GRID (LAZY LOADED) --- */}
-       <Suspense fallback={<ProductSkeleton />}>
-          <ProductList 
-              products={filteredProducts}
-              promotions={promotions}
-              cart={cart}
-              isOrderSent={isOrderSent}
-              onUpdateQuantity={updateQuantity}
-              onClearFilters={clearFilters}
-          />
-       </Suspense>
+      <div className="mx-auto w-full max-w-md lg:max-w-6xl lg:px-6 lg:py-6">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="min-w-0">
+            {/* --- MENU GRID (LAZY LOADED) --- */}
+            <Suspense fallback={<ProductSkeleton />}>
+              <ProductList
+                  products={filteredProducts}
+                  promotions={promotions}
+                  cart={cart}
+                  isOrderSent={isOrderSent || Boolean(preorderReceipt)}
+                  onUpdateQuantity={updateQuantity}
+                  onClearFilters={clearFilters}
+              />
+            </Suspense>
+          </div>
 
-        {/* --- CONFIRM ORDER BAR --- */}
-        {(totalItems > 0 || isOrderSent) && (
+          {totalItems === 0 && !isOrderSent && !preorderReceipt && (
+            <aside className="sticky top-28 hidden rounded-3xl border border-pink-100 bg-white p-5 shadow-lg shadow-pink-100/60 lg:block">
+              <div className="rounded-2xl border border-dashed border-pink-200 bg-pink-50/70 p-5 text-center">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-pink-600 shadow-sm">
+                  <ShoppingBag size={22} aria-hidden="true" />
+                </div>
+                <h2 className="mt-4 text-lg font-black text-gray-950">{isPreorderMode ? t('menuPreorderMode') : t('menuYourOrder')}</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-gray-600">
+                  {isPreorderMode ? preorderGuidance : queueGuidance}
+                </p>
+                <div className={`mt-4 rounded-xl border px-3 py-2 text-left text-xs font-bold ${
+                  canSubmitSelection
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}>
+                  {canSubmitSelection ? orderStatusReadyLabel : orderStatusWaitingLabel}
+                </div>
+              </div>
+            </aside>
+          )}
+
+          {/* --- CONFIRM ORDER BAR / DESKTOP CHECKOUT PANEL --- */}
+          {(totalItems > 0 || isOrderSent || preorderReceipt) && (
             <>
-                {isCartOpen && !isOrderSent && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] animate-fade-in max-w-md mx-auto" onClick={() => setIsCartOpen(false)} />
+                {isCartOpen && !isOrderSent && !preorderReceipt && (
+                    <div className="fixed inset-0 z-[80] mx-auto max-w-md animate-fade-in bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsCartOpen(false)} />
                 )}
-                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] rounded-t-3xl shadow-[0_-12px_32px_rgba(131,24,67,0.14)] w-full max-w-md mx-auto border-t border-pink-100 transition-all duration-300 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
-                    {isCartOpen && !isOrderSent && (
-                        <div className="max-h-[50vh] overflow-y-auto p-3 border-b border-gray-100 animate-slide-up bg-white rounded-t-xl">
+                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${(isOrderSent || preorderReceipt) ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                    {!isOrderSent && !preorderReceipt && (
+                        <div className={`${isCartOpen ? 'block' : 'hidden'} max-h-[62vh] overflow-y-auto rounded-t-xl border-b border-gray-100 bg-white p-3 animate-slide-up lg:block lg:max-h-[calc(100vh-15rem)] lg:rounded-t-3xl lg:p-4`}>
                             <div className="flex justify-between items-center mb-3 sticky top-0 bg-white z-10 pb-2 border-b border-gray-50">
-                                <h3 className="font-bold text-gray-800 text-sm">{t('menuYourOrder')} <span className="text-pink-500 text-xs font-normal">({totalItems} {t('menuItems')})</span></h3>
-                                <button onClick={() => setIsCartOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200" aria-label={t('menuClose')}><X size={16}/></button>
+                                <h2 className="font-bold text-gray-800 text-sm">{t('menuYourOrder')} <span className="text-pink-700 text-xs font-semibold">({totalItems} {t('menuItems')})</span></h2>
+                                <button onClick={() => setIsCartOpen(false)} className="grid h-11 w-11 place-items-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 lg:hidden" aria-label={t('menuClose')}><X size={16}/></button>
                             </div>
                             <div className="space-y-2">
                                 {Object.entries(cart).map(([id, qty]) => {
@@ -905,10 +1291,10 @@ const MenuView = () => {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    <button onClick={() => updateQuantity(id, -1, product.name)} className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productDecrease', { name: product.name })}>-</button>
+                                                    <button onClick={() => updateQuantity(id, -1, product.name)} className="h-11 w-11 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productDecrease', { name: product.name })}>-</button>
                                                     <div className="font-bold text-xs min-w-[28px] text-center text-pink-600">x {qty}</div>
-                                                    <button onClick={() => updateQuantity(id, 1, product.name)} className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productIncrease', { name: product.name })}>+</button>
-                                                    <button onClick={() => updateQuantity(id, -qty, product.name)} className="h-9 w-9 rounded-xl border border-red-200 bg-white text-red-500 text-xs font-black" aria-label={t('productRemove', { name: product.name })}>x</button>
+                                                    <button onClick={() => updateQuantity(id, 1, product.name)} className="h-11 w-11 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-black" aria-label={t('productIncrease', { name: product.name })}>+</button>
+                                                    <button onClick={() => updateQuantity(id, -qty, product.name)} className="h-11 w-11 rounded-xl border border-red-200 bg-white text-red-600 text-xs font-black" aria-label={t('productRemove', { name: product.name })}>x</button>
                                                 </div>
                                             </div>
                                             {lineBreakdowns.length > 0 && (
@@ -967,18 +1353,140 @@ const MenuView = () => {
                                 </div>
                             </div>
 
-                            <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canConfirmOrder ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                                <div className={`text-[10px] font-black uppercase tracking-wide ${canConfirmOrder ? 'text-emerald-800' : 'text-amber-800'}`}>
-                                    {canConfirmOrder ? t('menuReadyConfirm') : t('menuSelectionOnly')}
+                            {isPreorderMode && (
+                                <div className="mt-3 rounded-lg border border-pink-100 bg-pink-50/70 p-2.5 space-y-2">
+                                    <label className="block">
+                                        <span className="text-[10px] font-black uppercase tracking-wide text-pink-700">{t('menuPreorderName')}</span>
+                                        <input
+                                            value={preorderCustomer.name}
+                                            onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, name: e.target.value }))}
+                                            placeholder={t('menuPreorderNamePlaceholder')}
+                                            className="mt-1 min-h-11 w-full rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                        />
+                                    </label>
+                                    <div>
+                                        <div className="text-[10px] font-black uppercase tracking-wide text-gray-600">Email required</div>
+                                        <div className="mt-1 grid gap-2">
+                                            <input
+                                                value={preorderCustomer.email}
+                                                onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, email: e.target.value }))}
+                                                placeholder="Email"
+                                                inputMode="email"
+                                                className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                            />
+                                            <input
+                                                value={preorderCustomer.phone}
+                                                onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }))}
+                                                placeholder="Phone (optional)"
+                                                inputMode="tel"
+                                                className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                            />
+                                            <input
+                                                value={preorderCustomer.social}
+                                                onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, social: e.target.value }))}
+                                                placeholder="LINE, Instagram, X, or other social (optional)"
+                                                className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                            />
+                                        </div>
+                                        {!hasValidPreorderEmail && (
+                                            <div className="mt-1 text-[10px] font-bold text-amber-700">Enter a valid email. Phone and social are optional.</div>
+                                        )}
+                                    </div>
+                                    <label className="block">
+                                        <span className="text-[10px] font-black uppercase tracking-wide text-gray-600">{t('menuPreorderNote')}</span>
+                                        <textarea
+                                            value={preorderCustomer.note}
+                                            onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, note: e.target.value }))}
+                                            placeholder={t('menuPreorderNotePlaceholder')}
+                                            rows={2}
+                                            className="mt-1 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                        />
+                                    </label>
                                 </div>
-                                <div className={`mt-1 text-[11px] leading-relaxed ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                    {queueGuidance}
+                            )}
+
+                            <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canSubmitSelection ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                                <div className={`text-[10px] font-black uppercase tracking-wide ${canSubmitSelection ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                    {canSubmitSelection ? orderStatusReadyLabel : orderStatusWaitingLabel}
+                                </div>
+                                <div className={`mt-1 text-[11px] leading-relaxed ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                    {orderGuidance}
                                 </div>
                             </div>
                         </div>
                     )}
-                    <div className="p-2 px-3 flex items-center gap-3 bg-white/95 backdrop-blur-sm min-h-14">
-                        {isOrderSent ? (
+                    <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:border-t lg:border-pink-50 lg:p-4">
+                        {preorderReceipt ? (
+                            <div className={`flex-1 animate-fade-in rounded-xl border px-3 py-2 ${preorderPaymentConfirmed ? 'border-green-200 bg-green-50' : preorderPaymentSubmitted ? 'border-amber-200 bg-amber-50' : 'border-pink-200 bg-pink-50'}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className={`flex items-center gap-1.5 text-xs font-black ${preorderPaymentConfirmed ? 'text-green-800' : preorderPaymentSubmitted ? 'text-amber-800' : 'text-pink-800'}`}>
+                                            <CheckCircle size={16} className={`shrink-0 ${preorderPaymentConfirmed ? 'text-green-600' : preorderPaymentSubmitted ? 'text-amber-600' : 'text-pink-600'}`} />
+                                            <span>{preorderPaymentConfirmed ? 'Payment confirmed' : preorderPaymentSubmitted ? 'Payment under review' : 'Pre-order created'}</span>
+                                        </div>
+                                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Reference code</div>
+                                        <div className="font-mono text-lg font-black tracking-[0.16em] text-gray-950">{preorderReceipt.pickupCode}</div>
+                                        {preorderPaymentConfirmed ? (
+                                            <div className="mt-1 text-[10px] text-green-700">
+                                                {preorderReceipt.pickupInstructions || t('menuPreorderDefaultInstructions')}
+                                            </div>
+                                        ) : preorderPaymentSubmitted ? (
+                                            <div className="mt-1 text-[10px] text-amber-700">
+                                                Your items are reserved. Wait for the seller to confirm payment before pickup.
+                                            </div>
+                                        ) : (
+                                            <div className="mt-2 space-y-2">
+                                                <div className="rounded-lg border border-white/80 bg-white/80 px-2 py-1.5 text-[10px] font-bold text-gray-700">
+                                                    <div className="font-black text-gray-900">{formatPrice(preorderReceipt.totalPrice, preorderReceipt.currency)}</div>
+                                                    {preorderPaymentMethod ? (
+                                                        <div>
+                                                            <div>{preorderPaymentMethod.display_name || 'Payment method'}</div>
+                                                            {preorderPaymentMethod.promptpay_id && <div>PromptPay: {preorderPaymentMethod.promptpay_id}</div>}
+                                                            {preorderPaymentMethod.account_number && <div>{preorderPaymentMethod.account_name || 'Account'}: {preorderPaymentMethod.account_number}</div>}
+                                                            {preorderPaymentMethod.instructions && <div className="mt-1 text-gray-500">{preorderPaymentMethod.instructions}</div>}
+                                                        </div>
+                                                    ) : (
+                                                        <div>Seller has not added payment instructions yet. Contact seller before transfer.</div>
+                                                    )}
+                                                </div>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*,.pdf"
+                                                    onChange={(event) => setPaymentSlipFile(event.target.files?.[0] || null)}
+                                                    className="block w-full text-[10px] font-bold text-gray-700 file:mr-2 file:min-h-9 file:rounded-lg file:border-0 file:bg-white file:px-3 file:text-[10px] file:font-black file:text-pink-700"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSubmitPaymentEvidence}
+                                                    disabled={!paymentSlipFile || paymentSubmitting}
+                                                    className="min-h-10 w-full rounded-xl bg-pink-600 px-3 text-xs font-black text-white shadow-sm hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {paymentSubmitting ? 'Submitting...' : 'Submit payment evidence'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                        <div className="text-[10px] font-bold text-gray-500">{t('menuTotal')}</div>
+                                        <div className="text-sm font-black text-gray-950">{formatPrice(preorderReceipt.totalPrice, preorderReceipt.currency)}</div>
+                                        {preorderCanCancelBeforePayment && (
+                                            <button
+                                                type="button"
+                                                onClick={handleCancelPreorderBeforePayment}
+                                                className="mt-2 inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-red-700 hover:bg-red-50"
+                                            >
+                                                <XCircle size={13} /> Cancel
+                                            </button>
+                                        )}
+                                        {preorderCanStartOver && (
+                                            <button onClick={handleStartNewPreorder} className="mt-2 min-h-11 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-gray-700">
+                                                {t('menuPreorderNew')}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : isOrderSent ? (
                             isOrderCompleted ? (
                                 // ✅ ORDER COMPLETED UI
                                 <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-100 px-3 py-2 rounded-lg border border-green-200">
@@ -991,7 +1499,7 @@ const MenuView = () => {
                                     </div>
                                     <button 
                                         onClick={handleCloseCompletedOrder} 
-                                        className="flex min-h-10 items-center gap-1 rounded-xl bg-green-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-green-700"
+                                        className="flex min-h-11 items-center gap-1 rounded-xl bg-green-600 px-3 text-xs font-bold text-white shadow-sm hover:bg-green-700"
                                     >
                                         <X size={14} /> {t('menuCloseCompletedOrder')}
                                     </button>
@@ -1006,29 +1514,40 @@ const MenuView = () => {
                                             <div className="text-[10px] text-green-600">{t('menuWaitForQueue')}</div>
                                         </div>
                                     </div>
-                                    <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-10 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[10px] font-bold text-red-500 shadow-sm hover:bg-red-50">
+                                    <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-11 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[10px] font-bold text-red-600 shadow-sm hover:bg-red-50">
                                         <Trash2 size={12} /> {t('menuCancel')}
                                     </button>
                                 </div>
                             )
                         ) : (
                             <>
-                                <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left">
-                                    <div className="flex items-center gap-1 text-gray-400 text-[9px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span>{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="animate-bounce"/>}</div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-medium text-gray-400">/ {totalItems} {t('menuItems')}</span></div>
+                                <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left lg:cursor-default">
+                                    <div className="flex items-center gap-1 text-gray-600 text-[9px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span><span className="lg:hidden">{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="cart-chevron-nudge"/>}</span></div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
                                     {pricing.discountTotal > 0 && (
                                         <div className="text-[10px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(pricing.discountTotal, cartCurrency)}</div>
                                     )}
-                                    <div className={`mt-0.5 text-[10px] font-medium ${canConfirmOrder ? 'text-emerald-700' : 'text-amber-700'}`}>{queueGuidance}</div>
+                                    <div className={`mt-0.5 text-[10px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
                                 </button>
-                                <button onClick={handleConfirmOrder} disabled={submitting || !canConfirmOrder} className="flex h-12 items-center gap-1.5 rounded-2xl bg-pink-600 px-4 text-xs font-black text-white shadow-lg shadow-pink-200 transition-all hover:bg-pink-700 active:scale-95 disabled:scale-100 disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none">{submitting ? t('menuSending') : (<><span>{canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}</button>
+                                <button
+                                    onClick={handleConfirmOrder}
+                                    disabled={submitting || !canSubmitSelection}
+                                    className={[
+                                        'flex h-12 items-center gap-1.5 rounded-2xl bg-pink-600 px-4 text-xs font-black text-white shadow-lg shadow-pink-200 transition-all hover:bg-pink-700 active:scale-95',
+                                        'disabled:scale-100 disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
+                                    ].join(' ')}
+                                >
+                                    {submitting ? t('menuSending') : (<><span>{isPreorderMode ? t('menuPreorderSubmit') : canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}
+                                </button>
                             </>
                         )}
                     </div>
                 </div>
             </>
-        )}
-    </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
 };
 

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download } from 'lucide-react';
 import Papa from 'papaparse';
-import imageCompression from 'browser-image-compression';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
@@ -166,6 +165,7 @@ const buildProductDuplicateKey = (input: {
 
 const ManageProducts = () => {
    const navigate = useNavigate();
+   const [searchParams] = useSearchParams();
    const [products, setProducts] = useState<Product[]>([]);
    const [loading, setLoading] = useState(true);
    const [uploading, setUploading] = useState(false);
@@ -238,6 +238,18 @@ const ManageProducts = () => {
       ...products.map(p => p.category?.trim()).filter(Boolean) as string[]
    ])).sort();
    const allTagSuggestions = Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort();
+
+   useEffect(() => {
+      const requestedTab = searchParams.get('tab');
+      if (requestedTab === 'catalog' || requestedTab === 'event-catalog' || requestedTab === 'promotions' || requestedTab === 'import') {
+         setActiveWorkspaceTab(requestedTab);
+      }
+
+      const requestedEventId = searchParams.get('eventId');
+      if (requestedEventId) {
+         setSelectedEventId(requestedEventId);
+      }
+   }, [searchParams]);
 
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
@@ -382,7 +394,14 @@ const ManageProducts = () => {
       return matchesSearch && matchesCategory && matchesTag && matchesView;
    });
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
-   const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft);
+   const hasExistingEventCatalog = Object.values(eventCatalogSavedDraft).some((draft) => !!draft?.id);
+   const hasUnsavedNewEventProducts = Boolean(selectedEventId && hasExistingEventCatalog) && products.some((product) => {
+      const savedDraft = eventCatalogSavedDraft[product.id];
+      if (savedDraft?.id) return false;
+      const draft = eventCatalogDraft[product.id];
+      return draft ? draft.is_enabled : getEffectiveStatus(product) === 'enable';
+   });
+   const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft) || hasUnsavedNewEventProducts;
    const hasEventCurrencyChange = eventCurrencyDraft !== eventCurrencySaved;
    const hasPendingEventCatalogChanges = hasEventCatalogChanges || hasEventCurrencyChange;
    const eventCurrencyLabel = eventCurrencyDraft || DEFAULT_CURRENCY;
@@ -604,13 +623,14 @@ const ManageProducts = () => {
             const draft = eventCatalogDraft[product.id] || fallback;
             const savedDraft = eventCatalogSavedDraft[product.id];
             const comparison = savedDraft || fallback;
+            const shouldCreateMissingRow = !savedDraft?.id && draft.is_enabled;
             const rowChanged =
                draft.is_enabled !== comparison.is_enabled ||
                draft.price_override !== comparison.price_override ||
                draft.is_unlimited !== comparison.is_unlimited ||
                draft.stock_total !== comparison.stock_total;
 
-            if (hasExistingCatalog && !rowChanged) {
+            if (hasExistingCatalog && !rowChanged && !shouldCreateMissingRow) {
                return [];
             }
 
@@ -759,13 +779,27 @@ const ManageProducts = () => {
       fetchProducts();
    }, []);
 
+   const productCatalogSignature = products
+      .map((product) => [
+         product.id,
+         product.status || '',
+         product.price,
+         product.currency || '',
+         product.stock_total ?? '',
+         product.stock_reserved ?? '',
+         product.stock_sold ?? '',
+         product.is_unlimited ?? '',
+         product.image_url || '',
+      ].join(':'))
+      .join('|');
+
    useEffect(() => {
       if (selectedEventId && products.length > 0) {
          void fetchEventCatalog(selectedEventId);
       } else {
          setEventCatalogDraft({});
       }
-   }, [selectedEventId, products.length]);
+   }, [selectedEventId, productCatalogSignature]);
 
    useEffect(() => {
       if (!selectedEventId) {
@@ -815,6 +849,7 @@ const ManageProducts = () => {
       }
 
       try {
+         const { default: imageCompression } = await import('browser-image-compression');
          const compressedFile = await imageCompression(imageFile, options);
          // Keep original name but change extension if converted
          const newName = imageFile.name.replace(/\.[^/.]+$/, "") + '.webp';
@@ -1647,7 +1682,12 @@ const ManageProducts = () => {
                            />
                            <label 
                               htmlFor="file-upload" 
-                              className={`w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors ${file ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
+                              className={[
+                                 'w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors',
+                                 file
+                                    ? 'border-pink-500 bg-pink-50 text-pink-700'
+                                    : 'border-gray-300 text-slate-600 hover:border-pink-400'
+                              ].join(' ')}
                            >
                               <Upload size={14} className="mr-2 shrink-0" />
                               <span className="truncate text-xs font-medium max-w-[200px] md:max-w-none">
@@ -1771,7 +1811,7 @@ const ManageProducts = () => {
                               type="button"
                               onClick={() => csvInputRef.current?.click()}
                               disabled={uploading}
-                              className="bg-[#d63384] hover:bg-[#ff3385] text-white py-2 px-4 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
+                              className="bg-pink-600 hover:bg-pink-700 text-white py-2 px-4 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
                            >
                               {uploading ? <Loader className="animate-spin" size={14} /> : <Upload size={14} />}
                               {uploading ? 'Uploading...' : 'Upload CSV'}
@@ -2528,7 +2568,7 @@ const ManageProducts = () => {
                                        )}
                                        <button 
                                           onClick={() => handleEditClick(product)}
-                                          className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-gray-50 rounded-lg transition-colors"
                                           title="Edit"
                                           aria-label={`Edit ${product.name}`}
                                        >
@@ -2536,7 +2576,7 @@ const ManageProducts = () => {
                                        </button>
                                        <button 
                                           onClick={() => requestDeleteProduct(product)}
-                                          className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-red-700 hover:bg-gray-50 rounded-lg transition-colors"
                                           title="Delete"
                                           aria-label={`Delete ${product.name}`}
                                        >
@@ -2660,7 +2700,12 @@ const ManageProducts = () => {
                               />
                               <label 
                                  htmlFor="edit-file-upload" 
-                                 className={`w-full flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer transition-colors ${editFile ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-300 text-gray-500 hover:border-pink-400'}`}
+                                 className={[
+                                    'w-full flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer transition-colors',
+                                    editFile
+                                       ? 'border-pink-500 bg-pink-50 text-pink-700'
+                                       : 'border-gray-300 text-slate-600 hover:border-pink-400'
+                                 ].join(' ')}
                               >
                                  <Upload size={18} className="mr-2" />
                                  <span className="truncate text-sm">
@@ -2769,7 +2814,7 @@ const ManageProducts = () => {
                         <Button 
                            type="submit" 
                            disabled={uploading}
-                           className="bg-[#d63384] hover:bg-[#ff3385] text-white py-2 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
+                           className="bg-pink-600 hover:bg-pink-700 text-white py-2 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
                         >
                            {uploading ? <Loader className="animate-spin mx-auto" size={20} /> : 'Save Changes'}
                         </Button>

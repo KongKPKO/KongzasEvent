@@ -25,6 +25,10 @@ const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
 const EventDashboard = lazy(() => import('./pages/creators/EventDashboard'));
+const EventWorkspace = lazy(() => import('./pages/creators/EventWorkspace'));
+const PreorderSettings = lazy(() => import('./pages/creators/PreorderSettings'));
+const PreorderPickup = lazy(() => import('./pages/creators/PreorderPickup'));
+const PreorderDashboard = lazy(() => import('./pages/creators/PreorderDashboard'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
@@ -193,12 +197,28 @@ function App() {
               element={session ? (canUseManagement ? <Navigate to="/manage-events" replace /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
+              path="/manage-events/:eventId/workspace"
+              element={session && actorContext && canUseQueueWorkspace ? <EventWorkspace actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
+            />
+            <Route
               path="/manage-events/:eventId/history"
               element={session ? (canUseManagement ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/dashboard"
               element={session ? (canUseManagement ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/preorder"
+              element={session ? (canUseManagement ? <PreorderSettings /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/preorder-dashboard"
+              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/pickup"
+              element={session && actorContext && canUseQueueWorkspace ? <PreorderPickup actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-pos-queues"

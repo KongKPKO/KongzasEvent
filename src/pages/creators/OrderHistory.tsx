@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { ArrowLeft, DollarSign, CreditCard, ShoppingBag, FileText, LayoutList } from 'lucide-react';
+import { ArrowLeft, DollarSign, CreditCard, ShoppingBag, FileText, LayoutList, PackageCheck } from 'lucide-react';
 import { formatPrice } from '../../utils/currency'; // ✅ NEW
+import type { OrderType, PickupStatus } from '../../types/preorder';
 
 interface OrderItem {
     quantity: number;
@@ -23,6 +24,12 @@ interface Order {
     queues: { queue_number: string } | null;
     order_items: OrderItem[];
     currency: string; // ✅ NEW
+    order_type: OrderType | null;
+    pickup_code: string | null;
+    customer_name: string | null;
+    customer_contact: string | null;
+    pickup_status: PickupStatus | null;
+    picked_up_at: string | null;
 }
 
 interface EventInfo {
@@ -65,6 +72,12 @@ export default function EventHistory() {
                     total_price,
                     payment_method,
                     currency,
+                    order_type,
+                    pickup_code,
+                    customer_name,
+                    customer_contact,
+                    pickup_status,
+                    picked_up_at,
                     subtotal_price,
                     discount_total,
                     pricing_breakdown,
@@ -92,6 +105,7 @@ export default function EventHistory() {
     const summary = useMemo(() => {
         const totalRevenue = orders.reduce((sum, o) => sum + o.total_price, 0);
         const totalOrders = orders.length;
+        const getOrderType = (order: Order): OrderType => order.order_type || (order.queue_id ? 'live_queue' : 'pos_walkin');
 
         const cashOnly = orders.filter(o => o.payment_method === 'cash');
         const cashTotal = cashOnly.reduce((sum, o) => sum + o.total_price, 0);
@@ -100,6 +114,8 @@ export default function EventHistory() {
         const transferOnly = orders.filter(o => o.payment_method === 'transfer');
         const transferTotal = transferOnly.reduce((sum, o) => sum + o.total_price, 0);
         const transferOrders = transferOnly.length;
+        const preorderOrders = orders.filter(order => getOrderType(order) === 'preorder');
+        const preorderTotal = preorderOrders.reduce((sum, order) => sum + order.total_price, 0);
 
         const productStats: Record<string, { name: string; qty: number; total: number }> = {};
         
@@ -116,7 +132,7 @@ export default function EventHistory() {
 
         const topProducts = Object.values(productStats).sort((a, b) => b.qty - a.qty);
 
-        return { totalRevenue, totalOrders, cashTotal, transferTotal, cashOrders, transferOrders, topProducts };
+        return { totalRevenue, totalOrders, cashTotal, transferTotal, cashOrders, transferOrders, preorderTotal, preorderOrders: preorderOrders.length, topProducts };
     }, [orders]);
 
     if (loading) return <div className="p-10 text-center text-gray-400">Loading history...</div>;
@@ -170,6 +186,15 @@ export default function EventHistory() {
                         </div>
                         <div className="text-3xl font-black text-gray-800">{formatPrice(summary.transferTotal, orders[0]?.currency || 'THB')}</div>
                         <div className="text-xs text-gray-400 mt-1 font-medium">{summary.transferOrders} completed transfer method</div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-rose-100">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600"><PackageCheck size={20} /></div>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pre-order</span>
+                        </div>
+                        <div className="text-3xl font-black text-gray-800">{formatPrice(summary.preorderTotal, orders[0]?.currency || 'THB')}</div>
+                        <div className="text-xs text-gray-400 mt-1 font-medium">{summary.preorderOrders} completed pre-orders</div>
                     </div>
                 </div>
 
@@ -225,7 +250,17 @@ export default function EventHistory() {
                                             
                                             {/* ✅ เพิ่ม whitespace-nowrap เพื่อแก้ Walk-in ตกบรรทัด */}
                                             <td className="px-4 py-3 whitespace-nowrap">
-                                                {order.queues ? (
+                                                {order.order_type === 'preorder' ? (
+                                                    <div>
+                                                        <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded-md text-xs font-bold border border-rose-100 whitespace-nowrap">{order.customer_name || 'Pre-order'}</span>
+                                                        {order.customer_contact && <div className="mt-1 text-[10px] font-semibold text-gray-400">{order.customer_contact}</div>}
+                                                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
+                                                            <span className="rounded-md bg-pink-50 px-2 py-1 text-pink-700">Pre-order</span>
+                                                            {order.pickup_code && <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-600">{order.pickup_code}</span>}
+                                                            {order.pickup_status && <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{order.pickup_status}</span>}
+                                                        </div>
+                                                    </div>
+                                                ) : order.queues ? (
                                                     <span className="bg-pink-50 text-pink-600 px-2 py-1 rounded-md text-xs font-bold border border-pink-100 whitespace-nowrap">#{order.queues.queue_number}</span>
                                                 ) : (
                                                     <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded-md text-xs font-bold border border-gray-200 whitespace-nowrap">Walk-in</span>

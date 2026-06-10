@@ -138,7 +138,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                             location.pathname === '/admin/applications'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'text-gray-600 hover:text-emerald-700 hover:bg-emerald-50'
+                                : 'text-slate-700 hover:text-emerald-700 hover:bg-gray-50'
                         }`}
                         aria-label={t('workspaceNavApplications')}
                     >
@@ -173,7 +173,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 
                 <button 
                     onClick={handleLogout} 
-                    className="workspace-action px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-1.5 transition-all"
+                    className="workspace-action px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-red-700 hover:bg-gray-50 flex items-center gap-1.5 transition-all"
                     aria-label={t('signOut')}
                 >
                     <LogOut size={14} aria-hidden="true" />
@@ -241,7 +241,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                             className={`w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
                                 location.pathname === '/admin/applications'
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : 'text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
+                                    : 'text-slate-700 hover:bg-gray-50 hover:text-emerald-700'
                             }`}
                             aria-label={t('workspaceNavApplications')}
                         >

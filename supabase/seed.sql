@@ -38,7 +38,7 @@ SET row_security = off;
 --
 
 INSERT INTO "auth"."users" ("instance_id", "id", "aud", "role", "email", "encrypted_password", "email_confirmed_at", "invited_at", "confirmation_token", "confirmation_sent_at", "recovery_token", "recovery_sent_at", "email_change_token_new", "email_change", "email_change_sent_at", "last_sign_in_at", "raw_app_meta_data", "raw_user_meta_data", "is_super_admin", "created_at", "updated_at", "phone", "phone_confirmed_at", "phone_change", "phone_change_token", "phone_change_sent_at", "email_change_token_current", "email_change_confirm_status", "banned_until", "reauthentication_token", "reauthentication_sent_at", "is_sso_user", "deleted_at", "is_anonymous") VALUES
-	('00000000-0000-0000-0000-000000000000', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'authenticated', 'authenticated', 'konglnwzas@gmail.com', '$2a$10$wppakW41xkfc/19x6z1dJ.88ZL2HlzYmXz06htIDnI.wkvPz8ijvm', '2026-01-20 05:03:35.187253+00', NULL, '', NULL, '', NULL, '', '', NULL, '2026-01-24 14:51:32.589791+00', '{"provider": "email", "providers": ["email"]}', '{"email_verified": true}', NULL, '2026-01-20 05:03:35.166913+00', '2026-01-24 14:51:32.594172+00', NULL, NULL, '', '', NULL, '', 0, NULL, '', NULL, false, NULL, false),
+	('00000000-0000-0000-0000-000000000000', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'authenticated', 'authenticated', 'konglnwzas@gmail.com', '$2a$06$fggBqiV2qkxkC4/cvvZ9Huj1s7jbkWty.LGErG9n0QzYSFOOHyXES', '2026-01-20 05:03:35.187253+00', NULL, '', NULL, '', NULL, '', '', NULL, '2026-01-24 14:51:32.589791+00', '{"provider": "email", "providers": ["email"]}', '{"email_verified": true}', NULL, '2026-01-20 05:03:35.166913+00', '2026-01-24 14:51:32.594172+00', NULL, NULL, '', '', NULL, '', 0, NULL, '', NULL, false, NULL, false),
 	('00000000-0000-0000-0000-000000000000', 'ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'authenticated', 'authenticated', 'kongphop.sunit@gmail.com', '$2a$10$X5dT9zoGF7y7kewyPQVIzO.z5u8NLc/DJEVT06N5yQF5V8DdJJdrO', '2026-01-23 16:13:19.227426+00', NULL, '', NULL, '', NULL, '', '', NULL, '2026-01-23 16:17:10.258641+00', '{"provider": "email", "providers": ["email"]}', '{"email_verified": true}', NULL, '2026-01-23 16:13:19.195405+00', '2026-01-24 16:18:22.105759+00', NULL, NULL, '', '', NULL, '', 0, NULL, '', NULL, false, NULL, false);
 
 
@@ -583,9 +583,9 @@ INSERT INTO "auth"."refresh_tokens" ("instance_id", "id", "token", "user_id", "r
 -- Data for Name: artists; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO "public"."artists" ("id", "slug", "display_name", "bio", "x_url", "facebook_url", "ig_url", "tiktok_url", "email", "created_at", "updated_at", "broadcast_message", "image_url", "is_queue_open") VALUES
-	('ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'test2', 'KongzasTest', 'testRLS', NULL, NULL, NULL, NULL, NULL, '2026-01-23 16:11:05.356959+00', '2026-01-23 16:13:42.430018+00', NULL, NULL, true),
-	('b5bc17ad-e050-4f74-9205-5147ec350d83', 'test1', 'Genshin Impact Artist', 'Creating fan art and merch for travelers✨', 'https://twitter.com', 'https://www.facebook.com/kongzas/', 'https://instagram.com', 'https://www.tiktok.com/@kongzaswithpaimon', 'contact@artist.com', '2026-01-20 05:01:35+00', '2026-01-24 12:36:22.604103+00', NULL, 'https://ik.imagekit.io/kongzas/Avatar/b5bc17ad-e050-4f74-9205-5147ec350d83/1769258180589.webp?tr=w-400,h-400,fo-auto', true);
+INSERT INTO "public"."artists" ("id", "slug", "display_name", "bio", "x_url", "facebook_url", "ig_url", "tiktok_url", "email", "created_at", "updated_at", "broadcast_message", "image_url", "is_queue_open", "is_public", "is_verified", "published_at") VALUES
+	('ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'test2', 'KongzasTest', 'testRLS', NULL, NULL, NULL, NULL, NULL, '2026-01-23 16:11:05.356959+00', '2026-01-23 16:13:42.430018+00', NULL, NULL, true, false, false, NULL),
+	('b5bc17ad-e050-4f74-9205-5147ec350d83', 'test1', 'Genshin Impact Artist', 'Creating fan art and merch for travelers✨', 'https://twitter.com', 'https://www.facebook.com/kongzas/', 'https://instagram.com', 'https://www.tiktok.com/@kongzaswithpaimon', 'contact@artist.com', '2026-01-20 05:01:35+00', '2026-01-24 12:36:22.604103+00', NULL, 'https://ik.imagekit.io/kongzas/Avatar/b5bc17ad-e050-4f74-9205-5147ec350d83/1769258180589.webp?tr=w-400,h-400,fo-auto', true, true, true, '2026-01-24 12:36:22.604103+00');
 
 
 --
@@ -603,6 +603,17 @@ BTS Chidlom', 'A2', 'Free', 'Cancelled', true, '2026-01-21 07:40:28.038232+00', 
 	('004c3287-d384-4424-b499-e632266dfa51', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'RT2', '2026-01-23 17:05:00+00', '2026-01-23 17:05:00+00', 'RT2', 'RT2', 'RT2', 'R2', 'Free', 'Confirmed', false, '2026-01-23 02:28:52.053441+00', '2026-01-23 10:05:43.854928+00', true, NULL),
 	('23030741-07ba-43fe-baba-f21756e6ed02', 'ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'TestRSL', '2026-01-23 23:33:00+00', '2026-01-23 23:33:00+00', 'RLS', 'RLS', 'RLS', NULL, 'Free', 'Confirmed', false, '2026-01-23 16:33:59.074337+00', '2026-01-23 16:35:52.395105+00', true, NULL),
 	('80652f5e-59c8-4723-9fd0-8440b41b4731', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'Newday', '2026-01-24 00:02:00+00', '2026-01-25 00:02:00+00', '2day', '2day', '2Day-Event Test', NULL, '180 THB', 'Confirmed', false, '2026-01-23 17:03:10.48543+00', '2026-01-23 17:03:10.48543+00', false, NULL);
+
+UPDATE "public"."events"
+SET start_date = now() + interval '1 day',
+    end_date = now() + interval '2 days',
+    selling_mode = 'preorder',
+    preorder_opens_at = now() - interval '1 day',
+    preorder_closes_at = now() + interval '12 hours',
+    preorder_pickup_instructions = 'Show your pickup code at booth A-1 during the event.',
+    event_timezone = 'Asia/Bangkok',
+    is_booth_open = false
+WHERE id = '70baf484-1a59-4be7-97f1-376f0f8d82e1';
 
 
 --
@@ -631,6 +642,38 @@ INSERT INTO "public"."products" ("id", "artist_id", "name", "price", "descriptio
 	('2057d04f-bdad-4e8e-991e-47ac02ffcdb4', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'ฉากประดับอะคริลิคพระจันทร์ใหม่', 600, 'ขนาด 16.5*17.1cm เรืองแสงในที่มืด', 'Standy', 'public/1769174174290-g90zitvg2um.jpg', false, '2026-01-23 11:36:47.058148+00', '2026-01-23 13:16:15.467087+00', 'enable'),
 	('b21f0d66-bcec-40b9-a349-2397fd990b49', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'Test Item', 10, 'Test1', 'ตุ๊กตา', 'public/1769174867584-5mlya84dxi4.webp', false, '2026-01-23 13:27:48.828753+00', '2026-01-23 13:28:17.935615+00', 'enable'),
 	('95819ad9-32bd-495a-a937-935bb995500a', 'ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'ItemRLS', 1, 'TestItemRLS', '', 'public/1769186119594-lb0um5r5oh.webp', false, '2026-01-23 16:35:21.01421+00', '2026-01-23 16:35:21.01421+00', 'enable');
+
+INSERT INTO "public"."event_products" ("event_id", "product_id", "artist_id", "is_enabled", "price_override", "stock_total", "stock_reserved", "stock_sold", "is_unlimited")
+SELECT
+	'70baf484-1a59-4be7-97f1-376f0f8d82e1',
+	p.id,
+	p.artist_id,
+	true,
+	NULL,
+	20,
+	0,
+	0,
+	false
+FROM "public"."products" p
+WHERE p.artist_id = 'b5bc17ad-e050-4f74-9205-5147ec350d83'
+  AND p.status = 'enable'
+ON CONFLICT (event_id, product_id) DO NOTHING;
+
+INSERT INTO "public"."event_payment_methods" ("event_id", "artist_id", "method_type", "display_name", "account_name", "account_number", "bank_name", "promptpay_id", "instructions", "payment_deadline_at", "is_enabled")
+VALUES (
+	'70baf484-1a59-4be7-97f1-376f0f8d82e1',
+	'b5bc17ad-e050-4f74-9205-5147ec350d83',
+	'promptpay',
+	'PromptPay / Bank transfer',
+	'Kong Local Test',
+	'000-0-00000-0',
+	'Local Bank',
+	'0800000000',
+	'Transfer the exact amount and upload your slip.',
+	now() + interval '12 hours',
+	true
+)
+ON CONFLICT DO NOTHING;
 
 
 --

@@ -1,16 +1,17 @@
-import { useState, useEffect, useMemo, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
   Trash2, Plus, Calendar, MapPin, FileText,
-  BarChart2, X, User, Ticket, ExternalLink, Copy, Users, ShoppingCart
+  BarChart2, X, User, Ticket, ExternalLink, Copy, Users, ShoppingCart, PackageCheck, MoreHorizontal, Settings
 } from 'lucide-react';
 import { Button } from '../../components/ui';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
 import type { ActorContext } from '../../types/access';
+import type { EventSellingMode, OrderType, PickupStatus } from '../../types/preorder';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
 import {
   formatDateTimeForInput,
@@ -53,6 +54,32 @@ interface Event {
   start_date: string;
   end_date: string;
   status: 'Confirmed' | 'Cancelled' | 'Ended';
+  selling_mode?: EventSellingMode | null;
+  preorder_opens_at?: string | null;
+  preorder_closes_at?: string | null;
+  preorder_pickup_instructions?: string | null;
+}
+
+interface EventMetric {
+  awaitingPickup: number;
+  completedOrders: number;
+  queueWaiting: number;
+  revenue: number;
+  currency: string;
+}
+
+interface EventMetricOrder {
+  event_id?: string | null;
+  status?: string | null;
+  total_price?: number | null;
+  currency?: string | null;
+  order_type?: OrderType | null;
+  pickup_status?: PickupStatus | null;
+}
+
+interface EventMetricQueue {
+  event_id?: string | null;
+  status?: string | null;
 }
 
 const getEventDateParts = (dateString: string, timeZone?: string | null) => {
@@ -98,13 +125,41 @@ const formatEventDateRange = (event: Event) => {
   };
 };
 
+const emptyMetric: EventMetric = {
+  awaitingPickup: 0,
+  completedOrders: 0,
+  queueWaiting: 0,
+  revenue: 0,
+  currency: 'THB',
+};
+
+const isEndedEvent = (event: Event) => {
+  const endDate = new Date(event.end_date);
+  return (
+    event.status === 'Ended' ||
+    event.status === 'Cancelled' ||
+    event.selling_mode === 'closed' ||
+    (!Number.isNaN(endDate.getTime()) && endDate < new Date())
+  );
+};
+
+const formatMoney = (amount: number, currency: string) =>
+  new Intl.NumberFormat('th-TH', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: currency === 'THB' ? 0 : 2,
+  }).format(amount || 0);
+
 const ManageArtist = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const browserTimeZone = getBrowserTimeZone();
+  const profilePanelRef = useRef<HTMLDivElement>(null);
   
   const [artist, setArtist] = useState<Artist | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [eventMetrics, setEventMetrics] = useState<Record<string, EventMetric>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishingPublicLink, setIsPublishingPublicLink] = useState(false);
@@ -122,6 +177,9 @@ const ManageArtist = () => {
   // Filter State
   const [filterMonth, setFilterMonth] = useState<number | 'all'>('all');
   const [filterYear, setFilterYear] = useState<number | 'all'>('all');
+  const [eventTab, setEventTab] = useState<'active' | 'ended'>(() => (
+    searchParams.get('tab') === 'ended' ? 'ended' : 'active'
+  ));
 
   useEffect(() => {
     let isMounted = true;
@@ -199,6 +257,55 @@ const ManageArtist = () => {
             }
 
             setEvents(updatedEvents);
+
+            const eventIds = updatedEvents.map((evt) => evt.id);
+            if (eventIds.length > 0) {
+              const [ordersResult, queuesResult] = await Promise.all([
+                supabase
+                  .from('orders')
+                  .select('event_id, status, total_price, currency, order_type, pickup_status')
+                  .in('event_id', eventIds),
+                supabase
+                  .from('queues')
+                  .select('event_id, status')
+                  .in('event_id', eventIds),
+              ]);
+
+              const nextMetrics: Record<string, EventMetric> = {};
+              eventIds.forEach((eventId) => {
+                nextMetrics[eventId] = { ...emptyMetric };
+              });
+
+              if (!ordersResult.error) {
+                ((ordersResult.data || []) as EventMetricOrder[]).forEach((order) => {
+                  if (!order.event_id || !nextMetrics[order.event_id]) return;
+                  const metric = nextMetrics[order.event_id];
+                  if (order.order_type === 'preorder' && order.pickup_status === 'awaiting_pickup') {
+                    metric.awaitingPickup += 1;
+                  }
+                  if (order.status === 'completed') {
+                    metric.completedOrders += 1;
+                    metric.revenue += Number(order.total_price || 0);
+                    metric.currency = order.currency || metric.currency;
+                  } else if (order.currency) {
+                    metric.currency = order.currency;
+                  }
+                });
+              }
+
+              if (!queuesResult.error) {
+                ((queuesResult.data || []) as EventMetricQueue[]).forEach((queue) => {
+                  if (!queue.event_id || !nextMetrics[queue.event_id]) return;
+                  if (['waiting', 'calling', 'serving', 'queued'].includes(queue.status || '')) {
+                    nextMetrics[queue.event_id].queueWaiting += 1;
+                  }
+                });
+              }
+
+              if (isMounted) setEventMetrics(nextMetrics);
+            } else if (isMounted) {
+              setEventMetrics({});
+            }
           }
         }
       } catch (error) {
@@ -304,6 +411,50 @@ const ManageArtist = () => {
     }
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'ended' || requestedTab === 'active') {
+      setEventTab(requestedTab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'profile') {
+      window.setTimeout(() => {
+        profilePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (isLoading || events.length === 0) return;
+
+    const forcedGrid =
+      searchParams.get('view') === 'all' ||
+      searchParams.get('tab') === 'profile' ||
+      searchParams.has('editEvent') ||
+      (typeof window !== 'undefined' && window.sessionStorage.getItem('forceEventGrid') === 'true');
+
+    const activeEvents = events.filter((event) => !isEndedEvent(event));
+    if (!forcedGrid && activeEvents.length === 1) {
+      navigate(`/manage-events/${activeEvents[0].id}/workspace`, { replace: true });
+    }
+  }, [events, isLoading, navigate, searchParams]);
+
+  useEffect(() => {
+    const editEventId = searchParams.get('editEvent');
+    if (isLoading || !editEventId || isModalOpen) return;
+
+    const eventToEdit = events.find((event) => event.id === editEventId);
+    if (!eventToEdit) return;
+
+    handleOpenModal(eventToEdit);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('editEvent');
+    nextParams.set('view', 'all');
+    setSearchParams(nextParams, { replace: true });
+  }, [events, isLoading, isModalOpen, searchParams, setSearchParams]);
 
   const handleFunctionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -544,12 +695,29 @@ const ManageArtist = () => {
 
   const publicPageUrl = artist.slug ? `${window.location.origin}/${artist.slug}/home` : '';
   const publicMenuUrl = artist.slug ? `${window.location.origin}/${artist.slug}/menu` : '';
-  const visibleEvents = events.filter(evt => {
+  const activeEvents = events.filter((event) => !isEndedEvent(event));
+  const endedEvents = events.filter(isEndedEvent);
+  const currentTabEvents = eventTab === 'active' ? activeEvents : endedEvents;
+  const visibleEvents = currentTabEvents.filter(evt => {
     const eventDate = new Date(evt.start_date);
     const matchMonth = filterMonth === 'all' || eventDate.getMonth() === filterMonth;
     const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
     return matchMonth && matchYear;
   });
+  const showFullGrid = searchParams.get('view') === 'all' || activeEvents.length !== 1;
+
+  const setTab = (nextTab: 'active' | 'ended') => {
+    setEventTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('view', 'all');
+    nextParams.set('tab', nextTab);
+    setSearchParams(nextParams);
+  };
+
+  const openWorkspace = (eventId: string) => {
+    window.sessionStorage.removeItem('forceEventGrid');
+    navigate(`/manage-events/${eventId}/workspace`);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
@@ -558,13 +726,13 @@ const ManageArtist = () => {
        <AdminHeader activePage="events" actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
 
       {/* Main Content */}
-      <div className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">
+      <main className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">
         
         {/* Header */}
-        <header className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <div>
               <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
-              <p className="text-sm md:text-base text-pink-600 font-bold">{artist.display_name}</p>
+              <p className="text-sm md:text-base text-pink-700 font-bold">{artist.display_name}</p>
            </div>
            {artist.slug && (
              <div className="flex flex-col sm:flex-row gap-2">
@@ -589,14 +757,14 @@ const ManageArtist = () => {
                </a>
              </div>
            )}
-        </header>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* --- LEFT COL: Profile Settings --- */}
-          <div className="workspace-card h-auto self-start">
+          <div ref={profilePanelRef} className="workspace-card h-auto self-start scroll-mt-20">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
-               <User className="text-[#d63384]" size={16} />
+               <User className="text-pink-700" size={16} />
                <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
             </div>
             
@@ -639,12 +807,12 @@ const ManageArtist = () => {
 
                {/* Socials */}
                <div className="space-y-1">
-                  <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-0.5">Social Links</h3>
+                  <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">Social Links</h3>
                   <div className="flex flex-col gap-1">
                      {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
                        <div key={field} className="relative group">
                           <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                             <span className="text-[9px] font-bold text-gray-400 uppercase w-16 truncate">
+                             <span className="text-[9px] font-bold text-gray-600 uppercase w-16 truncate">
                                 {field.replace('_url', '').replace('email', 'Email')}
                              </span>
                           </div>
@@ -655,7 +823,7 @@ const ManageArtist = () => {
                              onChange={handleProfileChange}
                              placeholder={field === 'email' ? 'contact@email.com' : '...'}
                              aria-label={field.replace('_url', '').replace('email', 'Email')}
-                             className="w-full min-h-10 bg-white border border-gray-200 rounded-lg pl-16 pr-2 py-2 text-sm font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition-all"
+                             className="w-full min-h-11 bg-white border border-gray-200 rounded-lg pl-16 pr-2 py-2 text-sm font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition-all"
                           />
                        </div>
                      ))}
@@ -673,231 +841,210 @@ const ManageArtist = () => {
           </div>
 
 
-           {/* --- RIGHT COL: Event Management --- */}
-          <div className="lg:col-span-2 space-y-6">
-             
-             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[600px] flex flex-col">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-4">
-                   {/* Header Row */}
-                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="text-[#d63384]" size={20} />
-                        <h2 className="font-bold text-lg text-slate-800">Event Management</h2>
-                        <span className="bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full text-xs font-bold">{events.length}</span>
+           {/* --- RIGHT COL: Event Workspaces --- */}
+          <div className="lg:col-span-2 space-y-5">
+            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="text-pink-700" size={20} aria-hidden="true" />
+                  <div>
+                    <h2 className="font-black text-lg text-slate-900">Event Workspaces</h2>
+                    <p className="text-xs font-semibold text-gray-600">
+                      {showFullGrid ? 'Choose an event, then manage its operations inside the workspace.' : 'Opening your active event workspace...'}
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-11 shadow-sm flex items-center gap-2">
+                  <Plus size={14} aria-hidden="true" /> Add Event
+                </Button>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setTab('active')}
+                    className={`min-h-11 rounded-lg px-3 text-xs font-black transition ${eventTab === 'active' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+                  >
+                    กำลังดำเนินการ {activeEvents.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('ended')}
+                    className={`min-h-11 rounded-lg px-3 text-xs font-black transition ${eventTab === 'ended' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+                  >
+                    จบแล้ว {endedEvents.length}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                    aria-label="Filter by month"
+                  >
+                    <option value="all">All Months</option>
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => (
+                      <option key={month} value={idx}>{month}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                    aria-label="Filter by year"
+                  >
+                    <option value="all">All Years</option>
+                    {(() => {
+                      const years = [...new Set(events.map(e => new Date(e.start_date).getFullYear()))].sort((a, b) => b - a);
+                      if (years.length === 0) years.push(new Date().getFullYear());
+                      return years.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                      ));
+                    })()}
+                  </select>
+                  {(filterMonth !== 'all' || filterYear !== 'all') && (
+                    <button
+                      onClick={() => { setFilterMonth('all'); setFilterYear('all'); }}
+                      className="min-h-11 rounded-lg px-2 text-xs font-black text-pink-700 hover:bg-pink-50"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {events.length === 0 ? (
+              <section className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
+                <Calendar size={42} className="mx-auto mb-3 text-gray-300" aria-hidden="true" />
+                <h3 className="text-base font-black text-gray-800">No events scheduled.</h3>
+                <p className="mt-1 text-sm font-semibold text-gray-600">Create your first event to start building a workspace.</p>
+              </section>
+            ) : visibleEvents.length === 0 ? (
+              <section className="rounded-2xl border border-gray-200 bg-white p-8 text-center">
+                <p className="text-sm font-bold text-gray-600">No events match this tab and filter.</p>
+              </section>
+            ) : (
+              <section className="grid gap-4 md:grid-cols-2" aria-label="Event workspace list">
+                {visibleEvents.map((evt) => {
+                  const metric = eventMetrics[evt.id] || emptyMetric;
+                  const eventDateRange = formatEventDateRange(evt);
+                  const ended = isEndedEvent(evt);
+                  const statusBadgeClass = ended
+                    ? 'bg-gray-100 text-gray-600'
+                    : evt.selling_mode === 'preorder'
+                      ? 'bg-pink-100 text-pink-700'
+                      : 'bg-emerald-100 text-emerald-700';
+                  const boothBadgeClass = evt.is_booth_open
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-600';
+
+                  return (
+                    <article key={evt.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusBadgeClass}`}>
+                              {ended ? 'Ended' : evt.selling_mode || evt.status}
+                            </span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${boothBadgeClass}`}>
+                              {evt.is_booth_open ? 'Booth open' : 'Booth closed'}
+                            </span>
+                          </div>
+                          <h3 className="mt-2 truncate text-lg font-black text-slate-900">{evt.event_name}</h3>
+                          <p className="mt-1 text-sm font-semibold text-gray-600">
+                            {eventDateRange.primary}{eventDateRange.secondary ? ` ${eventDateRange.secondary}` : ''}
+                          </p>
+                        </div>
+
+                        <details className="relative shrink-0">
+                          <summary className="workspace-action flex h-11 w-11 cursor-pointer list-none items-center justify-center border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" aria-label={`More actions for ${evt.event_name}`}>
+                            <MoreHorizontal size={18} aria-hidden="true" />
+                          </summary>
+                          <div className="absolute right-0 top-12 z-10 w-44 rounded-xl border border-gray-200 bg-white p-1.5 text-sm font-bold shadow-lg">
+                            {!ended && (
+                              <button onClick={() => handleBoothToggle(evt.id, !evt.is_booth_open)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50">
+                                <span className={`h-2 w-2 rounded-full ${evt.is_booth_open ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                {evt.is_booth_open ? 'Close booth' : 'Open booth'}
+                              </button>
+                            )}
+                            <button onClick={() => handleOpenModal(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Settings size={14} />Edit</button>
+                            <button onClick={() => handleOpenStats(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><BarChart2 size={14} />Dashboard</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/history`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><FileText size={14} />Orders</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/preorder`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Ticket size={14} />Pre-order</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/pickup`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><PackageCheck size={14} />Pickup</button>
+                            {!ended && <button onClick={() => navigate(`/live/queue?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Users size={14} />Live Queue</button>}
+                            {!ended && <button onClick={() => navigate(`/live/pos?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><ShoppingCart size={14} />Live POS</button>}
+                            <div className="my-1 h-px bg-gray-100" />
+                            <button onClick={() => handleEventDelete(evt.id)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-red-600 hover:bg-red-50"><Trash2 size={14} />Delete</button>
+                          </div>
+                        </details>
                       </div>
-                      <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-9 shadow-sm flex items-center gap-2">
-                         <Plus size={14} /> Add Event
-                      </Button>
-                   </div>
 
-                   {/* Filter Row */}
-                   <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter:</span>
-                      
-                      {/* Month Filter */}
-                      <select
-                        value={filterMonth}
-                        onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                        className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        aria-label="Filter by month"
-                      >
-                        <option value="all">All Months</option>
-                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => (
-                          <option key={month} value={idx}>{month}</option>
-                        ))}
-                      </select>
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-xl bg-gray-50 p-2">
+                          <p className="text-[10px] font-black uppercase text-gray-600">Pickup</p>
+                          <p className="mt-1 text-sm font-black text-gray-900">{metric.awaitingPickup}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-2">
+                          <p className="text-[10px] font-black uppercase text-gray-600">Queue</p>
+                          <p className="mt-1 text-sm font-black text-gray-900">{metric.queueWaiting}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-2">
+                          <p className="text-[10px] font-black uppercase text-gray-600">Sales</p>
+                          <p className="mt-1 truncate text-sm font-black text-gray-900">{formatMoney(metric.revenue, metric.currency)}</p>
+                        </div>
+                      </div>
 
-                      {/* Year Filter */}
-                      <select
-                        value={filterYear}
-                        onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                        className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        aria-label="Filter by year"
-                      >
-                        <option value="all">All Years</option>
-                        {(() => {
-                          const years = [...new Set(events.map(e => new Date(e.start_date).getFullYear()))].sort((a, b) => b - a);
-                          if (years.length === 0) years.push(new Date().getFullYear());
-                          return years.map(year => (
-                            <option key={year} value={year}>{year}</option>
-                          ));
-                        })()}
-                      </select>
-
-                      {/* Clear Filters */}
-                      {(filterMonth !== 'all' || filterYear !== 'all') && (
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                         <button
-                          onClick={() => { setFilterMonth('all'); setFilterYear('all'); }}
-                          className="text-xs text-pink-600 hover:text-pink-700 font-semibold underline"
+                          onClick={() => openWorkspace(evt.id)}
+                          className="workspace-action inline-flex flex-1 items-center justify-center gap-2 bg-pink-600 px-4 text-sm font-black text-white hover:bg-pink-700"
                         >
-                          Clear
+                          Manage
                         </button>
-                      )}
-
-                      {/* Filtered Count */}
-                      <span className="ml-auto text-xs text-gray-400 font-medium">
-                        Showing {visibleEvents.length} of {events.length}
-                      </span>
-                   </div>
-                </div>
-
-                <div className="p-0 flex-1 overflow-x-auto">
-                   {events.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-gray-300 py-20">
-                         <Calendar size={48} className="mb-4 opacity-20" />
-                         <p className="font-medium">No events scheduled.</p>
+                        {!ended && (
+                          <button
+                            onClick={() => navigate(`/live/queue?eventId=${evt.id}`)}
+                            className="workspace-action inline-flex items-center justify-center gap-2 border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100"
+                          >
+                            <Users size={16} aria-hidden="true" />
+                            Live Ops
+                          </button>
+                        )}
                       </div>
-                   ) : (
-                      <table className="w-full text-left border-collapse">
-                         <thead>
-                            <tr className="bg-gray-50/50 text-xs text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                               <th className="px-6 py-4 font-bold">Date</th>
-                               <th className="px-6 py-4 font-bold">Event</th>
-                               <th className="px-6 py-4 font-bold">Location</th>
-                               <th className="px-6 py-4 font-bold text-right">Actions</th>
-                            </tr>
-                         </thead>
-                         <tbody className="divide-y divide-gray-50">
-                            {visibleEvents
-                              .map((evt) => {
-                               const eventDateRange = formatEventDateRange(evt);
-                               return (
-                               <tr key={evt.id} className="hover:bg-pink-50/30 transition-colors group">
-                                  <td className="px-6 py-4 min-w-[96px]">
-                                     <div className="flex flex-col" title={`${eventDateRange.primary}${eventDateRange.secondary ? ` ${eventDateRange.secondary}` : ''}`}>
-                                        <span className="max-w-[88px] text-sm font-bold leading-tight text-slate-800">
-                                           {eventDateRange.primary}
-                                        </span>
-                                        <span className="text-[10px] text-gray-400 font-medium">
-                                           {eventDateRange.secondary}
-                                        </span>
-                                     </div>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                     <div className="font-bold text-slate-900 text-sm">
-                                       {evt.event_name}
-                                     </div>
-                                     <div className="flex items-center gap-3 mt-1">
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                          evt.status === 'Cancelled' ? 'bg-red-100 text-red-600' : 
-                                          evt.status === 'Ended' ? 'bg-gray-100 text-gray-500' : 
-                                          'bg-green-100 text-green-600'
-                                        }`}>
-                                           {evt.status}
-                                        </span>
 
-                                        {evt.entrance_fee && (
-                                           <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                              <Ticket size={10} /> {evt.entrance_fee}
-                                           </span>
-                                        )}
-                                     </div>
-                                  </td>
-                                  <td className="px-6 py-4 text-xs text-gray-500 font-medium">
-                                     <div className="flex items-start gap-1.5">
-                                        <MapPin size={12} className="shrink-0 mt-0.5 text-pink-400" />
-                                        <span>
-                                           {evt.location || '-'}
-                                           {evt.booth_detail && <span className="block text-gray-400 text-[10px]">Booth: {evt.booth_detail}</span>}
-                                        </span>
-                                     </div>
-                                  </td>
-                                  <td className="px-4 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 transition-opacity whitespace-nowrap">
-                                        <button
-                                          onClick={() => handleBoothToggle(evt.id, !evt.is_booth_open)}
-                                          className={`workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg transition-colors border ${
-                                            evt.is_booth_open
-                                              ? 'text-gray-700 hover:bg-gray-50 border-gray-200'
-                                              : 'text-pink-600 hover:bg-pink-50 border-pink-100'
-                                          }`}
-                                          title={evt.is_booth_open ? 'Close booth' : 'Open booth'}
-                                        >
-                                           <span className={`w-2 h-2 rounded-full ${evt.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                                           {evt.is_booth_open ? 'Close Booth' : 'Open Booth'}
-                                        </button>
-
-                                        <button
-                                          onClick={() => handleOpenStats(evt)}
-                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-pink-600 hover:bg-pink-50 px-3 py-2 rounded-lg transition-colors border border-pink-100"
-                                          title="Open dashboard"
-                                          aria-label={`Open dashboard for ${evt.event_name}`}
-                                        >
-                                           <BarChart2 size={14} />
-                                           Dashboard
-                                        </button>
-
-                                        <button
-                                          onClick={() => navigate(`/manage-events/${evt.id}/history`)}
-                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-lg transition-colors border border-emerald-100"
-                                          title="Open order history"
-                                          aria-label={`Open orders for ${evt.event_name}`}
-                                        >
-                                           <FileText size={14} />
-                                           Orders
-                                        </button>
-
-                                        <button
-                                          onClick={() => navigate(`/live/queue?eventId=${evt.id}`)}
-                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors border border-indigo-100"
-                                          title="Open live queue"
-                                          aria-label={`Open live queue for ${evt.event_name}`}
-                                        >
-                                           <Users size={14} />
-                                           Live Queue
-                                        </button>
-
-                                        <button
-                                          onClick={() => navigate(`/live/pos?eventId=${evt.id}`)}
-                                          className="workspace-action min-h-10 inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors border border-slate-200"
-                                          title="Open live POS"
-                                          aria-label={`Open live POS for ${evt.event_name}`}
-                                        >
-                                           <ShoppingCart size={14} />
-                                           Live POS
-                                        </button>
-
-                                        <button
-                                          onClick={() => handleOpenModal(evt)}
-                                          className="workspace-action min-h-10 text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors border border-blue-100"
-                                          title="Edit event"
-                                          aria-label={`Edit ${evt.event_name}`}
-                                        >
-                                           Edit
-                                        </button>
-                                        <button
-                                          onClick={() => handleEventDelete(evt.id)}
-                                          className="workspace-action min-h-10 ml-2 inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors border border-red-100"
-                                          title="Delete event"
-                                          aria-label={`Delete ${evt.event_name}`}
-                                        >
-                                           <Trash2 size={14} />
-                                           Delete
-                                        </button>
-                                      </div>
-                                   </td>
-                                </tr>
-                              );
-                            })}
-                         </tbody>
-                      </table>
-                   )}
-                </div>
-             </div>
-
+                      {(evt.location || evt.booth_detail) && (
+                        <div className="mt-3 flex items-start gap-1.5 text-xs font-semibold text-gray-600">
+                          <MapPin size={13} className="mt-0.5 shrink-0 text-pink-400" aria-hidden="true" />
+                          <span>{evt.location || '-'}{evt.booth_detail ? ` · Booth ${evt.booth_detail}` : ''}</span>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </section>
+            )}
           </div>
         </div>
         
-      </div>
+      </main>
       
       {/* --- ADD/EDIT MODAL --- */}
       {isModalOpen && (
          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="event-form-title"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+            >
                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                  <h3 className="font-bold text-lg text-slate-800">{isEditingEvent ? 'Edit Event' : 'New Event'}</h3>
-                  <button onClick={() => setIsModalOpen(false)} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100" aria-label="Close event form">
-                     <X size={20} />
+                  <h3 id="event-form-title" className="font-bold text-lg text-slate-800">{isEditingEvent ? 'Edit Event' : 'New Event'}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="icon-touch inline-flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100" aria-label="Close event form">
+                     <X size={20} aria-hidden="true" />
                   </button>
                </div>
                
@@ -909,8 +1056,8 @@ const ManageArtist = () => {
 
                   <div className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
                      <div className="space-y-1 flex-1">
-                        <label className="font-bold text-xs uppercase text-gray-400">Status</label>
-                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="w-full bg-white border border-gray-200 rounded-md p-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label="Event status">
+                        <label className="font-bold text-xs uppercase text-gray-600">Status</label>
+                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="min-h-11 w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label="Event status">
                            <option value="Confirmed">Confirmed</option>
                            <option value="Cancelled">Cancelled</option>
                            <option value="Ended">Ended</option>
@@ -919,17 +1066,17 @@ const ManageArtist = () => {
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Event Name *</label>
+                     <label className="font-bold text-xs uppercase text-gray-600">Event Name *</label>
                      <input name="event_name" value={currentEvent.event_name} onChange={handleFunctionChange} className="input-field w-full border border-gray-200 rounded-lg p-3 font-semibold focus:ring-pink-500 focus:border-pink-500 outline-none" placeholder="e.g. Cosplay Festival 2026" />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Time Zone *</label>
+                     <label className="font-bold text-xs uppercase text-gray-600">Time Zone *</label>
                      <select
                         name="event_timezone"
                         value={currentEvent.event_timezone || browserTimeZone}
                         onChange={handleFunctionChange}
-                        className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 bg-white"
+                        className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500 bg-white"
                         aria-label="Event timezone"
                      >
                         {timeZoneOptions.map((timeZone) => (
@@ -943,44 +1090,44 @@ const ManageArtist = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-400">Start Date *</label>
-                        <input type="datetime-local" name="start_date" value={currentEvent.start_date || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
+                        <label className="font-bold text-xs uppercase text-gray-600">Start Date *</label>
+                        <input type="datetime-local" name="start_date" value={currentEvent.start_date || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" />
                      </div>
                      <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-400">End Date *</label>
-                        <input type="datetime-local" name="end_date" value={currentEvent.end_date || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" />
+                        <label className="font-bold text-xs uppercase text-gray-600">End Date *</label>
+                        <input type="datetime-local" name="end_date" value={currentEvent.end_date || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" />
                      </div>
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Location</label>
-                     <input name="location" value={currentEvent.location || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. 5th Floor, Siam Paragon" />
+                     <label className="font-bold text-xs uppercase text-gray-600">Location</label>
+                     <input name="location" value={currentEvent.location || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. 5th Floor, Siam Paragon" />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Booth Detail</label>
-                     <input name="booth_detail" value={currentEvent.booth_detail || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Booth A12, Zone Creator Hall" />
+                     <label className="font-bold text-xs uppercase text-gray-600">Booth Detail</label>
+                     <input name="booth_detail" value={currentEvent.booth_detail || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. Booth A12, Zone Creator Hall" />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Queueing Area</label>
-                     <input name="queueing_area" value={currentEvent.queueing_area || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. Queue lane beside Booth A12" />
+                     <label className="font-bold text-xs uppercase text-gray-600">Queueing Area</label>
+                     <input name="queueing_area" value={currentEvent.queueing_area || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. Queue lane beside Booth A12" />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Entrance Fee</label>
-                     <input name="entrance_fee" value={currentEvent.entrance_fee || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500" placeholder="e.g. 300 THB / Free" />
+                     <label className="font-bold text-xs uppercase text-gray-600">Entrance Fee</label>
+                     <input name="entrance_fee" value={currentEvent.entrance_fee || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. 300 THB / Free" />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-400">Transit Info</label>
+                     <label className="font-bold text-xs uppercase text-gray-600">Transit Info</label>
                      <textarea name="transit_info" rows={3} value={currentEvent.transit_info || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 resize-none" placeholder="BTS Bangna..." />
                   </div>
                </div>
 
                <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-500">Cancel</Button>
-                  <Button onClick={handleEventSave} className="bg-pink-500 hover:bg-pink-600 text-white font-bold px-6 shadow-md shadow-pink-200">
+                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-700">Cancel</Button>
+                  <Button onClick={handleEventSave} className="bg-pink-600 hover:bg-pink-700 text-white font-bold px-6 shadow-md shadow-pink-200">
                      {isSaving ? 'Saving...' : 'Save Event'}
                   </Button>
                </div>

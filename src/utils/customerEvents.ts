@@ -92,7 +92,16 @@ export const clearStoredTicketId = (artistId: string | undefined | null): void =
 };
 
 export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
-  return event.status === 'Confirmed' && event.start_date <= nowIso && event.end_date >= nowIso;
+  if (event.status !== 'Confirmed' || event.end_date < nowIso) return false;
+
+  if (event.start_date <= nowIso) return true;
+
+  if (event.selling_mode !== 'preorder') return false;
+
+  if (event.preorder_opens_at && event.preorder_opens_at > nowIso) return false;
+  if (event.preorder_closes_at && event.preorder_closes_at <= nowIso) return false;
+
+  return true;
 };
 
 export const sortCustomerEvents = (events: RealtimeEvent[]) => {

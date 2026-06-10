@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, ShoppingBag, Ticket, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, PackageCheck, ShoppingBag, Store, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
+import type { OrderType, PickupStatus } from '../../types/preorder';
 
 interface EventInfo {
   id: string;
@@ -28,12 +29,19 @@ interface OrderItemRow {
 interface OrderRow {
   id: string;
   created_at: string;
+  queue_id?: string | null;
   total_price: number;
   subtotal_price?: number | null;
   discount_total?: number | null;
   payment_method: 'cash' | 'transfer';
   status: string;
   currency?: string;
+  order_type?: OrderType | null;
+  pickup_code?: string | null;
+  customer_name?: string | null;
+  customer_contact?: string | null;
+  pickup_status?: PickupStatus | null;
+  picked_up_at?: string | null;
   order_items: OrderItemRow[];
 }
 
@@ -73,12 +81,19 @@ export default function EventDashboard() {
             .select(`
               id,
               created_at,
+              queue_id,
               total_price,
               subtotal_price,
               discount_total,
               payment_method,
               status,
               currency,
+              order_type,
+              pickup_code,
+              customer_name,
+              customer_contact,
+              pickup_status,
+              picked_up_at,
               order_items (
                 quantity,
                 price_per_unit,
@@ -114,6 +129,7 @@ export default function EventDashboard() {
   const analytics = useMemo(() => {
     const completedOrders = orders.filter((order) => order.status === 'completed');
     const currency = completedOrders[0]?.currency || orders[0]?.currency || 'THB';
+    const getOrderType = (order: OrderRow): OrderType => order.order_type || (order.queue_id ? 'live_queue' : 'pos_walkin');
 
     const revenue = completedOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
     const subtotal = completedOrders.reduce((sum, order) => sum + Number(order.subtotal_price || order.total_price || 0), 0);
@@ -125,6 +141,10 @@ export default function EventDashboard() {
       cash: completedOrders.filter((order) => order.payment_method === 'cash'),
       transfer: completedOrders.filter((order) => order.payment_method === 'transfer'),
     };
+    const preorderOrders = completedOrders.filter((order) => getOrderType(order) === 'preorder');
+    const liveQueueOrders = completedOrders.filter((order) => getOrderType(order) === 'live_queue');
+    const walkinOrders = completedOrders.filter((order) => getOrderType(order) === 'pos_walkin');
+    const awaitingPickupCount = orders.filter((order) => getOrderType(order) === 'preorder' && order.pickup_status === 'awaiting_pickup').length;
 
     const productMap = new Map<string, { name: string; qty: number; revenue: number; category: string }>();
     const categoryMap = new Map<string, { category: string; qty: number; revenue: number }>();
@@ -201,6 +221,15 @@ export default function EventDashboard() {
         cashRevenue: byPayment.cash.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
         transferOrders: byPayment.transfer.length,
         transferRevenue: byPayment.transfer.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
+      },
+      orderTypeSummary: {
+        preorderOrders: preorderOrders.length,
+        preorderRevenue: preorderOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
+        awaitingPickupCount,
+        liveQueueOrders: liveQueueOrders.length,
+        liveQueueRevenue: liveQueueOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
+        walkinOrders: walkinOrders.length,
+        walkinRevenue: walkinOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
       },
       queueSummary: {
         totalQueues,
@@ -342,6 +371,13 @@ export default function EventDashboard() {
           <MetricCard icon={<CreditCard size={18} />} title="Payment Mix" value={`${analytics.paymentSummary.cashOrders}/${analytics.paymentSummary.transferOrders}`} helper="Cash / Transfer orders" tone="cyan" />
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <MetricCard icon={<PackageCheck size={18} />} title="Pre-order Revenue" value={formatPrice(analytics.orderTypeSummary.preorderRevenue, analytics.currency)} helper={`${analytics.orderTypeSummary.preorderOrders} completed pre-orders`} tone="rose" />
+          <MetricCard icon={<PackageCheck size={18} />} title="Awaiting Pickup" value={String(analytics.orderTypeSummary.awaitingPickupCount)} helper="reserved stock still held" tone="amber" />
+          <MetricCard icon={<Ticket size={18} />} title="Live Queue Revenue" value={formatPrice(analytics.orderTypeSummary.liveQueueRevenue, analytics.currency)} helper={`${analytics.orderTypeSummary.liveQueueOrders} queue orders`} tone="indigo" />
+          <MetricCard icon={<Store size={18} />} title="Walk-in Revenue" value={formatPrice(analytics.orderTypeSummary.walkinRevenue, analytics.currency)} helper={`${analytics.orderTypeSummary.walkinOrders} POS orders`} tone="teal" />
+        </div>
+
         {recommendations.length > 0 && (
           <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-sm font-black text-gray-800 uppercase tracking-wide mb-4">What To Watch Next</h2>
@@ -434,7 +470,7 @@ export default function EventDashboard() {
   );
 }
 
-function MetricCard({ icon, title, value, helper, tone }: { icon: React.ReactNode; title: string; value: string; helper: string; tone: 'pink' | 'emerald' | 'blue' | 'amber' | 'slate' | 'violet' | 'indigo' | 'cyan'; }) {
+function MetricCard({ icon, title, value, helper, tone }: { icon: React.ReactNode; title: string; value: string; helper: string; tone: 'pink' | 'emerald' | 'blue' | 'amber' | 'slate' | 'violet' | 'indigo' | 'cyan' | 'rose' | 'teal'; }) {
   const tones: Record<string, string> = {
     pink: 'bg-pink-50 border-pink-100 text-pink-700',
     emerald: 'bg-emerald-50 border-emerald-100 text-emerald-700',
@@ -444,6 +480,8 @@ function MetricCard({ icon, title, value, helper, tone }: { icon: React.ReactNod
     violet: 'bg-violet-50 border-violet-100 text-violet-700',
     indigo: 'bg-indigo-50 border-indigo-100 text-indigo-700',
     cyan: 'bg-cyan-50 border-cyan-100 text-cyan-700',
+    rose: 'bg-rose-50 border-rose-100 text-rose-700',
+    teal: 'bg-teal-50 border-teal-100 text-teal-700',
   };
 
   return (

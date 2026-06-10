@@ -23,6 +23,10 @@ export interface RealtimeEvent {
   start_date: string;
   end_date: string;
   event_timezone?: string | null;
+  selling_mode?: 'preorder' | 'live' | 'post_event' | 'closed';
+  preorder_opens_at?: string | null;
+  preorder_closes_at?: string | null;
+  preorder_pickup_instructions?: string | null;
   location?: string | null;
   booth_detail?: string | null;
   queueing_area?: string | null;
@@ -61,7 +65,7 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
         // Filter strictly by date string to prevent timezone dropouts
         supabase
           .from('events')
-          .select('id, event_name, start_date, end_date, event_timezone, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
+          .select('id, event_name, start_date, end_date, event_timezone, selling_mode, preorder_opens_at, preorder_closes_at, preorder_pickup_instructions, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
           .eq('artist_id', artistId)
           .gte('end_date', todayStr)
           .order('start_date', { ascending: true })

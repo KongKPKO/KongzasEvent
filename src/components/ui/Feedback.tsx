@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 interface ToastMessage {
   tone?: 'info' | 'success' | 'warning' | 'error';
   title: string;
@@ -13,10 +15,12 @@ interface ConfirmDialogProps {
   open: boolean;
   title: string;
   detail?: string;
+  children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: 'default' | 'danger';
   loading?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -52,10 +56,12 @@ export function ConfirmDialog({
   open,
   title,
   detail,
+  children,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   tone = 'default',
   loading = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -66,6 +72,7 @@ export function ConfirmDialog({
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
         <h2 className="text-lg font-black text-gray-900">{title}</h2>
         {detail && <p className="mt-2 whitespace-pre-line text-sm font-medium text-gray-600">{detail}</p>}
+        {children}
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -78,7 +85,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             className={`rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
               tone === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-pink-600 hover:bg-pink-700'
             }`}

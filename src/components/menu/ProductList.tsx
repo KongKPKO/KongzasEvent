@@ -77,7 +77,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
 
    return (
       <motion.div
-         className="grid grid-cols-2 gap-3 overflow-y-auto px-3 pb-40 pt-3"
+         className="grid grid-cols-2 gap-3 overflow-y-auto px-3 pb-40 pt-3 sm:grid-cols-3 lg:grid-cols-2 lg:overflow-visible lg:px-0 lg:pb-10 lg:pt-0 xl:grid-cols-3"
          initial="hidden"
          animate="visible"
          variants={{
@@ -112,7 +112,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                      visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
                   }}
                >
-                  <div className="relative aspect-square w-full overflow-hidden bg-[#fff7fb]">
+                  <div className="relative aspect-square w-full overflow-hidden bg-pink-50">
                      {product.image_url ? (
                         <motion.img
                            whileHover={{ scale: 1.05 }}
@@ -186,7 +186,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                            <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
                               <button
                                  onClick={() => onUpdateQuantity(product.id, -1, product.name)}
-                                 className="grid h-9 w-9 place-items-center rounded-xl bg-white text-pink-600 shadow-sm active:scale-95"
+                                 className="grid h-11 w-11 place-items-center rounded-xl bg-white text-pink-700 shadow-sm active:scale-95"
                                  aria-label={t('productDecrease', { name: product.name })}
                               >
                                  <Minus size={16} />
@@ -195,7 +195,10 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               <button
                                  onClick={() => onUpdateQuantity(product.id, 1, product.name)}
                                  disabled={!product.is_unlimited && qty >= availableUnits}
-                                 className="grid h-9 w-9 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
+                                 className={[
+                                    'grid h-11 w-11 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
+                                    'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
+                                 ].join(' ')}
                                  aria-label={t('productIncrease', { name: product.name })}
                               >
                                  <Plus size={16} />
@@ -207,7 +210,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                </motion.div>
             );
          })}
-         <div className="col-span-2 h-10 text-center text-[10px] text-gray-300 pt-4">{t('productEnd')}</div>
+         <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[10px] font-semibold text-gray-600">{t('productEnd')}</div>
       </motion.div>
    );
 };

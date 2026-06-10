@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
 import { resolveAvatarUrl } from '../utils/avatarUrl';
 
 interface AvatarUploadProps {
@@ -43,6 +42,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
     };
 
     try {
+       const { default: imageCompression } = await import('browser-image-compression');
        const compressedFile = await imageCompression(imageFile, options);
        
        // Ensure we return a file with the correct extension if it was converted

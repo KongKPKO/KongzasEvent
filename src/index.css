@@ -18,6 +18,8 @@
   --surface-border: #e5e7eb;
   --font-family: "Outfit", "Inter", sans-serif;
   --color-text: #1f2937;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -94,6 +96,15 @@ body {
     animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes cart-chevron-nudge {
+    0%, 100% { transform: translateY(0); opacity: 0.72; }
+    50% { transform: translateY(-2px); opacity: 1; }
+}
+
+.cart-chevron-nudge {
+  animation: cart-chevron-nudge 1.4s var(--ease-out-quart) infinite;
+}
+
 .workspace-card {
   border: 1px solid var(--surface-border);
   border-radius: 1rem;
@@ -138,4 +149,15 @@ body {
 /* Prevent over-scroll chain-scroll escaping a modal sheet */
 .overscroll-contain {
   overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

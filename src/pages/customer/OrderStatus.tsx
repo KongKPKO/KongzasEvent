@@ -435,7 +435,7 @@ const OrderStatus: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="mt-1 inline-flex min-h-9 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50"
+                          className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50"
                         >
                           {t('orderUploadChange')}
                         </button>

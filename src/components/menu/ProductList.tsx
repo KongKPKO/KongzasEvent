@@ -40,9 +40,9 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
             <div className="mb-4 rounded-3xl bg-pink-50 p-6 text-pink-300">
                <ShoppingBag size={48} strokeWidth={1.5} />
             </div>
-            <h3 className="mb-2 text-lg font-black text-gray-950">{t('homeNoCreators').replace(t('homeCreators'), t('customerNavMerch'))}</h3>
+            <h3 className="mb-2 text-lg font-black text-gray-950">{t('menuNoProductsTitle')}</h3>
             <p className="mb-8 text-sm font-medium text-gray-500 leading-relaxed">
-               {t('menuClearFilters').includes('Filters') ? 'Try clearing your search or filters to see more products.' : 'ลองล้างตัวกรองหรือคำค้นหาเพื่อดูสินค้าเพิ่มเติม'}
+               {t('menuNoProductsDetail')}
             </p>
             {onClearFilters && (
                <button
@@ -149,7 +149,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                      )}
                      {!soldOut && promoBadges.length > 0 && (
                         <div className="absolute left-2 top-2 z-10">
-                           <span className="rounded-full border border-rose-100 bg-rose-50 px-2 py-1 text-[9px] font-black text-rose-700 shadow-sm">
+                           <span className="rounded-full border border-rose-100 bg-rose-50 px-2 py-1 text-[11px] font-black text-rose-700 shadow-sm">
                               {promoBadges[0].shortLabel}
                            </span>
                         </div>
@@ -164,11 +164,11 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                         <div className="text-lg font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
                         <div className="flex min-h-4 items-center justify-between gap-2">
                            {!product.is_unlimited ? (
-                              <div className="text-[10px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
+                              <div className="text-[11px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
                            ) : (
-                              <div className="text-[10px] font-bold text-gray-500">{t('productUnlimited')}</div>
+                              <div className="text-[11px] font-bold text-gray-500">{t('productUnlimited')}</div>
                            )}
-                           {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">{t('productLowStock')}</div>}
+                           {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-black text-amber-700">{t('productLowStock')}</div>}
                         </div>
                         {qty === 0 ? (
                            <button
@@ -210,7 +210,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                </motion.div>
             );
          })}
-         <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[10px] font-semibold text-gray-600">{t('productEnd')}</div>
+         <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[11px] font-semibold text-gray-600">{t('productEnd')}</div>
       </motion.div>
    );
 };

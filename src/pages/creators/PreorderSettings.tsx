@@ -524,7 +524,7 @@ export default function PreorderSettings() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm font-black text-gray-800">{item.label}</div>
-                          <span className={`shrink-0 text-[10px] font-black uppercase tracking-[0.12em] ${item.ready ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          <span className={`shrink-0 text-[11px] font-black uppercase tracking-[0.12em] ${item.ready ? 'text-emerald-600' : 'text-amber-600'}`}>
                             {item.ready ? 'Ready' : 'Check'}
                           </span>
                         </div>

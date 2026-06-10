@@ -130,7 +130,7 @@ const CustomerLayout = () => {
          <div className="relative mx-auto min-h-screen max-w-md overflow-hidden bg-white shadow-xl lg:max-w-none lg:overflow-visible lg:bg-transparent lg:shadow-none">
             {availableEvents.length === 0 && (
                <div className="fixed right-3 top-3 z-[120]">
-                  <LanguageToggle className="min-h-11 min-w-11 px-3 py-2 text-[10px]" />
+                  <LanguageToggle className="min-h-11 min-w-11 px-3 py-2 text-[11px]" />
                </div>
             )}
 
@@ -150,11 +150,11 @@ const CustomerLayout = () => {
                      </div>
                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                           <span className="text-[9px] font-black uppercase tracking-[0.16em] text-gray-600">
+                           <span className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-600">
                               {t('customerSelectedEvent')}
                            </span>
                            <span className={`h-1.5 w-1.5 rounded-full ${selectedEvent?.is_booth_open ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                           <span className={`text-[9px] font-black uppercase tracking-[0.12em] ${selectedEvent?.is_booth_open ? 'text-emerald-700' : 'text-gray-600'}`}>
+                           <span className={`text-[11px] font-black uppercase tracking-[0.12em] ${selectedEvent?.is_booth_open ? 'text-emerald-700' : 'text-gray-600'}`}>
                               {selectedEvent?.is_booth_open ? t('customerBoothOpen') : t('customerBoothClosed')}
                            </span>
                         </div>
@@ -176,13 +176,13 @@ const CustomerLayout = () => {
                            </div>
                         )}
                         {selectedEvent && (
-                           <div className="flex min-w-0 items-center gap-1 text-[10px] font-bold text-gray-600">
+                           <div className="flex min-w-0 items-center gap-1 text-[11px] font-bold text-gray-600">
                               <MapPin size={11} className="shrink-0 text-pink-400" aria-hidden="true" />
                               <span className="truncate">{[selectedEvent.location, selectedEvent.booth_detail].filter(Boolean).join(' · ') || t('customerBoothOpen')}</span>
                            </div>
                         )}
                      </div>
-                     <LanguageToggle className="min-h-11 min-w-11 shrink-0 px-3 py-2 text-[10px]" />
+                     <LanguageToggle className="min-h-11 min-w-11 shrink-0 px-3 py-2 text-[11px]" />
                   </div>
                </div>
             )}

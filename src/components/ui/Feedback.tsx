@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 interface ToastMessage {
@@ -36,14 +37,14 @@ export function Toast({ message, onClose }: ToastProps) {
   if (!message) return null;
 
   return (
-    <div className="fixed inset-x-0 top-4 z-[120] mx-auto w-[calc(100%-2rem)] max-w-md" aria-live="polite">
+    <div className="fixed inset-x-0 top-4 z-[120] mx-auto w-[calc(100%-2rem)] max-w-md" role="status" aria-live="polite">
       <div className={`rounded-xl border p-3 shadow-lg ${toneClasses[message.tone || 'info']}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-black">{message.title}</div>
             {message.detail && <div className="mt-0.5 whitespace-pre-line text-xs font-medium opacity-90">{message.detail}</div>}
           </div>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-md px-2 py-1 text-xs font-bold opacity-70 hover:opacity-100">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-md px-2 py-1 min-h-9 text-xs font-bold opacity-70 hover:opacity-100">
             Close
           </button>
         </div>
@@ -65,6 +66,18 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   return (
@@ -76,6 +89,7 @@ export function ConfirmDialog({
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button
             type="button"
+            ref={cancelRef}
             onClick={onCancel}
             disabled={loading}
             className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"

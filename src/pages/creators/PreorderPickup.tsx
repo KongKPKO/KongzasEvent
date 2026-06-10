@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Clock3, PackageCheck, Search, Trash2 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import { useI18n } from '../../i18n';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { cancelPreorder, expirePreordersForEvent, getPreorderErrorMessage, markPreorderPickedUp } from '../../lib/preorders';
 import { supabase } from '../../supabaseClient';
@@ -62,6 +63,7 @@ const getStatusClasses = (status: PickupStatus) => {
 };
 
 export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
+  const { language } = useI18n();
   const { eventId } = useParams();
   const navigate = useNavigate();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
@@ -246,7 +248,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       <main className="mx-auto max-w-5xl p-4 md:p-6">
         <button
           onClick={() => navigate('/manage-events')}
-          className="mb-5 inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-600 hover:border-pink-200 hover:text-pink-600"
+          className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-600 hover:border-pink-200 hover:text-pink-600"
         >
           <ArrowLeft size={18} /> Back to events
         </button>
@@ -266,7 +268,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
               <button
                 onClick={() => setConfirmAction({ type: 'expire' })}
                 disabled={stats.awaiting === 0 || actionLoading}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Clock3 size={15} /> Expire remaining
               </button>
@@ -322,12 +324,12 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                   <div className="min-w-0">
                     <div className="text-xs font-black uppercase tracking-[0.14em] text-gray-400">Code</div>
                     <div className="whitespace-nowrap font-mono text-2xl font-black tracking-[0.08em] text-pink-700 md:text-[1.65rem]">{order.pickup_code}</div>
-                    <div className="mt-1 text-[10px] font-bold text-gray-400">{new Date(order.created_at).toLocaleString('en-GB')}</div>
+                    <div className="mt-1 text-[11px] font-bold text-gray-400">{new Date(order.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</div>
                   </div>
                   <div className="min-w-0 md:pl-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="max-w-full truncate text-sm font-black text-gray-900">{order.customer_name}</div>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${getStatusClasses(order.pickup_status)}`}>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-black ${getStatusClasses(order.pickup_status)}`}>
                         {formatPickupStatus(order.pickup_status)}
                       </span>
                     </div>

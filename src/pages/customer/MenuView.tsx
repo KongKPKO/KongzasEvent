@@ -362,7 +362,6 @@ const MenuView = () => {
                 }
                 setUserQueueNumber(queueData.queue_number);
                 setUserQueueStatus(queueData.status);
-                console.log("Customer is Queue:", queueData.queue_number);
             } else {
                // Clear stale id when row missing (deleted server-side) or
                // not from today's service date. Ended-state tickets are
@@ -677,8 +676,8 @@ const MenuView = () => {
     if (!hasValidPreorderEmail) {
       setToast({
         tone: 'warning',
-        title: 'Email required',
-        detail: 'Please enter a valid email address so we can send payment and review updates.',
+        title: t('menuPreorderEmailRequiredToast'),
+        detail: t('menuPreorderEmailRequiredToastDetail'),
       });
       setIsCartOpen(true);
       return;
@@ -909,7 +908,7 @@ const MenuView = () => {
         onCancel={() => setConfirmAction(null)}
       />
        {!isConnected && (
-         <div className="fixed left-0 right-0 top-0 z-[60] mx-auto max-w-md bg-red-500 py-1 text-center text-[10px] font-bold uppercase tracking-widest text-white lg:max-w-none">
+         <div className="fixed left-0 right-0 top-0 z-[60] mx-auto max-w-md bg-red-500 py-1 text-center text-[11px] font-bold uppercase tracking-widest text-white lg:max-w-none">
             {t('customerOffline')}
          </div>
        )}
@@ -930,7 +929,7 @@ const MenuView = () => {
                      </div>
                   )}
                   <div className="min-w-0">
-                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-700">{t('customerNavMerch')}</div>
+                     <div className="text-[11px] font-black uppercase tracking-[0.18em] text-pink-700">{t('customerNavMerch')}</div>
                      <h1 className="truncate text-lg font-black leading-6 text-gray-950">
                         {displayArtist?.display_name || 'Menu'}
                      </h1>
@@ -957,7 +956,7 @@ const MenuView = () => {
                         <span>{userQueueNumber ? `Q #${userQueueNumber}` : t('menuQueueNumber')}</span>
                      </button>
                   )}
-                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[9px] font-black leading-tight lg:max-w-[280px] lg:px-3 lg:py-2 lg:text-left lg:text-[11px] ${
+                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[11px] font-black leading-tight lg:max-w-[280px] lg:px-3 lg:py-2 lg:text-left lg:text-[11px] ${
                      canSubmitSelection
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : 'border-amber-200 bg-amber-50 text-amber-700'
@@ -1023,11 +1022,11 @@ const MenuView = () => {
 
             <div className="mt-3 flex items-center justify-between gap-2">
                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-black text-gray-600">
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-black text-gray-600">
                      {filteredProducts.length} {t('menuItems')}
                   </span>
                   {promoProductCount > 0 && (
-                     <span className="rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-[10px] font-black text-rose-700">
+                     <span className="rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-[11px] font-black text-rose-700">
                         {promoProductCount} {t('menuOnPromo')}
                      </span>
                   )}
@@ -1100,17 +1099,17 @@ const MenuView = () => {
             {hasActiveFilters && (
                <div className="mt-2 flex flex-wrap gap-1.5">
                   {selectedCategory !== 'All' && (
-                     <span className="rounded-full border border-pink-100 bg-pink-50 px-2.5 py-1 text-[10px] font-black text-pink-700">
+                     <span className="rounded-full border border-pink-100 bg-pink-50 px-2.5 py-1 text-[11px] font-black text-pink-700">
                         {t('menuCategory')} {selectedCategory}
                      </span>
                   )}
                   {selectedTag !== 'All' && (
-                     <span className="rounded-full border border-pink-100 bg-white px-2.5 py-1 text-[10px] font-black text-pink-700">
+                     <span className="rounded-full border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-black text-pink-700">
                         {t('menuTag')} {selectedTag}
                      </span>
                   )}
                   {searchQuery.trim() && (
-                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-black text-gray-600">
+                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-black text-gray-600">
                         {t('menuSearch')} {searchQuery.trim()}
                      </span>
                   )}
@@ -1184,9 +1183,9 @@ const MenuView = () => {
                                                     <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-xs text-gray-800 truncate">{product.name}</div>
-                                                        <div className="text-[10px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>
+                                                        <div className="text-[11px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>
                                                         {lineDiscount > 0 && (
-                                                            <div className="mt-0.5 text-[10px] font-bold text-emerald-700">{t('menuNow')} {formatPrice(lineTotal, product.currency)} {t('menuFrom')} {formatPrice(lineSubtotal, product.currency)}</div>
+                                                            <div className="mt-0.5 text-[11px] font-bold text-emerald-700">{t('menuNow')} {formatPrice(lineTotal, product.currency)} {t('menuFrom')} {formatPrice(lineSubtotal, product.currency)}</div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1203,10 +1202,10 @@ const MenuView = () => {
                                                         <div key={`${entry.ruleId}-${entryIndex}`} className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div>
-                                                                    <div className="text-[10px] font-black text-emerald-800">{entry.label}</div>
-                                                                    <div className="text-[10px] text-emerald-700">{entry.freeQuantity > 0 ? t('menuItemFree', { count: entry.freeQuantity }) : t('menuDiscountApplied', { count: entry.affectedQuantity })}</div>
+                                                                    <div className="text-[11px] font-black text-emerald-800">{entry.label}</div>
+                                                                    <div className="text-[11px] text-emerald-700">{entry.freeQuantity > 0 ? t('menuItemFree', { count: entry.freeQuantity }) : t('menuDiscountApplied', { count: entry.affectedQuantity })}</div>
                                                                 </div>
-                                                                <div className="text-[10px] font-black text-emerald-700">- {formatPrice(entry.discountAmount, product.currency)}</div>
+                                                                <div className="text-[11px] font-black text-emerald-700">- {formatPrice(entry.discountAmount, product.currency)}</div>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1219,7 +1218,7 @@ const MenuView = () => {
 
                             {pricing.appliedPromotions.length > 0 && (
                                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-800 mb-2">
+                                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2">
                                         <Sparkles size={12} /> {t('menuAppliedPromotions')}
                                     </div>
                                     <div className="space-y-1.5">
@@ -1227,7 +1226,7 @@ const MenuView = () => {
                                             <div key={promotion.ruleId} className="flex items-start justify-between gap-2 rounded-lg bg-white/90 border border-emerald-100 px-2 py-1.5">
                                                 <div>
                                                     <div className="text-[11px] font-bold text-gray-800">{promotion.label}</div>
-                                                    <div className="text-[10px] text-gray-600">{promotion.message}</div>
+                                                    <div className="text-[11px] text-gray-600">{promotion.message}</div>
                                                 </div>
                                                 <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discountAmount, cartCurrency)}</div>
                                             </div>
@@ -1256,7 +1255,7 @@ const MenuView = () => {
                             {isPreorderMode && (
                                 <div className="mt-3 rounded-lg border border-pink-100 bg-pink-50/70 p-2.5 space-y-2">
                                     <label className="block">
-                                        <span className="text-[10px] font-black uppercase tracking-wide text-pink-700">{t('menuPreorderName')}</span>
+                                        <span className="text-[11px] font-black uppercase tracking-wide text-pink-700">{t('menuPreorderName')}</span>
                                         <input
                                             value={preorderCustomer.name}
                                             onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, name: e.target.value }))}
@@ -1265,35 +1264,35 @@ const MenuView = () => {
                                         />
                                     </label>
                                     <div>
-                                        <div className="text-[10px] font-black uppercase tracking-wide text-gray-600">Email required</div>
+                                        <div className="text-[11px] font-black uppercase tracking-wide text-gray-600">{t('menuPreorderEmailLabel')}</div>
                                         <div className="mt-1 grid gap-2">
                                             <input
                                                 value={preorderCustomer.email}
                                                 onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, email: e.target.value }))}
-                                                placeholder="Email"
+                                                placeholder={t('menuPreorderEmailPlaceholder')}
                                                 inputMode="email"
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                             <input
                                                 value={preorderCustomer.phone}
                                                 onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }))}
-                                                placeholder="Phone (optional)"
+                                                placeholder={t('menuPreorderPhonePlaceholder')}
                                                 inputMode="tel"
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                             <input
                                                 value={preorderCustomer.social}
                                                 onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, social: e.target.value }))}
-                                                placeholder="LINE, Instagram, X, or other social (optional)"
+                                                placeholder={t('menuPreorderSocialPlaceholder')}
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                         </div>
                                         {!hasValidPreorderEmail && (
-                                            <div className="mt-1 text-[10px] font-bold text-amber-700">Enter a valid email. Phone and social are optional.</div>
+                                            <div className="mt-1 text-xs font-bold text-amber-700">{t('menuPreorderEmailInvalid')}</div>
                                         )}
                                     </div>
                                     <label className="block">
-                                        <span className="text-[10px] font-black uppercase tracking-wide text-gray-600">{t('menuPreorderNote')}</span>
+                                        <span className="text-[11px] font-black uppercase tracking-wide text-gray-600">{t('menuPreorderNote')}</span>
                                         <textarea
                                             value={preorderCustomer.note}
                                             onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, note: e.target.value }))}
@@ -1306,7 +1305,7 @@ const MenuView = () => {
                             )}
 
                             <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canSubmitSelection ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                                <div className={`text-[10px] font-black uppercase tracking-wide ${canSubmitSelection ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                <div className={`text-[11px] font-black uppercase tracking-wide ${canSubmitSelection ? 'text-emerald-800' : 'text-amber-800'}`}>
                                     {canSubmitSelection ? orderStatusReadyLabel : orderStatusWaitingLabel}
                                 </div>
                                 <div className={`mt-1 text-[11px] leading-relaxed ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>
@@ -1326,7 +1325,7 @@ const MenuView = () => {
                                     <div className="truncate text-xs font-bold text-pink-900">{t('menuPreorderActiveBanner')}</div>
                                     <div className="font-mono text-sm font-black tracking-[0.14em] text-gray-950">{preorderReceipt.pickupCode}</div>
                                 </div>
-                                <span className="inline-flex min-h-9 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
+                                <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
                                     {t('menuPreorderViewStatus')}
                                 </span>
                             </Link>
@@ -1350,7 +1349,7 @@ const MenuView = () => {
                                         <CheckCircle size={22} className="text-green-600" />
                                         <div>
                                             <div className="text-sm font-black text-green-800">{t('menuOrderCompleted')}</div>
-                                            <div className="text-[10px] text-green-600">{t('menuOrderCompletedThanks')}</div>
+                                            <div className="text-[11px] text-green-600">{t('menuOrderCompletedThanks')}</div>
                                         </div>
                                     </div>
                                     <button 
@@ -1367,10 +1366,10 @@ const MenuView = () => {
                                         <CheckCircle size={20} className="text-green-600" />
                                         <div>
                                             <div className="text-xs font-black text-green-800">{t('menuOrderSent')}</div>
-                                            <div className="text-[10px] text-green-600">{t('menuWaitForQueue')}</div>
+                                            <div className="text-[11px] text-green-600">{t('menuWaitForQueue')}</div>
                                         </div>
                                     </div>
-                                    <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-11 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[10px] font-bold text-red-600 shadow-sm hover:bg-red-50">
+                                    <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-11 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[11px] font-bold text-red-600 shadow-sm hover:bg-red-50">
                                         <Trash2 size={12} /> {t('menuCancel')}
                                     </button>
                                 </div>
@@ -1378,12 +1377,12 @@ const MenuView = () => {
                         ) : (
                             <>
                                 <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left lg:cursor-default">
-                                    <div className="flex items-center gap-1 text-gray-600 text-[9px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span><span className="lg:hidden">{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="cart-chevron-nudge"/>}</span></div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[10px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
+                                    <div className="flex items-center gap-1 text-gray-600 text-[11px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span><span className="lg:hidden">{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="cart-chevron-nudge"/>}</span></div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[11px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
                                     {pricing.discountTotal > 0 && (
-                                        <div className="text-[10px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(pricing.discountTotal, cartCurrency)}</div>
+                                        <div className="text-[11px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(pricing.discountTotal, cartCurrency)}</div>
                                     )}
-                                    <div className={`mt-0.5 text-[10px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
+                                    <div className={`mt-0.5 text-[11px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
                                 </button>
                                 <button
                                     onClick={handleConfirmOrder}

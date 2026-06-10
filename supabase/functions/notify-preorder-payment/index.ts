@@ -209,6 +209,10 @@ function buildPreorderEmail(
     return `${Number(item.quantity || 0)}x ${productName || "Item"}`;
   });
   const locationLine = [eventInfo.location, eventInfo.boothDetail].filter(Boolean).join(" · ");
+  const siteUrl = (Deno.env.get("PUBLIC_SITE_URL") || "").replace(/\/$/, "");
+  const orderUrl = siteUrl && eventInfo.artistSlug && pickupCode
+    ? `${siteUrl}/${eventInfo.artistSlug}/order/${encodeURIComponent(pickupCode)}`
+    : "";
 
   if (event === "confirmed") {
     return renderMessage({
@@ -221,6 +225,7 @@ function buildPreorderEmail(
       amount,
       locationLine,
       itemLines,
+      orderUrl,
       note: String(order.pickup_instructions || "Show your pickup code to the booth staff."),
     });
   }
@@ -236,6 +241,7 @@ function buildPreorderEmail(
       amount,
       locationLine,
       itemLines,
+      orderUrl,
       note: String(payment.review_note || "Please contact the seller before placing a new pre-order."),
     });
   }
@@ -250,6 +256,7 @@ function buildPreorderEmail(
     amount,
     locationLine,
     itemLines,
+    orderUrl,
     note: "We will email you again after the seller confirms or rejects the payment.",
   });
 }
@@ -264,6 +271,7 @@ function renderMessage(input: {
   amount: string;
   locationLine: string;
   itemLines: string[];
+  orderUrl?: string;
   note: string;
 }) {
   const itemsHtml = input.itemLines.length
@@ -279,6 +287,7 @@ function renderMessage(input: {
     `Pickup code: ${input.pickupCode}`,
     `Amount: ${input.amount}`,
     input.locationLine ? `Location: ${input.locationLine}` : "",
+    input.orderUrl ? `Track your order: ${input.orderUrl}` : "",
     "",
     "Items:",
     ...(input.itemLines.length ? input.itemLines.map((line) => `- ${line}`) : ["-"]),
@@ -297,6 +306,7 @@ function renderMessage(input: {
         <p style="margin:0"><strong>Amount:</strong> ${escapeHtml(input.amount)}</p>
       </div>
       ${input.locationLine ? `<p><strong>Location:</strong> ${escapeHtml(input.locationLine)}</p>` : ""}
+      ${input.orderUrl ? `<p style="margin:16px 0"><a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#db2777;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 20px;border-radius:12px">Track your order</a></p>` : ""}
       <h2 style="font-size:14px;margin:18px 0 8px">Items</h2>
       ${itemsHtml}
       <p style="white-space:pre-wrap;color:#4b5563">${escapeHtml(input.note)}</p>
@@ -316,6 +326,7 @@ function getEventInfo(order: Record<string, unknown>) {
     location: String(value?.location || ""),
     boothDetail: String(value?.booth_detail || ""),
     artistName: String(artistValue?.display_name || ""),
+    artistSlug: String(artistValue?.slug || ""),
   };
 }
 

@@ -15,6 +15,7 @@ import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
 const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
+const OrderStatus = lazy(() => import('./pages/customer/OrderStatus'));
 import QueueView from './pages/customer/QueueView';
 import ResetPassword from './pages/ResetPassword';
 import CreatorRegister from './pages/CreatorRegister';
@@ -129,7 +130,7 @@ function App() {
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
   const isCustomerRoute = typeof window !== 'undefined'
-    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos)/.test(window.location.pathname)
+    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order)/.test(window.location.pathname)
     : false;
   const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
 
@@ -248,6 +249,7 @@ function App() {
             <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />
 
+            <Route path="/:slug/order/:code" element={<OrderStatus />} />
             <Route path="/:slug" element={<CustomerLayout />}>
               <Route path="home" element={<CustomerHome />} />
               <Route path="menu" element={<MenuView />} />

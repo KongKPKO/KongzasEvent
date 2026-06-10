@@ -11,6 +11,7 @@ import type {
   MarkPreorderPickedUpResult,
   PreorderNotificationEvent,
   PublicOrderReceipt,
+  PublicPreorderDetail,
   SubmitPaymentEvidenceResult,
 } from '../types/preorder';
 
@@ -233,6 +234,17 @@ export const expirePreordersForEvent = async (eventId: string) => {
     error,
     'preorder_expire_response_missing'
   );
+};
+
+export const getPublicPreorderByCode = async (artistSlug: string, pickupCode: string) => {
+  const { data, error } = await supabase.rpc('get_public_preorder_by_code', {
+    p_artist_slug: artistSlug,
+    p_pickup_code: pickupCode,
+  });
+
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row || null) as PublicPreorderDetail | null;
 };
 
 export const getPublicOrderReceipt = async (orderId: string, pickupCode: string) => {

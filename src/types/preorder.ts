@@ -107,6 +107,39 @@ export interface PublicOrderReceipt {
   payment_deadline_at: string | null;
 }
 
+export interface PublicPreorderItem {
+  product_id: string;
+  name: string;
+  quantity: number;
+  price_per_unit: number;
+  currency: string;
+}
+
+export interface PublicPreorderDetail {
+  order_id: string;
+  event_id: string;
+  event_name: string;
+  status: string;
+  pickup_status: PickupStatus;
+  pickup_code: string;
+  customer_name: string;
+  customer_email_masked: string;
+  total_price: number;
+  currency: string;
+  pickup_instructions: string;
+  payment_status: PaymentStatus;
+  slip_url: string | null;
+  submitted_at: string | null;
+  confirmed_at: string | null;
+  rejected_at: string | null;
+  review_note: string | null;
+  payment_methods: PreorderPaymentMethod[];
+  payment_deadline_at: string | null;
+  created_at: string;
+  picked_up_at: string | null;
+  items: PublicPreorderItem[];
+}
+
 export interface PreorderProductionSummaryRow {
   product_id: string;
   product_name: string;

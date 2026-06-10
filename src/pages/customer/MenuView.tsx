@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
-import { useOutletContext, useNavigate, useParams } from 'react-router-dom';
+import { Link, useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -13,12 +13,8 @@ import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
-  cancelCustomerPreorderBeforePayment,
   createPreorder,
   getPreorderErrorMessage,
-  notifyPreorderPayment,
-  submitPaymentEvidence,
-  uploadPaymentEvidence,
 } from '../../lib/preorders';
 import {
   TICKET_UPDATED_EVENT,
@@ -147,11 +143,9 @@ const MenuView = () => {
   });
   const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', note: '' });
   const [preorderReceipt, setPreorderReceipt] = useState<PreorderReceiptState | null>(null);
-  const [paymentSlipFile, setPaymentSlipFile] = useState<File | null>(null);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
-  const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | 'cancel_preorder' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
   const clearCart = () => {
     setCart({});
     setCartItemNames({});
@@ -475,7 +469,7 @@ const MenuView = () => {
   };
 
   const updateQuantity = (productId: string, delta: number, productName?: string) => {
-    if (isOrderSent || preorderReceipt) return;
+    if (isOrderSent) return;
     setCart(prev => {
       const current = prev[productId] || 0;
       const product = productById.get(productId);
@@ -723,62 +717,12 @@ const MenuView = () => {
       }
       setIsCartOpen(false);
       clearCart();
-      setToast({ tone: 'success', title: t('menuPreorderSentToast'), detail: t('menuPreorderSentDetail') });
+      navigate(`/${displayArtist?.slug || slug}/order/${result.pickup_code}`);
     } catch (err) {
       setToast({ tone: 'error', title: t('menuPreorderFailed'), detail: getPreorderErrorMessage(err) });
       console.error(err);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleSubmitPaymentEvidence = async () => {
-    if (!selectedEvent?.id || !preorderReceipt || !paymentSlipFile) {
-      setToast({ tone: 'warning', title: 'Payment evidence required', detail: 'Please choose your transfer slip before submitting.' });
-      return;
-    }
-
-    setPaymentSubmitting(true);
-    try {
-      const slipPath = await uploadPaymentEvidence({
-        eventId: selectedEvent.id,
-        orderId: preorderReceipt.orderId,
-        pickupCode: preorderReceipt.pickupCode,
-        file: paymentSlipFile,
-      });
-      const result = await submitPaymentEvidence({
-        orderId: preorderReceipt.orderId,
-        pickupCode: preorderReceipt.pickupCode,
-        slipUrl: slipPath,
-        clientRequestId: createClientRequestId(),
-      });
-      const nextReceipt: PreorderReceiptState = {
-        ...preorderReceipt,
-        paymentStatus: result.payment_status,
-        submittedAt: result.submitted_at,
-      };
-      setPreorderReceipt(nextReceipt);
-      setPaymentSlipFile(null);
-      if (preorderReceiptStorageKey) {
-        localStorage.setItem(preorderReceiptStorageKey, JSON.stringify(nextReceipt));
-      }
-      const { error: notifyError } = await notifyPreorderPayment({
-        orderId: preorderReceipt.orderId,
-        pickupCode: preorderReceipt.pickupCode,
-        event: 'submitted',
-      });
-      setToast({
-        tone: notifyError ? 'warning' : 'success',
-        title: 'Payment submitted',
-        detail: notifyError
-          ? 'Your items are reserved while the seller checks the transfer. Email delivery failed, but the pre-order is still submitted.'
-          : 'Your items are reserved while the seller checks the transfer. We sent the order details to your email.',
-      });
-    } catch (error) {
-      setToast({ tone: 'error', title: 'Payment submit failed', detail: getPreorderErrorMessage(error) });
-      console.error(error);
-    } finally {
-      setPaymentSubmitting(false);
     }
   };
 
@@ -938,40 +882,7 @@ const MenuView = () => {
   const handleStartNewPreorder = () => {
     if (preorderReceiptStorageKey) localStorage.removeItem(preorderReceiptStorageKey);
     setPreorderReceipt(null);
-    setPaymentSlipFile(null);
   };
-
-  const handleCancelPreorderBeforePayment = () => {
-    if (!preorderReceipt) return;
-    setConfirmAction('cancel_preorder');
-  };
-
-  const cancelConfirmedPreorder = async () => {
-    if (!preorderReceipt) return;
-    setConfirmAction(null);
-    setSubmitting(true);
-    try {
-      await cancelCustomerPreorderBeforePayment(preorderReceipt.orderId, preorderReceipt.pickupCode);
-      handleStartNewPreorder();
-      setToast({
-        tone: 'success',
-        title: 'Pre-order cancelled',
-        detail: 'Your pending pre-order was cancelled before payment evidence was submitted.',
-      });
-    } catch (error) {
-      setToast({ tone: 'error', title: 'Cancel failed', detail: getPreorderErrorMessage(error) });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const preorderPaymentMethod = preorderReceipt?.paymentMethods.find((method) => method.is_enabled) || preorderReceipt?.paymentMethods[0] || null;
-  const preorderPaymentSubmitted = preorderReceipt?.paymentStatus === 'payment_submitted' || preorderReceipt?.paymentStatus === 'payment_confirmed';
-  const preorderPaymentConfirmed = preorderReceipt?.paymentStatus === 'payment_confirmed';
-  const preorderCanCancelBeforePayment = preorderReceipt?.paymentStatus === 'awaiting_payment';
-  const preorderCanStartOver = preorderReceipt
-    ? ['payment_rejected', 'payment_expired', 'payment_cancelled'].includes(preorderReceipt.paymentStatus)
-    : false;
 
   if (loading) return <main className="p-8 text-center text-gray-600">{t('menuLoading')}</main>;
 
@@ -997,17 +908,6 @@ const MenuView = () => {
         onConfirm={cancelConfirmedOrder}
         onCancel={() => setConfirmAction(null)}
       />
-      <ConfirmDialog
-        open={confirmAction === 'cancel_preorder'}
-        title="Cancel pre-order?"
-        detail="This will remove the pending pre-order before payment evidence is submitted. You can place a new one afterwards."
-        confirmLabel="Cancel pre-order"
-        tone="danger"
-        loading={submitting}
-        onConfirm={cancelConfirmedPreorder}
-        onCancel={() => setConfirmAction(null)}
-      />
-       
        {!isConnected && (
          <div className="fixed left-0 right-0 top-0 z-[60] mx-auto max-w-md bg-red-500 py-1 text-center text-[10px] font-bold uppercase tracking-widest text-white lg:max-w-none">
             {t('customerOffline')}
@@ -1228,7 +1128,7 @@ const MenuView = () => {
                   products={filteredProducts}
                   promotions={promotions}
                   cart={cart}
-                  isOrderSent={isOrderSent || Boolean(preorderReceipt)}
+                  isOrderSent={isOrderSent}
                   onUpdateQuantity={updateQuantity}
                   onClearFilters={clearFilters}
               />
@@ -1259,11 +1159,11 @@ const MenuView = () => {
           {/* --- CONFIRM ORDER BAR / DESKTOP CHECKOUT PANEL --- */}
           {(totalItems > 0 || isOrderSent || preorderReceipt) && (
             <>
-                {isCartOpen && !isOrderSent && !preorderReceipt && (
+                {isCartOpen && !isOrderSent && (
                     <div className="fixed inset-0 z-[80] mx-auto max-w-md animate-fade-in bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsCartOpen(false)} />
                 )}
-                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${(isOrderSent || preorderReceipt) ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
-                    {!isOrderSent && !preorderReceipt && (
+                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                    {!isOrderSent && totalItems > 0 && (
                         <div className={`${isCartOpen ? 'block' : 'hidden'} max-h-[62vh] overflow-y-auto rounded-t-xl border-b border-gray-100 bg-white p-3 animate-slide-up lg:block lg:max-h-[calc(100vh-15rem)] lg:rounded-t-3xl lg:p-4`}>
                             <div className="flex justify-between items-center mb-3 sticky top-0 bg-white z-10 pb-2 border-b border-gray-50">
                                 <h2 className="font-bold text-gray-800 text-sm">{t('menuYourOrder')} <span className="text-pink-700 text-xs font-semibold">({totalItems} {t('menuItems')})</span></h2>
@@ -1415,78 +1315,34 @@ const MenuView = () => {
                             </div>
                         </div>
                     )}
-                    <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:border-t lg:border-pink-50 lg:p-4">
-                        {preorderReceipt ? (
-                            <div className={`flex-1 animate-fade-in rounded-xl border px-3 py-2 ${preorderPaymentConfirmed ? 'border-green-200 bg-green-50' : preorderPaymentSubmitted ? 'border-amber-200 bg-amber-50' : 'border-pink-200 bg-pink-50'}`}>
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className={`flex items-center gap-1.5 text-xs font-black ${preorderPaymentConfirmed ? 'text-green-800' : preorderPaymentSubmitted ? 'text-amber-800' : 'text-pink-800'}`}>
-                                            <CheckCircle size={16} className={`shrink-0 ${preorderPaymentConfirmed ? 'text-green-600' : preorderPaymentSubmitted ? 'text-amber-600' : 'text-pink-600'}`} />
-                                            <span>{preorderPaymentConfirmed ? 'Payment confirmed' : preorderPaymentSubmitted ? 'Payment under review' : 'Pre-order created'}</span>
-                                        </div>
-                                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">Reference code</div>
-                                        <div className="font-mono text-lg font-black tracking-[0.16em] text-gray-950">{preorderReceipt.pickupCode}</div>
-                                        {preorderPaymentConfirmed ? (
-                                            <div className="mt-1 text-[10px] text-green-700">
-                                                {preorderReceipt.pickupInstructions || t('menuPreorderDefaultInstructions')}
-                                            </div>
-                                        ) : preorderPaymentSubmitted ? (
-                                            <div className="mt-1 text-[10px] text-amber-700">
-                                                Your items are reserved. Wait for the seller to confirm payment before pickup.
-                                            </div>
-                                        ) : (
-                                            <div className="mt-2 space-y-2">
-                                                <div className="rounded-lg border border-white/80 bg-white/80 px-2 py-1.5 text-[10px] font-bold text-gray-700">
-                                                    <div className="font-black text-gray-900">{formatPrice(preorderReceipt.totalPrice, preorderReceipt.currency)}</div>
-                                                    {preorderPaymentMethod ? (
-                                                        <div>
-                                                            <div>{preorderPaymentMethod.display_name || 'Payment method'}</div>
-                                                            {preorderPaymentMethod.promptpay_id && <div>PromptPay: {preorderPaymentMethod.promptpay_id}</div>}
-                                                            {preorderPaymentMethod.account_number && <div>{preorderPaymentMethod.account_name || 'Account'}: {preorderPaymentMethod.account_number}</div>}
-                                                            {preorderPaymentMethod.instructions && <div className="mt-1 text-gray-500">{preorderPaymentMethod.instructions}</div>}
-                                                        </div>
-                                                    ) : (
-                                                        <div>Seller has not added payment instructions yet. Contact seller before transfer.</div>
-                                                    )}
-                                                </div>
-                                                <input
-                                                    type="file"
-                                                    accept="image/*,.pdf"
-                                                    onChange={(event) => setPaymentSlipFile(event.target.files?.[0] || null)}
-                                                    className="block w-full text-[10px] font-bold text-gray-700 file:mr-2 file:min-h-9 file:rounded-lg file:border-0 file:bg-white file:px-3 file:text-[10px] file:font-black file:text-pink-700"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSubmitPaymentEvidence}
-                                                    disabled={!paymentSlipFile || paymentSubmitting}
-                                                    className="min-h-10 w-full rounded-xl bg-pink-600 px-3 text-xs font-black text-white shadow-sm hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    {paymentSubmitting ? 'Submitting...' : 'Submit payment evidence'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                        <div className="text-[10px] font-bold text-gray-500">{t('menuTotal')}</div>
-                                        <div className="text-sm font-black text-gray-950">{formatPrice(preorderReceipt.totalPrice, preorderReceipt.currency)}</div>
-                                        {preorderCanCancelBeforePayment && (
-                                            <button
-                                                type="button"
-                                                onClick={handleCancelPreorderBeforePayment}
-                                                className="mt-2 inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-red-700 hover:bg-red-50"
-                                            >
-                                                <XCircle size={13} /> Cancel
-                                            </button>
-                                        )}
-                                        {preorderCanStartOver && (
-                                            <button onClick={handleStartNewPreorder} className="mt-2 min-h-11 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-gray-700">
-                                                {t('menuPreorderNew')}
-                                            </button>
-                                        )}
-                                    </div>
+                    {preorderReceipt && (
+                        <div className="flex min-h-12 items-center gap-2 border-b border-pink-100 bg-pink-50/80 px-3 py-2">
+                            <Link
+                                to={`/${displayArtist?.slug || slug}/order/${preorderReceipt.pickupCode}`}
+                                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 hover:bg-pink-100/70"
+                            >
+                                <CheckCircle size={16} className="shrink-0 text-pink-600" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate text-xs font-bold text-pink-900">{t('menuPreorderActiveBanner')}</div>
+                                    <div className="font-mono text-sm font-black tracking-[0.14em] text-gray-950">{preorderReceipt.pickupCode}</div>
                                 </div>
-                            </div>
-                        ) : isOrderSent ? (
+                                <span className="inline-flex min-h-9 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
+                                    {t('menuPreorderViewStatus')}
+                                </span>
+                            </Link>
+                            <button
+                                type="button"
+                                onClick={handleStartNewPreorder}
+                                aria-label={t('menuPreorderNew')}
+                                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-pink-100 bg-white text-gray-500 hover:bg-pink-50"
+                            >
+                                <XCircle size={16} />
+                            </button>
+                        </div>
+                    )}
+                    {(totalItems > 0 || isOrderSent) && (
+                    <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:border-t lg:border-pink-50 lg:p-4">
+                        {isOrderSent ? (
                             isOrderCompleted ? (
                                 // ✅ ORDER COMPLETED UI
                                 <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-100 px-3 py-2 rounded-lg border border-green-200">
@@ -1542,6 +1398,7 @@ const MenuView = () => {
                             </>
                         )}
                     </div>
+                    )}
                 </div>
             </>
           )}

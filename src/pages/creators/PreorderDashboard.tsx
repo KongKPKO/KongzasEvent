@@ -365,6 +365,9 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
                 <div className="truncate text-xs font-bold text-gray-500">
                   {slipPreview.order.pickup_code} · {slipPreview.order.customer_name}
                 </div>
+                <div className="mt-0.5 text-base font-black text-gray-950">
+                  Amount expected: {formatPrice(slipPreview.order.total_price, slipPreview.order.currency)}
+                </div>
               </div>
               <button
                 ref={slipCloseRef}
@@ -380,9 +383,35 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
               <img
                 src={slipPreview.url}
                 alt={`Payment slip for ${slipPreview.order.pickup_code}`}
-                className="mx-auto max-h-[72vh] max-w-full rounded-xl bg-white object-contain shadow-sm"
+                className="mx-auto max-h-[64vh] max-w-full rounded-xl bg-white object-contain shadow-sm"
               />
             </div>
+            {slipPreview.order.payment_status === 'payment_submitted' && (
+              <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const order = slipPreview.order;
+                    setSlipPreview(null);
+                    setReviewAction({ type: 'reject', order });
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-black text-red-700 hover:bg-red-100"
+                >
+                  <XCircle size={15} /> Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const order = slipPreview.order;
+                    setSlipPreview(null);
+                    setReviewAction({ type: 'confirm', order });
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-black text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle size={15} /> Confirm
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

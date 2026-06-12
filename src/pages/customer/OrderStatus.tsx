@@ -160,7 +160,12 @@ const OrderStatus: React.FC = () => {
 
   const terminal = detail
     && ['payment_rejected', 'payment_expired', 'payment_cancelled'].includes(detail.payment_status);
+  // The submit RPC accepts re-submission from rejected/expired (it re-reserves stock),
+  // so those states get the payment + upload section back instead of a dead end.
+  const canResubmit = Boolean(detail
+    && ['payment_rejected', 'payment_expired'].includes(detail.payment_status));
   const pickedUp = detail?.pickup_status === 'picked_up';
+  const codeShowableAtBooth = detail?.payment_status === 'payment_confirmed' || pickedUp;
 
   const formatDate = (value: string | null) => (value
     ? new Date(value).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
@@ -273,14 +278,14 @@ const OrderStatus: React.FC = () => {
         ) : (
           <>
             {/* Step indicator */}
-            <nav aria-label={t('orderPageTitle')} className="rounded-2xl border border-pink-100 bg-white p-4">
+            <nav aria-label={t('orderStepsLabel')} className="rounded-2xl border border-pink-100 bg-white p-4">
               <ol className="flex items-start">
                 {steps.map((label, index) => {
                   const done = !terminal && stepIndex > index;
                   const current = !terminal && stepIndex === index;
                   const broken = terminal && index >= 1;
                   return (
-                    <li key={label} className="relative flex flex-1 flex-col items-center text-center">
+                    <li key={label} aria-current={current ? 'step' : undefined} className="relative flex flex-1 flex-col items-center text-center">
                       {index > 0 && (
                         <span
                           aria-hidden
@@ -324,12 +329,24 @@ const OrderStatus: React.FC = () => {
                   </div>
                 </div>
                 {terminal && (
-                  <Link
-                    to={`/${slug}/menu`}
-                    className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-pink-600 px-4 text-sm font-black text-white hover:bg-pink-700"
-                  >
-                    {t('orderOrderAgain')}
-                  </Link>
+                  <div className="mt-3 grid gap-2">
+                    {detail.artist_facebook_url && (
+                      <a
+                        href={detail.artist_facebook_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-black text-gray-800 hover:bg-gray-50"
+                      >
+                        {t('orderContactSeller')} · {detail.artist_name}
+                      </a>
+                    )}
+                    <Link
+                      to={`/${slug}/menu`}
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-pink-600 px-4 text-sm font-black text-white hover:bg-pink-700"
+                    >
+                      {t('orderOrderAgain')}
+                    </Link>
+                  </div>
                 )}
               </section>
             )}
@@ -337,9 +354,13 @@ const OrderStatus: React.FC = () => {
             {/* Pickup code */}
             {!terminal && (
               <section className="rounded-2xl border border-pink-100 bg-white p-4 text-center">
-                <div className="text-xs font-black uppercase tracking-wide text-gray-500">{t('orderCodeLabel')}</div>
+                <div className="text-xs font-black uppercase tracking-wide text-gray-500">
+                  {codeShowableAtBooth ? t('orderCodeLabel') : t('orderCodePendingLabel')}
+                </div>
                 <div className="mt-1 font-mono text-3xl font-black tracking-[0.18em] text-gray-950">{detail.pickup_code}</div>
-                <p className="mt-1 text-sm font-medium text-gray-600">{t('orderShowCodeHint')}</p>
+                <p className="mt-1 text-sm font-medium text-gray-600">
+                  {codeShowableAtBooth ? t('orderShowCodeHint') : t('orderCodePendingHint')}
+                </p>
                 <button
                   type="button"
                   onClick={handleCopyLink}
@@ -366,10 +387,15 @@ const OrderStatus: React.FC = () => {
             )}
 
             {/* Payment instructions + slip upload */}
-            {awaitingPayment && (
+            {(awaitingPayment || canResubmit) && (
               <section className="rounded-2xl border border-pink-100 bg-white p-4">
                 <h2 className="text-sm font-black text-gray-900">{t('orderPayTitle')}</h2>
-                {detail.payment_deadline_at && (
+                {canResubmit && (
+                  <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">
+                    {t('orderResubmitNote')}
+                  </div>
+                )}
+                {awaitingPayment && detail.payment_deadline_at && (
                   <div className={`mt-2 rounded-xl border px-3 py-2 text-sm font-bold ${deadlinePassed ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                     {deadlinePassed
                       ? t('orderPayDeadlinePassed')
@@ -456,15 +482,17 @@ const OrderStatus: React.FC = () => {
                     disabled={!slipFile || submitting}
                     className="mt-3 min-h-12 w-full rounded-xl bg-pink-600 px-4 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {submitting ? t('orderSubmitting') : t('orderSubmitSlip')}
+                    {submitting ? t('orderSubmitting') : canResubmit ? t('orderSubmitNewSlip') : t('orderSubmitSlip')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCancelOpen(true)}
-                    className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-700 hover:bg-red-50"
-                  >
-                    <XCircle size={15} /> {t('orderCancelOrder')}
-                  </button>
+                  {awaitingPayment && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelOpen(true)}
+                      className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-700 hover:bg-red-50"
+                    >
+                      <XCircle size={15} /> {t('orderCancelOrder')}
+                    </button>
+                  )}
                 </div>
               </section>
             )}

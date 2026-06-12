@@ -1325,7 +1325,7 @@ const MenuView = () => {
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                         </div>
-                                        {!hasValidPreorderEmail && (
+                                        {preorderCustomer.email.trim().length > 0 && !hasValidPreorderEmail && (
                                             <div className="mt-1 text-xs font-bold text-amber-700">{t('menuPreorderEmailInvalid')}</div>
                                         )}
                                     </div>

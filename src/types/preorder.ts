@@ -119,6 +119,8 @@ export interface PublicPreorderDetail {
   order_id: string;
   event_id: string;
   event_name: string;
+  artist_name: string;
+  artist_facebook_url: string | null;
   status: string;
   pickup_status: PickupStatus;
   pickup_code: string;

@@ -80,7 +80,29 @@ export default function PreorderSettings() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDraft>(emptyPaymentMethod);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [qrUploading, setQrUploading] = useState(false);
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+
+  const handleQrUpload = async (file: File | null) => {
+    if (!file || !event?.artist_id) return;
+    setQrUploading(true);
+    try {
+      const extension = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+      const path = `${event.artist_id}/payment-qr-${eventId}-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('Avatar').upload(path, file, {
+        contentType: file.type || 'image/png',
+        upsert: true,
+      });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path);
+      updatePaymentMethod('qr_image_url', publicUrl);
+      setToast({ tone: 'success', title: 'QR image uploaded', detail: 'Remember to save payment settings.' });
+    } catch (error) {
+      setToast({ tone: 'error', title: 'QR upload failed', detail: error instanceof Error ? error.message : 'Could not upload the image.' });
+    } finally {
+      setQrUploading(false);
+    }
+  };
 
   const loadSettings = async () => {
     if (!eventId) return;
@@ -456,15 +478,36 @@ export default function PreorderSettings() {
                     </label>
                   </div>
 
-                  <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">QR image URL</span>
-                    <input
-                      value={paymentMethod.qr_image_url}
-                      onChange={(e) => updatePaymentMethod('qr_image_url', e.target.value)}
-                      placeholder="Optional image URL for PromptPay/transfer QR"
-                      className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                    />
-                  </label>
+                  <div className="grid gap-2">
+                    <span className="text-sm font-black text-gray-700">Payment QR image</span>
+                    {paymentMethod.qr_image_url ? (
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={paymentMethod.qr_image_url}
+                          alt="Payment QR preview"
+                          className="h-28 w-28 rounded-xl border border-pink-100 bg-white object-contain"
+                        />
+                        <div className="grid gap-2">
+                          <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 px-4 text-sm font-black text-pink-700 hover:bg-pink-100">
+                            {qrUploading ? 'Uploading…' : 'Replace image'}
+                            <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => updatePaymentMethod('qr_image_url', '')}
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-600 hover:bg-gray-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50">
+                        {qrUploading ? 'Uploading…' : 'Upload PromptPay / transfer QR image'}
+                        <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
+                      </label>
+                    )}
+                  </div>
 
                   <label className="grid gap-2">
                     <span className="text-sm font-black text-gray-700">Extra instructions</span>

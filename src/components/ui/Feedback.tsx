@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { useI18n } from '../../i18n';
 
 interface ToastMessage {
   tone?: 'info' | 'success' | 'warning' | 'error';
@@ -34,6 +35,7 @@ const toneClasses = {
 };
 
 export function Toast({ message, onClose }: ToastProps) {
+  const { t } = useI18n();
   if (!message) return null;
 
   return (
@@ -44,8 +46,8 @@ export function Toast({ message, onClose }: ToastProps) {
             <div className="text-sm font-black">{message.title}</div>
             {message.detail && <div className="mt-0.5 whitespace-pre-line text-xs font-medium opacity-90">{message.detail}</div>}
           </div>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-md px-2 py-1 min-h-9 text-xs font-bold opacity-70 hover:opacity-100">
-            Close
+          <button type="button" onClick={onClose} className="min-h-11 shrink-0 rounded-md px-3 text-xs font-bold opacity-70 hover:opacity-100">
+            {t('commonClose')}
           </button>
         </div>
       </div>
@@ -58,15 +60,17 @@ export function ConfirmDialog({
   title,
   detail,
   children,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   tone = 'default',
   loading = false,
   confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -81,9 +85,14 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <h2 className="text-lg font-black text-gray-900">{title}</h2>
+        <h2 id={titleId} className="text-lg font-black text-gray-900">{title}</h2>
         {detail && <p className="mt-2 whitespace-pre-line text-sm font-medium text-gray-600">{detail}</p>}
         {children}
         <div className="mt-5 grid grid-cols-2 gap-2">
@@ -92,19 +101,19 @@ export function ConfirmDialog({
             ref={cancelRef}
             onClick={onCancel}
             disabled={loading}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            className="min-h-11 rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
           >
-            {cancelLabel}
+            {cancelLabel ?? t('commonCancel')}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             disabled={loading || confirmDisabled}
-            className={`rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
+            className={`min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
               tone === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-pink-600 hover:bg-pink-700'
             }`}
           >
-            {loading ? 'Working…' : confirmLabel}
+            {loading ? t('commonWorking') : (confirmLabel ?? t('commonConfirm'))}
           </button>
         </div>
       </div>

@@ -91,8 +91,20 @@ export const clearStoredTicketId = (artistId: string | undefined | null): void =
   dispatchTicketUpdated();
 };
 
+// Post-event store: an ended event (status Confirmed or Ended) stays visible
+// to customers while its selling window is open.
+export const isPostEventStoreOpen = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
+  if (event.selling_mode !== 'post_event') return false;
+  if (event.status !== 'Confirmed' && event.status !== 'Ended') return false;
+  if (event.preorder_opens_at && event.preorder_opens_at > nowIso) return false;
+  if (event.preorder_closes_at && event.preorder_closes_at <= nowIso) return false;
+  return true;
+};
+
 export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
-  if (event.status !== 'Confirmed' || event.end_date < nowIso) return false;
+  if (event.status !== 'Confirmed' || event.end_date < nowIso) {
+    return isPostEventStoreOpen(event, nowIso);
+  }
 
   if (event.start_date <= nowIso) return true;
 
@@ -104,10 +116,13 @@ export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date()
   return true;
 };
 
-export const sortCustomerEvents = (events: RealtimeEvent[]) => {
+export const sortCustomerEvents = (events: RealtimeEvent[], nowIso = new Date().toISOString()) => {
   return [...events].sort((a, b) => {
     const openScore = Number(Boolean(b.is_booth_open)) - Number(Boolean(a.is_booth_open));
     if (openScore !== 0) return openScore;
+    // Live/upcoming events outrank ended post-event stores.
+    const endedScore = Number(a.end_date < nowIso) - Number(b.end_date < nowIso);
+    if (endedScore !== 0) return endedScore;
     return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
   });
 };

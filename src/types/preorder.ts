@@ -2,7 +2,14 @@ export type EventSellingMode = 'preorder' | 'live' | 'post_event' | 'closed';
 
 export type OrderType = 'live_queue' | 'pos_walkin' | 'preorder' | 'post_event';
 
-export type PickupStatus = 'not_required' | 'awaiting_pickup' | 'picked_up' | 'cancelled' | 'expired';
+export type PickupStatus =
+  | 'not_required'
+  | 'awaiting_pickup'
+  | 'picked_up'
+  | 'cancelled'
+  | 'expired'
+  | 'awaiting_shipment'
+  | 'shipped';
 
 export type PaymentStatus =
   | 'awaiting_payment'
@@ -26,6 +33,7 @@ export interface CreatePreorderInput {
   customerPhone?: string;
   customerSocial?: string;
   customerEmail?: string;
+  shippingAddress?: string;
   customerNote: string;
   clientRequestId?: string | null;
 }
@@ -79,6 +87,12 @@ export interface MarkPreorderPickedUpResult {
   picked_up_at: string;
 }
 
+export interface MarkOrderShippedResult {
+  order_id: string;
+  pickup_status: 'shipped';
+  shipped_at: string;
+}
+
 export interface CancelPreorderResult {
   order_id: string;
   pickup_status: 'cancelled';
@@ -121,6 +135,11 @@ export interface PublicPreorderDetail {
   event_name: string;
   artist_name: string;
   artist_facebook_url: string | null;
+  order_type: OrderType;
+  shipping_address: string | null;
+  tracking_number: string | null;
+  shipping_carrier: string | null;
+  shipped_at: string | null;
   status: string;
   pickup_status: PickupStatus;
   pickup_code: string;
@@ -167,6 +186,12 @@ export interface PreorderPaymentReviewRow {
   order_id: string;
   pickup_code: string;
   customer_name: string;
+  order_type: OrderType;
+  shipping_address: string | null;
+  tracking_number: string | null;
+  shipping_carrier: string | null;
+  shipped_at: string | null;
+  pickup_status: PickupStatus;
   customer_contact: string | null;
   customer_phone: string | null;
   customer_social: string | null;

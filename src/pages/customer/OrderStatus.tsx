@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Check, CheckCircle, ChevronLeft, Clock, Copy, XCircle } from 'lucide-react';
+import { Check, CheckCircle, ChevronLeft, Clock, Copy, Truck, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { formatPrice } from '../../utils/currency';
 import { ConfirmDialog } from '../../components/ui/Feedback';
@@ -34,6 +34,7 @@ const OrderStatus: React.FC = () => {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [linkCopied, setLinkCopied] = useState(false);
+  const [trackingCopied, setTrackingCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -53,11 +54,12 @@ const OrderStatus: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll while the order is still moving (awaiting payment, under review, awaiting pickup).
+  // Poll while the order is still moving (awaiting payment, under review, awaiting pickup/shipment).
   useEffect(() => {
     if (!detail) return;
     const active = ACTIVE_PAYMENT_STATUSES.includes(detail.payment_status)
-      || detail.pickup_status === 'awaiting_pickup';
+      || detail.pickup_status === 'awaiting_pickup'
+      || detail.pickup_status === 'awaiting_shipment';
     if (!active) return;
     const id = window.setInterval(() => load(true), 25000);
     return () => window.clearInterval(id);
@@ -148,8 +150,28 @@ const OrderStatus: React.FC = () => {
     }
   };
 
+  const handleCopyTracking = async () => {
+    if (!detail?.tracking_number) return;
+    try {
+      await navigator.clipboard.writeText(detail.tracking_number);
+      setTrackingCopied(true);
+      window.setTimeout(() => setTrackingCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable: keep the tracking number visible for manual copy.
+    }
+  };
+
+  const isPostOrder = detail?.order_type === 'post_event';
+  const shipped = detail?.pickup_status === 'shipped';
+
   const stepIndex = useMemo(() => {
     if (!detail) return 0;
+    if (detail.order_type === 'post_event') {
+      if (detail.pickup_status === 'shipped') return 4;
+      if (detail.payment_status === 'payment_confirmed' || detail.pickup_status === 'awaiting_shipment') return 3;
+      if (detail.payment_status === 'payment_submitted') return 2;
+      return 1;
+    }
     if (detail.pickup_status === 'picked_up') return 4;
     switch (detail.payment_status) {
       case 'payment_confirmed': return 3;
@@ -165,7 +187,7 @@ const OrderStatus: React.FC = () => {
   const canResubmit = Boolean(detail
     && ['payment_rejected', 'payment_expired'].includes(detail.payment_status));
   const pickedUp = detail?.pickup_status === 'picked_up';
-  const codeShowableAtBooth = detail?.payment_status === 'payment_confirmed' || pickedUp;
+  const codeShowableAtBooth = !isPostOrder && (detail?.payment_status === 'payment_confirmed' || pickedUp);
 
   const formatDate = (value: string | null) => (value
     ? new Date(value).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
@@ -184,10 +206,28 @@ const OrderStatus: React.FC = () => {
 
   const deadlinePassed = Boolean(awaitingPayment && deadlineMs && deadlineMs <= nowMs);
 
-  const steps = [t('orderStepPlaced'), t('orderStepPay'), t('orderStepReview'), t('orderStepPickup')];
+  const steps = isPostOrder
+    ? [t('orderStepPlaced'), t('orderStepPay'), t('orderStepReview'), t('orderStepShip')]
+    : [t('orderStepPlaced'), t('orderStepPay'), t('orderStepReview'), t('orderStepPickup')];
 
   const statusCard = (() => {
     if (!detail) return null;
+    if (isPostOrder && shipped) {
+      return {
+        tone: 'border-green-200 bg-green-50 text-green-900',
+        icon: <Truck size={22} className="text-green-600" />,
+        title: t('orderStatusShippedTitle'),
+        detail: t('orderStatusShippedDetail', { date: formatDate(detail.shipped_at) }),
+      };
+    }
+    if (isPostOrder && (detail.payment_status === 'payment_confirmed' || detail.pickup_status === 'awaiting_shipment')) {
+      return {
+        tone: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+        icon: <CheckCircle size={22} className="text-emerald-600" />,
+        title: t('orderStatusAwaitingShipTitle'),
+        detail: t('orderStatusAwaitingShipDetail'),
+      };
+    }
     if (pickedUp) {
       return {
         tone: 'border-green-200 bg-green-50 text-green-900',
@@ -326,6 +366,27 @@ const OrderStatus: React.FC = () => {
                         <div className="mt-0.5 text-sm font-bold text-red-900">{detail.review_note}</div>
                       </div>
                     )}
+                    {isPostOrder && shipped && detail.tracking_number && (
+                      <div className="mt-3 rounded-xl border border-green-200 bg-white/80 p-3">
+                        <div className="text-xs font-black uppercase tracking-wide text-green-700">
+                          {[detail.shipping_carrier, t('orderTrackingNumberLabel')].filter(Boolean).join(' · ')}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <code className="min-w-0 flex-1 break-all rounded-lg bg-gray-950 px-3 py-2 font-mono text-sm font-black tracking-wide text-white">
+                            {detail.tracking_number}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyTracking}
+                            aria-label={t('orderCopyTracking')}
+                            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-lg border border-green-200 bg-green-50 px-3 text-xs font-black text-green-700 hover:bg-green-100"
+                          >
+                            {trackingCopied ? <Check size={15} /> : <Copy size={15} />}
+                            {trackingCopied ? t('orderCopied') : t('orderCopy')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {terminal && (
@@ -359,7 +420,7 @@ const OrderStatus: React.FC = () => {
                 </div>
                 <div className="mt-1 font-mono text-3xl font-black tracking-[0.18em] text-gray-950">{detail.pickup_code}</div>
                 <p className="mt-1 text-sm font-medium text-gray-600">
-                  {codeShowableAtBooth ? t('orderShowCodeHint') : t('orderCodePendingHint')}
+                  {isPostOrder ? t('orderCodePostHint') : codeShowableAtBooth ? t('orderShowCodeHint') : t('orderCodePendingHint')}
                 </p>
                 <button
                   type="button"
@@ -517,6 +578,12 @@ const OrderStatus: React.FC = () => {
                 <span className="text-sm font-bold text-gray-700">{t('orderTotalLabel')}</span>
                 <span className="text-lg font-black text-gray-950">{formatPrice(detail.total_price, detail.currency)}</span>
               </div>
+              {isPostOrder && detail.shipping_address && (
+                <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className="text-xs font-black uppercase tracking-wide text-gray-500">{t('orderShippingAddressLabel')}</div>
+                  <div className="mt-1 whitespace-pre-line text-sm font-semibold leading-6 text-gray-800">{detail.shipping_address}</div>
+                </div>
+              )}
               <div className="mt-2 text-xs font-medium text-gray-500">
                 {detail.event_name} · {detail.customer_name}
                 {detail.customer_email_masked ? ` · ${detail.customer_email_masked}` : ''}

@@ -4,6 +4,7 @@ import type {
   CreatePreorderInput,
   CreatePreorderResult,
   ExpirePreordersResult,
+  MarkOrderShippedResult,
   PaymentStatus,
   PreorderPaymentReviewRow,
   PreorderProductionSummaryRow,
@@ -38,6 +39,8 @@ export const getPreorderErrorMessage = (error: unknown) => {
   if (message.includes('customer_name_required')) return 'Please enter a pickup name.';
   if (message.includes('customer_email_required')) return 'Please enter an email address for pre-order updates.';
   if (message.includes('customer_email_invalid')) return 'Please enter a valid email address.';
+  if (message.includes('customer_phone_required')) return 'Please enter a phone number for shipping.';
+  if (message.includes('shipping_address_required')) return 'Please enter a shipping address.';
   if (message.includes('customer_contact_required')) return 'Please enter at least one contact channel.';
   if (message.includes('empty_items')) return 'Select at least one item before submitting.';
   if (message.includes('event_not_confirmed')) return 'This event is not confirmed yet.';
@@ -53,7 +56,9 @@ export const getPreorderErrorMessage = (error: unknown) => {
   if (message.includes('payment_already_submitted')) return 'Payment evidence has already been submitted.';
   if (message.includes('payment_already_confirmed')) return 'This payment is already confirmed.';
   if (message.includes('payment_not_submitted')) return 'Payment evidence has not been submitted yet.';
-  if (message.includes('payment_not_confirmed')) return 'Payment must be confirmed before pickup.';
+  if (message.includes('tracking_required')) return 'Please enter a tracking number.';
+  if (message.includes('not_post_order')) return 'Only post-event orders can be marked as shipped.';
+  if (message.includes('payment_not_confirmed')) return 'Payment must be confirmed before pickup or shipment.';
   if (message.includes('payment_not_submittable')) return 'This payment cannot be submitted right now.';
   if (message.includes('reject_note_required')) return 'Please add a reason before rejecting this payment.';
   if (message.includes('event_not_ready_to_expire_preorders')) return 'Pre-orders can only be expired after the event ends or after the event is closed.';
@@ -74,6 +79,7 @@ export const createPreorder = async (input: CreatePreorderInput) => {
     p_customer_phone: input.customerPhone || '',
     p_customer_social: input.customerSocial || '',
     p_customer_email: input.customerEmail || '',
+    p_shipping_address: input.shippingAddress || '',
   });
 
   return firstRow<CreatePreorderResult>(
@@ -195,6 +201,20 @@ export const markPreorderPickedUp = async (orderId: string) => {
     data as MarkPreorderPickedUpResult[] | MarkPreorderPickedUpResult | null,
     error,
     'preorder_pickup_response_missing'
+  );
+};
+
+export const markOrderShipped = async (orderId: string, trackingNumber: string, carrier = '') => {
+  const { data, error } = await supabase.rpc('mark_order_shipped', {
+    p_order_id: orderId,
+    p_tracking_number: trackingNumber,
+    p_carrier: carrier,
+  });
+
+  return firstRow<MarkOrderShippedResult>(
+    data as MarkOrderShippedResult[] | MarkOrderShippedResult | null,
+    error,
+    'order_shipped_response_missing'
   );
 };
 

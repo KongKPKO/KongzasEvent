@@ -345,6 +345,11 @@ export default function PreorderSettings() {
                   <option value="closed">Closed</option>
                   <option value="post_event">Post-event sale</option>
                 </select>
+                {event.selling_mode === 'post_event' && (
+                  <p className="text-sm font-semibold leading-6 text-sky-700">
+                    Post-event orders collect the customer's phone and shipping address; you ship by mail and add tracking from the Pre-order dashboard.
+                  </p>
+                )}
               </label>
 
               <div className="grid gap-4 md:grid-cols-2">

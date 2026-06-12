@@ -35,7 +35,7 @@ export interface RealtimeEvent {
   booth_number?: string | null;
   entrance_fee?: string;
   transit_info?: string;
-  status: 'Confirmed' | 'Cancelled';
+  status: 'Confirmed' | 'Cancelled' | 'Ended';
   is_booth_open: boolean;
 }
 
@@ -62,12 +62,14 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
           .select('id, display_name, bio, image_url, broadcast_message, is_queue_open, x_url, facebook_url, ig_url, tiktok_url, email')
           .eq('id', artistId)
           .single(),
-        // Filter strictly by date string to prevent timezone dropouts
+        // Filter strictly by date string to prevent timezone dropouts.
+        // Ended events stay included while their post-event store is open
+        // (selling_mode = post_event); the client-side window filter decides visibility.
         supabase
           .from('events')
           .select('id, event_name, start_date, end_date, event_timezone, selling_mode, preorder_opens_at, preorder_closes_at, preorder_pickup_instructions, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
           .eq('artist_id', artistId)
-          .gte('end_date', todayStr)
+          .or(`end_date.gte.${todayStr},selling_mode.eq.post_event`)
           .order('start_date', { ascending: true })
       ]);
 

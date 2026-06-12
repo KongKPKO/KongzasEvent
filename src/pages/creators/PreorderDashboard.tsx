@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, X, XCircle } from 'lucide-react';
+import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, Truck, X, XCircle } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -10,6 +10,7 @@ import {
   getPreorderErrorMessage,
   listPreorderPaymentReview,
   listPreorderProductionSummary,
+  markOrderShipped,
   notifyPreorderPayment,
   rejectPreorderPayment,
 } from '../../lib/preorders';
@@ -30,6 +31,7 @@ interface EventInfo {
 type ReviewAction =
   | { type: 'confirm'; order: PreorderPaymentReviewRow }
   | { type: 'reject'; order: PreorderPaymentReviewRow }
+  | { type: 'ship'; order: PreorderPaymentReviewRow }
   | null;
 
 type StatusFilter = 'needs_review' | 'confirmed' | 'closed' | 'all';
@@ -68,6 +70,8 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewAction, setReviewAction] = useState<ReviewAction>(null);
   const [reviewNote, setReviewNote] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [shippingCarrier, setShippingCarrier] = useState('');
   const [slipPreview, setSlipPreview] = useState<{ order: PreorderPaymentReviewRow; url: string } | null>(null);
   const [slipLoadingId, setSlipLoadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
@@ -167,6 +171,9 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
         order.customer_phone,
         order.customer_social,
         order.customer_contact,
+        order.shipping_address,
+        order.tracking_number,
+        order.shipping_carrier,
         ...order.items.map((item) => item.name),
       ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)));
     }
@@ -224,18 +231,26 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
         await confirmPreorderPayment(targetOrder.order_id);
         setOrders((prev) => prev.map((order) => (
           order.order_id === targetOrder.order_id
-            ? { ...order, payment_status: 'payment_confirmed' as PaymentStatus, confirmed_at: new Date().toISOString() }
+            ? {
+              ...order,
+              payment_status: 'payment_confirmed' as PaymentStatus,
+              pickup_status: order.order_type === 'post_event' ? 'awaiting_shipment' : 'awaiting_pickup',
+              confirmed_at: new Date().toISOString(),
+            }
             : order
         )));
         const { error: notifyError } = await notifyPreorderPayment({ orderId: targetOrder.order_id, event: 'confirmed' });
+        const readyMessage = targetOrder.order_type === 'post_event'
+          ? `${targetOrder.pickup_code} is ready for shipment.`
+          : `${targetOrder.pickup_code} is ready for pickup.`;
         setToast({
           tone: notifyError ? 'warning' : 'success',
           title: 'Payment confirmed',
           detail: notifyError
-            ? `${targetOrder.pickup_code} is ready for pickup. Email delivery failed.`
-            : `${targetOrder.pickup_code} is ready for pickup. Customer email was sent.`,
+            ? `${readyMessage} Email delivery failed.`
+            : `${readyMessage} Customer email was sent.`,
         });
-      } else {
+      } else if (reviewAction.type === 'reject') {
         const note = reviewNote.trim();
         if (!note) {
           setToast({ tone: 'warning', title: 'Reject reason required', detail: 'Add a short explanation for the customer before rejecting.' });
@@ -255,9 +270,35 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
             ? 'Reserved stock was released. Email delivery failed.'
             : 'Reserved stock was released and the customer email was sent.',
         });
+      } else {
+        const tracking = trackingNumber.trim();
+        const carrier = shippingCarrier.trim();
+        if (!tracking) {
+          setToast({ tone: 'warning', title: 'Tracking number required', detail: 'Add the shipment tracking number before marking this order shipped.' });
+          return;
+        }
+        const result = await markOrderShipped(targetOrder.order_id, tracking, carrier);
+        setOrders((prev) => prev.map((order) => (
+          order.order_id === targetOrder.order_id
+            ? {
+              ...order,
+              pickup_status: 'shipped',
+              tracking_number: tracking,
+              shipping_carrier: carrier || null,
+              shipped_at: result.shipped_at,
+            }
+            : order
+        )));
+        setToast({
+          tone: 'success',
+          title: 'Order marked shipped',
+          detail: `${targetOrder.pickup_code} · ${tracking}`,
+        });
       }
       setReviewAction(null);
       setReviewNote('');
+      setTrackingNumber('');
+      setShippingCarrier('');
       void load(true);
     } catch (error) {
       setToast({ tone: 'error', title: 'Review failed', detail: getPreorderErrorMessage(error) });
@@ -317,22 +358,41 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       <Toast message={toast} onClose={() => setToast(null)} />
       <ConfirmDialog
         open={Boolean(reviewAction)}
-        title={reviewAction?.type === 'confirm' ? 'Confirm payment?' : 'Reject payment?'}
+        title={
+          reviewAction?.type === 'confirm'
+            ? 'Confirm payment?'
+            : reviewAction?.type === 'ship'
+              ? 'Mark order shipped?'
+              : 'Reject payment?'
+        }
         detail={
           reviewAction
             ? reviewAction.type === 'confirm'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nOrder will move to the pickup list.`
-              : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
+              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nOrder will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
+              : reviewAction.type === 'ship'
+                ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
+                : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
             : ''
         }
-        confirmLabel={reviewAction?.type === 'confirm' ? 'Confirm payment' : 'Reject payment'}
+        confirmLabel={
+          reviewAction?.type === 'confirm'
+            ? 'Confirm payment'
+            : reviewAction?.type === 'ship'
+              ? 'Mark shipped'
+              : 'Reject payment'
+        }
         tone={reviewAction?.type === 'reject' ? 'danger' : 'default'}
         loading={actionLoading}
-        confirmDisabled={reviewAction?.type === 'reject' && reviewNote.trim().length === 0}
+        confirmDisabled={
+          (reviewAction?.type === 'reject' && reviewNote.trim().length === 0)
+          || (reviewAction?.type === 'ship' && trackingNumber.trim().length === 0)
+        }
         onConfirm={runReviewAction}
         onCancel={() => {
           setReviewAction(null);
           setReviewNote('');
+          setTrackingNumber('');
+          setShippingCarrier('');
         }}
       >
         {reviewAction?.type === 'reject' && (
@@ -346,6 +406,28 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
               className="mt-1 w-full resize-none rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-100"
             />
           </label>
+        )}
+        {reviewAction?.type === 'ship' && (
+          <div className="mt-4 grid gap-3">
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-wide text-emerald-700">Tracking number</span>
+              <input
+                value={trackingNumber}
+                onChange={(event) => setTrackingNumber(event.target.value)}
+                placeholder="Tracking number"
+                className="mt-1 min-h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 text-sm font-bold text-gray-900 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-wide text-gray-600">Carrier (e.g. Kerry, Flash, ไปรษณีย์ไทย)</span>
+              <input
+                value={shippingCarrier}
+                onChange={(event) => setShippingCarrier(event.target.value)}
+                placeholder="Carrier"
+                className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+              />
+            </label>
+          </div>
         )}
       </ConfirmDialog>
       {slipPreview && (
@@ -496,9 +578,22 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
                     <div className="mt-1 text-xs font-bold text-gray-500">
                       {[order.customer_phone, order.customer_social, order.customer_email].filter(Boolean).join(' · ') || order.customer_contact || 'No contact'}
                     </div>
+                    {order.order_type === 'post_event' && order.shipping_address && (
+                      <div
+                        className="mt-1 max-w-xl truncate text-xs font-bold text-sky-700"
+                        title={order.shipping_address}
+                      >
+                        Ship to: {order.shipping_address}
+                      </div>
+                    )}
                     <div className="mt-2 text-xs font-semibold text-gray-600">
                       {order.items.map((item) => `${item.quantity}x ${item.name}`).join(', ')}
                     </div>
+                    {order.order_type === 'post_event' && order.pickup_status === 'shipped' && order.tracking_number && (
+                      <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">
+                        <Truck size={13} /> <span className="truncate">Shipped · {order.tracking_number}</span>
+                      </div>
+                    )}
                     {order.review_note && CLOSED_STATUSES.includes(order.payment_status) && (
                       <div className="mt-2 rounded-lg border border-red-100 bg-red-50/60 px-2 py-1 text-xs font-bold text-red-700">
                         Reason: {order.review_note}
@@ -535,6 +630,16 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
                           <CheckCircle size={15} /> Confirm
                         </button>
                       </>
+                    )}
+                    {order.order_type === 'post_event'
+                      && order.payment_status === 'payment_confirmed'
+                      && order.pickup_status === 'awaiting_shipment' && (
+                        <button
+                          onClick={() => setReviewAction({ type: 'ship', order })}
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white hover:bg-emerald-700"
+                        >
+                          <Truck size={15} /> Mark shipped
+                        </button>
                     )}
                   </div>
                 </div>

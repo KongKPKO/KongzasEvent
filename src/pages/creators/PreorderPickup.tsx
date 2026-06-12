@@ -52,6 +52,8 @@ const formatPickupStatus = (status: PickupStatus) => {
     picked_up: 'Picked up',
     cancelled: 'Cancelled',
     expired: 'Expired',
+    awaiting_shipment: 'Awaiting shipment',
+    shipped: 'Shipped',
   };
   return labels[status] || status;
 };
@@ -59,6 +61,7 @@ const formatPickupStatus = (status: PickupStatus) => {
 const getStatusClasses = (status: PickupStatus) => {
   if (status === 'awaiting_pickup') return 'bg-amber-50 text-amber-800 border-amber-200';
   if (status === 'picked_up') return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  if (status === 'awaiting_shipment' || status === 'shipped') return 'bg-sky-50 text-sky-800 border-sky-200';
   if (status === 'cancelled' || status === 'expired') return 'bg-red-50 text-red-700 border-red-200';
   return 'bg-gray-100 text-gray-700 border-gray-200';
 };

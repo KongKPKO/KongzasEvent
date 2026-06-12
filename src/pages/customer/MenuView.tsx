@@ -44,7 +44,7 @@ interface Product {
 
 type CartItems = Record<string, number>;
 type CartItemNames = Record<string, string>;
-type PreorderCustomerForm = { name: string; phone: string; social: string; email: string; note: string };
+type PreorderCustomerForm = { name: string; phone: string; social: string; email: string; shippingAddress: string; note: string };
 type PreorderReceiptState = {
   orderId: string;
   pickupCode: string;
@@ -141,7 +141,10 @@ const MenuView = () => {
   const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
     return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
   });
-  const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', note: '' });
+  const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', shippingAddress: '', note: '' });
+  const [advanceOrderSubmitAttempted, setAdvanceOrderSubmitAttempted] = useState(false);
+  const [postOrderPhoneTouched, setPostOrderPhoneTouched] = useState(false);
+  const [postOrderAddressTouched, setPostOrderAddressTouched] = useState(false);
   const [preorderReceipt, setPreorderReceipt] = useState<PreorderReceiptState | null>(null);
   const [preorderHistory, setPreorderHistory] = useState<Array<{ orderId?: string; pickupCode: string; createdAt: string | null }>>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -227,17 +230,24 @@ const MenuView = () => {
   }, [cart, productById]);
 
   const isPreorderMode = selectedEvent?.selling_mode === 'preorder';
+  const isPostOrderMode = selectedEvent?.selling_mode === 'post_event';
+  const isAdvanceOrderFlow = isPreorderMode || isPostOrderMode;
   const preorderWindowOpen = useMemo(() => {
-    if (!isPreorderMode || selectedEvent?.status !== 'Confirmed') return false;
+    if (!isAdvanceOrderFlow) return false;
+    // Post-event stores run on events already marked Ended.
+    const statusOk = selectedEvent?.status === 'Confirmed' || (isPostOrderMode && selectedEvent?.status === 'Ended');
+    if (!statusOk) return false;
     const opensAt = selectedEvent?.preorder_opens_at ? new Date(selectedEvent.preorder_opens_at).getTime() : null;
     const closesAt = selectedEvent?.preorder_closes_at ? new Date(selectedEvent.preorder_closes_at).getTime() : null;
     const eventEndsAt = selectedEvent?.end_date ? new Date(selectedEvent.end_date).getTime() : null;
     if (opensAt && nowMs < opensAt) return false;
     if (closesAt && nowMs >= closesAt) return false;
-    if (eventEndsAt && nowMs >= eventEndsAt) return false;
+    if (isPreorderMode && eventEndsAt && nowMs >= eventEndsAt) return false;
     return true;
-  }, [isPreorderMode, nowMs, selectedEvent?.end_date, selectedEvent?.preorder_closes_at, selectedEvent?.preorder_opens_at, selectedEvent?.status]);
-  const preorderGuidance = preorderWindowOpen ? t('menuPreorderGuidanceOpen') : t('menuPreorderGuidanceNotOpen');
+  }, [isAdvanceOrderFlow, isPreorderMode, nowMs, selectedEvent?.end_date, selectedEvent?.preorder_closes_at, selectedEvent?.preorder_opens_at, selectedEvent?.status]);
+  const preorderGuidance = preorderWindowOpen
+    ? isPostOrderMode ? t('menuPostOrderGuidanceOpen') : t('menuPreorderGuidanceOpen')
+    : t('menuPreorderGuidanceNotOpen');
   const preorderReceiptStorageKey = contextArtist?.id && selectedEvent?.id
     ? `preorderReceipt_${contextArtist.id}_${selectedEvent.id}`
     : null;
@@ -247,6 +257,8 @@ const MenuView = () => {
     [preorderCustomer.email, preorderCustomer.phone, preorderCustomer.social]
   );
   const hasValidPreorderEmail = isValidEmail(preorderCustomer.email);
+  const postOrderPhoneMissing = isPostOrderMode && preorderCustomer.phone.trim().length === 0;
+  const postOrderAddressMissing = isPostOrderMode && preorderCustomer.shippingAddress.trim().length === 0;
 
   const fetchPromotions = async (artistId: string, eventId?: string | null) => {
     const { data, error } = await supabase.rpc('list_active_promotions', {
@@ -271,11 +283,11 @@ const MenuView = () => {
   }, [cart, cartItemNames, contextArtist?.id]);
 
   useEffect(() => {
-    if (!isPreorderMode) return;
+    if (!isAdvanceOrderFlow) return;
     setNowMs(Date.now());
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 60000);
     return () => window.clearInterval(intervalId);
-  }, [isPreorderMode]);
+  }, [isAdvanceOrderFlow]);
 
   useEffect(() => {
     if (!preorderCustomerStorageKey) return;
@@ -288,10 +300,11 @@ const MenuView = () => {
         phone: typeof parsed?.phone === 'string' ? parsed.phone : '',
         social: typeof parsed?.social === 'string' ? parsed.social : typeof parsed?.contact === 'string' ? parsed.contact : '',
         email: typeof parsed?.email === 'string' ? parsed.email : '',
+        shippingAddress: typeof parsed?.shippingAddress === 'string' ? parsed.shippingAddress : '',
         note: typeof parsed?.note === 'string' ? parsed.note : '',
       });
     } catch {
-      setPreorderCustomer({ name: '', phone: '', social: '', email: '', note: '' });
+      setPreorderCustomer({ name: '', phone: '', social: '', email: '', shippingAddress: '', note: '' });
     }
   }, [preorderCustomerStorageKey]);
 
@@ -518,7 +531,8 @@ const MenuView = () => {
   const handleConfirmOrder = async () => {
     if (totalItems === 0) return;
 
-    if (isPreorderMode) {
+    if (isAdvanceOrderFlow) {
+      setAdvanceOrderSubmitAttempted(true);
       if (!preorderWindowOpen) {
         setToast({ tone: 'warning', title: t('menuPreorderClosed'), detail: preorderGuidance });
         return;
@@ -535,8 +549,26 @@ const MenuView = () => {
       if (!hasValidPreorderEmail) {
         setToast({
           tone: 'warning',
-          title: 'Email required',
-          detail: 'Please enter a valid email address so we can send payment and review updates.',
+          title: t('menuPreorderEmailRequiredToast'),
+          detail: t('menuPreorderEmailRequiredToastDetail'),
+        });
+        setIsCartOpen(true);
+        return;
+      }
+      if (postOrderPhoneMissing) {
+        setToast({
+          tone: 'warning',
+          title: t('menuPostOrderPhoneRequired'),
+          detail: t('menuPostOrderPhoneRequired'),
+        });
+        setIsCartOpen(true);
+        return;
+      }
+      if (postOrderAddressMissing) {
+        setToast({
+          tone: 'warning',
+          title: t('menuPostOrderAddressRequired'),
+          detail: t('menuPostOrderAddressRequired'),
         });
         setIsCartOpen(true);
         return;
@@ -565,7 +597,7 @@ const MenuView = () => {
   };
 
   const submitConfirmedOrder = async () => {
-    if (isPreorderMode) {
+    if (isAdvanceOrderFlow) {
       await submitConfirmedPreorder();
       return;
     }
@@ -704,6 +736,24 @@ const MenuView = () => {
       setIsCartOpen(true);
       return;
     }
+    if (postOrderPhoneMissing) {
+      setToast({
+        tone: 'warning',
+        title: t('menuPostOrderPhoneRequired'),
+        detail: t('menuPostOrderPhoneRequired'),
+      });
+      setIsCartOpen(true);
+      return;
+    }
+    if (postOrderAddressMissing) {
+      setToast({
+        tone: 'warning',
+        title: t('menuPostOrderAddressRequired'),
+        detail: t('menuPostOrderAddressRequired'),
+      });
+      setIsCartOpen(true);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -717,6 +767,7 @@ const MenuView = () => {
         customerPhone: preorderCustomer.phone.trim(),
         customerSocial: preorderCustomer.social.trim(),
         customerEmail: preorderCustomer.email.trim(),
+        shippingAddress: preorderCustomer.shippingAddress.trim(),
         customerNote: preorderCustomer.note.trim(),
         clientRequestId: createClientRequestId(),
       });
@@ -884,10 +935,10 @@ const MenuView = () => {
     : userQueueNumber
       ? t('menuQueueGuidanceWaiting')
       : t('menuQueueGuidanceNeedTicket');
-  const canSubmitSelection = isPreorderMode ? preorderWindowOpen : canConfirmOrder;
-  const orderGuidance = isPreorderMode ? preorderGuidance : queueGuidance;
-  const orderStatusReadyLabel = isPreorderMode ? t('menuPreorderReady') : t('menuReadyConfirm');
-  const orderStatusWaitingLabel = isPreorderMode ? t('menuPreorderClosed') : t('menuSelectionOnly');
+  const canSubmitSelection = isAdvanceOrderFlow ? preorderWindowOpen : canConfirmOrder;
+  const orderGuidance = isAdvanceOrderFlow ? preorderGuidance : queueGuidance;
+  const orderStatusReadyLabel = isAdvanceOrderFlow ? t('menuPreorderReady') : t('menuReadyConfirm');
+  const orderStatusWaitingLabel = isAdvanceOrderFlow ? t('menuPreorderClosed') : t('menuSelectionOnly');
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -928,9 +979,9 @@ const MenuView = () => {
       <Toast message={toast} onClose={() => setToast(null)} />
       <ConfirmDialog
         open={confirmAction === 'submit_order'}
-        title={isPreorderMode ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')}
+        title={isAdvanceOrderFlow ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')}
         detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(pricing.total, cartCurrency)}`}
-        confirmLabel={isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}
+        confirmLabel={isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}
         loading={submitting}
         onConfirm={submitConfirmedOrder}
         onCancel={() => setConfirmAction(null)}
@@ -975,10 +1026,10 @@ const MenuView = () => {
                </div>
 
                <div className="flex items-center justify-between gap-2 pl-14 lg:pl-0">
-                  {isPreorderMode ? (
+                  {isAdvanceOrderFlow ? (
                      <div className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700">
                         <ShoppingBag size={14} aria-hidden="true" />
-                        <span>{t('menuPreorderMode')}</span>
+                        <span>{isPostOrderMode ? t('menuPostOrderMode') : t('menuPreorderMode')}</span>
                      </div>
                   ) : (
                      <button
@@ -1178,9 +1229,9 @@ const MenuView = () => {
                 <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-pink-600 shadow-sm">
                   <ShoppingBag size={22} aria-hidden="true" />
                 </div>
-                <h2 className="mt-4 text-lg font-black text-gray-950">{isPreorderMode ? t('menuPreorderMode') : t('menuYourOrder')}</h2>
+                <h2 className="mt-4 text-lg font-black text-gray-950">{isAdvanceOrderFlow ? isPostOrderMode ? t('menuPostOrderMode') : t('menuPreorderMode') : t('menuYourOrder')}</h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-gray-600">
-                  {isPreorderMode ? preorderGuidance : queueGuidance}
+                  {isAdvanceOrderFlow ? preorderGuidance : queueGuidance}
                 </p>
                 <div className={`mt-4 rounded-xl border px-3 py-2 text-left text-xs font-bold ${
                   canSubmitSelection
@@ -1290,7 +1341,7 @@ const MenuView = () => {
                                 </div>
                             </div>
 
-                            {isPreorderMode && (
+                            {isAdvanceOrderFlow && (
                                 <div className="mt-3 rounded-lg border border-pink-100 bg-pink-50/70 p-2.5 space-y-2">
                                     <label className="block">
                                         <span className="text-[11px] font-black uppercase tracking-wide text-pink-700">{t('menuPreorderName')}</span>
@@ -1313,9 +1364,13 @@ const MenuView = () => {
                                             />
                                             <input
                                                 value={preorderCustomer.phone}
-                                                onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }))}
+                                                onChange={(e) => {
+                                                    setPostOrderPhoneTouched(true);
+                                                    setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }));
+                                                }}
                                                 placeholder={t('menuPreorderPhonePlaceholder')}
                                                 inputMode="tel"
+                                                required={isPostOrderMode}
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                             <input
@@ -1328,7 +1383,29 @@ const MenuView = () => {
                                         {preorderCustomer.email.trim().length > 0 && !hasValidPreorderEmail && (
                                             <div className="mt-1 text-xs font-bold text-amber-700">{t('menuPreorderEmailInvalid')}</div>
                                         )}
+                                        {isPostOrderMode && (advanceOrderSubmitAttempted || postOrderPhoneTouched) && postOrderPhoneMissing && (
+                                            <div className="mt-1 text-xs font-bold text-amber-700">{t('menuPostOrderPhoneRequired')}</div>
+                                        )}
                                     </div>
+                                    {isPostOrderMode && (
+                                        <label className="block">
+                                            <span className="text-[11px] font-black uppercase tracking-wide text-gray-600">{t('menuPostOrderAddressLabel')}</span>
+                                            <textarea
+                                                value={preorderCustomer.shippingAddress}
+                                                onChange={(e) => {
+                                                    setPostOrderAddressTouched(true);
+                                                    setPreorderCustomer((prev) => ({ ...prev, shippingAddress: e.target.value }));
+                                                }}
+                                                placeholder={t('menuPostOrderAddressPlaceholder')}
+                                                rows={3}
+                                                required
+                                                className="mt-1 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
+                                            />
+                                            {(advanceOrderSubmitAttempted || postOrderAddressTouched) && postOrderAddressMissing && (
+                                                <div className="mt-1 text-xs font-bold text-amber-700">{t('menuPostOrderAddressRequired')}</div>
+                                            )}
+                                        </label>
+                                    )}
                                     <label className="block">
                                         <span className="text-[11px] font-black uppercase tracking-wide text-gray-600">{t('menuPreorderNote')}</span>
                                         <textarea
@@ -1446,7 +1523,7 @@ const MenuView = () => {
                                         'disabled:scale-100 disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
                                     ].join(' ')}
                                 >
-                                    {submitting ? t('menuSending') : (<><span>{isPreorderMode ? t('menuPreorderSubmit') : canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}
+                                    {submitting ? t('menuSending') : (<><span>{isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderSubmit') : canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}
                                 </button>
                             </>
                         )}

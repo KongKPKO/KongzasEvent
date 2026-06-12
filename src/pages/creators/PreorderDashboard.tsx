@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, Download, Eye, PackageCheck, ReceiptText, RefreshCw, Search, X, XCircle } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, X, XCircle } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import EventNavTabs from '../../components/EventNavTabs';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import {
   confirmPreorderPayment,
@@ -57,7 +58,6 @@ const toNumber = (value: unknown) => Number(value || 0);
 
 export default function PreorderDashboard({ actorContext }: PreorderDashboardProps) {
   const { eventId } = useParams();
-  const navigate = useNavigate();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
   const [orders, setOrders] = useState<PreorderPaymentReviewRow[]>([]);
@@ -417,20 +417,9 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       )}
 
       <main className="mx-auto max-w-6xl p-4 md:p-6">
-        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <button
-            onClick={() => navigate(`/manage-events/${eventId}/workspace`)}
-            className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-600 hover:border-pink-200 hover:text-pink-600"
-          >
-            <ArrowLeft size={18} /> Back to workspace
-          </button>
+        {eventId && <EventNavTabs eventId={eventId} active="preorder" actorRole={actorContext.role} />}
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => navigate(`/manage-events/${eventId}/pickup`)}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700 hover:bg-pink-100"
-            >
-              <PackageCheck size={15} /> Pickup desk
-            </button>
             <button
               onClick={() => void load()}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50"

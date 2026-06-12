@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import EventNavTabs from '../../components/EventNavTabs';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, PackageCheck, ShoppingBag, Store, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
@@ -328,12 +329,13 @@ export default function EventDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
+        {eventId && <EventNavTabs eventId={eventId} active="dashboard" />}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/manage-events')}
+            onClick={() => navigate(`/manage-events/${eventId}/workspace`)}
             className="icon-touch inline-flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500"
-            aria-label="Back to events"
+            aria-label="Back to event workspace"
           >
             <ArrowLeft size={20} />
           </button>

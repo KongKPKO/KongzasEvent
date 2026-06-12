@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, PackageCheck, Save, Store } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import EventNavTabs from '../../components/EventNavTabs';
 import { Toast } from '../../components/ui/Feedback';
 import { supabase } from '../../supabaseClient';
 import type { EventSellingMode } from '../../types/preorder';
@@ -314,9 +315,7 @@ export default function PreorderSettings() {
     <div className="min-h-screen bg-gray-50">
       <AdminHeader activePage="events" />
       <main className="mx-auto max-w-5xl p-4 md:p-6">
-        <button onClick={() => navigate('/manage-events')} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50">
-          <ArrowLeft size={18} /> Back to events
-        </button>
+        {eventId && <EventNavTabs eventId={eventId} />}
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>

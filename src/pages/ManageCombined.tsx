@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
 import AdminHeader from '../components/AdminHeader';
-import { CalendarDays, Clock, Loader2 } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Clock, Loader2 } from 'lucide-react';
 import type { ActorContext } from '../types/access';
 import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
@@ -71,6 +71,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     // component stays mounted (e.g. navigating from one Event Hub to another),
     // the component picks up the new eventId without remounting.
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const urlEventId = searchParams.get('eventId');
 
     const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
@@ -428,13 +429,20 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                     {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
                                 </span>
                             </span>
-                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold border ${
-                                activeEvent
-                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
-                                    : 'border-gray-200 bg-gray-100 text-gray-500'
-                            }`}>
-                                {activeEvent ? `Active Event: ${activeEvent.event_name}` : 'No active event'}
-                            </span>
+                            {activeEvent ? (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`/manage-events/${activeEvent.id}/workspace`)}
+                                    className="inline-flex min-h-9 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 hover:bg-pink-100"
+                                >
+                                    {`Active Event: ${activeEvent.event_name}`}
+                                    <ArrowUpRight size={13} aria-hidden="true" />
+                                </button>
+                            ) : (
+                                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">
+                                    No active event
+                                </span>
+                            )}
                         </div>
                     </div>
 

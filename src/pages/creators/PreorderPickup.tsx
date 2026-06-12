@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, Clock3, PackageCheck, Search, Trash2 } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { CheckCircle, Clock3, PackageCheck, Search, Trash2 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import EventNavTabs from '../../components/EventNavTabs';
 import { useI18n } from '../../i18n';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { cancelPreorder, expirePreordersForEvent, getPreorderErrorMessage, markPreorderPickedUp } from '../../lib/preorders';
@@ -65,7 +66,6 @@ const getStatusClasses = (status: PickupStatus) => {
 export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
   const { language } = useI18n();
   const { eventId } = useParams();
-  const navigate = useNavigate();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [orders, setOrders] = useState<PickupOrderRow[]>([]);
   const [query, setQuery] = useState('');
@@ -246,12 +246,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       />
 
       <main className="mx-auto max-w-5xl p-4 md:p-6">
-        <button
-          onClick={() => navigate('/manage-events')}
-          className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-600 hover:border-pink-200 hover:text-pink-600"
-        >
-          <ArrowLeft size={18} /> Back to events
-        </button>
+        {eventId && <EventNavTabs eventId={eventId} active="pickup" actorRole={actorContext.role} />}
 
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

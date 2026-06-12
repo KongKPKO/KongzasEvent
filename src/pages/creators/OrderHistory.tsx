@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import EventNavTabs from '../../components/EventNavTabs';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, DollarSign, CreditCard, ShoppingBag, FileText, LayoutList, PackageCheck } from 'lucide-react';
 import { formatPrice } from '../../utils/currency'; // ✅ NEW
@@ -140,8 +141,11 @@ export default function EventHistory() {
     return (
         <div className="min-h-screen bg-gray-50 p-6 font-sans">
             {/* --- HEADER --- */}
+            <div className="max-w-5xl mx-auto">
+                {eventId && <EventNavTabs eventId={eventId} active="history" />}
+            </div>
             <div className="max-w-5xl mx-auto mb-8 flex items-center gap-4">
-                <button onClick={() => navigate('/manage-events')} className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500">
+                <button onClick={() => navigate(`/manage-events/${eventId}/workspace`)} className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500" aria-label="Back to event workspace">
                     <ArrowLeft size={20} />
                 </button>
                 <div>

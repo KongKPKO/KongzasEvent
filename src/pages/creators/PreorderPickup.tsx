@@ -121,7 +121,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       setToast({
         tone: 'error',
         title: 'Could not load pickup orders',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: getPreorderErrorMessage(error),
       });
     } finally {
       setLoading(false);

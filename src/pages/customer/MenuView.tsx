@@ -143,6 +143,7 @@ const MenuView = () => {
   });
   const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', note: '' });
   const [preorderReceipt, setPreorderReceipt] = useState<PreorderReceiptState | null>(null);
+  const [preorderHistory, setPreorderHistory] = useState<Array<{ orderId?: string; pickupCode: string; createdAt: string | null }>>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
@@ -302,32 +303,53 @@ const MenuView = () => {
   useEffect(() => {
     if (!preorderReceiptStorageKey) {
       setPreorderReceipt(null);
+      setPreorderHistory([]);
       return;
     }
     const saved = localStorage.getItem(preorderReceiptStorageKey);
     if (!saved) {
       setPreorderReceipt(null);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(saved);
-      if (parsed?.orderId && parsed?.pickupCode) {
-        setPreorderReceipt({
-          orderId: parsed.orderId,
-          pickupCode: parsed.pickupCode,
-          totalPrice: Number(parsed.totalPrice || 0),
-          currency: parsed.currency || 'THB',
-          pickupInstructions: parsed.pickupInstructions || '',
-          paymentStatus: parsed.paymentStatus || 'awaiting_payment',
-          paymentMethods: Array.isArray(parsed.paymentMethods) ? parsed.paymentMethods : [],
-          paymentDeadlineAt: parsed.paymentDeadlineAt || null,
-          submittedAt: parsed.submittedAt || null,
-        });
-      } else {
+    } else {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.orderId && parsed?.pickupCode) {
+          setPreorderReceipt({
+            orderId: parsed.orderId,
+            pickupCode: parsed.pickupCode,
+            totalPrice: Number(parsed.totalPrice || 0),
+            currency: parsed.currency || 'THB',
+            pickupInstructions: parsed.pickupInstructions || '',
+            paymentStatus: parsed.paymentStatus || 'awaiting_payment',
+            paymentMethods: Array.isArray(parsed.paymentMethods) ? parsed.paymentMethods : [],
+            paymentDeadlineAt: parsed.paymentDeadlineAt || null,
+            submittedAt: parsed.submittedAt || null,
+          });
+        } else {
+          setPreorderReceipt(null);
+        }
+      } catch {
         setPreorderReceipt(null);
       }
+    }
+    // Order history for this artist+event (covers multiple pre-orders from one device).
+    try {
+      const rawHistory = localStorage.getItem(`${preorderReceiptStorageKey}_history`);
+      const parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+      const entries = Array.isArray(parsedHistory)
+        ? parsedHistory.filter((entry) => entry?.pickupCode)
+        : [];
+      // Migrate the legacy single receipt into history if missing.
+      if (saved) {
+        try {
+          const legacy = JSON.parse(saved);
+          if (legacy?.pickupCode && !entries.some((entry) => entry.pickupCode === legacy.pickupCode)) {
+            entries.unshift({ orderId: legacy.orderId, pickupCode: legacy.pickupCode, createdAt: null });
+          }
+        } catch { /* ignore */ }
+      }
+      setPreorderHistory(entries.slice(0, 5));
     } catch {
-      setPreorderReceipt(null);
+      setPreorderHistory([]);
     }
   }, [preorderReceiptStorageKey]);
 
@@ -711,6 +733,14 @@ const MenuView = () => {
         submittedAt: null,
       };
       setPreorderReceipt(receipt);
+      const historyEntry = { orderId: result.order_id, pickupCode: result.pickup_code, createdAt: new Date().toISOString() };
+      setPreorderHistory((prev) => {
+        const next = [historyEntry, ...prev.filter((entry) => entry.pickupCode !== historyEntry.pickupCode)].slice(0, 5);
+        if (preorderReceiptStorageKey) {
+          localStorage.setItem(`${preorderReceiptStorageKey}_history`, JSON.stringify(next));
+        }
+        return next;
+      });
       if (preorderReceiptStorageKey) {
         localStorage.setItem(preorderReceiptStorageKey, JSON.stringify(receipt));
       }
@@ -879,9 +909,17 @@ const MenuView = () => {
   };
 
   const handleStartNewPreorder = () => {
-    if (preorderReceiptStorageKey) localStorage.removeItem(preorderReceiptStorageKey);
+    if (preorderReceiptStorageKey) {
+      localStorage.removeItem(preorderReceiptStorageKey);
+      localStorage.removeItem(`${preorderReceiptStorageKey}_history`);
+    }
     setPreorderReceipt(null);
+    setPreorderHistory([]);
   };
+
+  const activePreorderEntries = preorderHistory.length > 0
+    ? preorderHistory
+    : (preorderReceipt ? [{ orderId: preorderReceipt.orderId, pickupCode: preorderReceipt.pickupCode, createdAt: null }] : []);
 
   if (loading) return <main className="p-8 text-center text-gray-600">{t('menuLoading')}</main>;
 
@@ -1134,7 +1172,7 @@ const MenuView = () => {
             </Suspense>
           </div>
 
-          {totalItems === 0 && !isOrderSent && !preorderReceipt && (
+          {totalItems === 0 && !isOrderSent && activePreorderEntries.length === 0 && (
             <aside className="sticky top-28 hidden rounded-3xl border border-pink-100 bg-white p-5 shadow-lg shadow-pink-100/60 lg:block">
               <div className="rounded-2xl border border-dashed border-pink-200 bg-pink-50/70 p-5 text-center">
                 <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-pink-600 shadow-sm">
@@ -1156,14 +1194,14 @@ const MenuView = () => {
           )}
 
           {/* --- CONFIRM ORDER BAR / DESKTOP CHECKOUT PANEL --- */}
-          {(totalItems > 0 || isOrderSent || preorderReceipt) && (
+          {(totalItems > 0 || isOrderSent || activePreorderEntries.length > 0) && (
             <>
                 {isCartOpen && !isOrderSent && (
                     <div className="fixed inset-0 z-[80] mx-auto max-w-md animate-fade-in bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsCartOpen(false)} />
                 )}
-                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:flex lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:flex-col lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
                     {!isOrderSent && totalItems > 0 && (
-                        <div className={`${isCartOpen ? 'block' : 'hidden'} max-h-[62vh] overflow-y-auto rounded-t-xl border-b border-gray-100 bg-white p-3 animate-slide-up lg:block lg:max-h-[calc(100vh-15rem)] lg:rounded-t-3xl lg:p-4`}>
+                        <div className={`${isCartOpen ? 'block' : 'hidden'} max-h-[62vh] overflow-y-auto rounded-t-xl border-b border-gray-100 bg-white p-3 animate-slide-up lg:block lg:max-h-none lg:min-h-0 lg:flex-1 lg:rounded-t-3xl lg:p-4`}>
                             <div className="flex justify-between items-center mb-3 sticky top-0 bg-white z-10 pb-2 border-b border-gray-50">
                                 <h2 className="font-bold text-gray-800 text-sm">{t('menuYourOrder')} <span className="text-pink-700 text-xs font-semibold">({totalItems} {t('menuItems')})</span></h2>
                                 <button onClick={() => setIsCartOpen(false)} className="grid h-11 w-11 place-items-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 lg:hidden" aria-label={t('menuClose')}><X size={16}/></button>
@@ -1314,33 +1352,49 @@ const MenuView = () => {
                             </div>
                         </div>
                     )}
-                    {preorderReceipt && (
-                        <div className="flex min-h-12 items-center gap-2 border-b border-pink-100 bg-pink-50/80 px-3 py-2">
-                            <Link
-                                to={`/${displayArtist?.slug || slug}/order/${preorderReceipt.pickupCode}`}
-                                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 hover:bg-pink-100/70"
-                            >
-                                <CheckCircle size={16} className="shrink-0 text-pink-600" />
-                                <div className="min-w-0 flex-1">
-                                    <div className="truncate text-xs font-bold text-pink-900">{t('menuPreorderActiveBanner')}</div>
-                                    <div className="font-mono text-sm font-black tracking-[0.14em] text-gray-950">{preorderReceipt.pickupCode}</div>
+                    {activePreorderEntries.length > 0 && (
+                        <div className="border-b border-pink-100 bg-pink-50/80 lg:shrink-0">
+                            <div className="flex min-h-12 items-center gap-2 px-3 py-2">
+                                <Link
+                                    to={`/${displayArtist?.slug || slug}/order/${activePreorderEntries[0].pickupCode}`}
+                                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 hover:bg-pink-100/70"
+                                >
+                                    <CheckCircle size={16} className="shrink-0 text-pink-600" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-xs font-bold text-pink-900">{t('menuPreorderActiveBanner')}</div>
+                                        <div className="font-mono text-sm font-black tracking-[0.14em] text-gray-950">{activePreorderEntries[0].pickupCode}</div>
+                                    </div>
+                                    <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
+                                        {t('menuPreorderViewStatus')}
+                                    </span>
+                                </Link>
+                                <button
+                                    type="button"
+                                    onClick={handleStartNewPreorder}
+                                    aria-label={t('menuPreorderNew')}
+                                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-pink-100 bg-white text-gray-500 hover:bg-pink-50"
+                                >
+                                    <XCircle size={16} />
+                                </button>
+                            </div>
+                            {activePreorderEntries.length > 1 && (
+                                <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+                                    <span className="text-[11px] font-bold text-pink-800">{t('menuPreorderOtherOrders')}</span>
+                                    {activePreorderEntries.slice(1).map((entry) => (
+                                        <Link
+                                            key={entry.pickupCode}
+                                            to={`/${displayArtist?.slug || slug}/order/${entry.pickupCode}`}
+                                            className="inline-flex min-h-9 items-center rounded-lg border border-pink-200 bg-white px-2 font-mono text-xs font-black tracking-[0.1em] text-pink-700 hover:bg-pink-50"
+                                        >
+                                            {entry.pickupCode}
+                                        </Link>
+                                    ))}
                                 </div>
-                                <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
-                                    {t('menuPreorderViewStatus')}
-                                </span>
-                            </Link>
-                            <button
-                                type="button"
-                                onClick={handleStartNewPreorder}
-                                aria-label={t('menuPreorderNew')}
-                                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-pink-100 bg-white text-gray-500 hover:bg-pink-50"
-                            >
-                                <XCircle size={16} />
-                            </button>
+                            )}
                         </div>
                     )}
                     {(totalItems > 0 || isOrderSent) && (
-                    <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:border-t lg:border-pink-50 lg:p-4">
+                    <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:shrink-0 lg:border-t lg:border-pink-50 lg:p-4">
                         {isOrderSent ? (
                             isOrderCompleted ? (
                                 // ✅ ORDER COMPLETED UI

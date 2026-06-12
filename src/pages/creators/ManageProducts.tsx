@@ -6,6 +6,7 @@ import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, 
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
+import EventNavTabs from '../../components/EventNavTabs';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
 import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
@@ -1512,6 +1513,9 @@ const ManageProducts = () => {
          </div>
 
          <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
+            {activeWorkspaceTab === 'event-catalog' && selectedEventId && (
+               <EventNavTabs eventId={selectedEventId} active="catalog" actorRole={actorContext?.role} />
+            )}
             <section className="workspace-card mb-4 p-3">
                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>

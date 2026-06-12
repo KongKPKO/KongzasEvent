@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   BarChart2,
   Calendar,
-  CheckCircle2,
   Clock,
   Coffee,
   FileText,
@@ -14,7 +13,6 @@ import {
   ShoppingCart,
   Ticket,
   Users,
-  User,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -368,7 +366,6 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   const [event, setEvent] = useState<WorkspaceEvent | null>(null);
   const [metrics, setMetrics] = useState<WorkspaceMetrics>(emptyMetrics);
   const [loading, setLoading] = useState(true);
-  const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [eventDraft, setEventDraft] = useState<Partial<WorkspaceEvent>>({});
@@ -447,41 +444,12 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     return buildModules(event, metrics, actorContext);
   }, [actorContext, event, metrics]);
 
-  const canToggleBooth = event && canAccessManagementPages(actorContext.role) && getLifecycleContext(event) !== 'ended';
-  const canOpenQueue = event && canAccessQueuePages(actorContext.role) && getLifecycleContext(event) !== 'ended';
-  const canOpenPos = event && canUsePos(actorContext.role) && getLifecycleContext(event) !== 'ended';
 
   const goToAllEvents = () => {
     window.sessionStorage.setItem('forceEventGrid', 'true');
     navigate('/manage-events?view=all');
   };
 
-  const goToProfile = () => {
-    window.sessionStorage.setItem('forceEventGrid', 'true');
-    navigate('/manage-events?view=all&tab=profile');
-  };
-
-  const handleBoothToggle = async () => {
-    if (!event || !canToggleBooth || toggleLoading) return;
-    const nextOpen = !event.is_booth_open;
-
-    try {
-      setToggleLoading(true);
-      const { error: updateError } = await supabase
-        .from('events')
-        .update({ is_booth_open: nextOpen })
-        .eq('id', event.id)
-        .eq('artist_id', actorContext.artist_id);
-
-      if (updateError) throw updateError;
-      setEvent({ ...event, is_booth_open: nextOpen });
-    } catch (err) {
-      console.error('[EventWorkspace] booth toggle failed:', err);
-      alert('Failed to update booth status.');
-    } finally {
-      setToggleLoading(false);
-    }
-  };
 
   const openEventEditor = () => {
     if (!event) return;
@@ -677,38 +645,6 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              <button onClick={goToProfile} className="workspace-action inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
-                <User size={15} aria-hidden="true" />
-                Creator Profile
-              </button>
-              {canToggleBooth && (
-                <button
-                  onClick={handleBoothToggle}
-                  disabled={toggleLoading}
-                  className={`workspace-action inline-flex items-center gap-2 border px-3 text-xs font-black ${
-                    event.is_booth_open
-                      ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                      : 'border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100'
-                  }`}
-                >
-                  <CheckCircle2 size={15} aria-hidden="true" />
-                  {toggleLoading ? 'Saving...' : event.is_booth_open ? 'Close booth' : 'Open booth'}
-                </button>
-              )}
-              {canOpenQueue && (
-                <button onClick={() => navigate(`/live/queue?eventId=${event.id}`)} className="workspace-action inline-flex items-center gap-2 border border-indigo-100 bg-indigo-50 px-3 text-xs font-black text-indigo-800 hover:bg-indigo-100">
-                  <Users size={15} aria-hidden="true" />
-                  Live Queue
-                </button>
-              )}
-              {canOpenPos && (
-                <button onClick={() => navigate(`/live/pos?eventId=${event.id}`)} className="workspace-action inline-flex items-center gap-2 border border-slate-200 bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800">
-                  <ShoppingCart size={15} aria-hidden="true" />
-                  Live POS
-                </button>
-              )}
-            </div>
           </div>
         </section>
 

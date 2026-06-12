@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { AlertTriangle, Calendar, Coffee, Users, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
 
@@ -28,7 +28,6 @@ const navItems = [
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
-    { path: '/live/queue', label: 'Live Ops', icon: Users, page: 'pos' as VisiblePage, roles: ['owner', 'manager', 'seller', 'queue_staff'] as ActorRole[], group: 'live' as const },
 ];
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner', userEmail: contextEmail = null }: AdminHeaderProps) {

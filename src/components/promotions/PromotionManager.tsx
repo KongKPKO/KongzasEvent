@@ -37,6 +37,8 @@ interface PromotionManagerProps {
   eventOptions: EventLite[];
   categorySuggestions: string[];
   tagSuggestions: string[];
+  lockedEventId?: string;
+  lockedEventName?: string;
 }
 
 const targetTypeOptions: Array<{ value: PromotionTargetType; label: string }> = [
@@ -57,6 +59,8 @@ export default function PromotionManager({
   eventOptions,
   categorySuggestions,
   tagSuggestions,
+  lockedEventId,
+  lockedEventName,
 }: PromotionManagerProps) {
   const [promotions, setPromotions] = useState<PromotionRule[]>([]);
   const [analytics, setAnalytics] = useState<PromotionAnalytics[]>([]);
@@ -83,6 +87,10 @@ export default function PromotionManager({
     () => new Map(products.map((product) => [product.id, { ...product, price: Number(product.price || 0) }])),
     [products]
   );
+  const effectiveSelectedEventIds = useMemo(
+    () => lockedEventId ? [lockedEventId] : selectedEventIds,
+    [lockedEventId, selectedEventIds]
+  );
 
   const analyticsByRuleId = useMemo(
     () => new Map(analytics.map((row) => [row.rule_id, row])),
@@ -98,15 +106,22 @@ export default function PromotionManager({
   };
 
   const toIsoOrNull = (value: string) => value ? new Date(value).toISOString() : null;
+  const effectiveEventName = lockedEventName || eventOptions.find((event) => event.id === lockedEventId)?.event_name || 'This event';
 
   const fetchPromotions = async () => {
     if (!artistId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('artist_promotions')
         .select('id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status, event_scope, event_ids, starts_at, ends_at, created_at')
-        .eq('artist_id', artistId)
+        .eq('artist_id', artistId);
+
+      if (lockedEventId) {
+        query = query.eq('event_scope', 'selected').contains('event_ids', [lockedEventId]);
+      }
+
+      const { data, error } = await query
         .order('status', { ascending: true })
         .order('priority', { ascending: true })
         .order('created_at', { ascending: false });
@@ -134,15 +149,21 @@ export default function PromotionManager({
   useEffect(() => {
     fetchPromotions();
     fetchAnalytics();
-  }, [artistId]);
+  }, [artistId, lockedEventId]);
+
+  useEffect(() => {
+    if (!lockedEventId) return;
+    setEventScope('selected');
+    setSelectedEventIds([lockedEventId]);
+  }, [lockedEventId]);
 
   const resetForm = () => {
     setEditingPromotionId(null);
     setName('');
     setTargetType('category');
     setRuleType('discount');
-    setEventScope('all');
-    setSelectedEventIds([]);
+    setEventScope(lockedEventId ? 'selected' : 'all');
+    setSelectedEventIds(lockedEventId ? [lockedEventId] : []);
     setStartsAt('');
     setEndsAt('');
     setMatchCategory('');
@@ -159,8 +180,8 @@ export default function PromotionManager({
     setName(mode === 'duplicate' ? `${promotion.name || getPromotionLabel(promotion, productsById)} copy` : promotion.name || '');
     setTargetType(promotion.target_type);
     setRuleType(promotion.rule_type);
-    setEventScope(promotion.event_scope || 'all');
-    setSelectedEventIds(promotion.event_scope === 'selected' ? (promotion.event_ids || []) : []);
+    setEventScope(lockedEventId ? 'selected' : promotion.event_scope || 'all');
+    setSelectedEventIds(lockedEventId ? [lockedEventId] : promotion.event_scope === 'selected' ? (promotion.event_ids || []) : []);
     setStartsAt(formatDateTimeLocal(promotion.starts_at));
     setEndsAt(formatDateTimeLocal(promotion.ends_at));
     setMatchCategory(promotion.match_category || '');
@@ -196,7 +217,7 @@ export default function PromotionManager({
       return;
     }
 
-    if (eventScope === 'selected' && selectedEventIds.length === 0) {
+    if ((lockedEventId || eventScope === 'selected') && effectiveSelectedEventIds.length === 0) {
       alert('Please select at least one event, or switch the promotion to all events.');
       return;
     }
@@ -248,8 +269,8 @@ export default function PromotionManager({
         reward_quantity: ruleType === 'free_items' ? freeQty : null,
         priority: targetType === 'product' ? 10 : targetType === 'category_tag' ? 20 : targetType === 'tag' ? 30 : 40,
         status: 'active' as const,
-        event_scope: eventScope,
-        event_ids: eventScope === 'selected' ? selectedEventIds : null,
+        event_scope: lockedEventId ? 'selected' as const : eventScope,
+        event_ids: lockedEventId ? [lockedEventId] : eventScope === 'selected' ? effectiveSelectedEventIds : null,
         starts_at: startIso,
         ends_at: endIso,
       };
@@ -337,12 +358,12 @@ export default function PromotionManager({
       reward_value: ruleType === 'discount' ? discountValue : null,
       reward_quantity: ruleType === 'free_items' ? freeQty : null,
       status: 'active',
-      event_scope: eventScope,
-      event_ids: eventScope === 'selected' ? selectedEventIds : null,
+      event_scope: lockedEventId ? 'selected' : eventScope,
+      event_ids: lockedEventId ? [lockedEventId] : eventScope === 'selected' ? effectiveSelectedEventIds : null,
       starts_at: toIsoOrNull(startsAt),
       ends_at: toIsoOrNull(endsAt),
     };
-  }, [artistId, buyQuantity, editingPromotionId, endsAt, eventScope, matchCategory, matchProductIds, matchTag, name, rewardQuantity, rewardValue, ruleType, selectedEventIds, startsAt, targetType]);
+  }, [artistId, buyQuantity, editingPromotionId, endsAt, eventScope, lockedEventId, matchCategory, matchProductIds, matchTag, name, rewardQuantity, rewardValue, ruleType, effectiveSelectedEventIds, startsAt, targetType]);
 
   const previewProducts = useMemo(() => {
     if (!draftPromotion) return [];
@@ -421,22 +442,30 @@ export default function PromotionManager({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Event Scope</label>
-            <select
-              value={eventScope}
-              onChange={(e) => {
-                const nextScope = e.target.value as 'all' | 'selected';
-                setEventScope(nextScope);
-                if (nextScope === 'all') setSelectedEventIds([]);
-              }}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            >
-              <option value="all">All events</option>
-              <option value="selected">Selected events only</option>
-            </select>
-            <p className="mt-1 text-xs text-gray-500">Use selected events for booth-specific campaigns.</p>
+            {lockedEventId ? (
+              <div className="w-full rounded border border-pink-100 bg-white px-3 py-2 text-sm font-black text-pink-700">
+                {effectiveEventName}
+              </div>
+            ) : (
+              <select
+                value={eventScope}
+                onChange={(e) => {
+                  const nextScope = e.target.value as 'all' | 'selected';
+                  setEventScope(nextScope);
+                  if (nextScope === 'all') setSelectedEventIds([]);
+                }}
+                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
+              >
+                <option value="all">All events</option>
+                <option value="selected">Selected events only</option>
+              </select>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              {lockedEventId ? 'This promotion is locked to the current event.' : 'Use selected events for booth-specific campaigns.'}
+            </p>
           </div>
 
-          {eventScope === 'selected' && (
+          {!lockedEventId && eventScope === 'selected' && (
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Events</label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
@@ -605,7 +634,9 @@ export default function PromotionManager({
               <div className="text-xs font-black uppercase tracking-wider text-gray-500">Preview</div>
               <div className="mt-1 text-sm font-bold text-gray-800">
                 {previewProducts.length} eligible product{previewProducts.length === 1 ? '' : 's'}
-                {eventScope === 'selected' ? ` · ${selectedEventIds.length} event${selectedEventIds.length === 1 ? '' : 's'}` : ' · all events'}
+                {lockedEventId
+                  ? ` · ${effectiveEventName}`
+                  : eventScope === 'selected' ? ` · ${effectiveSelectedEventIds.length} event${effectiveSelectedEventIds.length === 1 ? '' : 's'}` : ' · all events'}
               </div>
               <div className="mt-1 text-xs text-gray-500">
                 {startsAt || endsAt
@@ -666,7 +697,9 @@ export default function PromotionManager({
           <div className="space-y-2">
             {promotions.map((promotion) => {
               const rowAnalytics = analyticsByRuleId.get(promotion.id);
-              const eventNames = promotion.event_scope === 'selected'
+              const eventNames = lockedEventId
+                ? effectiveEventName
+                : promotion.event_scope === 'selected'
                 ? (promotion.event_ids || [])
                     .map((eventId) => eventOptions.find((event) => event.id === eventId)?.event_name)
                     .filter(Boolean)

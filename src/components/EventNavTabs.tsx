@@ -3,7 +3,7 @@ import { Monitor, Users } from 'lucide-react';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../types/access';
 import type { ActorRole } from '../types/access';
 
-export type EventTabKey = 'overview' | 'dashboard' | 'catalog' | 'preorder' | 'pickup' | 'history';
+export type EventTabKey = 'overview' | 'dashboard' | 'catalog' | 'promotion' | 'preorder' | 'pickup' | 'history';
 
 interface EventNavTabsProps {
   eventId: string;
@@ -21,7 +21,8 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
   const tabs: Array<{ key: EventTabKey; label: string; path: string; visible: boolean }> = [
     { key: 'overview', label: 'Overview', path: `/manage-events/${eventId}/workspace`, visible: canAccessQueuePages(role) },
     { key: 'dashboard', label: 'Dashboard', path: `/manage-events/${eventId}/dashboard`, visible: canAccessManagementPages(role) },
-    { key: 'catalog', label: 'Event Catalog', path: `/manage-products?tab=event-catalog&eventId=${eventId}`, visible: canAccessManagementPages(role) },
+    { key: 'catalog', label: 'Event Catalog', path: `/manage-events/${eventId}/catalog`, visible: canAccessManagementPages(role) },
+    { key: 'promotion', label: 'Event Promotion', path: `/manage-events/${eventId}/promotion`, visible: canAccessManagementPages(role) },
     { key: 'preorder', label: 'Pre-order', path: `/manage-events/${eventId}/preorder-dashboard`, visible: canUsePos(role) },
     { key: 'pickup', label: 'Pickup', path: `/manage-events/${eventId}/pickup`, visible: canAccessQueuePages(role) },
     { key: 'history', label: 'History', path: `/manage-events/${eventId}/history`, visible: canAccessManagementPages(role) },

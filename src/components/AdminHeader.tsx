@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { AlertTriangle, Calendar, Coffee, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
 
@@ -11,7 +11,7 @@ interface ActiveEvent {
     event_name: string;
 }
 
-type ActivePage = 'events' | 'menu' | 'pos';
+type ActivePage = 'events' | 'menu' | 'promotion' | 'pos';
 type VisiblePage = ActivePage | 'team';
 
 interface AdminHeaderProps {
@@ -27,8 +27,16 @@ interface AdminHeaderProps {
 const navItems = [
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-promotions', label: 'Promotion', icon: Sparkles, page: 'promotion' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
 ];
+
+const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
+    if (page === 'events') return 'workspaceNavEvents';
+    if (page === 'menu') return 'workspaceNavMenu';
+    if (page === 'pos') return 'workspaceNavPosQueue';
+    return 'workspaceNavTeam';
+};
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner', userEmail: contextEmail = null }: AdminHeaderProps) {
     const { t } = useI18n();
@@ -113,6 +121,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
+                    const label = item.page === 'promotion' ? item.label : t(getNavLabel(item.page));
                     
                     return (
                         <button
@@ -123,10 +132,10 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                                     ? 'bg-pink-50 text-pink-700 border border-pink-200'
                                     : 'text-gray-600 hover:text-pink-600 hover:bg-gray-50'
                             }`}
-                            aria-label={t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
+                            aria-label={label}
                         >
                             <Icon size={14} aria-hidden="true" />
-                            <span className="hidden sm:inline">{t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}</span>
+                            <span className="hidden sm:inline">{label}</span>
                         </button>
                     );
                 })}
@@ -208,10 +217,11 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         const Icon = item.icon;
                         // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
                     const isLiveItem = item.page === 'pos';
-                    const isActive =
+                        const isActive =
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
+                        const label = item.page === 'promotion' ? item.label : t(getNavLabel(item.page));
                         return (
                             <button
                                 key={item.path}
@@ -224,10 +234,10 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                                         ? 'bg-pink-50 text-pink-700 border border-pink-200'
                                         : 'text-gray-600 hover:bg-gray-50'
                                 }`}
-                                aria-label={t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
+                                aria-label={label}
                             >
                                 <Icon size={18} />
-                                {t(item.page === 'events' ? 'workspaceNavEvents' : item.page === 'menu' ? 'workspaceNavMenu' : item.page === 'pos' ? 'workspaceNavPosQueue' : 'workspaceNavTeam')}
+                                {label}
                             </button>
                         );
                     })}

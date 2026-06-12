@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download } from 'lucide-react';
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -75,6 +75,9 @@ type EventCatalogDraft = Record<string, {
 
 type ProductImageTarget = 'add' | 'edit';
 type CatalogWorkspaceTab = 'catalog' | 'event-catalog' | 'promotions' | 'import';
+interface ManageProductsProps {
+   initialTab?: CatalogWorkspaceTab;
+}
 type ProductConfirmAction =
    | { type: 'switch_currency'; currency: string }
    | { type: 'delete_product'; id: string; name: string }
@@ -164,8 +167,9 @@ const buildProductDuplicateKey = (input: {
    ].join('::');
 };
 
-const ManageProducts = () => {
+const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const navigate = useNavigate();
+   const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
    const [products, setProducts] = useState<Product[]>([]);
    const [loading, setLoading] = useState(true);
@@ -192,7 +196,7 @@ const ManageProducts = () => {
    const [selectedCurrency, setSelectedCurrency] = useState('All'); // ✅ NEW: Currency filter
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
-   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>('catalog');
+   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>(initialTab);
    const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
    const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
    const [selectedEventId, setSelectedEventId] = useState('');
@@ -226,6 +230,7 @@ const ManageProducts = () => {
    const [artistId, setArtistId] = useState<string>('');
    const [artistName, setArtistName] = useState<string>('');
    const [actorContext, setActorContext] = useState<ActorContext | null>(null);
+   const isEventScopedWorkspace = Boolean(routeEventId);
 
    const categories = [
       "A3", "A4", "Badge", "Cheki", "Keychain", 
@@ -241,16 +246,24 @@ const ManageProducts = () => {
    const allTagSuggestions = Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort();
 
    useEffect(() => {
+      if (routeEventId) {
+         setSelectedEventId(routeEventId);
+         setActiveWorkspaceTab(initialTab);
+         return;
+      }
+
       const requestedTab = searchParams.get('tab');
-      if (requestedTab === 'catalog' || requestedTab === 'event-catalog' || requestedTab === 'promotions' || requestedTab === 'import') {
+      if (requestedTab === 'catalog' || requestedTab === 'promotions' || requestedTab === 'import') {
          setActiveWorkspaceTab(requestedTab);
+      } else {
+         setActiveWorkspaceTab(initialTab);
       }
 
       const requestedEventId = searchParams.get('eventId');
       if (requestedEventId) {
          setSelectedEventId(requestedEventId);
       }
-   }, [searchParams]);
+   }, [initialTab, routeEventId, searchParams]);
 
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
@@ -502,7 +515,7 @@ const ManageProducts = () => {
 
       const events = (data || []) as EventOption[];
       setEventOptions(events);
-      setSelectedEventId((current) => current || events[0]?.id || '');
+      setSelectedEventId((current) => routeEventId || current || events[0]?.id || '');
    };
 
    const fetchEventCatalog = async (eventId: string) => {
@@ -1362,10 +1375,20 @@ const ManageProducts = () => {
       }
    };
 
+   const selectedEventName = selectedEventOption?.event_name || 'Event';
+   const pageTitle = isEventScopedWorkspace
+      ? activeWorkspaceTab === 'promotions' ? 'Event Promotion' : 'Event Catalog'
+      : activeWorkspaceTab === 'promotions' ? 'Promotion Workspace' : 'Catalog Workspace';
+   const pageSubtitle = isEventScopedWorkspace ? selectedEventName : artistName;
+
    return (
       <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
          {/* ✅ NEW: Unified Admin Header */}
-         <AdminHeader activePage="menu" actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
+         <AdminHeader
+            activePage={activeWorkspaceTab === 'promotions' && !isEventScopedWorkspace ? 'promotion' : 'menu'}
+            actorRole={actorContext?.role}
+            userEmail={actorContext?.member_email}
+         />
          <Toast message={toast} onClose={() => setToast(null)} />
          <ConfirmDialog
             open={!!confirmAction}
@@ -1508,26 +1531,29 @@ const ManageProducts = () => {
          
          {/* Page Title Wrapper */}
          <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
-            <h1 className="text-xl font-black text-gray-800 tracking-tight">Catalog Workspace</h1>
-            <p className="text-sm text-pink-600 font-bold">{artistName}</p>
+            <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
+            <p className="text-sm text-pink-600 font-bold">{pageSubtitle}</p>
          </div>
 
          <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
-            {activeWorkspaceTab === 'event-catalog' && selectedEventId && (
-               <EventNavTabs eventId={selectedEventId} active="catalog" actorRole={actorContext?.role} />
+            {isEventScopedWorkspace && selectedEventId && (
+               <EventNavTabs
+                  eventId={selectedEventId}
+                  active={activeWorkspaceTab === 'promotions' ? 'promotion' : 'catalog'}
+                  actorRole={actorContext?.role}
+               />
             )}
+            {!isEventScopedWorkspace && activeWorkspaceTab !== 'promotions' && (
             <section className="workspace-card mb-4 p-3">
                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                      <p className="text-xs font-black uppercase tracking-wide text-gray-400">Catalog Workspace</p>
-                     <p className="text-sm font-semibold text-gray-700">Daily maintenance stays focused; event setup, promotions, and import live in their own tabs.</p>
+                     <p className="text-sm font-semibold text-gray-700">Daily maintenance and bulk import for the shared catalog.</p>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                      <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
                         {([
                            ['catalog', 'Catalog'],
-                           ['event-catalog', 'Event Catalog'],
-                           ['promotions', 'Promotions'],
                            ['import', 'Import'],
                         ] as const).map(([tab, label]) => (
                            <button
@@ -1568,6 +1594,7 @@ const ManageProducts = () => {
                   </div>
                </div>
             </section>
+            )}
             
             {isAddProductModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
@@ -1832,9 +1859,13 @@ const ManageProducts = () => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <Sparkles className="text-pink-500" size={18} />
-                        Promotions
+                        {isEventScopedWorkspace ? 'Event Promotion' : 'Promotions'}
                      </h2>
-                     <p className="mt-1 text-xs text-gray-500">Manage pricing rules separately from daily product maintenance.</p>
+                     <p className="mt-1 text-xs text-gray-500">
+                        {isEventScopedWorkspace
+                           ? 'Manage pricing rules for this event only.'
+                           : 'Manage shared pricing rules separately from daily product maintenance.'}
+                     </p>
                   </div>
                </div>
 
@@ -1845,6 +1876,8 @@ const ManageProducts = () => {
                         eventOptions={eventOptions}
                         categorySuggestions={allCategorySuggestions}
                         tagSuggestions={allTagSuggestions}
+                        lockedEventId={isEventScopedWorkspace ? selectedEventId : undefined}
+                        lockedEventName={isEventScopedWorkspace ? selectedEventName : undefined}
                      />
                   </div>
             </section>
@@ -1858,7 +1891,7 @@ const ManageProducts = () => {
                         <CalendarDays className="text-pink-500" size={18} />
                         Event Catalog
                      </h2>
-                     <p className="mt-1 text-xs text-gray-500">Choose which products, price, and stock are available for each event booth.</p>
+                     <p className="mt-1 text-xs text-gray-500">Choose products, price, and stock for this event booth.</p>
                   </div>
                </div>
 
@@ -1866,18 +1899,24 @@ const ManageProducts = () => {
                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                            <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
-                           <select
-                              value={selectedEventId}
-                              onChange={(event) => setSelectedEventId(event.target.value)}
-                              className="min-w-[260px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                              disabled={eventOptions.length === 0}
-                              aria-label="Select event catalog"
-                           >
-                              {eventOptions.length === 0 && <option value="">No confirmed events</option>}
-                              {eventOptions.map((event) => (
-                                 <option key={event.id} value={event.id}>{event.event_name}</option>
-                              ))}
-                           </select>
+                           {isEventScopedWorkspace ? (
+                              <div className="min-w-[260px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-black text-gray-800">
+                                 {selectedEventName}
+                              </div>
+                           ) : (
+                              <select
+                                 value={selectedEventId}
+                                 onChange={(event) => setSelectedEventId(event.target.value)}
+                                 className="min-w-[260px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                 disabled={eventOptions.length === 0}
+                                 aria-label="Select event catalog"
+                              >
+                                 {eventOptions.length === 0 && <option value="">No confirmed events</option>}
+                                 {eventOptions.map((event) => (
+                                    <option key={event.id} value={event.id}>{event.event_name}</option>
+                                 ))}
+                              </select>
+                           )}
                            {selectedEventOption && (
                               <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">
                                  {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}

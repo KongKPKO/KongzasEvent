@@ -11,6 +11,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  Sparkles,
   Ticket,
   Users,
   X,
@@ -267,10 +268,22 @@ const buildModules = (
     metric: `${metrics.sellingProductCount}/${metrics.productCount} selling`,
     detail: metrics.sellingProductCount > 0 ? 'Products are available for this event.' : 'Set event products before opening sales.',
     cta: metrics.sellingProductCount > 0 ? 'Manage stock' : 'Set up catalog',
-    href: `/manage-products?tab=event-catalog&eventId=${event.id}`,
+    href: `/manage-events/${event.id}/catalog`,
     priority: context === 'prep' || context === 'preorderOpen' ? 'P' : ended ? 'M' : 'S',
     tone: 'amber',
     icon: Coffee,
+  }, management);
+
+  add({
+    id: 'promotion',
+    title: 'Event Promotion',
+    metric: 'Event only',
+    detail: 'Create pricing rules that apply only to this event.',
+    cta: 'Manage promotion',
+    href: `/manage-events/${event.id}/promotion`,
+    priority: context === 'prep' || context === 'preorderOpen' ? 'S' : 'M',
+    tone: 'pink',
+    icon: Sparkles,
   }, management);
 
   add({

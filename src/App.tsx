@@ -186,6 +186,10 @@ function App() {
               element={session ? (canUseManagement ? <ManageProducts /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
+              path="/manage-promotions"
+              element={session ? (canUseManagement ? <ManageProducts initialTab="promotions" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
               path="/manage-events"
               element={session ? (canUseManagement ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
@@ -208,6 +212,14 @@ function App() {
             <Route
               path="/manage-events/:eventId/dashboard"
               element={session ? (canUseManagement ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/catalog"
+              element={session ? (canUseManagement ? <ManageProducts initialTab="event-catalog" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/promotion"
+              element={session ? (canUseManagement ? <ManageProducts initialTab="promotions" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/preorder"

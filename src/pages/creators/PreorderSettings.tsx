@@ -524,7 +524,7 @@ export default function PreorderSettings() {
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => navigate(`/manage-products?tab=event-catalog&eventId=${event.id}`)}
+                  onClick={() => navigate(`/manage-events/${event.id}/catalog`)}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-black text-gray-700 hover:bg-gray-50"
                 >
                   <PackageCheck size={17} /> Event catalog

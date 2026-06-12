@@ -71,16 +71,20 @@ export function ConfirmDialog({
   const { t } = useI18n();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
+  // Parents recreate onCancel on every keystroke; depending on it would re-run
+  // this effect and steal focus from the textarea. Track it in a ref instead.
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   useEffect(() => {
     if (!open) return;
     cancelRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel();
+      if (event.key === 'Escape') onCancelRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -227,7 +227,11 @@ function App() {
             />
             <Route
               path="/manage-events/:eventId/preorder-dashboard"
-              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} scope="preorder" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-events/:eventId/postorder-dashboard"
+              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} scope="post_event" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/pickup"

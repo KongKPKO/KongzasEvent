@@ -21,6 +21,10 @@ import { formatPrice } from '../../utils/currency';
 
 interface PreorderDashboardProps {
   actorContext: ActorContext;
+  // Which order timeline this dashboard reviews. Pre-order and post-event are
+  // separate tabs so a finished pre-order phase stays viewable after the event
+  // flips to its post-event store.
+  scope?: 'preorder' | 'post_event';
 }
 
 interface EventInfo {
@@ -59,7 +63,7 @@ const CLOSED_STATUSES: PaymentStatus[] = ['payment_rejected', 'payment_expired',
 
 const toNumber = (value: unknown) => Number(value || 0);
 
-export default function PreorderDashboard({ actorContext }: PreorderDashboardProps) {
+export default function PreorderDashboard({ actorContext, scope = 'preorder' }: PreorderDashboardProps) {
   const { eventId } = useParams();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
@@ -97,13 +101,13 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       if (eventError) throw eventError;
       setEventInfo((eventData || null) as EventInfo | null);
       setSummary(summaryData);
-      setOrders(reviewData);
+      setOrders(reviewData.filter((order) => (scope === 'post_event' ? order.order_type === 'post_event' : order.order_type !== 'post_event')));
     } catch (error) {
       setToast({ tone: 'error', title: 'Could not load pre-order dashboard', detail: getPreorderErrorMessage(error) });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [actorContext.artist_id, eventId]);
+  }, [actorContext.artist_id, eventId, scope]);
 
   useEffect(() => {
     void load();
@@ -323,13 +327,13 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       classes: 'border-amber-100 bg-amber-50 text-amber-700',
       activeClasses: 'ring-2 ring-amber-400 border-amber-300',
     },
-    {
-      key: 'to_ship',
+    ...(scope === 'post_event' ? [{
+      key: 'to_ship' as StatusFilter,
       label: 'To ship',
       value: String(totals.toShipCount),
       classes: 'border-violet-100 bg-violet-50 text-violet-700',
       activeClasses: 'ring-2 ring-violet-400 border-violet-300',
-    },
+    }] : []),
     {
       key: 'confirmed',
       label: 'Confirmed',
@@ -514,7 +518,7 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       )}
 
       <main className="mx-auto max-w-6xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active="preorder" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
+        {eventId && <EventNavTabs eventId={eventId} active={scope === 'post_event' ? 'postorder' : 'preorder'} actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-wrap gap-2">
             <button
@@ -536,12 +540,12 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
         <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ReceiptText className="text-pink-600" size={24} />
-            <h1 className="text-2xl font-black text-gray-900">{eventInfo?.selling_mode === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
+            <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
           </div>
-          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {eventInfo?.selling_mode === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
+          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {scope === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
         </section>
 
-        <section aria-label="Order status filters" className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
+        <section aria-label="Order status filters" className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           {statCards.map((card) => (
             <button
               key={card.key}

@@ -727,7 +727,12 @@ export default function PromotionManager({
                       <button
                         type="button"
                         onClick={() => handleToggleStatus(promotion)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border ${promotion.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                        className={[
+                          'px-3 py-1.5 rounded-full text-xs font-bold border',
+                          promotion.status === 'active'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                            : 'bg-white text-slate-600 border-gray-200'
+                        ].join(' ')}
                       >
                         {promotion.status === 'active' ? 'Active' : 'Inactive'}
                       </button>

@@ -173,10 +173,10 @@ export default function DiscoveryHome() {
             <NireqWordmark />
           </Link>
           <nav className="flex items-center gap-2">
-            <a href="#discover" className="hidden min-h-11 items-center rounded-full px-4 text-sm font-black text-gray-600 hover:bg-pink-50 hover:text-pink-700 sm:inline-flex">
+            <a href="#discover" className="hidden min-h-11 items-center rounded-full px-4 text-sm font-black text-pink-900 hover:bg-pink-50 hover:text-pink-800 sm:inline-flex">
               {t('navDiscover')}
             </a>
-            <Link to="/manage-login" className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-black text-gray-600 hover:bg-pink-50 hover:text-pink-700">
+            <Link to="/manage-login" className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-black text-pink-900 hover:bg-pink-50 hover:text-pink-800">
               {t('navCreatorLogin')}
             </Link>
             <Link to="/creator/register" className="hidden min-h-11 items-center rounded-full bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-200 hover:bg-pink-700 sm:inline-flex">
@@ -189,20 +189,20 @@ export default function DiscoveryHome() {
 
       <main>
         <section className="relative overflow-hidden border-b border-pink-100 bg-[radial-gradient(circle_at_20%_20%,#ffe4f1_0,#fff7fb_36%,#ffffff_100%)]">
-          <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl grid-cols-1 items-center gap-10 px-4 py-10 lg:grid-cols-[1.02fr_0.98fr] lg:py-14">
+          <div className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-8 px-4 py-8 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:gap-10 lg:py-14">
             <div className="max-w-2xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-pink-700 shadow-sm">
                 <Sparkles size={14} />
                 {t('homeEyebrow')}
               </div>
-              <h1 className="text-5xl font-black leading-[0.92] tracking-normal text-gray-950 md:text-7xl">
+              <h1 className="text-4xl font-black leading-[0.96] tracking-normal text-gray-950 md:text-7xl">
                 {t('homeTitle')}
               </h1>
-              <p className="mt-6 max-w-xl text-base font-semibold leading-7 text-gray-600 md:text-lg">
+              <p className="mt-5 max-w-xl text-base font-semibold leading-7 text-slate-700 md:text-lg">
                 {t('homeSubtitle')}
               </p>
 
-              <div className="mt-8 rounded-[1.75rem] border border-pink-100 bg-white p-3 shadow-2xl shadow-pink-100/70">
+              <div className="mt-6 rounded-2xl border border-pink-100 bg-white p-3 shadow-lg shadow-pink-100/60">
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <label className="relative flex-1">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-400" size={18} />
@@ -213,7 +213,7 @@ export default function DiscoveryHome() {
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder={t('homeSearchPlaceholder')}
-                      className="h-[3.25rem] w-full rounded-2xl border border-pink-100 bg-pink-50/55 py-3 pl-12 pr-4 text-sm font-bold text-gray-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
+                      className="h-[3.25rem] w-full rounded-2xl border border-pink-100 bg-pink-50/55 py-3 pl-12 pr-4 text-sm font-bold text-pink-950 placeholder:text-pink-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
                     />
                   </label>
                   <button
@@ -223,7 +223,7 @@ export default function DiscoveryHome() {
                     className={`h-[3.25rem] rounded-2xl border px-5 py-3 text-sm font-black transition ${
                       openOnly
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                        : 'border-pink-100 bg-white text-gray-700 hover:border-pink-200 hover:bg-pink-50'
+                        : 'border-pink-100 bg-white text-pink-900 hover:border-pink-200 hover:bg-pink-50 hover:text-pink-800'
                     }`}
                   >
                     {t('homeOpenNow')}
@@ -231,36 +231,36 @@ export default function DiscoveryHome() {
                 </div>
               </div>
 
-              <div className="mt-6 grid max-w-lg grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-pink-100 bg-white/80 p-4">
+              <div className="mt-5 grid max-w-lg grid-cols-3 gap-3">
+                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
                   <div className="text-2xl font-black text-pink-600">{creators.length}</div>
-                  <div className="text-xs font-bold text-gray-500">{t('homeCreators')}</div>
+                  <div className="text-xs font-bold text-pink-900">{t('homeCreators')}</div>
                 </div>
-                <div className="rounded-2xl border border-pink-100 bg-white/80 p-4">
+                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
                   <div className="text-2xl font-black text-pink-600">{openCount}</div>
-                  <div className="text-xs font-bold text-gray-500">{t('homeOpenNow')}</div>
+                  <div className="text-xs font-bold text-pink-900">{t('homeOpenNow')}</div>
                 </div>
-                <div className="rounded-2xl border border-pink-100 bg-white/80 p-4">
+                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
                   <div className="text-2xl font-black text-pink-600">Q</div>
-                  <div className="text-xs font-bold text-gray-500">{t('homeLiveQueue')}</div>
+                  <div className="text-xs font-bold text-pink-900">{t('homeLiveQueue')}</div>
                 </div>
               </div>
             </div>
 
             <div className="relative">
-              <div className="relative rounded-[2rem] border border-pink-100 bg-white p-4 shadow-2xl shadow-pink-100">
+              <div className="relative rounded-2xl border border-pink-100 bg-white p-4 shadow-lg shadow-pink-100/60">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-500">{t('homeFeaturedEyebrow')}</div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-700">{t('homeFeaturedEyebrow')}</div>
                     <div className="text-lg font-black text-gray-950">{t('homeFeaturedTitle')}</div>
                   </div>
-                  <Ticket className="text-pink-500" size={24} />
+                  <Ticket className="text-pink-700" size={24} />
                 </div>
                 <div className="grid gap-3">
                   {loading ? (
-                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-500">{t('homeLoadingCreators')}</div>
+                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-700">{t('homeLoadingCreators')}</div>
                   ) : previewCreators.length === 0 ? (
-                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-500">{t('homeNoCreators')}</div>
+                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-700">{t('homeNoCreators')}</div>
                   ) : previewCreators.map((creator) => (
                     <CreatorCard key={`${creator.artist_id}-${creator.event_id}-hero`} creator={creator} compact />
                   ))}
@@ -293,7 +293,7 @@ export default function DiscoveryHome() {
         <section id="discover" data-testid="public-discovery" className="mx-auto max-w-6xl px-4 py-10 md:py-14">
           <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-pink-500">{t('homeBrowseEyebrow')}</div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-pink-700">{t('homeBrowseEyebrow')}</div>
               <h2 className="mt-2 text-3xl font-black tracking-normal text-gray-950 md:text-4xl">{t('homeBrowseTitle')}</h2>
             </div>
             <Link to="/creator/register" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 hover:bg-pink-50">
@@ -303,9 +303,9 @@ export default function DiscoveryHome() {
           </div>
 
           {loading ? (
-            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-500 shadow-sm">{t('homeLoadingCreators')}</div>
+            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-700 shadow-sm">{t('homeLoadingCreators')}</div>
           ) : filteredCreators.length === 0 ? (
-            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-500 shadow-sm">{t('homeNoCreators')}</div>
+            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-700 shadow-sm">{t('homeNoCreators')}</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredCreators.map((creator) => (
@@ -334,17 +334,22 @@ function CreatorCard({ creator, compact = false }: { creator: DiscoveryRow; comp
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate text-lg font-black text-gray-950">{creator.display_name}</h3>
-            <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black ${
-              creator.is_booth_open ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
-            }`}>
+            <span
+              className={[
+                'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black',
+                creator.is_booth_open
+                  ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+                  : 'border-gray-200 bg-white text-slate-600'
+              ].join(' ')}
+            >
               <span className={`h-1.5 w-1.5 rounded-full ${creator.is_booth_open ? 'bg-emerald-500' : 'bg-gray-400'}`} />
               {creator.is_booth_open ? t('creatorCardOpen') : t('creatorCardClosed')}
             </span>
           </div>
-          {creator.bio && <p className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-gray-500">{creator.bio}</p>}
+          {creator.bio && <p className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-slate-600">{creator.bio}</p>}
           <div className="mt-3 rounded-2xl bg-[#fff7fb] p-3">
             <div className="text-sm font-black leading-5 text-gray-900">{creator.event_name || t('creatorCardNoUpcoming')}</div>
-            <div className="mt-2 flex items-start gap-2 text-xs font-bold leading-4 text-gray-500">
+            <div className="mt-2 flex items-start gap-2 text-xs font-bold leading-4 text-pink-900">
               <MapPin className="mt-0.5 shrink-0 text-pink-500" size={13} />
               <span>{creator.location || t('creatorCardLocationSoon')}</span>
             </div>

@@ -180,7 +180,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                <div className="mb-2">
                   <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-950">{displayName}</h3>
                   {product.variant_group_name && product.variant_name && (
-                     <p className="mt-1 line-clamp-1 text-[11px] font-black text-indigo-600">{product.name}</p>
+                     <p className="mt-1 line-clamp-1 text-[11px] font-black text-pink-700">{product.name}</p>
                   )}
                   {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
                </div>
@@ -259,9 +259,9 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
 
             return (
                <div key={`variant-group-${entry.key}`} className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3">
-                  <div className="mb-2 mt-1 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2">
-                     <h3 className="text-sm font-black text-indigo-950">{entry.label}</h3>
-                     <p className="text-[11px] font-bold text-indigo-700">{entry.products.length} variants</p>
+                  <div className="mb-2 mt-1 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
+                     <h3 className="text-sm font-black text-pink-950">{entry.label}</h3>
+                     <p className="text-[11px] font-bold text-pink-800">{entry.products.length} variants</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
                      {entry.products.map((product, productIndex) => renderProductCard(product, productIndex))}

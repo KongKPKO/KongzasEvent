@@ -40,14 +40,14 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
 
       <div className="grid md:grid-cols-2 gap-8 items-center">
         {/* Next to Serve Display */}
-        <div className="text-center p-6 bg-gradient-to-br from-indigo-50 to-white rounded-3xl border border-indigo-100 relative overflow-hidden">
-          <div className="text-sm font-bold uppercase text-indigo-400 tracking-wider mb-2">
+        <div className="text-center p-6 bg-slate-50 rounded-2xl border border-slate-200 relative overflow-hidden">
+          <div className="text-sm font-bold uppercase text-slate-600 tracking-wider mb-2">
             Next Ticket
           </div>
-          <div className="text-8xl font-black text-indigo-600 leading-tight">
+          <div className="text-8xl font-black text-slate-950 leading-tight">
             {nextTicketId ? `#${nextTicketId}` : '-'}
           </div>
-          <div className="mt-2 text-gray-500 font-medium text-sm">
+          <div className="mt-2 text-slate-700 font-medium text-sm">
             {waitingCount} waiting
           </div>
         </div>
@@ -58,7 +58,7 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
              size="lg" 
              onClick={handleCallNext}
              disabled={waitingCount === 0}
-             className="w-full shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 text-white"
+             className="w-full shadow-lg shadow-pink-100 disabled:opacity-50 disabled:cursor-not-allowed bg-pink-600 hover:bg-pink-700 text-white"
           >
             <SkipForward className="mr-2" size={20} />
             Call Next

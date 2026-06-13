@@ -916,7 +916,7 @@ const QueueView = () => {
                             <Button
                                 onClick={handleGetTicket}
                                 disabled={loading}
-                                className="w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none disabled:cursor-not-allowed"
+                                className="w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white disabled:bg-gray-200 disabled:[color:#475569] disabled:shadow-none disabled:cursor-not-allowed"
                             >
                                 {t('queueGetTicket')}
                             </Button>

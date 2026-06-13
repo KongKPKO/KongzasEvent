@@ -422,7 +422,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
               onChange={(event) => setReviewNote(event.target.value)}
               rows={3}
               placeholder="Example: Transfer amount does not match, duplicate slip, or payment not found."
-              className="mt-1 w-full resize-none rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-100"
+              className="mt-1 w-full resize-none rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-bold text-red-950 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-100"
             />
           </label>
         )}
@@ -434,7 +434,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                 value={trackingNumber}
                 onChange={(event) => setTrackingNumber(event.target.value)}
                 placeholder="Tracking number"
-                className="mt-1 min-h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 text-sm font-bold text-gray-900 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                className="mt-1 min-h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 text-sm font-bold text-emerald-950 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
             <label className="block">

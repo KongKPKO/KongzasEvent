@@ -51,7 +51,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
             className={`min-h-10 shrink-0 rounded-xl px-3.5 text-sm font-black transition-colors ${
               active === tab.key
                 ? 'bg-pink-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-pink-50 hover:text-pink-700'
+                : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
             }`}
           >
             {tab.label}
@@ -64,7 +64,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
             key={action.label}
             type="button"
             onClick={() => navigate(action.path)}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-indigo-100 bg-indigo-50 px-3 text-sm font-black text-indigo-800 hover:bg-indigo-100"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
           >
             <action.icon size={15} /> {action.label}
           </button>

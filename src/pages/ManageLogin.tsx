@@ -240,7 +240,7 @@ const ManageLogin = () => {
               className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
                 loginMode === 'creator'
                   ? 'bg-white text-pink-700 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-800'
+                  : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Creator / Manager
@@ -253,7 +253,7 @@ const ManageLogin = () => {
               className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
                 loginMode === 'staff'
                   ? 'bg-white text-pink-700 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-800'
+                  : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Staff

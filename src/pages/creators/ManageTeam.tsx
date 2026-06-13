@@ -488,7 +488,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                       const checked = inviteEventIds.includes(event.id);
                       return (
                         <label key={`invite-${event.id}`} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
-                          checked ? 'border-pink-200 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600'
+                          checked ? 'border-pink-200 bg-pink-50 text-pink-800' : 'border-gray-200 bg-white text-pink-900'
                         }`}>
                           <input
                             type="checkbox"
@@ -647,7 +647,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                       <button
                         type="button"
                         onClick={() => handleDelete(member)}
-                        className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                        className="icon-touch inline-flex items-center justify-center rounded-lg text-red-700 hover:text-red-800 hover:bg-red-50"
                         aria-label={`Remove ${member.member_email}`}
                       >
                         <Trash2 size={14} />
@@ -682,7 +682,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                           const checked = assigned.has(event.id);
                           return (
                             <label key={`${member.id}-${event.id}`} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
-                              checked ? 'border-pink-200 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600'
+                              checked ? 'border-pink-200 bg-pink-50 text-pink-800' : 'border-gray-200 bg-white text-pink-900'
                             }`}>
                               <input
                                 type="checkbox"

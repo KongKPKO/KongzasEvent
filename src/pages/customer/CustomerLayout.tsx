@@ -196,8 +196,8 @@ const CustomerLayout = () => {
                               aria-current={location.pathname.endsWith(match) ? 'page' : undefined}
                               className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-black transition-colors ${
                                  location.pathname.endsWith(match)
-                                    ? 'bg-pink-600 text-white shadow-sm'
-                                    : 'text-gray-600 hover:bg-pink-50 hover:text-pink-700'
+                                     ? 'bg-pink-600 text-white shadow-sm'
+                                    : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
                               }`}
                            >
                               <Icon size={15} aria-hidden="true" /> {label}

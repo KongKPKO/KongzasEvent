@@ -60,9 +60,14 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                       <div className="mt-1 text-[11px] leading-[1.35] text-gray-500 line-clamp-2">{creator.bio}</div>
                     )}
                   </div>
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shrink-0 ${
-                    creator.is_booth_open ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-600 border border-gray-200'
-                  }`}>
+                  <span
+                    className={[
+                      'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shrink-0 border',
+                      creator.is_booth_open
+                        ? 'bg-green-50 text-green-800 border-green-100'
+                        : 'bg-white text-slate-700 border-gray-200'
+                    ].join(' ')}
+                  >
                     <span className={`w-1.5 h-1.5 rounded-full ${creator.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                     {creator.is_booth_open ? t('creatorsOpenNow') : t('creatorsClosed')}
                   </span>

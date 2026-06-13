@@ -2187,7 +2187,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                              <div className="text-sm font-bold text-gray-800 truncate">{product.name}</div>
                                              {product.variant_group_name && (
                                                 <div className="mt-1 flex flex-wrap items-center gap-1">
-                                                   <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black text-indigo-700">
+                                                   <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-700">
                                                       {product.variant_group_name}
                                                    </span>
                                                    <span className="text-[10px] font-bold text-gray-500">
@@ -2596,7 +2596,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
                                  {product.variant_group_name && (
                                     <div className="mt-1 flex items-center gap-1">
-                                       <span className="truncate rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-black text-indigo-700">
+                                       <span className="truncate rounded bg-pink-50 px-1.5 py-0.5 text-[9px] font-black text-pink-700">
                                           {product.variant_group_name}
                                        </span>
                                        <span className="truncate text-[9px] font-bold text-gray-500">
@@ -2678,7 +2678,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                           <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
                                           {product.variant_group_name && (
                                              <div className="mt-1 flex flex-wrap items-center gap-1">
-                                                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black text-indigo-700">
+                                                <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-700">
                                                    {product.variant_group_name}
                                                 </span>
                                                 <span className="text-[10px] font-bold text-gray-500">

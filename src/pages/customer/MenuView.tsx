@@ -1454,7 +1454,7 @@ const MenuView = () => {
                                     type="button"
                                     onClick={handleStartNewPreorder}
                                     aria-label={t('menuPreorderNew')}
-                                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-pink-100 bg-white text-gray-500 hover:bg-pink-50"
+                                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-pink-100 bg-white text-pink-700 hover:bg-pink-50"
                                 >
                                     <XCircle size={16} />
                                 </button>

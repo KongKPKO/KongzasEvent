@@ -1037,7 +1037,7 @@ export default function POSPanel({
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
                 }}
-                className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
+                className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:[color:#475569] disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
             >
                 {loading
                     ? 'Processing...'
@@ -1226,11 +1226,11 @@ export default function POSPanel({
                                     <button
                                         key={filter.id}
                                         onClick={() => setSelectedQuickFilter(filter.id)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap inline-flex items-center gap-1.5 ${selectedQuickFilter === filter.id ? 'bg-gray-900 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap inline-flex items-center gap-1.5 ${selectedQuickFilter === filter.id ? 'bg-gray-900 text-white shadow-md' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
                                     >
                                         <Icon size={12} />
                                         <span>{filter.label}</span>
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-gray-500'}`}>{filter.count}</span>
+                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{filter.count}</span>
                                     </button>
                                 );
                             })}
@@ -1240,9 +1240,9 @@ export default function POSPanel({
                                 <button
                                     key={cat.label}
                                     onClick={() => setSelectedCategory(cat.label)}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat.label ? 'bg-pink-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat.label ? 'bg-pink-600 text-white shadow-md' : 'bg-gray-100 text-pink-900 hover:bg-gray-200'}`}
                                 >
-                                    {cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-gray-400'}`}>{cat.count}</span>
+                                    {cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-slate-500'}`}>{cat.count}</span>
                                 </button>
                             ))}
                         </div>
@@ -1298,9 +1298,9 @@ export default function POSPanel({
                                     return (
                                     <Fragment key={product.id}>
                                         {showVariantHeader && (
-                                            <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2' : 'col-span-full rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2'}>
-                                                <div className="text-sm font-black text-indigo-950">{groupName}</div>
-                                                <div className="text-[11px] font-bold text-indigo-700">Variants</div>
+                                            <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-pink-100 bg-pink-50 px-3 py-2' : 'col-span-full rounded-xl border border-pink-100 bg-pink-50 px-3 py-2'}>
+                                                <div className="text-sm font-black text-pink-950">{groupName}</div>
+                                                <div className="text-[11px] font-bold text-pink-800">Variants</div>
                                             </div>
                                         )}
                                     {(() => {
@@ -1337,7 +1337,7 @@ export default function POSPanel({
                                                                 <div className="min-w-0">
                                                                     <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{displayName}</div>
                                                                     {product.variant_group_name && product.variant_name && (
-                                                                        <div className="text-[11px] font-bold text-indigo-600 break-words">{product.name}</div>
+                                                                        <div className="text-[11px] font-bold text-pink-700 break-words">{product.name}</div>
                                                                     )}
                                                                     <div className="text-[11px] text-gray-500 break-words">{(product.category || 'Other').trim() || 'Other'}</div>
                                                                 </div>
@@ -1396,7 +1396,7 @@ export default function POSPanel({
                                                         <div>
                                                             <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{displayName}</h3>
                                                             {product.variant_group_name && product.variant_name && (
-                                                                <p className="mt-0.5 text-[11px] font-bold text-indigo-600 truncate">{product.name}</p>
+                                                                <p className="mt-0.5 text-[11px] font-bold text-pink-700 truncate">{product.name}</p>
                                                             )}
                                                             <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
                                                             <div className="mt-2 flex flex-wrap gap-1">

@@ -39,6 +39,9 @@ interface Product {
   stock_reserved?: number;
   stock_sold?: number;
   is_unlimited?: boolean;
+  variant_group_name?: string | null;
+  variant_name?: string | null;
+  variant_sort_order?: number;
 }
 
 interface EventOption {
@@ -118,6 +121,14 @@ const convertHeicToEditableImage = async (imageFile: File) => {
 };
 
 const normalizeTag = (value: string) => value.trim().replace(/\s+/g, ' ');
+const normalizeOptionalText = (value: string) => {
+   const normalized = value.trim().replace(/\s+/g, ' ');
+   return normalized || null;
+};
+const parseSortOrder = (value: string) => {
+   const parsed = Number(value);
+   return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+};
 
 const parseTagsInput = (value: string) =>
    Array.from(
@@ -154,6 +165,8 @@ const buildProductDuplicateKey = (input: {
    category?: string;
    currency?: string;
    tags?: string[];
+   variantGroupName?: string | null;
+   variantName?: string | null;
 }) => {
    const normalizedTags = Array.from(
       new Set((input.tags || []).map(normalizeTag).filter(Boolean).map(tag => tag.toLowerCase()))
@@ -163,6 +176,8 @@ const buildProductDuplicateKey = (input: {
       String(input.name || '').trim().toLowerCase(),
       String(input.category || 'Other').trim().toLowerCase(),
       String(input.currency || DEFAULT_CURRENCY).trim().toUpperCase(),
+      String(input.variantGroupName || '').trim().toLowerCase(),
+      String(input.variantName || '').trim().toLowerCase(),
       normalizedTags.join('|')
    ].join('::');
 };
@@ -186,6 +201,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [currency, setCurrency] = useState(DEFAULT_CURRENCY); // ✅ NEW: Currency state
    const [stockTotal, setStockTotal] = useState('');
    const [isUnlimited, setIsUnlimited] = useState(true);
+   const [variantGroupName, setVariantGroupName] = useState('');
+   const [variantName, setVariantName] = useState('');
+   const [variantSortOrder, setVariantSortOrder] = useState('0');
    const [file, setFile] = useState<File | null>(null);
    const [cropRequest, setCropRequest] = useState<{ file: File; target: ProductImageTarget } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
@@ -244,6 +262,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       ...products.map(p => p.category?.trim()).filter(Boolean) as string[]
    ])).sort();
    const allTagSuggestions = Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort();
+   const allVariantGroupSuggestions = Array.from(new Set(
+      products.map((p) => p.variant_group_name?.trim()).filter(Boolean) as string[]
+   )).sort();
 
    useEffect(() => {
       if (routeEventId) {
@@ -362,6 +383,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          product.name.toLowerCase().includes(query) ||
          (product.category || '').toLowerCase().includes(query) ||
          (product.description || '').toLowerCase().includes(query) ||
+         (product.variant_group_name || '').toLowerCase().includes(query) ||
+         (product.variant_name || '').toLowerCase().includes(query) ||
          tagHaystack.includes(query);
       const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
       const matchesCurrency = selectedCurrency === 'All' || (product.currency || DEFAULT_CURRENCY) === selectedCurrency; // ✅ NEW
@@ -391,6 +414,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          query.length === 0 ||
          product.name.toLowerCase().includes(query) ||
          (product.category || '').toLowerCase().includes(query) ||
+         (product.variant_group_name || '').toLowerCase().includes(query) ||
+         (product.variant_name || '').toLowerCase().includes(query) ||
          tagHaystack.includes(query);
       const matchesCategory = eventCatalogCategory === 'All' || (product.category || 'Other') === eventCatalogCategory;
       const matchesTag =
@@ -799,6 +824,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          product.status || '',
          product.price,
          product.currency || '',
+         product.variant_group_name || '',
+         product.variant_name || '',
+         product.variant_sort_order ?? '',
          product.stock_total ?? '',
          product.stock_reserved ?? '',
          product.stock_sold ?? '',
@@ -937,18 +965,25 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       const normalizedTags = parseTagsInput(tagsInput);
+      const normalizedVariantGroupName = normalizeOptionalText(variantGroupName);
+      const normalizedVariantName = normalizeOptionalText(variantName);
+      const normalizedVariantSortOrder = parseSortOrder(variantSortOrder);
       const duplicateKey = buildProductDuplicateKey({
          name,
          category: category || 'Other',
          currency,
-         tags: normalizedTags
+         tags: normalizedTags,
+         variantGroupName: normalizedVariantGroupName,
+         variantName: normalizedVariantName
       });
       const hasDuplicate = products.some(product =>
          buildProductDuplicateKey({
             name: product.name,
             category: product.category || 'Other',
             currency: product.currency || DEFAULT_CURRENCY,
-            tags: product.tags || []
+            tags: product.tags || [],
+            variantGroupName: product.variant_group_name,
+            variantName: product.variant_name
          }) === duplicateKey
       );
 
@@ -991,6 +1026,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                currency,  // ✅ NEW: Save currency
                stock_total: isUnlimited ? null : Number(stockTotal || 0),
                is_unlimited: isUnlimited,
+               variant_group_name: normalizedVariantGroupName,
+               variant_name: normalizedVariantName,
+               variant_sort_order: normalizedVariantSortOrder,
                image_url: filePath
             }]);
 
@@ -1006,6 +1044,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
          setStockTotal('');
          setIsUnlimited(true);
+         setVariantGroupName('');
+         setVariantName('');
+         setVariantSortOrder('0');
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
          
@@ -1058,6 +1099,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setCurrency(product.currency || DEFAULT_CURRENCY);  // ✅ NEW: Load product currency
       setIsUnlimited(product.is_unlimited ?? true);
       setStockTotal(product.stock_total ? String(product.stock_total) : '');
+      setVariantGroupName(product.variant_group_name || '');
+      setVariantName(product.variant_name || '');
+      setVariantSortOrder(String(product.variant_sort_order ?? 0));
       setEditFile(null);
       setIsEditModalOpen(true);
    };
@@ -1077,8 +1121,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       setUploading(true);
-      try {
-         let imageUrl = editingProduct.image_url;
+         try {
+            let imageUrl = editingProduct.image_url;
+            const normalizedVariantGroupName = normalizeOptionalText(variantGroupName);
+            const normalizedVariantName = normalizeOptionalText(variantName);
+            const normalizedVariantSortOrder = parseSortOrder(variantSortOrder);
 
          // If new image selected, upload it
          if (editFile) {
@@ -1116,6 +1163,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                currency,  // ✅ NEW: Update currency
                stock_total: isUnlimited ? null : Number(stockTotal || 0),
                is_unlimited: isUnlimited,
+               variant_group_name: normalizedVariantGroupName,
+               variant_name: normalizedVariantName,
+               variant_sort_order: normalizedVariantSortOrder,
                image_url: imageUrl
             })
             .eq('id', editingProduct.id);
@@ -1135,6 +1185,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
          setStockTotal('');
          setIsUnlimited(true);
+         setVariantGroupName('');
+         setVariantName('');
+         setVariantSortOrder('0');
          
          await fetchProducts();
          showToast({ tone: 'success', title: 'Product updated', detail: name });
@@ -1177,7 +1230,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   name: product.name,
                   category: product.category || 'Other',
                   currency: product.currency || DEFAULT_CURRENCY,
-                  tags: product.tags || []
+                  tags: product.tags || [],
+                  variantGroupName: product.variant_group_name,
+                  variantName: product.variant_name
                }))
             );
             const importedKeys = new Set<string>();
@@ -1206,6 +1261,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                const status = getCsvValue(sanitizedRow, ['status']);
                const stockRaw = getCsvValue(sanitizedRow, ['stock', 'stock_total', 'stocktotal', 'qty', 'quantity']);
                const unlimitedRaw = getCsvValue(sanitizedRow, ['is_unlimited', 'unlimited', 'isunlimited']);
+               const variantGroupRaw = getCsvValue(sanitizedRow, ['variant_group_name', 'variant_group', 'folder', 'folder_name']);
+               const variantNameRaw = getCsvValue(sanitizedRow, ['variant_name', 'variant', 'option', 'option_name']);
+               const variantSortRaw = getCsvValue(sanitizedRow, ['variant_sort_order', 'variant_sort', 'sort_order']);
 
                // Validate required fields
                if (!name || !priceRaw) {
@@ -1285,11 +1343,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   : 'enable';
 
                const normalizedTags = parseTagsInput(String(tagsRaw || ''));
+               const normalizedVariantGroupName = normalizeOptionalText(String(variantGroupRaw || ''));
+               const normalizedVariantName = normalizeOptionalText(String(variantNameRaw || ''));
+               const normalizedVariantSortOrder = parseSortOrder(String(variantSortRaw || '0'));
                const duplicateKey = buildProductDuplicateKey({
                   name: String(name),
                   category: String(category || 'Other'),
                   currency: String(currency),
-                  tags: normalizedTags
+                  tags: normalizedTags,
+                  variantGroupName: normalizedVariantGroupName,
+                  variantName: normalizedVariantName
                });
 
                if (existingKeys.has(duplicateKey)) {
@@ -1315,6 +1378,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   status: productStatus,
                   is_unlimited: isUnlimitedItem,
                   stock_total: stockTotalItem,
+                  variant_group_name: normalizedVariantGroupName,
+                  variant_name: normalizedVariantName,
+                  variant_sort_order: normalizedVariantSortOrder,
                   image_url: ''
                });
             });
@@ -1698,6 +1764,45 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <p className="text-[11px] text-gray-400">Separate tags with comma, pipe, or semicolon.</p>
                   </div>
 
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-4">
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variant Folder</label>
+                        <input
+                           list="variant-group-suggestions"
+                           type="text"
+                           value={variantGroupName}
+                           onChange={(e) => setVariantGroupName(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                           placeholder="e.g. Acrylic Charm Set"
+                        />
+                        <datalist id="variant-group-suggestions">
+                           {allVariantGroupSuggestions.map(group => (
+                              <option key={group} value={group} />
+                           ))}
+                        </datalist>
+                     </div>
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variant Name</label>
+                        <input
+                           type="text"
+                           value={variantName}
+                           onChange={(e) => setVariantName(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                           placeholder="e.g. A / Blue / 57mm"
+                        />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Sort</label>
+                        <input
+                           type="number"
+                           value={variantSortOrder}
+                           onChange={(e) => setVariantSortOrder(e.target.value)}
+                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
+                           step="1"
+                        />
+                     </div>
+                  </div>
+
                   {/* Row 2: Image | Status | Stock */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      <div className="space-y-1">
@@ -1818,7 +1923,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
                            <p className="text-xs text-gray-500">
-                              CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited)
+                              CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited, variant_group, variant_name, variant_sort_order)
                            </p>
                            <p className="mt-1 text-[11px] text-gray-400">Use this for large catalog setup. Existing duplicates will be ignored instead of inserted twice.</p>
                         </div>
@@ -2080,6 +2185,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                           </div>
                                           <div className="min-w-0">
                                              <div className="text-sm font-bold text-gray-800 truncate">{product.name}</div>
+                                             {product.variant_group_name && (
+                                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                   <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black text-indigo-700">
+                                                      {product.variant_group_name}
+                                                   </span>
+                                                   <span className="text-[10px] font-bold text-gray-500">
+                                                      {product.variant_name || product.name}
+                                                   </span>
+                                                </div>
+                                             )}
                                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                                 {draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '') ? (
                                                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">
@@ -2479,6 +2594,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
                               <div>
                                  <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
+                                 {product.variant_group_name && (
+                                    <div className="mt-1 flex items-center gap-1">
+                                       <span className="truncate rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-black text-indigo-700">
+                                          {product.variant_group_name}
+                                       </span>
+                                       <span className="truncate text-[9px] font-bold text-gray-500">
+                                          {product.variant_name || product.name}
+                                       </span>
+                                    </div>
+                                 )}
                                  <div className="mt-1 flex items-baseline gap-2">
                                     <span className="text-pink-600 font-black text-sm">{formatPrice(product.price, product.currency)}</span>
                                     {product.category && (
@@ -2551,6 +2676,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        </div>
                                        <div>
                                           <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
+                                          {product.variant_group_name && (
+                                             <div className="mt-1 flex flex-wrap items-center gap-1">
+                                                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black text-indigo-700">
+                                                   {product.variant_group_name}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-gray-500">
+                                                   {product.variant_name || product.name}
+                                                </span>
+                                             </div>
+                                          )}
                                           {product.description && <p className="text-xs text-gray-400 line-clamp-1 max-w-[240px]">{product.description}</p>}
                                           {!!product.tags?.length && (
                                              <div className="mt-1 flex flex-wrap gap-1 max-w-[260px]">
@@ -2728,6 +2863,46 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               placeholder="e.g. Genshin Impact, Flins"
                            />
                            <p className="mt-1 text-xs text-gray-400">Separate tags with comma, pipe, or semicolon.</p>
+                        </div>
+
+                        <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">Variant Folder</label>
+                           <input
+                              list="edit-variant-group-suggestions"
+                              type="text"
+                              value={variantGroupName}
+                              onChange={(e) => setVariantGroupName(e.target.value)}
+                              className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                              placeholder="e.g. Acrylic Charm Set"
+                           />
+                           <datalist id="edit-variant-group-suggestions">
+                              {allVariantGroupSuggestions.map(group => (
+                                 <option key={group} value={group} />
+                              ))}
+                           </datalist>
+                        </div>
+
+                        <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
+                           <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Variant Name</label>
+                              <input
+                                 type="text"
+                                 value={variantName}
+                                 onChange={(e) => setVariantName(e.target.value)}
+                                 className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                                 placeholder="e.g. A / Blue / 57mm"
+                              />
+                           </div>
+                           <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Sort</label>
+                              <input
+                                 type="number"
+                                 value={variantSortOrder}
+                                 onChange={(e) => setVariantSortOrder(e.target.value)}
+                                 className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
+                                 step="1"
+                              />
+                           </div>
                         </div>
 
                         <div>

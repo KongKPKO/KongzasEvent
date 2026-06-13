@@ -40,6 +40,9 @@ interface Product {
   stock_reserved?: number;
   stock_sold?: number;
   is_unlimited?: boolean;
+  variant_group_name?: string | null;
+  variant_name?: string | null;
+  variant_sort_order?: number;
 }
 
 type CartItems = Record<string, number>;
@@ -192,6 +195,8 @@ const MenuView = () => {
             product.name.toLowerCase().includes(query) ||
             (product.category || '').toLowerCase().includes(query) ||
             (product.description || '').toLowerCase().includes(query) ||
+            (product.variant_group_name || '').toLowerCase().includes(query) ||
+            (product.variant_name || '').toLowerCase().includes(query) ||
             tagHaystack.includes(query);
          const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
          const matchesTag = selectedTag === 'All' || (product.tags || []).some((tag) => tag.trim() === selectedTag);

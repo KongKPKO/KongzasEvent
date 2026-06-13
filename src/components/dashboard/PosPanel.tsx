@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { Fragment, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
@@ -98,6 +98,9 @@ interface Product {
     stock_reserved?: number;
     stock_sold?: number;
     is_unlimited?: boolean;
+    variant_group_name?: string | null;
+    variant_name?: string | null;
+    variant_sort_order?: number;
 }
 
 interface CartItem { product: Product; quantity: number; notes?: string; }
@@ -418,6 +421,8 @@ export default function POSPanel({
                     query.length === 0 ||
                     product.name.toLowerCase().includes(query) ||
                     (product.category || '').toLowerCase().includes(query) ||
+                    (product.variant_group_name || '').toLowerCase().includes(query) ||
+                    (product.variant_name || '').toLowerCase().includes(query) ||
                     tagHaystack.includes(query);
                 const matchesCategory = selectedCategory === 'All' || ((product.category || 'Other').trim() || 'Other') === selectedCategory;
                 const matchesTag = selectedTag === 'All' || (product.tags || []).some((tag) => tag.trim() === selectedTag);
@@ -437,6 +442,15 @@ export default function POSPanel({
                 if (aPinned !== bPinned) return bPinned - aPinned;
                 if (sortBy === 'price_low') return a.price - b.price;
                 if (sortBy === 'price_high') return b.price - a.price;
+                const aGroup = (a.variant_group_name || '').trim();
+                const bGroup = (b.variant_group_name || '').trim();
+                if (aGroup || bGroup) {
+                    const groupDiff = (aGroup || a.name).localeCompare(bGroup || b.name);
+                    if (groupDiff !== 0) return groupDiff;
+                    const sortDiff = (a.variant_sort_order || 0) - (b.variant_sort_order || 0);
+                    if (sortDiff !== 0) return sortDiff;
+                    return (a.variant_name || a.name).localeCompare(b.variant_name || b.name);
+                }
                 return a.name.localeCompare(b.name);
             });
 
@@ -1276,12 +1290,25 @@ export default function POSPanel({
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
                         ) : (
                             <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
-                                {filteredProducts.map((product) => (
-                                    (() => {
+                                {filteredProducts.map((product, productIndex) => {
+                                    const groupName = product.variant_group_name?.trim() || '';
+                                    const previousGroupName = filteredProducts[productIndex - 1]?.variant_group_name?.trim() || '';
+                                    const showVariantHeader = groupName && groupName !== previousGroupName;
+
+                                    return (
+                                    <Fragment key={product.id}>
+                                        {showVariantHeader && (
+                                            <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2' : 'col-span-full rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2'}>
+                                                <div className="text-sm font-black text-indigo-950">{groupName}</div>
+                                                <div className="text-[11px] font-bold text-indigo-700">Variants</div>
+                                            </div>
+                                        )}
+                                    {(() => {
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
                                         const available = getAvailableUnits(product);
                                         const lowStock = isLowStock(product);
                                         const isPinned = pinnedProductIds.includes(product.id);
+                                        const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
 
                                         if (effectiveViewMode === 'compact') {
                                             return (
@@ -1308,7 +1335,10 @@ export default function POSPanel({
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div className="min-w-0">
-                                                                    <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{product.name}</div>
+                                                                    <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{displayName}</div>
+                                                                    {product.variant_group_name && product.variant_name && (
+                                                                        <div className="text-[11px] font-bold text-indigo-600 break-words">{product.name}</div>
+                                                                    )}
                                                                     <div className="text-[11px] text-gray-500 break-words">{(product.category || 'Other').trim() || 'Other'}</div>
                                                                 </div>
                                                                 <div className="text-right shrink-0">
@@ -1364,7 +1394,10 @@ export default function POSPanel({
                                                     </div>
                                                     <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>
-                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{product.name}</h3>
+                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{displayName}</h3>
+                                                            {product.variant_group_name && product.variant_name && (
+                                                                <p className="mt-0.5 text-[11px] font-bold text-indigo-600 truncate">{product.name}</p>
+                                                            )}
                                                             <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
                                                             <div className="mt-2 flex flex-wrap gap-1">
                                                                 {promoBadges.slice(0, 2).map((badge) => (
@@ -1392,8 +1425,10 @@ export default function POSPanel({
                                                 </button>
                                             </div>
                                         );
-                                    })()
-                                ))}
+                                    })()}
+                                    </Fragment>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

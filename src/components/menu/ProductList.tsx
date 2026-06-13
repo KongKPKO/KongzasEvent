@@ -1,4 +1,3 @@
-
 import { ImageOff, ShoppingBag, Plus, Minus } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
@@ -20,6 +19,9 @@ interface Product {
    stock_reserved?: number;
    stock_sold?: number;
    is_unlimited?: boolean;
+   variant_group_name?: string | null;
+   variant_name?: string | null;
+   variant_sort_order?: number;
 }
 
 interface ProductListProps {
@@ -30,6 +32,39 @@ interface ProductListProps {
    onUpdateQuantity: (id: string, delta: number, name?: string) => void;
    onClearFilters?: () => void;
 }
+
+type ProductEntry =
+   | { type: 'product'; product: Product }
+   | { type: 'group'; key: string; label: string; products: Product[] };
+
+const buildProductEntries = (products: Product[]): ProductEntry[] => {
+   const entries: ProductEntry[] = [];
+   const groups = new Map<string, { label: string; products: Product[] }>();
+
+   products.forEach((product) => {
+      const groupName = product.variant_group_name?.trim();
+      if (!groupName) {
+         entries.push({ type: 'product', product });
+         return;
+      }
+
+      const key = groupName.toLowerCase();
+      const group = groups.get(key) || { label: groupName, products: [] };
+      group.products.push(product);
+      groups.set(key, group);
+   });
+
+   groups.forEach((group, key) => {
+      group.products.sort((a, b) => {
+         const sortDiff = (a.variant_sort_order || 0) - (b.variant_sort_order || 0);
+         if (sortDiff !== 0) return sortDiff;
+         return (a.variant_name || a.name).localeCompare(b.variant_name || b.name);
+      });
+      entries.push({ type: 'group', key, label: group.label, products: group.products });
+   });
+
+   return entries;
+};
 
 const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity, onClearFilters }: ProductListProps) => {
    const { t } = useI18n();
@@ -75,6 +110,133 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
       return getOptimizedImageUrl(data.publicUrl, width);
    };
 
+   const renderProductCard = (product: Product, index: number) => {
+      const qty = cart[product.id] || 0;
+      const isFirst = index === 0;
+      const availableUnits = getAvailableUnits(product);
+      const outOfStock = availableUnits <= 0;
+      const soldOut = product.status === 'soldout' || outOfStock;
+      const promoBadges = getPromotionBadgesForProduct(product, promotions);
+      const isLowStock = Number.isFinite(availableUnits) && availableUnits > 0 && availableUnits <= 3;
+      const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
+
+      return (
+         <motion.div
+            key={product.id}
+            className={`group flex h-full flex-col overflow-hidden rounded-3xl border bg-white shadow-sm transition-all ${
+               qty > 0
+                  ? 'border-pink-200 ring-2 ring-pink-500 shadow-lg shadow-pink-100'
+                  : 'border-pink-50'
+            }`}
+            variants={{
+               hidden: { opacity: 0, y: 30 },
+               visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+            }}
+         >
+            <div className="relative aspect-square w-full overflow-hidden bg-pink-50">
+               {product.image_url ? (
+                  <motion.img
+                     whileHover={{ scale: 1.05 }}
+                     transition={{ duration: 0.3 }}
+                     src={getProductImageUrl(product.image_url, 300)}
+                     alt={product.name}
+                     loading={isFirst ? 'eager' : 'lazy'}
+                     width="300"
+                     height="300"
+                     className="h-full w-full object-contain p-2"
+                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
+                  />
+               ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
+                     <ImageOff size={24} strokeWidth={1.8} aria-hidden="true" />
+                     <span className="max-w-[80%] truncate text-xs font-black text-gray-500">{product.name.charAt(0).toUpperCase()}</span>
+                  </div>
+               )}
+               {soldOut && (
+                  <motion.div
+                     className="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                  >
+                     <motion.span
+                        className="border-2 border-white px-2 py-1 text-xs font-bold text-white"
+                        initial={{ scale: 2.5, opacity: 0, rotate: -12 }}
+                        animate={{ scale: 1, opacity: 1, rotate: -12 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
+                     >
+                        {t('productSoldOut')}
+                     </motion.span>
+                  </motion.div>
+               )}
+               {!soldOut && promoBadges.length > 0 && (
+                  <div className="absolute left-2 top-2 z-10">
+                     <span className="rounded-full border border-rose-100 bg-rose-50 px-2 py-1 text-[11px] font-black text-rose-700 shadow-sm">
+                        {promoBadges[0].shortLabel}
+                     </span>
+                  </div>
+               )}
+            </div>
+            <div className="flex flex-1 flex-col justify-between p-3">
+               <div className="mb-2">
+                  <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-950">{displayName}</h3>
+                  {product.variant_group_name && product.variant_name && (
+                     <p className="mt-1 line-clamp-1 text-[11px] font-black text-indigo-600">{product.name}</p>
+                  )}
+                  {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
+               </div>
+               <div className="flex flex-col gap-2">
+                  <div className="text-lg font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
+                  <div className="flex min-h-4 items-center justify-between gap-2">
+                     {!product.is_unlimited ? (
+                        <div className="text-[11px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
+                     ) : (
+                        <div className="text-[11px] font-bold text-gray-500">{t('productUnlimited')}</div>
+                     )}
+                     {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-black text-amber-700">{t('productLowStock')}</div>}
+                  </div>
+                  {qty === 0 ? (
+                     <button
+                        onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)}
+                        disabled={soldOut || isOrderSent}
+                        className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
+                           soldOut || isOrderSent
+                              ? 'bg-gray-100 text-gray-400'
+                              : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-md shadow-pink-100 active:scale-95'
+                        }`}
+                     >
+                        <ShoppingBag size={16} /> {t('productAdd')}
+                     </button>
+                  ) : (
+                     <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
+                        <button
+                           onClick={() => onUpdateQuantity(product.id, -1, product.name)}
+                           className="grid h-11 w-11 place-items-center rounded-xl bg-white text-pink-700 shadow-sm active:scale-95"
+                           aria-label={t('productDecrease', { name: product.name })}
+                        >
+                           <Minus size={16} />
+                        </button>
+                        <span className="min-w-[40px] text-center text-sm font-black text-gray-950">{qty}</span>
+                        <button
+                           onClick={() => onUpdateQuantity(product.id, 1, product.name)}
+                           disabled={!product.is_unlimited && qty >= availableUnits}
+                           className={[
+                              'grid h-11 w-11 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
+                              'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
+                           ].join(' ')}
+                           aria-label={t('productIncrease', { name: product.name })}
+                        >
+                           <Plus size={16} />
+                        </button>
+                     </div>
+                  )}
+               </div>
+            </div>
+         </motion.div>
+      );
+   };
+
+   const entries = buildProductEntries(products);
+
    return (
       <motion.div
          className="grid grid-cols-2 gap-3 overflow-y-auto px-3 pb-40 pt-3 sm:grid-cols-3 lg:grid-cols-2 lg:overflow-visible lg:px-0 lg:pb-10 lg:pt-0 xl:grid-cols-3"
@@ -90,124 +252,21 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
             }
          }}
       >
-         {products.map((product, index) => {
-            const qty = cart[product.id] || 0;
-            const isFirst = index === 0;
-            const availableUnits = getAvailableUnits(product);
-            const outOfStock = availableUnits <= 0;
-            const soldOut = product.status === 'soldout' || outOfStock;
-            const promoBadges = getPromotionBadgesForProduct(product, promotions);
-            const isLowStock = Number.isFinite(availableUnits) && availableUnits > 0 && availableUnits <= 3;
+         {entries.map((entry, index) => {
+            if (entry.type === 'product') {
+               return renderProductCard(entry.product, index);
+            }
 
             return (
-               <motion.div
-                  key={product.id}
-                  className={`group flex h-full flex-col overflow-hidden rounded-3xl border bg-white shadow-sm transition-all ${
-                     qty > 0
-                        ? 'border-pink-200 ring-2 ring-pink-500 shadow-lg shadow-pink-100'
-                        : 'border-pink-50'
-                  }`}
-                  variants={{
-                     hidden: { opacity: 0, y: 30 },
-                     visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-                  }}
-               >
-                  <div className="relative aspect-square w-full overflow-hidden bg-pink-50">
-                     {product.image_url ? (
-                        <motion.img
-                           whileHover={{ scale: 1.05 }}
-                           transition={{ duration: 0.3 }}
-                           src={getProductImageUrl(product.image_url, 300)}
-                           alt={product.name}
-                           loading={isFirst ? "eager" : "lazy"}
-                           width="300"
-                           height="300"
-                           className="h-full w-full object-contain p-2"
-                           onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
-                        />
-                     ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
-                           <ImageOff size={24} strokeWidth={1.8} aria-hidden="true" />
-                           <span className="max-w-[80%] truncate text-xs font-black text-gray-500">{product.name.charAt(0).toUpperCase()}</span>
-                        </div>
-                     )}
-                     {soldOut && (
-                        <motion.div
-                           className="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
-                           initial={{ opacity: 0 }}
-                           animate={{ opacity: 1 }}
-                        >
-                           <motion.span
-                              className="border-2 border-white px-2 py-1 text-xs font-bold text-white"
-                              initial={{ scale: 2.5, opacity: 0, rotate: -12 }}
-                              animate={{ scale: 1, opacity: 1, rotate: -12 }}
-                              transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
-                           >
-                              {t('productSoldOut')}
-                           </motion.span>
-                        </motion.div>
-                     )}
-                     {!soldOut && promoBadges.length > 0 && (
-                        <div className="absolute left-2 top-2 z-10">
-                           <span className="rounded-full border border-rose-100 bg-rose-50 px-2 py-1 text-[11px] font-black text-rose-700 shadow-sm">
-                              {promoBadges[0].shortLabel}
-                           </span>
-                        </div>
-                     )}
+               <div key={`variant-group-${entry.key}`} className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3">
+                  <div className="mb-2 mt-1 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2">
+                     <h3 className="text-sm font-black text-indigo-950">{entry.label}</h3>
+                     <p className="text-[11px] font-bold text-indigo-700">{entry.products.length} variants</p>
                   </div>
-                  <div className="flex flex-1 flex-col justify-between p-3">
-                     <div className="mb-2">
-                        <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-950">{product.name}</h3>
-                        {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
-                     </div>
-                     <div className="flex flex-col gap-2">
-                        <div className="text-lg font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
-                        <div className="flex min-h-4 items-center justify-between gap-2">
-                           {!product.is_unlimited ? (
-                              <div className="text-[11px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
-                           ) : (
-                              <div className="text-[11px] font-bold text-gray-500">{t('productUnlimited')}</div>
-                           )}
-                           {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-black text-amber-700">{t('productLowStock')}</div>}
-                        </div>
-                        {qty === 0 ? (
-                           <button
-                              onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)}
-                              disabled={soldOut || isOrderSent}
-                              className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
-                                 soldOut || isOrderSent
-                                    ? 'bg-gray-100 text-gray-400'
-                                    : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-md shadow-pink-100 active:scale-95'
-                              }`}
-                           >
-                              <ShoppingBag size={16} /> {t('productAdd')}
-                           </button>
-                        ) : (
-                           <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
-                              <button
-                                 onClick={() => onUpdateQuantity(product.id, -1, product.name)}
-                                 className="grid h-11 w-11 place-items-center rounded-xl bg-white text-pink-700 shadow-sm active:scale-95"
-                                 aria-label={t('productDecrease', { name: product.name })}
-                              >
-                                 <Minus size={16} />
-                              </button>
-                              <span className="min-w-[40px] text-center text-sm font-black text-gray-950">{qty}</span>
-                              <button
-                                 onClick={() => onUpdateQuantity(product.id, 1, product.name)}
-                                 disabled={!product.is_unlimited && qty >= availableUnits}
-                                 className={[
-                                    'grid h-11 w-11 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
-                                    'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
-                                 ].join(' ')}
-                                 aria-label={t('productIncrease', { name: product.name })}
-                              >
-                                 <Plus size={16} />
-                              </button>
-                           </div>
-                        )}
-                     </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
+                     {entry.products.map((product, productIndex) => renderProductCard(product, productIndex))}
                   </div>
-               </motion.div>
+               </div>
             );
          })}
          <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[11px] font-semibold text-gray-600">{t('productEnd')}</div>

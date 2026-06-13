@@ -26,6 +26,7 @@ interface PreorderDashboardProps {
 interface EventInfo {
   id: string;
   event_name: string;
+  selling_mode?: string | null;
 }
 
 type ReviewAction =
@@ -34,7 +35,7 @@ type ReviewAction =
   | { type: 'ship'; order: PreorderPaymentReviewRow }
   | null;
 
-type StatusFilter = 'needs_review' | 'confirmed' | 'closed' | 'all';
+type StatusFilter = 'needs_review' | 'to_ship' | 'confirmed' | 'closed' | 'all';
 
 const statusLabels: Record<PaymentStatus, string> = {
   awaiting_payment: 'Awaiting payment',
@@ -85,7 +86,7 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       const [{ data: eventData, error: eventError }, summaryData, reviewData] = await Promise.all([
         supabase
           .from('events')
-          .select('id, event_name')
+          .select('id, event_name, selling_mode')
           .eq('id', eventId)
           .eq('artist_id', actorContext.artist_id)
           .maybeSingle(),
@@ -146,11 +147,15 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
     const submitted = orders.filter((order) => order.payment_status === 'payment_submitted');
     const confirmed = orders.filter((order) => order.payment_status === 'payment_confirmed');
     const closed = orders.filter((order) => CLOSED_STATUSES.includes(order.payment_status));
+    const toShip = orders.filter((order) => order.order_type === 'post_event'
+      && order.payment_status === 'payment_confirmed'
+      && order.pickup_status === 'awaiting_shipment');
     const currency = orders[0]?.currency || 'THB';
     return {
       submittedCount: submitted.length,
       confirmedCount: confirmed.length,
       closedCount: closed.length,
+      toShipCount: toShip.length,
       expectedAmount: summary.reduce((sum, row) => sum + toNumber(row.expected_amount), 0),
       confirmedAmount: summary.reduce((sum, row) => sum + toNumber(row.confirmed_amount), 0),
       currency,
@@ -160,6 +165,9 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
   const visibleOrders = useMemo(() => {
     let rows = orders;
     if (filter === 'needs_review') rows = rows.filter((order) => order.payment_status === 'payment_submitted');
+    if (filter === 'to_ship') rows = rows.filter((order) => order.order_type === 'post_event'
+      && order.payment_status === 'payment_confirmed'
+      && order.pickup_status === 'awaiting_shipment');
     if (filter === 'confirmed') rows = rows.filter((order) => order.payment_status === 'payment_confirmed');
     if (filter === 'closed') rows = rows.filter((order) => CLOSED_STATUSES.includes(order.payment_status));
     const query = search.trim().toLowerCase();
@@ -314,6 +322,13 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       value: String(totals.submittedCount),
       classes: 'border-amber-100 bg-amber-50 text-amber-700',
       activeClasses: 'ring-2 ring-amber-400 border-amber-300',
+    },
+    {
+      key: 'to_ship',
+      label: 'To ship',
+      value: String(totals.toShipCount),
+      classes: 'border-violet-100 bg-violet-50 text-violet-700',
+      activeClasses: 'ring-2 ring-violet-400 border-violet-300',
     },
     {
       key: 'confirmed',
@@ -521,12 +536,12 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
         <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ReceiptText className="text-pink-600" size={24} />
-            <h1 className="text-2xl font-black text-gray-900">Pre-order Dashboard</h1>
+            <h1 className="text-2xl font-black text-gray-900">{eventInfo?.selling_mode === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
           </div>
-          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · Review transfers, then prepare production</p>
+          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {eventInfo?.selling_mode === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
         </section>
 
-        <section aria-label="Order status filters" className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <section aria-label="Order status filters" className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
           {statCards.map((card) => (
             <button
               key={card.key}
@@ -544,7 +559,7 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
         <section className="mb-5 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-black text-gray-900">
-              {filter === 'needs_review' ? `Review queue (${visibleOrders.length})` : 'Orders'}
+              {filter === 'needs_review' ? `Review queue (${visibleOrders.length})` : filter === 'to_ship' ? `Shipping queue (${visibleOrders.length})` : 'Orders'}
             </h2>
             <label className="relative block md:w-72">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
@@ -561,7 +576,9 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
             <div className="p-6 text-sm font-bold text-gray-400">
               {filter === 'needs_review' && !search
                 ? 'No slips waiting for review — all caught up.'
-                : 'No orders match this view.'}
+                : filter === 'to_ship' && !search
+                  ? 'Nothing waiting to ship.'
+                  : 'No orders match this view.'}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -573,6 +590,11 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-black ${statusClasses[order.payment_status]}`}>
                         {statusLabels[order.payment_status]}
                       </span>
+                      {order.order_type === 'post_event' && (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-black text-violet-700">
+                          Post · ship
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-sm font-black text-gray-900">{order.customer_name}</div>
                     <div className="mt-1 text-xs font-bold text-gray-500">

@@ -514,7 +514,7 @@ export default function PreorderDashboard({ actorContext }: PreorderDashboardPro
       )}
 
       <main className="mx-auto max-w-6xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active="preorder" actorRole={actorContext.role} />}
+        {eventId && <EventNavTabs eventId={eventId} active="preorder" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-wrap gap-2">
             <button

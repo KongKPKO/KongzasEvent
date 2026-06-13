@@ -631,7 +631,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-5 md:px-6">
-        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} />
+        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
         <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">

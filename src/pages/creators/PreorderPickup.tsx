@@ -249,7 +249,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       />
 
       <main className="mx-auto max-w-5xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active="pickup" actorRole={actorContext.role} />}
+        {eventId && <EventNavTabs eventId={eventId} active="pickup" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
 
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

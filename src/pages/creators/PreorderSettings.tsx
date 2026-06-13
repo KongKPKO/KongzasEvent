@@ -315,7 +315,7 @@ export default function PreorderSettings() {
     <div className="min-h-screen bg-gray-50">
       <AdminHeader activePage="events" />
       <main className="mx-auto max-w-5xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} />}
+        {eventId && <EventNavTabs eventId={eventId} sellingMode={event.selling_mode} />}
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>

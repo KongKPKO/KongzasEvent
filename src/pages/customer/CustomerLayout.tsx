@@ -7,7 +7,7 @@ import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
 import { LanguageToggle, useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
-import { customerEventStorageKey, getCurrentCustomerEvents, getStoredTicketId } from '../../utils/customerEvents';
+import { customerEventStorageKey, getCurrentCustomerEvents, getStoredTicketId, isPostEventStoreOpen } from '../../utils/customerEvents';
 
 const CustomerLayout = () => {
    const { t } = useI18n();
@@ -150,8 +150,8 @@ const CustomerLayout = () => {
                      </div>
                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                           <span className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-600">
-                              {t('customerSelectedEvent')}
+                           <span className={`text-[11px] font-black uppercase tracking-[0.16em] ${selectedEvent && isPostEventStoreOpen(selectedEvent) ? 'text-violet-700' : 'text-gray-600'}`}>
+                              {selectedEvent && isPostEventStoreOpen(selectedEvent) ? t('customerPostEventStore') : t('customerSelectedEvent')}
                            </span>
                            <span className={`h-1.5 w-1.5 rounded-full ${selectedEvent?.is_booth_open ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                            <span className={`text-[11px] font-black uppercase tracking-[0.12em] ${selectedEvent?.is_booth_open ? 'text-emerald-700' : 'text-gray-600'}`}>
@@ -169,7 +169,9 @@ const CustomerLayout = () => {
                                  aria-label={t('customerSelectedEvent')}
                               >
                                  {availableEvents.map((event) => (
-                                    <option key={event.id} value={event.id}>{event.event_name}</option>
+                                    <option key={event.id} value={event.id}>
+                                       {event.event_name}{isPostEventStoreOpen(event) ? ` — ${t('customerPostEventStore')}` : ''}
+                                    </option>
                                  ))}
                               </select>
                               <ChevronDown className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-pink-400" size={16} />
@@ -182,6 +184,26 @@ const CustomerLayout = () => {
                            </div>
                         )}
                      </div>
+                     <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="Main navigation">
+                        {[
+                           { to: `/${slug}/home`, label: t('customerNavHome'), Icon: Home, match: '/home' },
+                           { to: `/${slug}/menu`, label: t('customerNavMerch'), Icon: ShoppingBag, match: '/menu' },
+                           { to: `/${slug}/queue`, label: t('customerNavQueue'), Icon: Users, match: '/queue' },
+                        ].map(({ to, label, Icon, match }) => (
+                           <Link
+                              key={to}
+                              to={to}
+                              aria-current={location.pathname.endsWith(match) ? 'page' : undefined}
+                              className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-black transition-colors ${
+                                 location.pathname.endsWith(match)
+                                    ? 'bg-pink-600 text-white shadow-sm'
+                                    : 'text-gray-600 hover:bg-pink-50 hover:text-pink-700'
+                              }`}
+                           >
+                              <Icon size={15} aria-hidden="true" /> {label}
+                           </Link>
+                        ))}
+                     </nav>
                      <LanguageToggle className="min-h-11 min-w-11 shrink-0 px-3 py-2 text-[11px]" />
                   </div>
                </div>

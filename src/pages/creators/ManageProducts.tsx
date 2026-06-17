@@ -347,6 +347,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [selectedCurrency, setSelectedCurrency] = useState('All'); // ✅ NEW: Currency filter
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
+   const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
    const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>(initialTab);
    const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
    const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
@@ -477,6 +478,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const enabledProducts = products.filter(p => getEffectiveStatus(p) === 'enable');
    const enabledCurrencies = Array.from(new Set(enabledProducts.map(p => p.currency || DEFAULT_CURRENCY)));
    const hasMixedCurrencies = enabledCurrencies.length > 1;
+   const catalogMissingImages = products.filter((product) => !product.image_url).length;
+   const catalogLowStock = products.filter((product) => {
+      if (product.is_unlimited) return false;
+      const summary = getProductStockSummary(product);
+      return summary.available > 0 && summary.available <= 5;
+   }).length;
+   const catalogInactive = products.filter((product) => getEffectiveStatus(product) !== 'enable').length;
+   const catalogVariantGroups = new Set(products.map((product) => product.variant_group_name || '').filter(Boolean)).size;
 
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
       setToast(message);
@@ -548,7 +557,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       const matchesTag =
          selectedTag === 'All' ||
          (product.tags || []).some(tag => normalizeTag(tag).toLowerCase() === selectedTag.toLowerCase());
-      return matchesSearch && matchesCategory && matchesCurrency && matchesTag;
+      const summary = getProductStockSummary(product);
+      const matchesFocus =
+         catalogFocus === 'all' ||
+         (catalogFocus === 'missing-images' && !product.image_url) ||
+         (catalogFocus === 'low-stock' && !product.is_unlimited && summary.available > 0 && summary.available <= 5) ||
+         (catalogFocus === 'inactive' && getEffectiveStatus(product) !== 'enable');
+      return matchesSearch && matchesCategory && matchesCurrency && matchesTag && matchesFocus;
    }).sort((a, b) => {
       if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
       if (sortOption === 'price_asc') return a.price - b.price;
@@ -561,6 +576,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       selectedCategory !== 'All' ||
       selectedCurrency !== 'All' ||
       selectedTag !== 'All' ||
+      catalogFocus !== 'all' ||
       sortOption !== 'name_asc';
 
    const filteredEventCatalogProducts = products.filter((product) => {
@@ -608,12 +624,30 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       if (typeof calculatedLimit === 'number') return calculatedLimit;
       return getAvailableUnits(product);
    };
+   const eventCatalogSelling = products.filter((product) => {
+      const draft = eventCatalogDraft[product.id];
+      return draft ? draft.is_enabled : getEffectiveStatus(product) === 'enable';
+   }).length;
+   const eventCatalogOverrides = products.filter((product) => {
+      const draft = eventCatalogDraft[product.id];
+      return !!draft && (
+         draft.price_override.trim() !== '' ||
+         (!draft.is_unlimited && draft.stock_total.trim() !== '')
+      );
+   }).length;
+   const eventCatalogStockWarnings = products.filter((product) => {
+      const draft = eventCatalogDraft[product.id];
+      if (!draft || !draft.is_enabled || draft.is_unlimited || product.is_unlimited) return false;
+      const stockLimit = getEventCatalogStockLimit(product);
+      return Number.isFinite(stockLimit) && Number(draft.stock_total || 0) > stockLimit;
+   }).length;
 
    const clearAllFilters = () => {
       setSearchQuery('');
       setSelectedCategory('All');
       setSelectedCurrency('All');
       setSelectedTag('All');
+      setCatalogFocus('all');
       setSortOption('name_asc');
    };
 
@@ -2147,12 +2181,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          )}
 
          {/* Page Title Wrapper */}
-         <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
+         <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 mb-2">
             <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
             <p className="text-sm text-pink-600 font-bold">{pageSubtitle}</p>
          </div>
 
-         <main className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
+         <main className="max-w-6xl mx-auto px-4 md:px-6 pb-12">
             {isEventScopedWorkspace && selectedEventId && (
                <EventNavTabs
                   eventId={selectedEventId}
@@ -2161,13 +2195,37 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                />
             )}
             {!isEventScopedWorkspace && activeWorkspaceTab !== 'promotions' && (
-            <section className="workspace-card mb-4 p-3">
-               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                     <p className="text-xs font-black uppercase tracking-wide text-gray-400">Catalog Workspace</p>
-                     <p className="text-sm font-semibold text-gray-700">Daily maintenance and bulk import for the shared catalog.</p>
+            <section className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                     <p className="text-xs font-black uppercase tracking-wide text-pink-600">Catalog Library</p>
+                     <h2 className="mt-1 text-lg font-black text-gray-900">Shared products used across every event</h2>
+                     <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">Create products once, duplicate variants quickly, then choose which items go into each event catalog.</p>
                   </div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {([
+                           { label: 'Products', value: products.length, focus: 'all' as const, tone: 'gray' },
+                           { label: 'Missing images', value: catalogMissingImages, focus: 'missing-images' as const, tone: 'pink' },
+                           { label: 'Low stock', value: catalogLowStock, focus: 'low-stock' as const, tone: 'amber' },
+                           { label: 'Inactive', value: catalogInactive, focus: 'inactive' as const, tone: 'slate' },
+                        ]).map((item) => (
+                           <button
+                              key={item.label}
+                              type="button"
+                              onClick={() => setCatalogFocus(item.focus)}
+                              className={`min-w-[120px] rounded-lg border px-3 py-2 text-left transition-colors ${
+                                 catalogFocus === item.focus
+                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
+                                    : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'
+                              }`}
+                           >
+                              <div className="text-lg font-black leading-none">{item.value}</div>
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
+                           </button>
+                        ))}
+                     </div>
+                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                      <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
                         {([
                            ['catalog', 'Catalog'],
@@ -2189,25 +2247,26 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         ))}
                      </div>
                      {activeWorkspaceTab === 'catalog' && (
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                     <button
-                        type="button"
-                        onClick={() => setIsAddProductModalOpen(true)}
-                        className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
-                     >
-                        <Plus size={16} aria-hidden="true" />
-                        Add Product
-                     </button>
-                     <button
-                        type="button"
-                        onClick={() => setActiveWorkspaceTab('import')}
-                        className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
-                     >
-                        <Upload size={16} aria-hidden="true" />
-                        Import CSV
-                     </button>
-                     </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                           <button
+                              type="button"
+                              onClick={() => setIsAddProductModalOpen(true)}
+                              className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
+                           >
+                              <Plus size={16} aria-hidden="true" />
+                              Add Product
+                           </button>
+                           <button
+                              type="button"
+                              onClick={() => setActiveWorkspaceTab('import')}
+                              className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
+                           >
+                              <Upload size={16} aria-hidden="true" />
+                              Import CSV
+                           </button>
+                        </div>
                      )}
+                     </div>
                   </div>
                </div>
             </section>
@@ -2828,82 +2887,105 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             )}
 
             {activeWorkspaceTab === 'event-catalog' && (
-            <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-               <div className="px-4 py-4 flex items-start justify-between gap-4 text-left">
-                  <div>
-                     <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                        <CalendarDays className="text-pink-500" size={18} />
-                        Event Catalog
-                     </h2>
-                     <p className="mt-1 text-xs text-gray-500">Choose products, price, and stock for this event booth.</p>
+            <section className="mb-6 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+               <div className="border-b border-gray-100 px-4 py-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                     <div className="min-w-0">
+                        <p className="text-xs font-black uppercase tracking-wide text-pink-600">Event Catalog Setup</p>
+                        <h2 className="mt-1 flex items-center gap-2 text-lg font-black text-gray-900">
+                           <CalendarDays className="text-pink-500" size={18} />
+                           {selectedEventName}
+                        </h2>
+                        <p className="mt-1 text-sm font-semibold text-gray-500">Choose which library products sell in this event, then set event price and event stock.</p>
+                     </div>
+                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                        {([
+                           { label: 'Selling', value: eventCatalogSelling },
+                           { label: 'Overrides', value: eventCatalogOverrides },
+                           { label: 'Stock warnings', value: eventCatalogStockWarnings },
+                           { label: 'Status', value: hasPendingEventCatalogChanges ? 'Unsaved' : 'Saved' },
+                        ]).map((item) => (
+                           <div key={item.label} className={`min-w-[120px] rounded-lg border px-3 py-2 ${
+                              item.label === 'Stock warnings' && Number(item.value) > 0
+                                 ? 'border-red-100 bg-red-50 text-red-700'
+                                 : item.label === 'Status' && hasPendingEventCatalogChanges
+                                   ? 'border-pink-200 bg-pink-50 text-pink-700'
+                                   : 'border-gray-100 bg-gray-50 text-gray-600'
+                           }`}>
+                              <div className="text-lg font-black leading-none">{item.value}</div>
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
+                           </div>
+                        ))}
+                     </div>
                   </div>
                </div>
 
-                  <div className="border-t border-gray-100 p-4 animate-fade-in space-y-4">
-                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                           <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
-                           {isEventScopedWorkspace ? (
-                              <div className="min-w-[260px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-black text-gray-800">
-                                 {selectedEventName}
-                              </div>
-                           ) : (
+                  <div className="animate-fade-in space-y-4 p-4">
+                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_auto] xl:items-end">
+                        <div className="grid gap-3 md:grid-cols-2">
+                           <div className="space-y-1">
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
+                              {isEventScopedWorkspace ? (
+                                 <div className="min-h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-black text-gray-800">
+                                    {selectedEventName}
+                                 </div>
+                              ) : (
+                                 <select
+                                    value={selectedEventId}
+                                    onChange={(event) => setSelectedEventId(event.target.value)}
+                                    className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                    disabled={eventOptions.length === 0}
+                                    aria-label="Select event catalog"
+                                 >
+                                    {eventOptions.length === 0 && <option value="">No confirmed events</option>}
+                                    {eventOptions.map((event) => (
+                                       <option key={event.id} value={event.id}>{event.event_name}</option>
+                                    ))}
+                                 </select>
+                              )}
+                              {selectedEventOption && (
+                                 <p className="text-[11px] font-bold text-pink-700">
+                                    Event starts {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
+                                 </p>
+                              )}
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event currency</label>
                               <select
-                                 value={selectedEventId}
-                                 onChange={(event) => setSelectedEventId(event.target.value)}
-                                 className="min-w-[260px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                 disabled={eventOptions.length === 0}
-                                 aria-label="Select event catalog"
+                                 value={eventCurrencyDraft}
+                                 onChange={(event) => setEventCurrencyDraft(event.target.value)}
+                                 className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                 disabled={!selectedEventId}
+                                 aria-label="Select event currency"
                               >
-                                 {eventOptions.length === 0 && <option value="">No confirmed events</option>}
-                                 {eventOptions.map((event) => (
-                                    <option key={event.id} value={event.id}>{event.event_name}</option>
+                                 <option value="">Use product currency</option>
+                                 {Object.keys(CURRENCIES).sort().map((code) => (
+                                    <option key={code} value={code}>{code}</option>
                                  ))}
                               </select>
-                           )}
-                           {selectedEventOption && (
-                              <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">
-                                 {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
-                              </span>
-                           )}
+                           </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                           <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event currency</label>
-                           <select
-                              value={eventCurrencyDraft}
-                              onChange={(event) => setEventCurrencyDraft(event.target.value)}
-                              className="min-w-[220px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                              disabled={!selectedEventId}
-                              aria-label="Select event currency"
-                           >
-                              <option value="">Use product currency</option>
-                              {Object.keys(CURRENCIES).sort().map((code) => (
-                                 <option key={code} value={code}>{code}</option>
-                              ))}
-                           </select>
+                        <div className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                           hasPendingEventCatalogChanges
+                              ? 'border-pink-200 bg-pink-50 text-pink-800'
+                              : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                        }`}>
+                           {hasPendingEventCatalogChanges
+                              ? 'Unsaved changes will not show in POS or customer menu yet.'
+                              : 'Saved setup is ready for POS and customer menu.'}
                         </div>
                         <button
                            type="button"
                            onClick={() => void saveEventCatalog()}
                            disabled={!selectedEventId || eventCatalogSaving || eventCatalogLoading || products.length === 0}
-                           className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
+                           className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
                         >
                            {eventCatalogSaving ? <Loader className="animate-spin" size={14} /> : <Save size={14} />}
                            {hasPendingEventCatalogChanges ? 'Save Changes' : 'Saved'}
                         </button>
                      </div>
 
-                     <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                        hasPendingEventCatalogChanges
-                           ? 'border-pink-200 bg-pink-50 text-pink-800'
-                           : 'border-gray-200 bg-gray-50 text-gray-600'
-                     }`}>
-                        {hasPendingEventCatalogChanges
-                           ? 'You have unsaved event catalog changes. Save before opening POS for this event.'
-                           : 'Event catalog is saved. POS and customer menu will use this setup.'}
-                     </div>
-
-                     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px] gap-2">
+                     <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
                         <div className="relative">
                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
                            <input
@@ -2931,19 +3013,25 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </select>
                      </div>
 
-                     <div className="flex flex-wrap items-center gap-2">
-                        {(['all', 'selling', 'hidden', 'overrides'] as const).map((view) => (
+                     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
+                        <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-500">Show</span>
+                        {([
+                           ['all', 'All'],
+                           ['selling', 'Selling'],
+                           ['hidden', 'Hidden'],
+                           ['overrides', 'Overrides'],
+                        ] as const).map(([view, label]) => (
                            <button
                               key={view}
                               type="button"
                               onClick={() => setEventCatalogView(view)}
-                              className={`rounded-full px-3 py-1.5 text-xs font-black capitalize transition-colors ${
+                              className={`rounded-full px-3 py-1.5 text-xs font-black transition-colors ${
                                  eventCatalogView === view
                                     ? 'bg-pink-600 text-white shadow-sm shadow-pink-100'
                                     : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                               }`}
                            >
-                              {view}
+                              {label}
                            </button>
                         ))}
                         <span className="ml-auto rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-600">
@@ -2951,29 +3039,34 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </span>
                      </div>
 
-                     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <span className="text-xs font-black uppercase tracking-wide text-gray-500">Bulk visible</span>
-                        <button
-                           type="button"
-                           onClick={() => updateFilteredEventCatalogDraft({ is_enabled: true })}
-                           className="workspace-action min-h-9 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-black text-pink-700 hover:bg-pink-50"
-                        >
-                           Sell visible
-                        </button>
-                        <button
-                           type="button"
-                           onClick={() => updateFilteredEventCatalogDraft({ is_enabled: false })}
-                           className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
-                        >
-                           Hide visible
-                        </button>
-                        <button
-                           type="button"
-                           onClick={() => updateFilteredEventCatalogDraft({ price_override: '' })}
-                           className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
-                        >
-                           Reset visible prices
-                        </button>
+                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                           <span className="text-xs font-black uppercase tracking-wide text-gray-500">Bulk actions for visible rows</span>
+                           <span className="text-[11px] font-bold text-gray-400">Uses current search and filters</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                           <button
+                              type="button"
+                              onClick={() => updateFilteredEventCatalogDraft({ is_enabled: true })}
+                              className="workspace-action min-h-9 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-black text-pink-700 hover:bg-pink-50"
+                           >
+                              Sell visible
+                           </button>
+                           <button
+                              type="button"
+                              onClick={() => updateFilteredEventCatalogDraft({ is_enabled: false })}
+                              className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
+                           >
+                              Hide visible
+                           </button>
+                           <button
+                              type="button"
+                              onClick={() => updateFilteredEventCatalogDraft({ price_override: '' })}
+                              className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
+                           >
+                              Reset visible prices
+                           </button>
+                        </div>
                      </div>
 
                      {!selectedEventId ? (
@@ -3237,9 +3330,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <PackageSearch className="text-pink-500" size={18} />
-                        Browse Current Catalog
+                        Find products in the library
                      </h2>
-                     <p className="mt-1 text-xs text-gray-500">Search, filter, and sort the catalog before editing or removing items.</p>
+                     <p className="mt-1 text-xs text-gray-500">
+                        {catalogVariantGroups > 0
+                           ? `${catalogVariantGroups} variant group${catalogVariantGroups === 1 ? '' : 's'} in this catalog.`
+                           : 'Search, filter, and sort before editing products or creating variants.'}
+                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                      <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600">
@@ -3256,6 +3353,29 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </button>
                      )}
                   </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  {([
+                     { value: 'all' as const, label: 'All products', count: products.length },
+                     { value: 'missing-images' as const, label: 'Need images', count: catalogMissingImages },
+                     { value: 'low-stock' as const, label: 'Low stock', count: catalogLowStock },
+                     { value: 'inactive' as const, label: 'Inactive', count: catalogInactive },
+                  ]).map((item) => (
+                     <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setCatalogFocus(item.value)}
+                        className={`rounded-lg border px-3 py-2 text-left text-xs font-black transition-colors ${
+                           catalogFocus === item.value
+                              ? 'border-pink-200 bg-pink-50 text-pink-700'
+                              : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'
+                        }`}
+                     >
+                        <span>{item.label}</span>
+                        <span className="float-right rounded-full bg-white px-2 text-gray-500 ring-1 ring-gray-100">{item.count}</span>
+                     </button>
+                  ))}
                </div>
 
                {/* Search & Sort Row */}
@@ -3392,12 +3512,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            Tag: {selectedTag}
                         </span>
                      )}
+                     {catalogFocus !== 'all' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-700">
+                           Focus: {catalogFocus.replace('-', ' ')}
+                        </span>
+                     )}
                   </div>
                )}
             </div>
 
             {/* PRODUCT LIST */}
-            <h2 className="text-lg font-bold text-gray-800 mb-4 px-1">Current Catalog ({filteredProducts.length})</h2>
+            <h2 className="mb-4 px-1 text-lg font-bold text-gray-800">Catalog items ({filteredProducts.length})</h2>
             
             {loading ? (
                <div className="text-center py-12 text-gray-400">Loading products...</div>

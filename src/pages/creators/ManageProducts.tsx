@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download, Copy } from 'lucide-react';
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
@@ -213,6 +213,67 @@ const parseTemplateVariantsInput = (value: string, existingNames: string[] = [],
       } => Boolean(variant));
 };
 
+const parseDuplicateVariantRows = (value: string, existingNames: string[] = []) => {
+   const seen = new Set(existingNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
+   const errors: string[] = [];
+   const rows = value
+      .split(/\r?\n/)
+      .map((line, index) => {
+         const parts = line.split('|').map((part) => part.trim());
+         const variantName = normalizeOptionalText(parts[0] || '');
+         if (!variantName) return null;
+
+         const key = variantName.toLowerCase();
+         if (seen.has(key)) {
+            errors.push(`Line ${index + 1}: duplicate variant "${variantName}"`);
+            return null;
+         }
+         seen.add(key);
+
+         const stockRaw = parts[1] || '';
+         let stockTotal: number | null = null;
+         let stockMode: 'copy' | 'limited' | 'unlimited' = 'copy';
+
+         if (stockRaw) {
+            if (stockRaw.toLowerCase() === 'unlimited') {
+               stockMode = 'unlimited';
+            } else {
+               const parsedStock = Number(stockRaw);
+               if (!Number.isInteger(parsedStock) || parsedStock < 0) {
+                  errors.push(`Line ${index + 1}: stock must be a whole number or Unlimited`);
+                  return null;
+               }
+               stockMode = 'limited';
+               stockTotal = parsedStock;
+            }
+         }
+
+         const priceRaw = parts[3] || '';
+         const priceOverride = priceRaw && Number.isFinite(Number(priceRaw))
+            ? Number(priceRaw)
+            : null;
+
+         return {
+            variantName,
+            stockMode,
+            stockTotal,
+            tags: parseTagsInput(parts[2] || ''),
+            priceOverride,
+            sortOrder: index + 1,
+         };
+      })
+      .filter((row): row is {
+         variantName: string;
+         stockMode: 'copy' | 'limited' | 'unlimited';
+         stockTotal: number | null;
+         tags: string[];
+         priceOverride: number | null;
+         sortOrder: number;
+      } => Boolean(row));
+
+   return { rows, errors };
+};
+
 const getEventCatalogSaveErrorMessage = (error: unknown) => {
    const message = error instanceof Error ? error.message : String(error || '');
    if (message.includes('event_stock_exceeds_catalog_stock')) {
@@ -325,6 +386,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [templateVariantsInput, setTemplateVariantsInput] = useState('');
    const [templateVariantDrafts, setTemplateVariantDrafts] = useState<Record<string, string>>({});
    const [templateVariantSavingId, setTemplateVariantSavingId] = useState('');
+   const [variantSourceProduct, setVariantSourceProduct] = useState<Product | null>(null);
+   const [duplicateVariantsInput, setDuplicateVariantsInput] = useState('');
+   const [duplicateVariantsSaving, setDuplicateVariantsSaving] = useState(false);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -367,7 +431,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       const requestedTab = searchParams.get('tab');
-      if (requestedTab === 'catalog' || requestedTab === 'promotions' || requestedTab === 'templates' || requestedTab === 'import') {
+      if (requestedTab === 'catalog' || requestedTab === 'promotions' || requestedTab === 'import') {
          setActiveWorkspaceTab(requestedTab);
       } else {
          setActiveWorkspaceTab(initialTab);
@@ -852,7 +916,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          if (!ctx) return;
 
          await fetchEventOptions(ctx.artist_id);
-         await fetchProductTemplates(ctx.artist_id);
 
          // Fetch Artist Name
          const { data: artist } = await supabase
@@ -1209,6 +1272,99 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const requestDeleteProduct = (product: Product) => {
       setConfirmAction({ type: 'delete_product', id: product.id, name: product.name });
+   };
+
+   const openDuplicateVariants = (product: Product) => {
+      setVariantSourceProduct(product);
+      setDuplicateVariantsInput('');
+   };
+
+   const closeDuplicateVariants = () => {
+      setVariantSourceProduct(null);
+      setDuplicateVariantsInput('');
+      setDuplicateVariantsSaving(false);
+   };
+
+   const handleCreateVariantDuplicates = async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!variantSourceProduct) return;
+
+      const variantGroupName = normalizeOptionalText(variantSourceProduct.variant_group_name || '') || variantSourceProduct.name.trim();
+      const existingVariantNames = products
+         .filter((product) => (product.variant_group_name || product.name).trim().toLowerCase() === variantGroupName.toLowerCase())
+         .map((product) => product.variant_name || product.name.replace(new RegExp(`^${variantGroupName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i'), ''));
+      const { rows, errors } = parseDuplicateVariantRows(duplicateVariantsInput, existingVariantNames);
+
+      if (errors.length > 0) {
+         showToast({ tone: 'warning', title: 'Check variant rows', detail: errors[0] });
+         return;
+      }
+
+      if (rows.length === 0) {
+         showToast({ tone: 'warning', title: 'No variants', detail: 'Add at least one variant name.' });
+         return;
+      }
+
+      const existingProductNames = new Set(products.map((product) => product.name.trim().toLowerCase()));
+      const duplicateProduct = rows.find((row) => existingProductNames.has(`${variantGroupName} ${row.variantName}`.trim().toLowerCase()));
+      if (duplicateProduct) {
+         showToast({ tone: 'warning', title: 'Duplicate product', detail: `${variantGroupName} ${duplicateProduct.variantName} already exists.` });
+         return;
+      }
+
+      setDuplicateVariantsSaving(true);
+      try {
+         const ctx = actorContext || await resolveWorkspaceContext();
+         if (!ctx) throw new Error('Not authenticated');
+
+         const baseTags = variantSourceProduct.tags || [];
+         const payload = rows.map((row) => {
+            const isUnlimited = row.stockMode === 'copy'
+               ? variantSourceProduct.is_unlimited ?? true
+               : row.stockMode === 'unlimited';
+            const stockTotal = row.stockMode === 'copy'
+               ? variantSourceProduct.stock_total ?? null
+               : row.stockMode === 'unlimited'
+                 ? null
+                 : row.stockTotal;
+
+            return {
+               artist_id: ctx.artist_id,
+               name: `${variantGroupName} ${row.variantName}`.trim(),
+               price: row.priceOverride ?? variantSourceProduct.price,
+               description: variantSourceProduct.description || '',
+               category: variantSourceProduct.category || 'Other',
+               tags: Array.from(new Set([...baseTags, ...row.tags].map(normalizeTag).filter(Boolean))),
+               status: variantSourceProduct.status || 'enable',
+               currency: variantSourceProduct.currency || DEFAULT_CURRENCY,
+               stock_total: isUnlimited ? null : stockTotal ?? 0,
+               is_unlimited: isUnlimited,
+               variant_group_name: variantGroupName,
+               variant_name: row.variantName,
+               variant_sort_order: row.sortOrder,
+               image_url: variantSourceProduct.image_url || '',
+            };
+         });
+
+         const { error } = await supabase
+            .from('products')
+            .insert(payload);
+
+         if (error) throw error;
+
+         await fetchProducts();
+         showToast({
+            tone: 'success',
+            title: 'Variants created',
+            detail: `${rows.length} product${rows.length === 1 ? '' : 's'} duplicated from ${variantSourceProduct.name}.`,
+         });
+         closeDuplicateVariants();
+      } catch (error: any) {
+         console.error('[ManageProducts] duplicate variants failed:', error);
+         showToast({ tone: 'error', title: 'Could not create variants', detail: error.message });
+      } finally {
+         setDuplicateVariantsSaving(false);
+      }
    };
 
 
@@ -1885,6 +2041,111 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             </div>
          )}
          
+         {variantSourceProduct && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+               <section className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                  <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+                     <div>
+                        <h2 className="flex items-center gap-2 text-lg font-black text-gray-900">
+                           <Copy className="text-pink-500" size={18} />
+                           Duplicate Variants
+                        </h2>
+                        <p className="mt-1 text-xs font-semibold text-gray-500">
+                           Copy category, tags, price, image, and status from {variantSourceProduct.name}.
+                        </p>
+                     </div>
+                     <button
+                        type="button"
+                        onClick={closeDuplicateVariants}
+                        className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label="Close duplicate variants"
+                     >
+                        <X size={20} />
+                     </button>
+                  </div>
+
+                  <form onSubmit={handleCreateVariantDuplicates} className="space-y-4 p-5">
+                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                           <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white">
+                              {variantSourceProduct.image_url ? (
+                                 <img
+                                    src={getProductImageUrl(variantSourceProduct.image_url, 160)}
+                                    alt={variantSourceProduct.name}
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                 />
+                              ) : (
+                                 <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-gray-400">No image</div>
+                              )}
+                           </div>
+                           <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                 <h3 className="truncate text-base font-black text-gray-900">{variantSourceProduct.name}</h3>
+                                 <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-gray-600 ring-1 ring-gray-100">
+                                    {variantSourceProduct.category || 'Other'}
+                                 </span>
+                                 <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-black text-pink-700">
+                                    {formatPrice(variantSourceProduct.price, variantSourceProduct.currency)}
+                                 </span>
+                              </div>
+                              <p className="mt-1 text-xs font-semibold text-gray-500">
+                                 New names will use prefix: <span className="font-black text-gray-800">{variantSourceProduct.variant_group_name || variantSourceProduct.name}</span>
+                              </p>
+                              {!!variantSourceProduct.tags?.length && (
+                                 <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {variantSourceProduct.tags.slice(0, 6).map((tag) => (
+                                       <span key={`duplicate-base-${tag}`} className="rounded bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-600">#{tag}</span>
+                                    ))}
+                                    {variantSourceProduct.tags.length > 6 && <span className="text-[10px] font-bold text-gray-400">+{variantSourceProduct.tags.length - 6}</span>}
+                                 </div>
+                              )}
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <div className="flex items-end justify-between gap-3">
+                           <label htmlFor="duplicate-variants-input" className="block text-xs font-black uppercase tracking-wide text-gray-500">Variant names and stock</label>
+                           <span className="text-xs font-black text-pink-600">
+                              {parseDuplicateVariantRows(duplicateVariantsInput).rows.length} parsed
+                           </span>
+                        </div>
+                        <textarea
+                           id="duplicate-variants-input"
+                           value={duplicateVariantsInput}
+                           onChange={(event) => setDuplicateVariantsInput(event.target.value)}
+                           className="h-56 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 font-mono text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                           placeholder={`Paimon | 30\nAether | 30\nLumine | 30`}
+                           required
+                        />
+                        <p className="text-[11px] font-semibold text-gray-400">
+                           Format: name | stock. Optional: name | stock | extra tags | price override. Leave stock blank to copy this product's stock mode.
+                        </p>
+                     </div>
+
+                     <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
+                        <Button
+                           type="button"
+                           onClick={closeDuplicateVariants}
+                           className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                        >
+                           Cancel
+                        </Button>
+                        <Button
+                           type="submit"
+                           disabled={duplicateVariantsSaving}
+                           className="rounded-lg bg-pink-600 px-5 py-2 text-sm font-black text-white hover:bg-pink-700 disabled:bg-pink-300"
+                        >
+                           {duplicateVariantsSaving ? <Loader className="animate-spin" size={16} /> : 'Create Variants'}
+                        </Button>
+                     </div>
+                  </form>
+               </section>
+            </div>
+         )}
+
          {/* Page Title Wrapper */}
          <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 mb-2">
             <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
@@ -1910,7 +2171,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
                         {([
                            ['catalog', 'Catalog'],
-                           ['templates', 'Templates'],
                            ['import', 'Import'],
                         ] as const).map(([tab, label]) => (
                            <button
@@ -1928,15 +2188,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            </button>
                         ))}
                      </div>
-                     {(activeWorkspaceTab === 'catalog' || activeWorkspaceTab === 'templates') && (
+                     {activeWorkspaceTab === 'catalog' && (
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                      <button
                         type="button"
-                        onClick={() => activeWorkspaceTab === 'templates' ? setIsTemplateModalOpen(true) : setIsAddProductModalOpen(true)}
+                        onClick={() => setIsAddProductModalOpen(true)}
                         className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                      >
                         <Plus size={16} aria-hidden="true" />
-                        {activeWorkspaceTab === 'templates' ? 'New Template' : 'Add Product'}
+                        Add Product
                      </button>
                      <button
                         type="button"
@@ -2643,38 +2903,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            : 'Event catalog is saved. POS and customer menu will use this setup.'}
                      </div>
 
-                     {productTemplates.length > 0 && (
-                        <div className="flex flex-col gap-3 rounded-xl border border-pink-100 bg-pink-50/50 p-3 lg:flex-row lg:items-center lg:justify-between">
-                           <div>
-                              <p className="text-xs font-black uppercase tracking-wide text-pink-700">Product Template</p>
-                              <p className="mt-1 text-xs font-semibold text-pink-900/70">Create template variants and add them to this event catalog in one step.</p>
-                           </div>
-                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <select
-                                 value={templateApplyId}
-                                 onChange={(event) => setTemplateApplyId(event.target.value)}
-                                 className="min-h-10 min-w-[260px] rounded-lg border border-pink-100 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                 aria-label="Select product template to apply"
-                              >
-                                 {productTemplates.map((template) => (
-                                    <option key={template.id} value={template.id}>
-                                       {template.name} ({template.product_template_variants?.length || 0})
-                                    </option>
-                                 ))}
-                              </select>
-                              <button
-                                 type="button"
-                                 onClick={() => void handleCreateProductsFromTemplate(templateApplyId || productTemplates[0]?.id, selectedEventId)}
-                                 disabled={!selectedEventId || !templateApplyId || templateApplySaving}
-                                 className="workspace-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-xs font-black text-white shadow-sm hover:bg-pink-700 disabled:bg-gray-300"
-                              >
-                                 {templateApplySaving ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
-                                 Apply to event
-                              </button>
-                           </div>
-                        </div>
-                     )}
-
                      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px] gap-2">
                         <div className="relative">
                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
@@ -3247,6 +3475,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               
                               {/* Mobile Actions (Always Visible) */}
                               <div className="absolute bottom-2 right-2 flex gap-2">
+                                  <button onClick={(e) => { e.stopPropagation(); openDuplicateVariants(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-pink-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Create variants from ${product.name}`}><Copy size={14}/></button>
                                   <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
                                   <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
                               </div>
@@ -3355,6 +3584,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                              </button>
                                           </>
                                        )}
+                                       <button
+                                          onClick={() => openDuplicateVariants(product)}
+                                          className="workspace-action min-h-8 rounded-lg border border-pink-200 bg-pink-50 px-2 py-1 text-[11px] font-black text-pink-700 hover:bg-pink-100"
+                                          title="Create variants"
+                                          aria-label={`Create variants from ${product.name}`}
+                                       >
+                                          Variants
+                                       </button>
                                        <button 
                                           onClick={() => handleEditClick(product)}
                                           className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-gray-50 rounded-lg transition-colors"

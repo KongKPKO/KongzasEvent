@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  AlertCircle,
   ArrowLeft,
+  ArrowRight,
   BarChart2,
   Calendar,
+  CheckCircle2,
   Clock,
   Coffee,
   FileText,
+  MapPin,
   PackageCheck,
   ReceiptText,
   Settings,
@@ -93,20 +97,55 @@ interface WorkspaceMetrics {
   sellingProductCount: number;
 }
 
-type ModulePriority = 'P' | 'S' | 'M';
-type ModuleTone = 'pink' | 'slate' | 'emerald' | 'amber' | 'teal' | 'indigo' | 'cyan';
+type LifecycleContext = 'prep' | 'preorderOpen' | 'liveOpen' | 'liveClosed' | 'ended';
+type OverviewTone = 'pink' | 'slate' | 'emerald' | 'amber' | 'teal' | 'indigo' | 'cyan';
+type TimelineStatus = 'done' | 'active' | 'todo' | 'attention';
 
-interface ModuleCardConfig {
-  id: string;
+interface OverviewAction {
+  eyebrow: string;
   title: string;
-  metric: string;
   detail: string;
   cta: string;
-  href: string;
+  href?: string;
   action?: 'edit-event';
-  priority: ModulePriority;
-  tone: ModuleTone;
+  tone: OverviewTone;
   icon: LucideIcon;
+}
+
+interface TimelineStep {
+  id: string;
+  title: string;
+  detail: string;
+  status: TimelineStatus;
+  href?: string;
+  visible: boolean;
+  icon: LucideIcon;
+}
+
+interface AttentionItem {
+  id: string;
+  title: string;
+  detail: string;
+  href?: string;
+  action?: 'edit-event';
+  tone: OverviewTone;
+}
+
+interface SetupItem {
+  id: string;
+  title: string;
+  detail: string;
+  href?: string;
+  action?: 'edit-event';
+  status: TimelineStatus;
+  icon: LucideIcon;
+}
+
+interface SetupGroup {
+  id: string;
+  title: string;
+  detail: string;
+  items: SetupItem[];
 }
 
 const emptyMetrics: WorkspaceMetrics = {
@@ -119,50 +158,55 @@ const emptyMetrics: WorkspaceMetrics = {
   sellingProductCount: 0,
 };
 
-const priorityRank: Record<ModulePriority, number> = { P: 0, S: 1, M: 2 };
-
-const toneClasses: Record<ModuleTone, { card: string; icon: string; cta: string; badge: string }> = {
+const toneClasses: Record<OverviewTone, { panel: string; icon: string; cta: string; badge: string; text: string }> = {
   pink: {
-    card: 'border-pink-100 bg-pink-50/40',
+    panel: 'border-pink-100 bg-pink-50/60',
     icon: 'bg-pink-100 text-pink-700',
     cta: 'bg-pink-600 text-white hover:bg-pink-700',
     badge: 'text-pink-700 bg-pink-100',
+    text: 'text-pink-800',
   },
   slate: {
-    card: 'border-gray-200 bg-white',
+    panel: 'border-gray-200 bg-white',
     icon: 'bg-gray-100 text-gray-700',
     cta: 'bg-slate-900 text-white hover:bg-slate-800',
     badge: 'text-gray-700 bg-gray-100',
+    text: 'text-gray-800',
   },
   emerald: {
-    card: 'border-emerald-100 bg-emerald-50/40',
+    panel: 'border-emerald-100 bg-emerald-50/60',
     icon: 'bg-emerald-100 text-emerald-700',
     cta: 'bg-emerald-700 text-white hover:bg-emerald-800',
     badge: 'text-emerald-700 bg-emerald-100',
+    text: 'text-emerald-800',
   },
   amber: {
-    card: 'border-amber-100 bg-amber-50/50',
+    panel: 'border-amber-100 bg-amber-50/70',
     icon: 'bg-amber-100 text-amber-800',
     cta: 'bg-amber-700 text-white hover:bg-amber-800',
     badge: 'text-amber-800 bg-amber-100',
+    text: 'text-amber-900',
   },
   teal: {
-    card: 'border-teal-100 bg-teal-50/40',
+    panel: 'border-teal-100 bg-teal-50/60',
     icon: 'bg-teal-100 text-teal-700',
     cta: 'bg-teal-700 text-white hover:bg-teal-800',
     badge: 'text-teal-700 bg-teal-100',
+    text: 'text-teal-800',
   },
   indigo: {
-    card: 'border-indigo-100 bg-indigo-50/40',
+    panel: 'border-indigo-100 bg-indigo-50/60',
     icon: 'bg-indigo-100 text-indigo-900',
     cta: 'bg-indigo-800 text-white hover:bg-indigo-900',
     badge: 'text-indigo-900 bg-indigo-100',
+    text: 'text-indigo-900',
   },
   cyan: {
-    card: 'border-cyan-100 bg-cyan-50/40',
+    panel: 'border-cyan-100 bg-cyan-50/60',
     icon: 'bg-cyan-100 text-cyan-800',
     cta: 'bg-cyan-700 text-white hover:bg-cyan-800',
     badge: 'text-cyan-800 bg-cyan-100',
+    text: 'text-cyan-900',
   },
 };
 
@@ -185,7 +229,7 @@ const formatEventDate = (event: WorkspaceEvent) => {
   }).format(date);
 };
 
-const getLifecycleContext = (event: WorkspaceEvent) => {
+const getLifecycleContext = (event: WorkspaceEvent): LifecycleContext => {
   const now = new Date();
   const start = new Date(event.start_date);
   const end = new Date(event.end_date);
@@ -232,145 +276,308 @@ const getContextLabel = (event: WorkspaceEvent, metrics: WorkspaceMetrics) => {
   return event.is_booth_open ? 'Booth open' : 'Booth closed';
 };
 
-const buildModules = (
+const getPrimaryAction = (
   event: WorkspaceEvent,
   metrics: WorkspaceMetrics,
   actorContext: ActorContext
-): ModuleCardConfig[] => {
+): OverviewAction | null => {
   const context = getLifecycleContext(event);
   const management = canAccessManagementPages(actorContext.role);
   const queueAccess = canAccessQueuePages(actorContext.role);
   const posAccess = canUsePos(actorContext.role);
+
+  if (metrics.awaitingPickup > 0 && queueAccess) {
+    return {
+      eyebrow: 'Needs staff attention',
+      title: `${metrics.awaitingPickup} order${metrics.awaitingPickup === 1 ? '' : 's'} waiting for pickup`,
+      detail: 'Clear pickup confirmations first so customer handoff stays accurate.',
+      cta: 'Open pickup',
+      href: `/manage-events/${event.id}/pickup`,
+      tone: 'teal',
+      icon: PackageCheck,
+    };
+  }
+
+  if (metrics.sellingProductCount === 0 && management) {
+    return {
+      eyebrow: 'Setup required',
+      title: 'Choose products for this event',
+      detail: 'No event catalog is selling yet. Add products and event stock before opening sales.',
+      cta: 'Set up Event Catalog',
+      href: `/manage-events/${event.id}/catalog`,
+      tone: 'amber',
+      icon: Coffee,
+    };
+  }
+
+  if (context === 'preorderOpen' && posAccess) {
+    return {
+      eyebrow: 'Pre-order is open',
+      title: 'Monitor pre-order payments and pickup demand',
+      detail: 'Use the order dashboard to confirm transfers, export totals, and prepare fulfillment.',
+      cta: 'Open Pre-order',
+      href: `/manage-events/${event.id}/preorder-dashboard`,
+      tone: 'pink',
+      icon: ReceiptText,
+    };
+  }
+
+  if (context === 'liveOpen' && posAccess) {
+    return {
+      eyebrow: 'Booth is live',
+      title: 'Keep checkout moving',
+      detail: metrics.queueWaiting > 0
+        ? `${metrics.queueWaiting} queue ticket${metrics.queueWaiting === 1 ? '' : 's'} need live attention.`
+        : 'POS is ready for walk-in sales. Queue is currently clear.',
+      cta: 'Open Live POS',
+      href: `/live/pos?eventId=${event.id}`,
+      tone: 'cyan',
+      icon: ShoppingCart,
+    };
+  }
+
+  if (context === 'liveClosed' && queueAccess) {
+    return {
+      eyebrow: 'Event day',
+      title: 'Open the live workspace when staff is ready',
+      detail: 'Queue and POS are available for booth operations. Open the booth from Live Queue when sales begin.',
+      cta: 'Open Live Queue',
+      href: `/live/queue?eventId=${event.id}`,
+      tone: 'indigo',
+      icon: Users,
+    };
+  }
+
+  if (context === 'ended' && management) {
+    return {
+      eyebrow: 'Review mode',
+      title: 'Review revenue and order records',
+      detail: `${metrics.completedOrders} completed order${metrics.completedOrders === 1 ? '' : 's'} · ${formatMoney(metrics.revenue, metrics.currency)} revenue.`,
+      cta: 'Open Dashboard',
+      href: `/manage-events/${event.id}/dashboard`,
+      tone: 'emerald',
+      icon: BarChart2,
+    };
+  }
+
+  if (management) {
+    return {
+      eyebrow: 'Preparation',
+      title: 'Review setup before sales open',
+      detail: 'Confirm the event details, catalog, promotions, and pre-order settings before customers arrive.',
+      cta: 'Edit Event',
+      action: 'edit-event',
+      tone: 'slate',
+      icon: Settings,
+    };
+  }
+
+  return null;
+};
+
+const buildTimeline = (
+  event: WorkspaceEvent,
+  metrics: WorkspaceMetrics,
+  actorContext: ActorContext
+): TimelineStep[] => {
+  const context = getLifecycleContext(event);
+  const management = canAccessManagementPages(actorContext.role);
+  const queueAccess = canAccessQueuePages(actorContext.role);
+  const posAccess = canUsePos(actorContext.role);
+  const catalogReady = metrics.sellingProductCount > 0;
+  const preorderEnabled = event.selling_mode === 'preorder';
   const ended = context === 'ended';
-  const awaiting = metrics.awaitingPickup > 0;
-  const modules: ModuleCardConfig[] = [];
 
-  const add = (card: ModuleCardConfig, allowed: boolean) => {
-    if (allowed) modules.push(card);
-  };
+  const steps: TimelineStep[] = [
+    {
+      id: 'setup',
+      title: 'Setup',
+      detail: catalogReady ? `${metrics.sellingProductCount} product${metrics.sellingProductCount === 1 ? '' : 's'} selling` : 'Event catalog still needs products',
+      status: catalogReady ? (context === 'prep' ? 'active' : 'done') : 'attention',
+      href: management ? `/manage-events/${event.id}/catalog` : undefined,
+      visible: management,
+      icon: Coffee,
+    },
+    {
+      id: 'preorder',
+      title: 'Pre-order',
+      detail: preorderEnabled ? 'Pre-order mode is configured' : 'Optional for this event',
+      status: context === 'preorderOpen' ? 'active' : preorderEnabled && !['prep', 'preorderOpen'].includes(context) ? 'done' : 'todo',
+      href: posAccess ? `/manage-events/${event.id}/preorder-dashboard` : undefined,
+      visible: posAccess,
+      icon: Ticket,
+    },
+    {
+      id: 'live',
+      title: 'Live Booth',
+      detail: event.is_booth_open ? 'Booth is open' : metrics.queueWaiting > 0 ? `${metrics.queueWaiting} waiting` : 'Queue and POS standby',
+      status: context === 'liveOpen' || context === 'liveClosed' ? 'active' : ended ? 'done' : 'todo',
+      href: queueAccess ? `/live/queue?eventId=${event.id}` : undefined,
+      visible: queueAccess,
+      icon: Users,
+    },
+    {
+      id: 'fulfillment',
+      title: 'Pickup / Post-order',
+      detail: metrics.awaitingPickup > 0 ? `${metrics.awaitingPickup} awaiting pickup` : 'No pickup action waiting',
+      status: metrics.awaitingPickup > 0 ? 'attention' : ended ? 'done' : 'todo',
+      href: queueAccess ? `/manage-events/${event.id}/pickup` : undefined,
+      visible: queueAccess,
+      icon: PackageCheck,
+    },
+    {
+      id: 'review',
+      title: 'Review',
+      detail: `${metrics.completedOrders} completed · ${formatMoney(metrics.revenue, metrics.currency)}`,
+      status: ended ? 'active' : 'todo',
+      href: management ? `/manage-events/${event.id}/history` : undefined,
+      visible: management,
+      icon: FileText,
+    },
+  ];
 
-  add({
-    id: 'settings',
-    title: 'Event Settings',
-    metric: formatEventDate(event),
-    detail: ended ? 'Review event details after the booth closes.' : 'Update time, place, booth detail, and operating status.',
-    cta: ended ? 'View settings' : 'Edit event',
-    href: '',
-    action: 'edit-event',
-    priority: context === 'prep' ? 'P' : ended ? 'M' : 'S',
-    tone: 'slate',
-    icon: Settings,
-  }, management);
+  return steps.filter((step) => step.visible);
+};
 
-  add({
-    id: 'catalog',
-    title: 'Catalog / Stock',
-    metric: `${metrics.sellingProductCount}/${metrics.productCount} selling`,
-    detail: metrics.sellingProductCount > 0 ? 'Products are available for this event.' : 'Set event products before opening sales.',
-    cta: metrics.sellingProductCount > 0 ? 'Manage stock' : 'Set up catalog',
-    href: `/manage-events/${event.id}/catalog`,
-    priority: context === 'prep' || context === 'preorderOpen' ? 'P' : ended ? 'M' : 'S',
-    tone: 'amber',
-    icon: Coffee,
-  }, management);
+const buildAttentionItems = (
+  event: WorkspaceEvent,
+  metrics: WorkspaceMetrics,
+  actorContext: ActorContext
+): AttentionItem[] => {
+  const context = getLifecycleContext(event);
+  const management = canAccessManagementPages(actorContext.role);
+  const queueAccess = canAccessQueuePages(actorContext.role);
+  const items: AttentionItem[] = [];
 
-  add({
-    id: 'promotion',
-    title: 'Event Promotion',
-    metric: 'Event only',
-    detail: 'Create pricing rules that apply only to this event.',
-    cta: 'Manage promotion',
-    href: `/manage-events/${event.id}/promotion`,
-    priority: context === 'prep' || context === 'preorderOpen' ? 'S' : 'M',
-    tone: 'pink',
-    icon: Sparkles,
-  }, management);
+  if (event.status === 'Cancelled') {
+    items.push({
+      id: 'cancelled',
+      title: 'Event is marked cancelled',
+      detail: 'Review settings before sharing links or opening sales.',
+      action: 'edit-event',
+      tone: 'slate',
+    });
+  }
 
-  add({
-    id: 'preorder',
-    title: 'Pre-order Settings',
-    metric: event.selling_mode === 'preorder' ? 'Enabled' : 'Live mode',
-    detail: event.selling_mode === 'preorder' ? 'Pickup window and instructions are configured here.' : 'Switch selling mode or set pre-order windows.',
-    cta: 'Configure pre-order',
-    href: `/manage-events/${event.id}/preorder`,
-    priority: context === 'prep' || context === 'preorderOpen' ? 'P' : 'M',
-    tone: 'pink',
-    icon: Ticket,
-  }, management && !ended);
+  if (management && metrics.sellingProductCount === 0) {
+    items.push({
+      id: 'catalog-empty',
+      title: 'Event Catalog is empty',
+      detail: 'Add products to this event before customers can buy.',
+      href: `/manage-events/${event.id}/catalog`,
+      tone: 'amber',
+    });
+  }
 
-  add({
-    id: 'preorder-dashboard',
-    title: 'Pre-order Dashboard',
-    metric: `${metrics.awaitingPickup} pickup-ready`,
-    detail: 'Review transfers and export product totals before ordering from the factory.',
-    cta: 'Open dashboard',
-    href: `/manage-events/${event.id}/preorder-dashboard`,
-    priority: context === 'prep' || context === 'preorderOpen' ? 'P' : 'M',
-    tone: 'emerald',
-    icon: ReceiptText,
-  }, management && event.selling_mode === 'preorder');
+  if (management && event.selling_mode === 'preorder' && (!event.preorder_opens_at || !event.preorder_closes_at)) {
+    items.push({
+      id: 'preorder-window',
+      title: 'Pre-order window is incomplete',
+      detail: 'Set open and close times so customer ordering follows the intended schedule.',
+      href: `/manage-events/${event.id}/preorder`,
+      tone: 'pink',
+    });
+  }
 
-  add({
-    id: 'pickup',
-    title: 'Pickup Orders',
-    metric: `${metrics.awaitingPickup} awaiting`,
-    detail: awaiting ? 'Pre-orders are waiting for staff pickup confirmation.' : ended ? 'Review pickup records and expire no-shows.' : 'No pre-order pickups are currently waiting.',
-    cta: awaiting ? 'Open pickup list' : ended ? 'Review pickups' : 'View pickups',
-    href: `/manage-events/${event.id}/pickup`,
-    priority: awaiting || ended ? 'P' : 'S',
-    tone: 'teal',
-    icon: PackageCheck,
-  }, queueAccess);
+  if (queueAccess && metrics.awaitingPickup > 0) {
+    items.push({
+      id: 'pickup-waiting',
+      title: 'Pickup confirmations are waiting',
+      detail: `${metrics.awaitingPickup} order${metrics.awaitingPickup === 1 ? '' : 's'} need staff confirmation.`,
+      href: `/manage-events/${event.id}/pickup`,
+      tone: 'teal',
+    });
+  }
 
-  add({
-    id: 'queue',
-    title: 'Live Queue',
-    metric: `${metrics.queueWaiting} waiting`,
-    detail: event.is_booth_open ? 'Call, serve, and complete live queue tickets.' : 'Open the booth or prepare queue operations.',
-    cta: event.is_booth_open ? 'Open queue' : 'Open queue setup',
-    href: `/live/queue?eventId=${event.id}`,
-    priority: context === 'liveOpen' || context === 'liveClosed' ? 'P' : 'M',
-    tone: 'indigo',
-    icon: Users,
-  }, queueAccess && !ended);
+  if (queueAccess && context === 'liveClosed' && !event.is_booth_open) {
+    items.push({
+      id: 'booth-closed',
+      title: 'Booth is closed',
+      detail: 'Open the booth from Live Queue when staff starts accepting walk-ins.',
+      href: `/live/queue?eventId=${event.id}`,
+      tone: 'indigo',
+    });
+  }
 
-  add({
-    id: 'pos',
-    title: 'Live POS',
-    metric: event.is_booth_open ? 'Ready' : 'Standby',
-    detail: event.is_booth_open ? 'Create walk-in orders and take payment.' : 'POS is available when staff needs checkout.',
-    cta: 'Open POS',
-    href: `/live/pos?eventId=${event.id}`,
-    priority: context === 'liveOpen' ? 'P' : 'S',
-    tone: 'cyan',
-    icon: ShoppingCart,
-  }, posAccess && !ended);
+  return items;
+};
 
-  add({
-    id: 'dashboard',
-    title: 'Dashboard',
-    metric: formatMoney(metrics.revenue, metrics.currency),
-    detail: `${metrics.completedOrders} completed order${metrics.completedOrders === 1 ? '' : 's'} for this event.`,
-    cta: 'View dashboard',
-    href: `/manage-events/${event.id}/dashboard`,
-    priority: ended ? 'P' : 'S',
-    tone: 'emerald',
-    icon: BarChart2,
-  }, management);
+const buildSetupGroups = (
+  event: WorkspaceEvent,
+  metrics: WorkspaceMetrics,
+  actorContext: ActorContext
+): SetupGroup[] => {
+  if (!canAccessManagementPages(actorContext.role)) return [];
 
-  add({
-    id: 'history',
-    title: 'Order History',
-    metric: `${metrics.completedOrders} completed`,
-    detail: 'Audit payments, order type, pickup status, and item details.',
-    cta: 'Open orders',
-    href: `/manage-events/${event.id}/history`,
-    priority: ended ? 'P' : 'S',
-    tone: 'slate',
-    icon: FileText,
-  }, management);
+  const hasEventTiming = Boolean(event.start_date && event.end_date);
+  const hasEventPlace = Boolean((event.location || event.location_name || '').trim());
+  const usesTimedOrderWindow = event.selling_mode === 'preorder' || event.selling_mode === 'post_event';
+  const hasOrderWindow = Boolean(event.preorder_opens_at && event.preorder_closes_at);
+  const hasPickupInstructions = Boolean((event.preorder_pickup_instructions || '').trim());
+  const catalogReady = metrics.sellingProductCount > 0;
 
-  return modules.sort((left, right) => priorityRank[left.priority] - priorityRank[right.priority]);
+  return [
+    {
+      id: 'event',
+      title: 'Setup Event',
+      detail: 'Event details and order timing.',
+      items: [
+        {
+          id: 'event-details',
+          title: 'Event details',
+          detail: hasEventTiming && hasEventPlace ? 'Date and location are set' : 'Confirm date, location, and booth detail',
+          action: 'edit-event',
+          status: hasEventTiming && hasEventPlace ? 'done' : 'attention',
+          icon: Settings,
+        },
+        {
+          id: 'order-settings',
+          title: 'Order Settings',
+          detail: usesTimedOrderWindow
+            ? hasOrderWindow
+              ? event.selling_mode === 'post_event'
+                ? 'Post-event sale window is set'
+                : 'Pre-order window is set'
+              : 'Set open and close times'
+            : 'Live selling mode is active',
+          href: `/manage-events/${event.id}/preorder`,
+          status: usesTimedOrderWindow && !hasOrderWindow ? 'attention' : 'done',
+          icon: Ticket,
+        },
+        {
+          id: 'pickup-instructions',
+          title: 'Pickup instructions',
+          detail: hasPickupInstructions ? 'Customer handoff notes are set' : 'Add pickup notes when this event needs pickup flow',
+          href: `/manage-events/${event.id}/preorder`,
+          status: hasPickupInstructions || event.selling_mode === 'live' ? 'done' : 'todo',
+          icon: PackageCheck,
+        },
+      ],
+    },
+    {
+      id: 'product',
+      title: 'Setup Product',
+      detail: 'Products, event stock, and event-only offers.',
+      items: [
+        {
+          id: 'event-catalog',
+          title: 'Event Catalog',
+          detail: catalogReady ? `${metrics.sellingProductCount} product${metrics.sellingProductCount === 1 ? '' : 's'} selling` : 'Choose products and event stock',
+          href: `/manage-events/${event.id}/catalog`,
+          status: catalogReady ? 'done' : 'attention',
+          icon: Coffee,
+        },
+        {
+          id: 'event-promotion',
+          title: 'Event Promotion',
+          detail: 'Optional event-only price rules',
+          href: `/manage-events/${event.id}/promotion`,
+          status: 'todo',
+          icon: Sparkles,
+        },
+      ],
+    },
+  ];
 };
 
 export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
@@ -452,9 +659,24 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     void fetchWorkspace();
   }, [fetchWorkspace]);
 
-  const modules = useMemo(() => {
+  const primaryAction = useMemo(() => {
+    if (!event) return null;
+    return getPrimaryAction(event, metrics, actorContext);
+  }, [actorContext, event, metrics]);
+
+  const timelineSteps = useMemo(() => {
     if (!event) return [];
-    return buildModules(event, metrics, actorContext);
+    return buildTimeline(event, metrics, actorContext);
+  }, [actorContext, event, metrics]);
+
+  const attentionItems = useMemo(() => {
+    if (!event) return [];
+    return buildAttentionItems(event, metrics, actorContext);
+  }, [actorContext, event, metrics]);
+
+  const setupGroups = useMemo(() => {
+    if (!event) return [];
+    return buildSetupGroups(event, metrics, actorContext);
   }, [actorContext, event, metrics]);
 
 
@@ -579,12 +801,15 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     }
   };
 
-  const handleModuleOpen = (module: ModuleCardConfig) => {
-    if (module.action === 'edit-event') {
+  const handleOverviewAction = (target?: { href?: string; action?: 'edit-event' }) => {
+    if (!target) return;
+    if (target.action === 'edit-event') {
       openEventEditor();
       return;
     }
-    navigate(module.href);
+    if (target.href) {
+      navigate(target.href);
+    }
   };
 
   if (loading) {
@@ -620,6 +845,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   if (ended) contextBadgeClass = 'bg-gray-100 text-gray-600';
   let boothBadgeClass = 'bg-gray-100 text-gray-600';
   if (event.is_booth_open) boothBadgeClass = 'bg-emerald-100 text-emerald-700';
+  const primaryActionClasses = primaryAction ? toneClasses[primaryAction.tone] : toneClasses.slate;
 
   return (
     <div className="min-h-screen bg-gray-50 text-slate-800">
@@ -632,13 +858,13 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-5 md:px-6">
         <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
-        <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <section className="mb-5 border-b border-gray-200 pb-5">
+          <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
+            <ArrowLeft size={15} aria-hidden="true" />
+            ดู event ทั้งหมด
+          </button>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
-                <ArrowLeft size={15} aria-hidden="true" />
-                ดู event ทั้งหมด
-              </button>
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${contextBadgeClass}`}>
                   {contextLabel}
@@ -653,26 +879,102 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               <h1 className="mt-3 truncate text-2xl font-black tracking-tight text-gray-900 md:text-3xl">{event.event_name}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-gray-600">
                 <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event)}</span>
-                {event.location && <span>{event.location}</span>}
+                {event.location && <span className="inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" />{event.location}</span>}
                 {event.booth_detail && <span>Booth {event.booth_detail}</span>}
               </div>
             </div>
-
+            <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-4 lg:min-w-[520px]">
+              <MetricTile label="Selling" value={`${metrics.sellingProductCount}/${metrics.productCount}`} />
+              <MetricTile label="Queue" value={String(metrics.queueWaiting)} />
+              <MetricTile label="Orders" value={String(metrics.completedOrders)} />
+              <MetricTile label="Revenue" value={formatMoney(metrics.revenue, metrics.currency)} />
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Event workspace modules">
-          {modules.map((module) => (
-            <ModuleCard key={module.id} module={module} onOpen={() => handleModuleOpen(module)} />
-          ))}
-        </section>
-
-        {modules.length === 0 && (
-          <div className="workspace-card p-8 text-center">
+        {primaryAction ? (
+          <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label="Current event status">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${primaryActionClasses.icon}`}>
+                  <primaryAction.icon size={22} aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className={`text-xs font-black uppercase tracking-wide ${primaryActionClasses.text}`}>{primaryAction.eyebrow}</p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-gray-950 md:text-2xl">{primaryAction.title}</h2>
+                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-gray-700">{primaryAction.detail}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOverviewAction(primaryAction)}
+                className={`workspace-action inline-flex shrink-0 items-center justify-center gap-2 px-4 text-sm font-black ${primaryActionClasses.cta}`}
+              >
+                {primaryAction.cta}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="mb-5 rounded-xl border border-gray-200 bg-white p-5 text-center shadow-sm">
             <Clock className="mx-auto mb-3 text-gray-300" size={34} aria-hidden="true" />
             <p className="text-sm font-bold text-gray-600">No workspace actions are available for your role.</p>
-          </div>
+          </section>
         )}
+
+        {setupGroups.length > 0 && (
+          <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event setup checklist">
+            <div className="mb-4">
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Setup</p>
+              <h2 className="text-lg font-black text-gray-900">Before sales open</h2>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {setupGroups.map((group) => (
+                <SetupGroupPanel key={group.id} group={group} onOpen={handleOverviewAction} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.9fr)]">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event timeline">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-gray-400">Event timeline</p>
+                <h2 className="text-lg font-black text-gray-900">Progress at a glance</h2>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-5">
+              {timelineSteps.map((step) => (
+                <TimelineStepCard key={step.id} step={step} onOpen={() => handleOverviewAction({ href: step.href })} />
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Attention items">
+            <div className="mb-4">
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Attention</p>
+              <h2 className="text-lg font-black text-gray-900">Needs action</h2>
+            </div>
+            {attentionItems.length > 0 ? (
+              <div className="space-y-3">
+                {attentionItems.map((item) => (
+                  <AttentionRow key={item.id} item={item} onOpen={() => handleOverviewAction(item)} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />
+                  <div>
+                    <p className="text-sm font-black text-emerald-900">No urgent items</p>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-emerald-800/80">Use the event tabs when you need deeper setup, sales, or order details.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </main>
 
       {isEventModalOpen && (
@@ -845,28 +1147,162 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   );
 }
 
-function ModuleCard({ module, onOpen }: { module: ModuleCardConfig; onOpen: () => void }) {
-  const Icon = module.icon;
-  const classes = toneClasses[module.tone];
-  const isPrimary = module.priority === 'P';
-  const isMuted = module.priority === 'M';
-
+function MetricTile({ label, value }: { label: string; value: string }) {
   return (
-    <article className={`rounded-2xl border p-4 shadow-sm ${classes.card} ${isPrimary ? 'md:col-span-1 xl:col-span-1' : ''} ${isMuted ? 'opacity-75' : ''}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${classes.icon}`}>
-          <Icon size={20} aria-hidden={true} />
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-left shadow-sm">
+      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-1 truncate text-base font-black text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => void }) {
+  const Icon = step.icon;
+  const statusStyles: Record<TimelineStatus, { shell: string; dot: string; label: string; icon: typeof CheckCircle2 }> = {
+    done: {
+      shell: 'border-emerald-100 bg-emerald-50',
+      dot: 'bg-emerald-600 text-white',
+      label: 'Done',
+      icon: CheckCircle2,
+    },
+    active: {
+      shell: 'border-pink-200 bg-pink-50',
+      dot: 'bg-pink-600 text-white',
+      label: 'Now',
+      icon: Clock,
+    },
+    attention: {
+      shell: 'border-amber-200 bg-amber-50',
+      dot: 'bg-amber-500 text-white',
+      label: 'Needs action',
+      icon: AlertCircle,
+    },
+    todo: {
+      shell: 'border-gray-200 bg-gray-50',
+      dot: 'bg-white text-gray-400 ring-1 ring-gray-200',
+      label: 'Later',
+      icon: Clock,
+    },
+  };
+  const styles = statusStyles[step.status];
+  const StatusIcon = styles.icon;
+  const content = (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${styles.dot}`}>
+          <StatusIcon size={15} aria-hidden="true" />
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${classes.badge}`}>
-          {module.priority === 'P' ? 'Primary' : module.priority === 'S' ? 'Standard' : 'Muted'}
+        <span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-gray-600">
+          {styles.label}
         </span>
       </div>
-      <h2 className="mt-4 text-base font-black text-gray-900">{module.title}</h2>
-      <p className="mt-1 text-2xl font-black tracking-tight text-gray-900">{module.metric}</p>
-      <p className="mt-2 min-h-[40px] text-sm font-semibold leading-5 text-gray-700">{module.detail}</p>
-      <button onClick={onOpen} className={`workspace-action mt-4 inline-flex w-full items-center justify-center px-4 text-sm font-black ${classes.cta}`}>
-        {module.cta}
-      </button>
-    </article>
+      <Icon size={18} className="mb-2 text-gray-500" aria-hidden="true" />
+      <h3 className="text-sm font-black text-gray-900">{step.title}</h3>
+      <p className="mt-1 min-h-[40px] text-xs font-semibold leading-5 text-gray-600">{step.detail}</p>
+    </>
+  );
+
+  if (!step.href) {
+    return <div className={`rounded-lg border p-3 ${styles.shell}`}>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`rounded-lg border p-3 text-left transition-colors hover:border-pink-200 hover:bg-pink-50/60 ${styles.shell}`}
+    >
+      {content}
+    </button>
+  );
+}
+
+function SetupGroupPanel({ group, onOpen }: { group: SetupGroup; onOpen: (target?: { href?: string; action?: 'edit-event' }) => void }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="mb-3">
+        <h3 className="text-sm font-black text-gray-900">{group.title}</h3>
+        <p className="mt-1 text-xs font-semibold text-gray-500">{group.detail}</p>
+      </div>
+      <div className="space-y-2">
+        {group.items.map((item) => (
+          <SetupItemRow key={item.id} item={item} onOpen={() => onOpen(item)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void }) {
+  const Icon = item.icon;
+  const statusClasses: Record<TimelineStatus, { pill: string; label: string; icon: typeof CheckCircle2 }> = {
+    done: {
+      pill: 'bg-emerald-100 text-emerald-800',
+      label: 'Ready',
+      icon: CheckCircle2,
+    },
+    active: {
+      pill: 'bg-pink-100 text-pink-800',
+      label: 'Now',
+      icon: Clock,
+    },
+    attention: {
+      pill: 'bg-amber-100 text-amber-900',
+      label: 'Needs setup',
+      icon: AlertCircle,
+    },
+    todo: {
+      pill: 'bg-gray-100 text-gray-600',
+      label: 'Optional',
+      icon: Clock,
+    },
+  };
+  const status = statusClasses[item.status];
+  const StatusIcon = status.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:border-pink-200 hover:bg-pink-50/60"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+          <Icon size={17} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-black text-gray-900">{item.title}</p>
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${status.pill}`}>
+              <StatusIcon size={11} aria-hidden="true" />
+              {status.label}
+            </span>
+          </div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{item.detail}</p>
+        </div>
+        <ArrowRight className="mt-2 shrink-0 text-gray-400" size={15} aria-hidden="true" />
+      </div>
+    </button>
+  );
+}
+
+function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: () => void }) {
+  const classes = toneClasses[item.tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-white ${classes.panel}`}
+    >
+      <div className="flex items-start gap-3">
+        <AlertCircle className={`mt-0.5 shrink-0 ${classes.text}`} size={18} aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="text-sm font-black text-gray-900">{item.title}</p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-gray-700">{item.detail}</p>
+        </div>
+        <ArrowRight className="ml-auto mt-1 shrink-0 text-gray-400" size={15} aria-hidden="true" />
+      </div>
+    </button>
   );
 }

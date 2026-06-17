@@ -1342,7 +1342,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                variant_group_name: variantGroupName,
                variant_name: row.variantName,
                variant_sort_order: row.sortOrder,
-               image_url: variantSourceProduct.image_url || '',
+               image_url: '',
             };
          });
 
@@ -2051,7 +2051,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            Duplicate Variants
                         </h2>
                         <p className="mt-1 text-xs font-semibold text-gray-500">
-                           Copy category, tags, price, image, and status from {variantSourceProduct.name}.
+                           Copy category, tags, price, and status from {variantSourceProduct.name}. Add each variant image later.
                         </p>
                      </div>
                      <button

@@ -42,6 +42,36 @@ interface Product {
   variant_group_name?: string | null;
   variant_name?: string | null;
   variant_sort_order?: number;
+  product_template_id?: string | null;
+  product_template_variant_id?: string | null;
+}
+
+interface ProductTemplateVariant {
+  id: string;
+  template_id: string;
+  artist_id: string;
+  variant_name: string;
+  variant_sort_order: number;
+  tags?: string[];
+  price_override?: number | null;
+  image_url?: string;
+  status?: 'enable' | 'disable' | 'soldout';
+}
+
+interface ProductTemplate {
+  id: string;
+  artist_id: string;
+  name: string;
+  category: string;
+  price: number;
+  currency: string;
+  tags?: string[];
+  description?: string;
+  is_unlimited: boolean;
+  stock_total?: number | null;
+  status: 'active' | 'archived';
+  image_url?: string;
+  product_template_variants?: ProductTemplateVariant[];
 }
 
 interface EventOption {
@@ -77,7 +107,7 @@ type EventCatalogDraft = Record<string, {
 }>;
 
 type ProductImageTarget = 'add' | 'edit';
-type CatalogWorkspaceTab = 'catalog' | 'event-catalog' | 'promotions' | 'import';
+type CatalogWorkspaceTab = 'catalog' | 'event-catalog' | 'promotions' | 'templates' | 'import';
 interface ManageProductsProps {
    initialTab?: CatalogWorkspaceTab;
 }
@@ -142,6 +172,47 @@ const parseTagsInput = (value: string) =>
 
 const formatTagsInput = (tags?: string[]) => (tags || []).join(', ');
 
+const parseTemplateVariantsInput = (value: string) => {
+   const seen = new Set<string>();
+   return value
+      .split(/\r?\n/)
+      .map((line, index) => {
+         const parts = line.split('|').map((part) => part.trim());
+         const variantName = normalizeOptionalText(parts[0] || '');
+         if (!variantName) return null;
+
+         const key = variantName.toLowerCase();
+         if (seen.has(key)) return null;
+         seen.add(key);
+
+         const priceOverrideRaw = parts[2] || '';
+         const sortRaw = parts[3] || '';
+         const priceOverride = priceOverrideRaw && Number.isFinite(Number(priceOverrideRaw))
+            ? Number(priceOverrideRaw)
+            : null;
+         const sortOrder = sortRaw && Number.isFinite(Number(sortRaw))
+            ? Math.trunc(Number(sortRaw))
+            : index + 1;
+
+         return {
+            variant_name: variantName,
+            tags: parseTagsInput(parts[1] || ''),
+            price_override: priceOverride,
+            variant_sort_order: sortOrder,
+            status: 'enable' as const,
+            image_url: '',
+         };
+      })
+      .filter((variant): variant is {
+         variant_name: string;
+         tags: string[];
+         price_override: number | null;
+         variant_sort_order: number;
+         status: 'enable';
+         image_url: string;
+      } => Boolean(variant));
+};
+
 const getEventCatalogSaveErrorMessage = (error: unknown) => {
    const message = error instanceof Error ? error.message : String(error || '');
    if (message.includes('event_stock_exceeds_catalog_stock')) {
@@ -187,6 +258,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
    const [products, setProducts] = useState<Product[]>([]);
+   const [productTemplates, setProductTemplates] = useState<ProductTemplate[]>([]);
    const [loading, setLoading] = useState(true);
    const [uploading, setUploading] = useState(false);
    const [compressing, setCompressing] = useState(false);
@@ -237,6 +309,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [stockActionReason, setStockActionReason] = useState('');
    const [stockActionSaving, setStockActionSaving] = useState(false);
    const [stockActionError, setStockActionError] = useState('');
+   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+   const [templatesLoading, setTemplatesLoading] = useState(false);
+   const [templateSaving, setTemplateSaving] = useState(false);
+   const [templateApplyId, setTemplateApplyId] = useState('');
+   const [templateApplySaving, setTemplateApplySaving] = useState(false);
+   const [templateName, setTemplateName] = useState('');
+   const [templateCategory, setTemplateCategory] = useState('');
+   const [templatePrice, setTemplatePrice] = useState('');
+   const [templateCurrency, setTemplateCurrency] = useState(DEFAULT_CURRENCY);
+   const [templateTagsInput, setTemplateTagsInput] = useState('');
+   const [templateDescription, setTemplateDescription] = useState('');
+   const [templateIsUnlimited, setTemplateIsUnlimited] = useState(true);
+   const [templateStockTotal, setTemplateStockTotal] = useState('');
+   const [templateVariantsInput, setTemplateVariantsInput] = useState('');
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -259,9 +345,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    // We use this for the datalist suggestions
    const allCategorySuggestions = Array.from(new Set([
       ...categories.filter(c => c !== 'Other'), // Defaults
-      ...products.map(p => p.category?.trim()).filter(Boolean) as string[]
+      ...products.map(p => p.category?.trim()).filter(Boolean) as string[],
+      ...productTemplates.map(t => t.category?.trim()).filter(Boolean) as string[]
    ])).sort();
-   const allTagSuggestions = Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort();
+   const allTagSuggestions = Array.from(new Set([
+      ...products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean),
+      ...productTemplates.flatMap((template) => template.tags || []).map(normalizeTag).filter(Boolean),
+      ...productTemplates.flatMap((template) => template.product_template_variants || []).flatMap((variant) => variant.tags || []).map(normalizeTag).filter(Boolean),
+   ])).sort();
    const allVariantGroupSuggestions = Array.from(new Set(
       products.map((p) => p.variant_group_name?.trim()).filter(Boolean) as string[]
    )).sort();
@@ -274,7 +365,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       const requestedTab = searchParams.get('tab');
-      if (requestedTab === 'catalog' || requestedTab === 'promotions' || requestedTab === 'import') {
+      if (requestedTab === 'catalog' || requestedTab === 'promotions' || requestedTab === 'templates' || requestedTab === 'import') {
          setActiveWorkspaceTab(requestedTab);
       } else {
          setActiveWorkspaceTab(initialTab);
@@ -722,6 +813,36 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    };
 
+   const fetchProductTemplates = async (artistIdValue: string) => {
+      setTemplatesLoading(true);
+      try {
+         const { data, error } = await supabase
+            .from('product_templates')
+            .select('*, product_template_variants(*)')
+            .eq('artist_id', artistIdValue)
+            .eq('status', 'active')
+            .order('created_at', { ascending: false });
+
+         if (error) throw error;
+
+         const templates = ((data || []) as ProductTemplate[]).map((template) => ({
+            ...template,
+            product_template_variants: [...(template.product_template_variants || [])].sort((a, b) => {
+               const sortDiff = (a.variant_sort_order || 0) - (b.variant_sort_order || 0);
+               if (sortDiff !== 0) return sortDiff;
+               return a.variant_name.localeCompare(b.variant_name);
+            }),
+         }));
+         setProductTemplates(templates);
+         setTemplateApplyId((current) => current || templates[0]?.id || '');
+      } catch (error) {
+         console.error('[ManageProducts] fetchProductTemplates failed:', error);
+         setProductTemplates([]);
+      } finally {
+         setTemplatesLoading(false);
+      }
+   };
+
    const fetchProducts = async () => {
       setLoading(true);
       try {
@@ -729,6 +850,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          if (!ctx) return;
 
          await fetchEventOptions(ctx.artist_id);
+         await fetchProductTemplates(ctx.artist_id);
 
          // Fetch Artist Name
          const { data: artist } = await supabase
@@ -1425,6 +1547,125 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    });
    };
 
+   const resetTemplateForm = () => {
+      setTemplateName('');
+      setTemplateCategory('');
+      setTemplatePrice('');
+      setTemplateCurrency(DEFAULT_CURRENCY);
+      setTemplateTagsInput('');
+      setTemplateDescription('');
+      setTemplateIsUnlimited(true);
+      setTemplateStockTotal('');
+      setTemplateVariantsInput('');
+   };
+
+   const handleCreateTemplate = async (event: React.FormEvent) => {
+      event.preventDefault();
+
+      if (!templateName.trim() || !templateCategory.trim() || !templatePrice.trim()) {
+         showToast({ tone: 'warning', title: 'Template fields missing', detail: 'Fill in template name, category, and price.' });
+         return;
+      }
+
+      if (!templateIsUnlimited && (templateStockTotal === '' || Number(templateStockTotal) < 0 || !Number.isInteger(Number(templateStockTotal)))) {
+         showToast({ tone: 'warning', title: 'Invalid template stock', detail: 'Enter a whole number greater than or equal to 0, or mark the template as Unlimited.' });
+         return;
+      }
+
+      const parsedVariants = parseTemplateVariantsInput(templateVariantsInput);
+      if (parsedVariants.length === 0) {
+         showToast({ tone: 'warning', title: 'No variants', detail: 'Add at least one variant name.' });
+         return;
+      }
+
+      setTemplateSaving(true);
+      let createdTemplateId: string | null = null;
+      try {
+         const ctx = actorContext || await resolveWorkspaceContext();
+         if (!ctx) throw new Error('Not authenticated');
+
+         const { data: templateData, error: templateError } = await supabase
+            .from('product_templates')
+            .insert({
+               artist_id: ctx.artist_id,
+               name: normalizeTag(templateName),
+               category: normalizeTag(templateCategory),
+               price: Number(templatePrice),
+               currency: templateCurrency,
+               tags: parseTagsInput(templateTagsInput),
+               description: templateDescription.trim(),
+               is_unlimited: templateIsUnlimited,
+               stock_total: templateIsUnlimited ? null : Number(templateStockTotal || 0),
+               status: 'active',
+               image_url: '',
+            })
+            .select('id')
+            .single();
+
+         if (templateError) throw templateError;
+         createdTemplateId = templateData.id;
+
+         const variantPayload = parsedVariants.map((variant) => ({
+            ...variant,
+            artist_id: ctx.artist_id,
+            template_id: templateData.id,
+         }));
+
+         const { error: variantError } = await supabase
+            .from('product_template_variants')
+            .insert(variantPayload);
+
+         if (variantError) throw variantError;
+
+         await fetchProductTemplates(ctx.artist_id);
+         resetTemplateForm();
+         setIsTemplateModalOpen(false);
+         setActiveWorkspaceTab('templates');
+         showToast({ tone: 'success', title: 'Product Template created', detail: `${parsedVariants.length} variant${parsedVariants.length === 1 ? '' : 's'} ready.` });
+      } catch (error: any) {
+         if (createdTemplateId) {
+            await supabase.from('product_templates').delete().eq('id', createdTemplateId);
+         }
+         console.error('[ManageProducts] create template failed:', error);
+         showToast({ tone: 'error', title: 'Template failed', detail: error.message });
+      } finally {
+         setTemplateSaving(false);
+      }
+   };
+
+   const handleCreateProductsFromTemplate = async (templateId: string, eventId?: string | null) => {
+      if (!templateId) return;
+      setTemplateApplyId(templateId);
+      setTemplateApplySaving(true);
+      try {
+         const { data, error } = await supabase.rpc('create_products_from_template', {
+            p_template_id: templateId,
+            p_variant_ids: null,
+            p_event_id: eventId || null,
+            p_default_event_stock: null,
+         });
+
+         if (error) throw error;
+
+         const rows = (data || []) as Array<{ created_product?: boolean; created_event_product?: boolean }>;
+         const createdProducts = rows.filter((row) => row.created_product).length;
+         const eventRows = rows.filter((row) => row.created_event_product).length;
+         await fetchProducts();
+         showToast({
+            tone: 'success',
+            title: eventId ? 'Template applied to event' : 'Products created from template',
+            detail: eventId
+               ? `${rows.length} variant${rows.length === 1 ? '' : 's'} linked. ${eventRows} new event row${eventRows === 1 ? '' : 's'} created.`
+               : `${createdProducts} new product${createdProducts === 1 ? '' : 's'} created. Existing variants were skipped.`,
+         });
+      } catch (error: any) {
+         console.error('[ManageProducts] apply template failed:', error);
+         showToast({ tone: 'error', title: 'Template apply failed', detail: error.message });
+      } finally {
+         setTemplateApplySaving(false);
+      }
+   };
+
    const handleConfirmAction = async () => {
       if (!confirmAction) return;
 
@@ -1620,6 +1861,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
                         {([
                            ['catalog', 'Catalog'],
+                           ['templates', 'Templates'],
                            ['import', 'Import'],
                         ] as const).map(([tab, label]) => (
                            <button
@@ -1637,15 +1879,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            </button>
                         ))}
                      </div>
-                     {activeWorkspaceTab === 'catalog' && (
+                     {(activeWorkspaceTab === 'catalog' || activeWorkspaceTab === 'templates') && (
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                      <button
                         type="button"
-                        onClick={() => setIsAddProductModalOpen(true)}
+                        onClick={() => activeWorkspaceTab === 'templates' ? setIsTemplateModalOpen(true) : setIsAddProductModalOpen(true)}
                         className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                      >
                         <Plus size={16} aria-hidden="true" />
-                        Add Product
+                        {activeWorkspaceTab === 'templates' ? 'New Template' : 'Add Product'}
                      </button>
                      <button
                         type="button"
@@ -1907,6 +2149,268 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             </div>
             )}
 
+            {isTemplateModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+               <section className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white px-5 py-4">
+                     <div>
+                        <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                           <Sparkles className="text-pink-500" size={18} />
+                           New Product Template
+                        </h2>
+                        <p className="mt-1 text-xs text-gray-500">Create one reusable product shape, then paste many variants under it.</p>
+                     </div>
+                     <button
+                        type="button"
+                        onClick={() => setIsTemplateModalOpen(false)}
+                        className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label="Close product template"
+                     >
+                        <X size={20} />
+                     </button>
+                  </div>
+
+                  <form onSubmit={handleCreateTemplate} className="space-y-5 p-5">
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Template Name *</label>
+                           <input
+                              value={templateName}
+                              onChange={(event) => setTemplateName(event.target.value)}
+                              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                              placeholder="Sticker Bualoi"
+                              required
+                           />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category *</label>
+                           <input
+                              list="category-suggestions"
+                              value={templateCategory}
+                              onChange={(event) => setTemplateCategory(event.target.value)}
+                              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                              placeholder="Sticker"
+                              required
+                           />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                              <Coins size={12} /> Default price *
+                           </label>
+                           <div className="flex gap-2">
+                              <input
+                                 type="number"
+                                 min="0"
+                                 step="0.01"
+                                 value={templatePrice}
+                                 onChange={(event) => setTemplatePrice(event.target.value)}
+                                 className="min-w-0 flex-1 px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                 placeholder="10"
+                                 required
+                              />
+                              <select
+                                 value={templateCurrency}
+                                 onChange={(event) => setTemplateCurrency(event.target.value)}
+                                 className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                 aria-label="Template currency"
+                              >
+                                 {Object.entries(CURRENCIES).map(([code, info]) => (
+                                    <option key={code} value={code}>{info.symbol} {code}</option>
+                                 ))}
+                              </select>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-4">
+                        <div className="space-y-1">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Default tags</label>
+                           <input
+                              list="tag-suggestions"
+                              value={templateTagsInput}
+                              onChange={(event) => setTemplateTagsInput(event.target.value)}
+                              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                              placeholder="Genshin Impact, Hoyoverse"
+                           />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Default stock</label>
+                           <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                              <input
+                                 id="template-unlimited"
+                                 type="checkbox"
+                                 checked={templateIsUnlimited}
+                                 onChange={(event) => setTemplateIsUnlimited(event.target.checked)}
+                                 className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200"
+                              />
+                              <label htmlFor="template-unlimited" className="text-xs font-bold text-gray-600">Unlimited</label>
+                              <input
+                                 type="number"
+                                 min="0"
+                                 step="1"
+                                 value={templateStockTotal}
+                                 onChange={(event) => setTemplateStockTotal(event.target.value)}
+                                 disabled={templateIsUnlimited}
+                                 className="ml-auto w-24 rounded border border-gray-200 px-2 py-1 text-xs font-bold text-gray-700 disabled:bg-gray-100 disabled:text-gray-400"
+                                 placeholder="Qty"
+                              />
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Description</label>
+                        <textarea
+                           value={templateDescription}
+                           onChange={(event) => setTemplateDescription(event.target.value.slice(0, 200))}
+                           className="h-16 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                           placeholder="A6 sized, hologram laminated, 3cm add-on, etc."
+                        />
+                     </div>
+
+                     <div className="space-y-1">
+                        <div className="flex items-end justify-between gap-3">
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variants *</label>
+                           <span className="text-xs font-black text-pink-600">{parseTemplateVariantsInput(templateVariantsInput).length} parsed</span>
+                        </div>
+                        <textarea
+                           value={templateVariantsInput}
+                           onChange={(event) => setTemplateVariantsInput(event.target.value)}
+                           className="h-56 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                           placeholder={`Durin | Genshin Impact | | 1\nWanderer | Genshin Impact | | 2\nTamonUtage | Tamon-kun Devotion | 12 | 3`}
+                           required
+                        />
+                        <p className="text-[11px] font-semibold text-gray-400">Format: name | tags | price override | sort. One name per line also works.</p>
+                     </div>
+
+                     <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
+                        <Button
+                           type="button"
+                           onClick={() => setIsTemplateModalOpen(false)}
+                           className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                        >
+                           Cancel
+                        </Button>
+                        <Button
+                           type="submit"
+                           disabled={templateSaving}
+                           className="rounded-lg bg-pink-600 px-5 py-2 text-sm font-black text-white hover:bg-pink-700 disabled:bg-pink-300"
+                        >
+                           {templateSaving ? <Loader className="animate-spin" size={16} /> : 'Create Template'}
+                        </Button>
+                     </div>
+                  </form>
+                  <datalist id="category-suggestions">
+                     {allCategorySuggestions.map(cat => (
+                        <option key={cat} value={cat} />
+                     ))}
+                  </datalist>
+                  <datalist id="tag-suggestions">
+                     {allTagSuggestions.map(tag => (
+                        <option key={tag} value={tag} />
+                     ))}
+                  </datalist>
+               </section>
+            </div>
+            )}
+
+            {activeWorkspaceTab === 'templates' && (
+            <section className="space-y-4">
+               <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                     <div>
+                        <h2 className="flex items-center gap-2 text-base font-bold text-gray-800">
+                           <Sparkles className="text-pink-500" size={18} />
+                           Product Templates
+                        </h2>
+                        <p className="mt-1 text-xs font-semibold text-gray-500">Reusable product shapes for high-variant merch like stickers, keyrings, and add-on characters.</p>
+                     </div>
+                     <button
+                        type="button"
+                        onClick={() => setIsTemplateModalOpen(true)}
+                        className="workspace-action inline-flex items-center justify-center gap-2 rounded-lg border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
+                     >
+                        <Plus size={16} /> New Template
+                     </button>
+                  </div>
+               </div>
+
+               {templatesLoading ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-bold text-gray-400">Loading templates...</div>
+               ) : productTemplates.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center">
+                     <Sparkles className="mx-auto text-pink-200" size={34} />
+                     <p className="mt-3 text-sm font-black text-gray-700">No Product Templates yet</p>
+                     <p className="mt-1 text-xs font-semibold text-gray-500">Start with one template such as Sticker Bualoi, then paste variants in bulk.</p>
+                  </div>
+               ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                     {productTemplates.map((template) => {
+                        const variants = template.product_template_variants || [];
+                        const existingProducts = products.filter((product) => product.product_template_id === template.id).length;
+                        return (
+                           <article key={template.id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                              <div className="flex items-start justify-between gap-4">
+                                 <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                       <h3 className="truncate text-base font-black text-gray-900">{template.name}</h3>
+                                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-600">{template.category}</span>
+                                    </div>
+                                    <p className="mt-1 text-sm font-bold text-pink-600">{formatPrice(template.price, template.currency)}</p>
+                                    {template.description && <p className="mt-1 line-clamp-2 text-xs font-semibold text-gray-500">{template.description}</p>}
+                                 </div>
+                                 <div className="rounded-lg bg-pink-50 px-3 py-2 text-right">
+                                    <div className="text-lg font-black text-pink-700">{variants.length}</div>
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-pink-500">Variants</div>
+                                 </div>
+                              </div>
+
+                              {!!template.tags?.length && (
+                                 <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {template.tags.slice(0, 5).map((tag) => (
+                                       <span key={`${template.id}-${tag}`} className="rounded bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-600">#{tag}</span>
+                                    ))}
+                                    {template.tags.length > 5 && <span className="text-[10px] font-bold text-gray-400">+{template.tags.length - 5}</span>}
+                                 </div>
+                              )}
+
+                              <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                 <div className="mb-2 flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black uppercase tracking-wide text-gray-500">Preview</span>
+                                    <span className="text-xs font-bold text-gray-500">{existingProducts}/{variants.length} products created</span>
+                                 </div>
+                                 <div className="flex flex-wrap gap-1.5">
+                                    {variants.slice(0, 12).map((variant) => (
+                                       <span key={variant.id} className="rounded bg-white px-2 py-1 text-[11px] font-bold text-gray-700 ring-1 ring-gray-100">
+                                          {variant.variant_name}
+                                       </span>
+                                    ))}
+                                    {variants.length > 12 && <span className="px-2 py-1 text-[11px] font-black text-gray-400">+{variants.length - 12}</span>}
+                                 </div>
+                              </div>
+
+                              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                 <div className="text-xs font-semibold text-gray-500">
+                                    Stock: {template.is_unlimited ? 'Unlimited' : `${template.stock_total || 0} default`}
+                                 </div>
+                                 <button
+                                    type="button"
+                                    onClick={() => void handleCreateProductsFromTemplate(template.id)}
+                                    disabled={templateApplySaving}
+                                    className="workspace-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-black text-white hover:bg-slate-800 disabled:bg-gray-300"
+                                 >
+                                    {templateApplySaving && templateApplyId === template.id ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
+                                    Create products
+                                 </button>
+                              </div>
+                           </article>
+                        );
+                     })}
+                  </div>
+               )}
+            </section>
+            )}
+
             {activeWorkspaceTab === 'import' && (
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
                <div className="px-4 py-4 flex items-start justify-between gap-4 text-left">
@@ -2063,6 +2567,38 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            ? 'You have unsaved event catalog changes. Save before opening POS for this event.'
                            : 'Event catalog is saved. POS and customer menu will use this setup.'}
                      </div>
+
+                     {productTemplates.length > 0 && (
+                        <div className="flex flex-col gap-3 rounded-xl border border-pink-100 bg-pink-50/50 p-3 lg:flex-row lg:items-center lg:justify-between">
+                           <div>
+                              <p className="text-xs font-black uppercase tracking-wide text-pink-700">Product Template</p>
+                              <p className="mt-1 text-xs font-semibold text-pink-900/70">Create template variants and add them to this event catalog in one step.</p>
+                           </div>
+                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <select
+                                 value={templateApplyId}
+                                 onChange={(event) => setTemplateApplyId(event.target.value)}
+                                 className="min-h-10 min-w-[260px] rounded-lg border border-pink-100 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                 aria-label="Select product template to apply"
+                              >
+                                 {productTemplates.map((template) => (
+                                    <option key={template.id} value={template.id}>
+                                       {template.name} ({template.product_template_variants?.length || 0})
+                                    </option>
+                                 ))}
+                              </select>
+                              <button
+                                 type="button"
+                                 onClick={() => void handleCreateProductsFromTemplate(templateApplyId || productTemplates[0]?.id, selectedEventId)}
+                                 disabled={!selectedEventId || !templateApplyId || templateApplySaving}
+                                 className="workspace-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-xs font-black text-white shadow-sm hover:bg-pink-700 disabled:bg-gray-300"
+                              >
+                                 {templateApplySaving ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
+                                 Apply to event
+                              </button>
+                           </div>
+                        </div>
+                     )}
 
                      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px] gap-2">
                         <div className="relative">

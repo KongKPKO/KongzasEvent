@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Tag as TagIcon, Sparkles, CalendarDays, Save, Download, Copy } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy } from 'lucide-react';
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
@@ -450,9 +450,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    // ✅ NEW: Unique currencies from products for filter
    const uniqueCurrencies = ['All', ...Array.from(new Set(products.map(p => p.currency || DEFAULT_CURRENCY))).sort()];
    const uniqueTags = ['All', ...Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort()];
-   const quickCategoryChips = uniqueCategories.slice(0, 8);
-   const hasMoreCategories = uniqueCategories.length > quickCategoryChips.length;
-
    // ✅ NEW: Check for mixed enabled currencies
    const getAvailableUnits = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
@@ -490,7 +487,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const renderCatalogStockFlow = (product: Product, compact = false) => {
       if (product.is_unlimited) {
          return (
-            <div className={compact ? 'mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600' : 'inline-flex rounded-full bg-gray-100 px-3 py-1.5 text-sm font-black text-gray-700'}>
+            <div className={compact ? 'mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600' : 'inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600'}>
                Unlimited
             </div>
          );
@@ -507,30 +504,35 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       const heldPct = Math.max(0, Math.min(100, (held / denominator) * 100));
 
       return (
-         <div className={compact ? 'mt-1 max-w-[180px] rounded-lg border border-gray-100 bg-gray-50 p-2' : 'min-w-[190px] rounded-lg border border-gray-100 bg-gray-50 p-2.5'}>
-            <div className="flex items-center justify-between gap-3">
-               <span className={compact ? 'text-[10px] font-black uppercase tracking-wide text-gray-400' : 'text-[11px] font-black uppercase tracking-wide text-gray-400'}>On hand</span>
-               <span className={compact ? 'text-xs font-black text-gray-900' : 'text-sm font-black text-gray-900'}>{onHand}</span>
+         <div className={compact ? 'mt-1 max-w-[210px]' : 'min-w-[210px]'}>
+            <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
+               <div>
+                  <div className="font-black text-gray-900">{onHand}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">On hand</div>
+               </div>
+               <div>
+                  <div className="font-black text-emerald-700">{available}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">Available</div>
+               </div>
+               <div>
+                  <div className="font-black text-pink-700">{allocated}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">Event</div>
+               </div>
             </div>
-            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
+            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
                <div className="bg-emerald-400" style={{ width: `${availablePct}%` }} />
                <div className="bg-pink-400" style={{ width: `${allocatedPct}%` }} />
                {held > 0 && <div className="bg-amber-400" style={{ width: `${heldPct}%` }} />}
             </div>
-            <div className={compact ? 'mt-1.5 space-y-0.5 text-[10px] font-bold' : 'mt-2 space-y-1 text-[11px] font-bold'}>
-               <div className="flex items-center justify-between gap-2 text-emerald-700">
-                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Available</span>
-                  <span>{available}</span>
-               </div>
-               <div className="flex items-center justify-between gap-2 text-pink-700">
-                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-pink-400" />Allocated to events</span>
-                  <span>{allocated}</span>
-               </div>
+            <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-400'}>
+               <span className="text-emerald-600">Available</span>
+               <span> / </span>
+               <span className="text-pink-600">Allocated</span>
                {held > 0 && (
-                  <div className="flex items-center justify-between gap-2 text-amber-700">
-                     <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Reserved/Sold</span>
-                     <span>{held}</span>
-                  </div>
+                  <>
+                     <span> / </span>
+                     <span className="text-amber-600">Held {held}</span>
+                  </>
                )}
             </div>
          </div>
@@ -2245,37 +2247,36 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                />
             )}
             {!isEventScopedWorkspace && activeWorkspaceTab !== 'promotions' && (
-            <section className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <section className="mb-5 rounded-xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
                      <p className="text-xs font-black uppercase tracking-wide text-pink-600">Catalog Library</p>
                      <h2 className="mt-1 text-lg font-black text-gray-900">Shared products used across every event</h2>
                      <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">Create products once, duplicate variants quickly, then choose which items go into each event catalog.</p>
-                  </div>
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
                         {([
-                           { label: 'Products', value: products.length, focus: 'all' as const, tone: 'gray' },
-                           { label: 'Missing images', value: catalogMissingImages, focus: 'missing-images' as const, tone: 'pink' },
-                           { label: 'Low stock', value: catalogLowStock, focus: 'low-stock' as const, tone: 'amber' },
-                           { label: 'Inactive', value: catalogInactive, focus: 'inactive' as const, tone: 'slate' },
+                           { label: 'Products', value: products.length, focus: 'all' as const },
+                           { label: 'Missing images', value: catalogMissingImages, focus: 'missing-images' as const },
+                           { label: 'Low stock', value: catalogLowStock, focus: 'low-stock' as const },
+                           { label: 'Inactive', value: catalogInactive, focus: 'inactive' as const },
                         ]).map((item) => (
                            <button
                               key={item.label}
                               type="button"
                               onClick={() => setCatalogFocus(item.focus)}
-                              className={`min-w-[120px] rounded-lg border px-3 py-2 text-left transition-colors ${
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors ${
                                  catalogFocus === item.focus
-                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
-                                    : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'
+                                    ? 'bg-pink-50 text-pink-700 ring-1 ring-pink-100'
+                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                               }`}
                            >
-                              <div className="text-lg font-black leading-none">{item.value}</div>
-                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
+                              <span className="font-black text-gray-900">{item.value}</span>
+                              <span>{item.label}</span>
                            </button>
                         ))}
                      </div>
-                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                      <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
                         {([
                            ['catalog', 'Catalog'],
@@ -2317,7 +2318,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
                      )}
                      </div>
-                  </div>
                </div>
             </section>
             )}
@@ -3405,31 +3405,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   </div>
                </div>
 
-               <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-                  {([
-                     { value: 'all' as const, label: 'All products', count: products.length },
-                     { value: 'missing-images' as const, label: 'Need images', count: catalogMissingImages },
-                     { value: 'low-stock' as const, label: 'Low stock', count: catalogLowStock },
-                     { value: 'inactive' as const, label: 'Inactive', count: catalogInactive },
-                  ]).map((item) => (
-                     <button
-                        key={item.value}
-                        type="button"
-                        onClick={() => setCatalogFocus(item.value)}
-                        className={`rounded-lg border px-3 py-2 text-left text-xs font-black transition-colors ${
-                           catalogFocus === item.value
-                              ? 'border-pink-200 bg-pink-50 text-pink-700'
-                              : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-white'
-                        }`}
-                     >
-                        <span>{item.label}</span>
-                        <span className="float-right rounded-full bg-white px-2 text-gray-500 ring-1 ring-gray-100">{item.count}</span>
-                     </button>
-                  ))}
-               </div>
-
-               {/* Search & Sort Row */}
-               <div className="flex flex-col md:flex-row gap-4">
+               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
                   <div className="relative flex-1">
                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                      <input 
@@ -3458,87 +3434,68 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   </div>
                </div>
 
-               {/* Category Chips + More Dropdown */}
-               <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider self-center mr-1">Category:</span>
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 flex-1">
-                  {quickCategoryChips.map(cat => (
-                     <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                           selectedCategory === cat 
-                              ? 'bg-pink-500 text-white shadow-md shadow-pink-200' 
-                              : 'bg-white border border-gray-200 text-gray-600 hover:border-pink-300 hover:text-pink-500'
-                        }`}
+               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="relative">
+                     <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                        aria-label="Filter by category"
                      >
-                        {cat}
-                     </button>
-                  ))}
+                        {uniqueCategories.map((cat) => (
+                           <option key={cat} value={cat}>{cat === 'All' ? 'All categories' : cat}</option>
+                        ))}
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
-                  {hasMoreCategories && (
-                     <div className="relative min-w-[180px]">
-                        <select
-                           value={quickCategoryChips.includes(selectedCategory) ? 'More categories' : selectedCategory}
-                           onChange={(e) => {
-                              const nextValue = e.target.value;
-                              if (nextValue !== 'More categories') setSelectedCategory(nextValue);
-                           }}
-                           className="w-full rounded-full border border-gray-200 bg-white px-3 py-1.5 pr-8 text-xs font-bold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                           aria-label="Select category from all categories"
-                        >
-                           <option value="More categories" disabled>More categories</option>
-                           {uniqueCategories.filter((cat) => !quickCategoryChips.includes(cat)).map((cat) => (
-                              <option key={cat} value={cat}>{cat}</option>
-                           ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-                     </div>
-                  )}
-               </div>
-               
-               {/* ✅ NEW: Currency Filter Chips */}
-               {uniqueCurrencies.length > 2 && (
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider self-center mr-1 flex items-center gap-1">
-                        <Coins size={12} /> Currency:
-                     </span>
-                     {uniqueCurrencies.map(curr => (
-                        <button
-                           key={curr}
-                           onClick={() => setSelectedCurrency(curr)}
-                           className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                              selectedCurrency === curr 
-                                 ? 'bg-amber-500 text-white shadow-md shadow-amber-200' 
-                                 : 'bg-white border border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-500'
-                           }`}
-                        >
-                           {curr === 'All' ? 'All' : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}
-                        </button>
-                     ))}
-                  </div>
-               )}
 
-               {uniqueTags.length > 1 && (
-                  <div className="flex flex-col md:flex-row md:items-center gap-2">
-                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1 shrink-0">
-                        <TagIcon size={12} /> Tag:
-                     </span>
-                     <div className="relative w-full md:max-w-sm">
+                  <div className="relative">
+                     <select
+                        value={selectedTag}
+                        onChange={(e) => setSelectedTag(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                        aria-label="Filter by tag"
+                     >
+                        {uniqueTags.map(tag => (
+                           <option key={tag} value={tag}>{tag === 'All' ? 'All tags' : tag}</option>
+                        ))}
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </div>
+
+                  <div className="relative">
+                     <select
+                        value={catalogFocus}
+                        onChange={(e) => setCatalogFocus(e.target.value as typeof catalogFocus)}
+                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                        aria-label="Filter by catalog focus"
+                     >
+                        <option value="all">All stock/image states</option>
+                        <option value="missing-images">Need images ({catalogMissingImages})</option>
+                        <option value="low-stock">Low stock ({catalogLowStock})</option>
+                        <option value="inactive">Inactive ({catalogInactive})</option>
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </div>
+
+                  {uniqueCurrencies.length > 2 ? (
+                     <div className="relative">
                         <select
-                           value={selectedTag}
-                           onChange={(e) => setSelectedTag(e.target.value)}
-                           className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                           aria-label="Filter by tag"
+                           value={selectedCurrency}
+                           onChange={(e) => setSelectedCurrency(e.target.value)}
+                           className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                           aria-label="Filter by currency"
                         >
-                           {uniqueTags.map(tag => (
-                              <option key={tag} value={tag}>{tag === 'All' ? 'All tags' : tag}</option>
+                           {uniqueCurrencies.map((curr) => (
+                              <option key={curr} value={curr}>{curr === 'All' ? 'All currencies' : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}</option>
                            ))}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                      </div>
-                  </div>
-               )}
+                  ) : (
+                     <div className="hidden xl:block" />
+                  )}
+               </div>
 
                {hasActiveFilters && (
                   <div className="flex flex-wrap gap-2">
@@ -3729,13 +3686,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                           <>
                                              <button
                                                 onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
-                                                className="workspace-action min-h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
+                                                className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-50"
                                              >
                                                 Add stock
                                              </button>
                                              <button
                                                 onClick={() => openStockAction({ scope: 'catalog', kind: 'remove', product })}
-                                                className="workspace-action min-h-8 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-black text-gray-700 hover:bg-gray-100"
+                                                className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-gray-500 hover:bg-gray-100 hover:text-gray-800"
                                              >
                                                 Remove
                                              </button>
@@ -3743,13 +3700,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        )}
                                        <button
                                           onClick={() => openDuplicateVariants(product)}
-                                          className="workspace-action min-h-8 rounded-lg border border-pink-200 bg-pink-50 px-2 py-1 text-[11px] font-black text-pink-700 hover:bg-pink-100"
+                                          className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-pink-700 hover:bg-pink-50"
                                           title="Create variants"
                                           aria-label={`Create variants from ${product.name}`}
                                        >
                                           Variants
                                        </button>
-                                       <button 
+                                       <button
                                           onClick={() => handleEditClick(product)}
                                           className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-gray-50 rounded-lg transition-colors"
                                           title="Edit"
@@ -3757,7 +3714,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        >
                                           <Edit2 size={18} />
                                        </button>
-                                       <button 
+                                       <button
                                           onClick={() => requestDeleteProduct(product)}
                                           className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-red-700 hover:bg-gray-50 rounded-lg transition-colors"
                                           title="Delete"

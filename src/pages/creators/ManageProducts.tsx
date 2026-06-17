@@ -172,8 +172,8 @@ const parseTagsInput = (value: string) =>
 
 const formatTagsInput = (tags?: string[]) => (tags || []).join(', ');
 
-const parseTemplateVariantsInput = (value: string) => {
-   const seen = new Set<string>();
+const parseTemplateVariantsInput = (value: string, existingNames: string[] = [], baseSortOrder = 0) => {
+   const seen = new Set(existingNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
    return value
       .split(/\r?\n/)
       .map((line, index) => {
@@ -192,7 +192,7 @@ const parseTemplateVariantsInput = (value: string) => {
             : null;
          const sortOrder = sortRaw && Number.isFinite(Number(sortRaw))
             ? Math.trunc(Number(sortRaw))
-            : index + 1;
+            : baseSortOrder + index + 1;
 
          return {
             variant_name: variantName,
@@ -323,6 +323,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [templateIsUnlimited, setTemplateIsUnlimited] = useState(true);
    const [templateStockTotal, setTemplateStockTotal] = useState('');
    const [templateVariantsInput, setTemplateVariantsInput] = useState('');
+   const [templateVariantDrafts, setTemplateVariantDrafts] = useState<Record<string, string>>({});
+   const [templateVariantSavingId, setTemplateVariantSavingId] = useState('');
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1633,6 +1635,53 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    };
 
+   const handleAddTemplateVariants = async (template: ProductTemplate) => {
+      const draft = templateVariantDrafts[template.id] || '';
+      const existingVariants = template.product_template_variants || [];
+      const maxSortOrder = existingVariants.reduce((max, variant) => Math.max(max, variant.variant_sort_order || 0), 0);
+      const parsedVariants = parseTemplateVariantsInput(
+         draft,
+         existingVariants.map((variant) => variant.variant_name),
+         maxSortOrder
+      );
+
+      if (parsedVariants.length === 0) {
+         showToast({ tone: 'warning', title: 'No new variants', detail: 'Add at least one new variant name that is not already in this template.' });
+         return;
+      }
+
+      setTemplateVariantSavingId(template.id);
+      try {
+         const ctx = actorContext || await resolveWorkspaceContext();
+         if (!ctx) throw new Error('Not authenticated');
+
+         const variantPayload = parsedVariants.map((variant) => ({
+            ...variant,
+            artist_id: ctx.artist_id,
+            template_id: template.id,
+         }));
+
+         const { error } = await supabase
+            .from('product_template_variants')
+            .insert(variantPayload);
+
+         if (error) throw error;
+
+         setTemplateVariantDrafts((current) => ({ ...current, [template.id]: '' }));
+         await fetchProductTemplates(ctx.artist_id);
+         showToast({
+            tone: 'success',
+            title: 'Variants added',
+            detail: `${parsedVariants.length} variant${parsedVariants.length === 1 ? '' : 's'} added to ${template.name}.`,
+         });
+      } catch (error: any) {
+         console.error('[ManageProducts] add template variants failed:', error);
+         showToast({ tone: 'error', title: 'Variants failed', detail: error.message });
+      } finally {
+         setTemplateVariantSavingId('');
+      }
+   };
+
    const handleCreateProductsFromTemplate = async (templateId: string, eventId?: string | null) => {
       if (!templateId) return;
       setTemplateApplyId(templateId);
@@ -2386,6 +2435,32 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        </span>
                                     ))}
                                     {variants.length > 12 && <span className="px-2 py-1 text-[11px] font-black text-gray-400">+{variants.length - 12}</span>}
+                                 </div>
+                              </div>
+
+                              <div className="mt-3 rounded-lg border border-dashed border-pink-100 bg-pink-50/30 p-3">
+                                 <div className="mb-2 flex items-center justify-between gap-2">
+                                    <label htmlFor={`template-variants-${template.id}`} className="text-xs font-black uppercase tracking-wide text-pink-700">Add variants</label>
+                                    <span className="text-[11px] font-bold text-gray-400">Creates missing products later</span>
+                                 </div>
+                                 <textarea
+                                    id={`template-variants-${template.id}`}
+                                    value={templateVariantDrafts[template.id] || ''}
+                                    onChange={(event) => setTemplateVariantDrafts((current) => ({ ...current, [template.id]: event.target.value }))}
+                                    className="h-20 w-full resize-none rounded-lg border border-pink-100 bg-white px-3 py-2 font-mono text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                    placeholder={`Paimon | Genshin Impact\nAether | Genshin Impact\nLumine | Genshin Impact`}
+                                 />
+                                 <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <p className="text-[11px] font-semibold text-gray-400">Format: name | tags | price override | sort</p>
+                                    <button
+                                       type="button"
+                                       onClick={() => void handleAddTemplateVariants(template)}
+                                       disabled={templateVariantSavingId === template.id}
+                                       className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50 disabled:text-gray-400"
+                                    >
+                                       {templateVariantSavingId === template.id ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
+                                       Add variants
+                                    </button>
                                  </div>
                               </div>
 

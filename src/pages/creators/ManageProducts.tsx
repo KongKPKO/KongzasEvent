@@ -487,6 +487,56 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const catalogInactive = products.filter((product) => getEffectiveStatus(product) !== 'enable').length;
    const catalogVariantGroups = new Set(products.map((product) => product.variant_group_name || '').filter(Boolean)).size;
 
+   const renderCatalogStockFlow = (product: Product, compact = false) => {
+      if (product.is_unlimited) {
+         return (
+            <div className={compact ? 'mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600' : 'inline-flex rounded-full bg-gray-100 px-3 py-1.5 text-sm font-black text-gray-700'}>
+               Unlimited
+            </div>
+         );
+      }
+
+      const summary = getProductStockSummary(product);
+      const onHand = Math.max(summary.on_hand || 0, 0);
+      const allocated = Math.max(summary.allocated || 0, 0);
+      const available = Math.max(summary.available || 0, 0);
+      const held = Math.max(onHand - allocated - available, 0);
+      const denominator = Math.max(onHand, allocated + available + held, 1);
+      const availablePct = Math.max(0, Math.min(100, (available / denominator) * 100));
+      const allocatedPct = Math.max(0, Math.min(100, (allocated / denominator) * 100));
+      const heldPct = Math.max(0, Math.min(100, (held / denominator) * 100));
+
+      return (
+         <div className={compact ? 'mt-1 max-w-[180px] rounded-lg border border-gray-100 bg-gray-50 p-2' : 'min-w-[190px] rounded-lg border border-gray-100 bg-gray-50 p-2.5'}>
+            <div className="flex items-center justify-between gap-3">
+               <span className={compact ? 'text-[10px] font-black uppercase tracking-wide text-gray-400' : 'text-[11px] font-black uppercase tracking-wide text-gray-400'}>On hand</span>
+               <span className={compact ? 'text-xs font-black text-gray-900' : 'text-sm font-black text-gray-900'}>{onHand}</span>
+            </div>
+            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
+               <div className="bg-emerald-400" style={{ width: `${availablePct}%` }} />
+               <div className="bg-pink-400" style={{ width: `${allocatedPct}%` }} />
+               {held > 0 && <div className="bg-amber-400" style={{ width: `${heldPct}%` }} />}
+            </div>
+            <div className={compact ? 'mt-1.5 space-y-0.5 text-[10px] font-bold' : 'mt-2 space-y-1 text-[11px] font-bold'}>
+               <div className="flex items-center justify-between gap-2 text-emerald-700">
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Available</span>
+                  <span>{available}</span>
+               </div>
+               <div className="flex items-center justify-between gap-2 text-pink-700">
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-pink-400" />Allocated to events</span>
+                  <span>{allocated}</span>
+               </div>
+               {held > 0 && (
+                  <div className="flex items-center justify-between gap-2 text-amber-700">
+                     <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Reserved/Sold</span>
+                     <span>{held}</span>
+                  </div>
+               )}
+            </div>
+         </div>
+      );
+   };
+
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
       setToast(message);
    };
@@ -3533,7 +3583,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      {filteredProducts.map(product => {
                         const effectiveStatus = getEffectiveStatus(product);
                         return (
-                        <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row h-28 group relative">
+                        <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row min-h-36 group relative">
                            {/* Image */}
                            <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
                               <img 
@@ -3588,14 +3638,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        )}
                                     </div>
                                  )}
-                                 {!product.is_unlimited && (() => {
-                                    const summary = getProductStockSummary(product);
-                                    return (
-                                       <p className="mt-1 text-[10px] font-semibold text-gray-500">
-                                          On hand {summary.on_hand} · Available {summary.available}
-                                       </p>
-                                    );
-                                 })()}
+                                 {renderCatalogStockFlow(product, true)}
                               </div>
                               
                               {/* Mobile Actions (Always Visible) */}
@@ -3617,7 +3660,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               <th className="px-6 py-4 font-bold w-[40%]">Product</th>
                               <th className="px-6 py-4 font-bold">Category</th>
                               <th className="px-6 py-4 font-bold">Price</th>
-                              <th className="px-6 py-4 font-bold">Stock</th>
+                              <th className="px-6 py-4 font-bold">Stock Flow</th>
                               <th className="px-6 py-4 font-bold">Status</th>
                               <th className="px-6 py-4 font-bold text-right">Actions</th>
                            </tr>
@@ -3673,18 +3716,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     <span className="font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
                                  </td>
                                  <td className="px-6 py-4">
-                                    {product.is_unlimited ? (
-                                       <span className="text-sm font-semibold text-gray-700">Unlimited</span>
-                                    ) : (() => {
-                                       const summary = getProductStockSummary(product);
-                                       return (
-                                          <div className="text-xs font-semibold text-gray-700">
-                                             <div><span className="text-gray-400">On hand</span> {summary.on_hand}</div>
-                                             <div><span className="text-gray-400">Allocated</span> {summary.allocated}</div>
-                                             <div><span className="text-gray-400">Available</span> {summary.available}</div>
-                                          </div>
-                                       );
-                                    })()}
+                                    {renderCatalogStockFlow(product)}
                                  </td>
                                  <td className="px-6 py-4">
                                     {effectiveStatus === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}

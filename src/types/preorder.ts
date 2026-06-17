@@ -1,5 +1,7 @@
 export type EventSellingMode = 'preorder' | 'live' | 'post_event' | 'closed';
 
+export type EventSalesPhase = 'preorder' | 'live' | 'post_event' | 'closed';
+
 export type OrderType = 'live_queue' | 'pos_walkin' | 'preorder' | 'post_event';
 
 export type PickupStatus =

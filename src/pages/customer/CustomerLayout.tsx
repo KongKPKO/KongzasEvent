@@ -7,7 +7,7 @@ import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
 import { LanguageToggle, useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
-import { customerEventStorageKey, getCurrentCustomerEvents, getStoredTicketId, isPostEventStoreOpen } from '../../utils/customerEvents';
+import { customerEventStorageKey, getCurrentCustomerEvents, getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
 
 const CustomerLayout = () => {
    const { t } = useI18n();
@@ -35,6 +35,7 @@ const CustomerLayout = () => {
    const [selectedEventId, setSelectedEventIdState] = useState<string | null>(null);
    const availableEvents = useMemo(() => getCurrentCustomerEvents(events), [events]);
    const selectedEvent = availableEvents.find((event) => event.id === selectedEventId) || availableEvents[0] || null;
+   const selectedEventPhase = selectedEvent ? getEventSalesPhase(selectedEvent) : 'closed';
 
    const setSelectedEventId = (eventId: string) => {
       if (!displayArtist?.id) return;
@@ -150,8 +151,8 @@ const CustomerLayout = () => {
                      </div>
                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                           <span className={`text-[11px] font-black uppercase tracking-[0.16em] ${selectedEvent && isPostEventStoreOpen(selectedEvent) ? 'text-violet-700' : 'text-gray-600'}`}>
-                              {selectedEvent && isPostEventStoreOpen(selectedEvent) ? t('customerPostEventStore') : t('customerSelectedEvent')}
+                           <span className={`text-[11px] font-black uppercase tracking-[0.16em] ${selectedEventPhase === 'post_event' ? 'text-violet-700' : 'text-gray-600'}`}>
+                              {selectedEventPhase === 'post_event' ? t('customerPostEventStore') : t('customerSelectedEvent')}
                            </span>
                            <span className={`h-1.5 w-1.5 rounded-full ${selectedEvent?.is_booth_open ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                            <span className={`text-[11px] font-black uppercase tracking-[0.12em] ${selectedEvent?.is_booth_open ? 'text-emerald-700' : 'text-gray-600'}`}>
@@ -170,7 +171,7 @@ const CustomerLayout = () => {
                               >
                                  {availableEvents.map((event) => (
                                     <option key={event.id} value={event.id}>
-                                       {event.event_name}{isPostEventStoreOpen(event) ? ` — ${t('customerPostEventStore')}` : ''}
+                                       {event.event_name}{getEventSalesPhase(event) === 'post_event' ? ` — ${t('customerPostEventStore')}` : ''}
                                     </option>
                                  ))}
                               </select>

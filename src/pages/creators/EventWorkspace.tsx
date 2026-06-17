@@ -17,6 +17,7 @@ import {
   ShoppingCart,
   Sparkles,
   Ticket,
+  Truck,
   Users,
   X,
   type LucideIcon,
@@ -26,7 +27,7 @@ import EventNavTabs from '../../components/EventNavTabs';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../../types/access';
-import type { EventSellingMode, OrderType, PickupStatus } from '../../types/preorder';
+import type { EventSalesPhase, EventSellingMode, OrderType, PickupStatus } from '../../types/preorder';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
 import {
   formatDateTimeForInput,
@@ -47,8 +48,13 @@ interface WorkspaceEvent {
   end_date: string;
   event_timezone?: string | null;
   selling_mode?: EventSellingMode | null;
+  preorder_enabled?: boolean | null;
   preorder_opens_at?: string | null;
   preorder_closes_at?: string | null;
+  postorder_enabled?: boolean | null;
+  postorder_opens_at?: string | null;
+  postorder_closes_at?: string | null;
+  sales_status_override?: 'auto' | 'closed' | null;
   preorder_pickup_instructions?: string | null;
   status?: string | null;
   is_booth_open?: boolean | null;
@@ -97,7 +103,7 @@ interface WorkspaceMetrics {
   sellingProductCount: number;
 }
 
-type LifecycleContext = 'prep' | 'preorderOpen' | 'liveOpen' | 'liveClosed' | 'ended';
+type LifecycleContext = 'prep' | 'preorderOpen' | 'postorderOpen' | 'liveOpen' | 'liveClosed' | 'ended';
 type OverviewTone = 'pink' | 'slate' | 'emerald' | 'amber' | 'teal' | 'indigo' | 'cyan';
 type TimelineStatus = 'done' | 'active' | 'todo' | 'attention';
 
@@ -229,41 +235,59 @@ const formatEventDate = (event: WorkspaceEvent) => {
   }).format(date);
 };
 
+const isWithinScheduleWindow = (opensAt: string | null | undefined, closesAt: string | null | undefined, now: Date) => {
+  const opens = opensAt ? new Date(opensAt) : null;
+  const closes = closesAt ? new Date(closesAt) : null;
+  if (opens && !Number.isNaN(opens.getTime()) && opens > now) return false;
+  if (closes && !Number.isNaN(closes.getTime()) && closes <= now) return false;
+  return true;
+};
+
+const getDerivedSalesPhase = (event: WorkspaceEvent, now = new Date()): EventSalesPhase => {
+  if (event.sales_status_override === 'closed' || event.status === 'Cancelled') return 'closed';
+
+  const start = new Date(event.start_date);
+  const end = new Date(event.end_date);
+  const status = event.status || 'Confirmed';
+  const preorderEnabled = Boolean(event.preorder_enabled) || event.selling_mode === 'preorder';
+  const postorderEnabled = Boolean(event.postorder_enabled) || event.selling_mode === 'post_event';
+  const postorderOpensAt = event.postorder_opens_at || (event.selling_mode === 'post_event' ? event.preorder_opens_at : null);
+  const postorderClosesAt = event.postorder_closes_at || (event.selling_mode === 'post_event' ? event.preorder_closes_at : null);
+
+  if (
+    status === 'Confirmed' &&
+    !Number.isNaN(start.getTime()) &&
+    !Number.isNaN(end.getTime()) &&
+    start <= now &&
+    now < end
+  ) {
+    return 'live';
+  }
+
+  if (status === 'Confirmed' && preorderEnabled && isWithinScheduleWindow(event.preorder_opens_at, event.preorder_closes_at, now)) {
+    return 'preorder';
+  }
+
+  if ((status === 'Confirmed' || status === 'Ended') && postorderEnabled && isWithinScheduleWindow(postorderOpensAt, postorderClosesAt, now)) {
+    return 'post_event';
+  }
+
+  return 'closed';
+};
+
 const getLifecycleContext = (event: WorkspaceEvent): LifecycleContext => {
   const now = new Date();
   const start = new Date(event.start_date);
   const end = new Date(event.end_date);
-  const sellingMode = event.selling_mode || 'live';
+  const phase = getDerivedSalesPhase(event, now);
 
-  if (
-    sellingMode === 'closed' ||
-    event.status === 'Ended' ||
-    event.status === 'Cancelled' ||
-    (!Number.isNaN(end.getTime()) && end < now)
-  ) {
-    return 'ended';
-  }
-
-  if (sellingMode === 'preorder') {
-    const opens = event.preorder_opens_at ? new Date(event.preorder_opens_at) : null;
-    const closes = event.preorder_closes_at ? new Date(event.preorder_closes_at) : null;
-    if (
-      opens &&
-      closes &&
-      !Number.isNaN(opens.getTime()) &&
-      !Number.isNaN(closes.getTime()) &&
-      opens <= now &&
-      closes >= now
-    ) {
-      return 'preorderOpen';
-    }
-    return 'prep';
-  }
-
-  if (!Number.isNaN(start.getTime()) && start > now) {
-    return 'prep';
-  }
-
+  if (phase === 'preorder') return 'preorderOpen';
+  if (phase === 'post_event') return 'postorderOpen';
+  if (phase === 'live') return event.is_booth_open ? 'liveOpen' : 'liveClosed';
+  if (event.status === 'Ended' || event.status === 'Cancelled' || event.sales_status_override === 'closed') return 'ended';
+  if (!Number.isNaN(start.getTime()) && start > now) return 'prep';
+  if (!Number.isNaN(end.getTime()) && end < now) return 'ended';
+  if (phase === 'closed') return 'prep';
   return event.is_booth_open ? 'liveOpen' : 'liveClosed';
 };
 
@@ -272,6 +296,7 @@ const getContextLabel = (event: WorkspaceEvent, metrics: WorkspaceMetrics) => {
   if (metrics.awaitingPickup > 0) return `${metrics.awaitingPickup} awaiting pickup`;
   if (context === 'ended') return 'Ended / records';
   if (context === 'preorderOpen') return 'Pre-order open';
+  if (context === 'postorderOpen') return 'Post-order open';
   if (context === 'prep') return 'Prep';
   return event.is_booth_open ? 'Booth open' : 'Booth closed';
 };
@@ -319,6 +344,18 @@ const getPrimaryAction = (
       href: `/manage-events/${event.id}/preorder-dashboard`,
       tone: 'pink',
       icon: ReceiptText,
+    };
+  }
+
+  if (context === 'postorderOpen' && posAccess) {
+    return {
+      eyebrow: 'Post-order is open',
+      title: 'Monitor post-event orders and fulfillment',
+      detail: 'Use the post-order dashboard to confirm payments, collect shipping details, and prepare fulfillment.',
+      cta: 'Open Post-order',
+      href: `/manage-events/${event.id}/postorder-dashboard`,
+      tone: 'indigo',
+      icon: Truck,
     };
   }
 
@@ -385,7 +422,8 @@ const buildTimeline = (
   const queueAccess = canAccessQueuePages(actorContext.role);
   const posAccess = canUsePos(actorContext.role);
   const catalogReady = metrics.sellingProductCount > 0;
-  const preorderEnabled = event.selling_mode === 'preorder';
+  const preorderEnabled = Boolean(event.preorder_enabled) || event.selling_mode === 'preorder';
+  const postorderEnabled = Boolean(event.postorder_enabled) || event.selling_mode === 'post_event';
   const ended = context === 'ended';
 
   const steps: TimelineStep[] = [
@@ -401,7 +439,7 @@ const buildTimeline = (
     {
       id: 'preorder',
       title: 'Pre-order',
-      detail: preorderEnabled ? 'Pre-order mode is configured' : 'Optional for this event',
+      detail: preorderEnabled ? 'Pre-order window is configured' : 'Optional for this event',
       status: context === 'preorderOpen' ? 'active' : preorderEnabled && !['prep', 'preorderOpen'].includes(context) ? 'done' : 'todo',
       href: posAccess ? `/manage-events/${event.id}/preorder-dashboard` : undefined,
       visible: posAccess,
@@ -419,9 +457,13 @@ const buildTimeline = (
     {
       id: 'fulfillment',
       title: 'Pickup / Post-order',
-      detail: metrics.awaitingPickup > 0 ? `${metrics.awaitingPickup} awaiting pickup` : 'No pickup action waiting',
-      status: metrics.awaitingPickup > 0 ? 'attention' : ended ? 'done' : 'todo',
-      href: queueAccess ? `/manage-events/${event.id}/pickup` : undefined,
+      detail: metrics.awaitingPickup > 0
+        ? `${metrics.awaitingPickup} awaiting pickup`
+        : postorderEnabled
+          ? 'Post-order window is configured'
+          : 'No pickup action waiting',
+      status: metrics.awaitingPickup > 0 ? 'attention' : context === 'postorderOpen' ? 'active' : ended ? 'done' : 'todo',
+      href: queueAccess ? (context === 'postorderOpen' ? `/manage-events/${event.id}/postorder-dashboard` : `/manage-events/${event.id}/pickup`) : undefined,
       visible: queueAccess,
       icon: PackageCheck,
     },
@@ -469,13 +511,23 @@ const buildAttentionItems = (
     });
   }
 
-  if (management && event.selling_mode === 'preorder' && (!event.preorder_opens_at || !event.preorder_closes_at)) {
+  if (management && (Boolean(event.preorder_enabled) || event.selling_mode === 'preorder') && (!event.preorder_opens_at || !event.preorder_closes_at)) {
     items.push({
       id: 'preorder-window',
       title: 'Pre-order window is incomplete',
       detail: 'Set open and close times so customer ordering follows the intended schedule.',
       href: `/manage-events/${event.id}/preorder`,
       tone: 'pink',
+    });
+  }
+
+  if (management && (Boolean(event.postorder_enabled) || event.selling_mode === 'post_event') && (!event.postorder_opens_at || !event.postorder_closes_at)) {
+    items.push({
+      id: 'postorder-window',
+      title: 'Post-order window is incomplete',
+      detail: 'Set open and close times so post-event customer ordering follows the intended schedule.',
+      href: `/manage-events/${event.id}/preorder`,
+      tone: 'indigo',
     });
   }
 
@@ -511,10 +563,22 @@ const buildSetupGroups = (
 
   const hasEventTiming = Boolean(event.start_date && event.end_date);
   const hasEventPlace = Boolean((event.location || event.location_name || '').trim());
-  const usesTimedOrderWindow = event.selling_mode === 'preorder' || event.selling_mode === 'post_event';
-  const hasOrderWindow = Boolean(event.preorder_opens_at && event.preorder_closes_at);
+  const preorderEnabled = Boolean(event.preorder_enabled) || event.selling_mode === 'preorder';
+  const postorderEnabled = Boolean(event.postorder_enabled) || event.selling_mode === 'post_event';
+  const usesTimedOrderWindow = preorderEnabled || postorderEnabled;
+  const hasPreorderWindow = !preorderEnabled || Boolean(event.preorder_opens_at && event.preorder_closes_at);
+  const hasPostorderWindow = !postorderEnabled || Boolean(event.postorder_opens_at && event.postorder_closes_at);
+  const hasOrderWindow = hasPreorderWindow && hasPostorderWindow;
   const hasPickupInstructions = Boolean((event.preorder_pickup_instructions || '').trim());
   const catalogReady = metrics.sellingProductCount > 0;
+  const orderDetail = usesTimedOrderWindow
+    ? hasOrderWindow
+      ? [
+        preorderEnabled ? 'Pre-order' : null,
+        postorderEnabled ? 'Post-order' : null,
+      ].filter(Boolean).join(' + ') + ' schedule is set'
+      : 'Set open and close times'
+    : 'Live event-day sales are automatic';
 
   return [
     {
@@ -533,13 +597,7 @@ const buildSetupGroups = (
         {
           id: 'order-settings',
           title: 'Order Settings',
-          detail: usesTimedOrderWindow
-            ? hasOrderWindow
-              ? event.selling_mode === 'post_event'
-                ? 'Post-event sale window is set'
-                : 'Pre-order window is set'
-              : 'Set open and close times'
-            : 'Live selling mode is active',
+          detail: orderDetail,
           href: `/manage-events/${event.id}/preorder`,
           status: usesTimedOrderWindow && !hasOrderWindow ? 'attention' : 'done',
           icon: Ticket,
@@ -549,7 +607,7 @@ const buildSetupGroups = (
           title: 'Pickup instructions',
           detail: hasPickupInstructions ? 'Customer handoff notes are set' : 'Add pickup notes when this event needs pickup flow',
           href: `/manage-events/${event.id}/preorder`,
-          status: hasPickupInstructions || event.selling_mode === 'live' ? 'done' : 'todo',
+          status: hasPickupInstructions || !usesTimedOrderWindow ? 'done' : 'todo',
           icon: PackageCheck,
         },
       ],
@@ -639,7 +697,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
       setEvent(normalizedEvent);
       setMetrics({
-        awaitingPickup: orders.filter((order) => order.order_type === 'preorder' && order.pickup_status === 'awaiting_pickup').length,
+        awaitingPickup: orders.filter((order) => ['preorder', 'post_event'].includes(order.order_type || '') && order.pickup_status === 'awaiting_pickup').length,
         completedOrders: completedOrders.length,
         queueWaiting: queues.filter((queue) => ['waiting', 'calling', 'serving', 'queued'].includes(queue.status || '')).length,
         revenue: completedOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
@@ -841,6 +899,13 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
   const contextLabel = getContextLabel(event, metrics);
   const ended = getLifecycleContext(event) === 'ended';
+  const salesPhase = getDerivedSalesPhase(event);
+  const salesPhaseLabel: Record<EventSalesPhase, string> = {
+    preorder: 'Pre-order',
+    live: 'Live event day',
+    post_event: 'Post-order',
+    closed: 'Closed',
+  };
   let contextBadgeClass = 'bg-pink-100 text-pink-700';
   if (ended) contextBadgeClass = 'bg-gray-100 text-gray-600';
   let boothBadgeClass = 'bg-gray-100 text-gray-600';
@@ -870,7 +935,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   {contextLabel}
                 </span>
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black text-gray-600">
-                  {event.selling_mode || 'live'}
+                  {salesPhaseLabel[salesPhase]}
                 </span>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${boothBadgeClass}`}>
                   {event.is_booth_open ? 'Booth open' : 'Booth closed'}

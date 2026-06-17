@@ -20,6 +20,8 @@ import {
   TICKET_UPDATED_EVENT,
   clearMenuOrderState,
   clearStoredTicketId,
+  getEventPhaseWindow,
+  getEventSalesPhase,
   getStoredTicketId,
   ticketStorageKey,
 } from '../../utils/customerEvents';
@@ -234,22 +236,25 @@ const MenuView = () => {
     return firstProduct?.currency;
   }, [cart, productById]);
 
-  const isPreorderMode = selectedEvent?.selling_mode === 'preorder';
-  const isPostOrderMode = selectedEvent?.selling_mode === 'post_event';
+  const selectedEventPhase = useMemo(
+    () => selectedEvent ? getEventSalesPhase(selectedEvent, new Date(nowMs).toISOString()) : 'closed',
+    [nowMs, selectedEvent]
+  );
+  const selectedEventWindow = useMemo(
+    () => selectedEvent ? getEventPhaseWindow(selectedEvent, new Date(nowMs).toISOString()) : { opensAt: null, closesAt: null },
+    [nowMs, selectedEvent]
+  );
+  const isPreorderMode = selectedEventPhase === 'preorder';
+  const isPostOrderMode = selectedEventPhase === 'post_event';
   const isAdvanceOrderFlow = isPreorderMode || isPostOrderMode;
   const preorderWindowOpen = useMemo(() => {
     if (!isAdvanceOrderFlow) return false;
-    // Post-event stores run on events already marked Ended.
-    const statusOk = selectedEvent?.status === 'Confirmed' || (isPostOrderMode && selectedEvent?.status === 'Ended');
-    if (!statusOk) return false;
-    const opensAt = selectedEvent?.preorder_opens_at ? new Date(selectedEvent.preorder_opens_at).getTime() : null;
-    const closesAt = selectedEvent?.preorder_closes_at ? new Date(selectedEvent.preorder_closes_at).getTime() : null;
-    const eventEndsAt = selectedEvent?.end_date ? new Date(selectedEvent.end_date).getTime() : null;
+    const opensAt = selectedEventWindow.opensAt ? new Date(selectedEventWindow.opensAt).getTime() : null;
+    const closesAt = selectedEventWindow.closesAt ? new Date(selectedEventWindow.closesAt).getTime() : null;
     if (opensAt && nowMs < opensAt) return false;
     if (closesAt && nowMs >= closesAt) return false;
-    if (isPreorderMode && eventEndsAt && nowMs >= eventEndsAt) return false;
     return true;
-  }, [isAdvanceOrderFlow, isPreorderMode, nowMs, selectedEvent?.end_date, selectedEvent?.preorder_closes_at, selectedEvent?.preorder_opens_at, selectedEvent?.status]);
+  }, [isAdvanceOrderFlow, nowMs, selectedEventWindow.closesAt, selectedEventWindow.opensAt]);
   const preorderGuidance = preorderWindowOpen
     ? isPostOrderMode ? t('menuPostOrderGuidanceOpen') : t('menuPreorderGuidanceOpen')
     : t('menuPreorderGuidanceNotOpen');

@@ -24,8 +24,13 @@ interface EventSettingsRow {
   entrance_fee: string | null;
   transit_info: string | null;
   selling_mode: EventSellingMode;
+  preorder_enabled: boolean;
   preorder_opens_at: string | null;
   preorder_closes_at: string | null;
+  postorder_enabled: boolean;
+  postorder_opens_at: string | null;
+  postorder_closes_at: string | null;
+  sales_status_override: 'auto' | 'closed';
   preorder_pickup_instructions: string | null;
 }
 
@@ -83,51 +88,6 @@ const addDaysIso = (value: string | null, days: number) => {
   return base.toISOString();
 };
 
-const getModeCopy = (mode: EventSellingMode | null | undefined) => {
-  if (mode === 'preorder') {
-    return {
-      label: 'Pre-order',
-      eyebrow: 'Order Settings',
-      window: 'Pre-order window',
-      opens: 'Pre-order opens',
-      closes: 'Pre-order closes',
-      intro: 'Let customers reserve items before the event, then pick them up at the booth.',
-      readyScope: 'pre-order page',
-    };
-  }
-  if (mode === 'post_event') {
-    return {
-      label: 'Post-event sale',
-      eyebrow: 'Order Settings',
-      window: 'Post-event sale window',
-      opens: 'Post-event sale opens',
-      closes: 'Post-event sale closes',
-      intro: 'Let customers order after the event, then fulfill by shipment or post-event handling.',
-      readyScope: 'post-event order page',
-    };
-  }
-  if (mode === 'closed') {
-    return {
-      label: 'Closed',
-      eyebrow: 'Order Settings',
-      window: 'Ordering window',
-      opens: 'Ordering opens',
-      closes: 'Ordering closes',
-      intro: 'Customer ordering is closed. Live staff tools can still be used where allowed.',
-      readyScope: 'customer order page',
-    };
-  }
-  return {
-    label: 'Live queue / POS',
-    eyebrow: 'Order Settings',
-    window: 'Ordering window',
-    opens: 'Ordering opens',
-    closes: 'Ordering closes',
-    intro: 'Live queue and POS are the default for event-day selling.',
-    readyScope: 'live selling flow',
-  };
-};
-
 const getFiniteAvailable = (product: EventProductRow) => {
   if (product.is_unlimited) return Number.POSITIVE_INFINITY;
   return Math.max(0, Number(product.stock_total || 0) - Number(product.stock_reserved || 0) - Number(product.stock_sold || 0));
@@ -173,7 +133,7 @@ export default function PreorderSettings() {
       const [{ data: eventData, error: eventError }, { data: catalogData, error: catalogError }, { data: paymentData, error: paymentError }] = await Promise.all([
         supabase
           .from('events')
-          .select('id, artist_id, event_name, start_date, end_date, event_timezone, location, location_name, location_detail, booth_detail, booth_number, queueing_area, entrance_fee, transit_info, selling_mode, preorder_opens_at, preorder_closes_at, preorder_pickup_instructions')
+          .select('id, artist_id, event_name, start_date, end_date, event_timezone, location, location_name, location_detail, booth_detail, booth_number, queueing_area, entrance_fee, transit_info, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions')
           .eq('id', eventId)
           .single(),
         supabase.rpc('list_event_products', { p_event_id: eventId }),
@@ -221,8 +181,11 @@ export default function PreorderSettings() {
   }, [eventId]);
 
   const eventTimeZone = event?.event_timezone || DEFAULT_TIME_ZONE;
-  const modeCopy = getModeCopy(event?.selling_mode);
-  const isAdvanceOrderMode = event?.selling_mode === 'preorder' || event?.selling_mode === 'post_event';
+  const preorderEnabled = Boolean(event?.preorder_enabled);
+  const postorderEnabled = Boolean(event?.postorder_enabled);
+  const orderingClosed = event?.sales_status_override === 'closed';
+  const isAdvanceOrderMode = preorderEnabled || postorderEnabled;
+  const readinessScope = isAdvanceOrderMode ? 'customer order pages' : 'live selling flow';
   const hasPickupInstructions = (event?.preorder_pickup_instructions || '').trim().length > 0;
   const hasPaymentInstructions =
     paymentMethod.is_enabled &&
@@ -236,27 +199,36 @@ export default function PreorderSettings() {
   const finiteProducts = catalogProducts.filter((product) => !product.is_unlimited);
   const finiteProductsWithStock = finiteProducts.filter((product) => getFiniteAvailable(product) > 0).length;
   const finiteStockReady = finiteProducts.length === 0 || finiteProductsWithStock > 0;
-  const preorderClosesBeforeEventEnds =
-    !event?.preorder_closes_at ||
-    !event?.end_date ||
-    new Date(event.preorder_closes_at).getTime() <= new Date(event.end_date).getTime();
-  const postOrderStartsAfterEvent =
-    !event?.preorder_opens_at ||
-    !event?.end_date ||
-    new Date(event.preorder_opens_at).getTime() >= new Date(event.end_date).getTime();
-  const windowOrderReady =
+  const preorderWindowOrderReady =
     !event?.preorder_opens_at ||
     !event?.preorder_closes_at ||
     new Date(event.preorder_opens_at).getTime() < new Date(event.preorder_closes_at).getTime();
-  const orderWindowReady =
-    !isAdvanceOrderMode ||
+  const preorderClosesBeforeEventStarts =
+    !event?.preorder_closes_at ||
+    !event?.start_date ||
+    new Date(event.preorder_closes_at).getTime() <= new Date(event.start_date).getTime();
+  const preorderWindowReady =
+    !preorderEnabled ||
     (Boolean(event?.preorder_opens_at && event?.preorder_closes_at) &&
-      windowOrderReady &&
-      (event?.selling_mode === 'post_event' ? postOrderStartsAfterEvent : preorderClosesBeforeEventEnds));
+      preorderWindowOrderReady &&
+      preorderClosesBeforeEventStarts);
+  const postorderWindowOrderReady =
+    !event?.postorder_opens_at ||
+    !event?.postorder_closes_at ||
+    new Date(event.postorder_opens_at).getTime() < new Date(event.postorder_closes_at).getTime();
+  const postOrderStartsAfterEvent =
+    !event?.postorder_opens_at ||
+    !event?.end_date ||
+    new Date(event.postorder_opens_at).getTime() >= new Date(event.end_date).getTime();
+  const postorderWindowReady =
+    !postorderEnabled ||
+    (Boolean(event?.postorder_opens_at && event?.postorder_closes_at) &&
+      postorderWindowOrderReady &&
+      postOrderStartsAfterEvent);
 
   const readinessItems = useMemo(
     () => {
-      const baseItems = [
+      const baseItems: Array<{ icon: LucideIcon; label: string; detail: string; ready: boolean }> = [
         {
         icon: PackageCheck,
         label: 'Event catalog has products',
@@ -275,43 +247,65 @@ export default function PreorderSettings() {
         },
       ];
 
-      if (!isAdvanceOrderMode) return baseItems;
+      if (orderingClosed) {
+        baseItems.push({
+          icon: AlertTriangle,
+          label: 'Emergency close is on',
+          detail: 'Customer ordering is manually closed until you turn this off.',
+          ready: false,
+        });
+      }
 
-      return [
-        ...baseItems,
-        {
+      if (preorderEnabled) {
+        baseItems.push({
         icon: Clock3,
-        label: `${modeCopy.window} is valid`,
-        detail: orderWindowReady
+        label: 'Pre-order window is valid',
+        detail: preorderWindowReady
           ? 'Open and close times are ready.'
-          : event?.selling_mode === 'post_event'
-            ? 'Set a post-event window that starts after the event ends.'
-            : 'Set a pre-order window that closes before the event ends.',
-        ready: orderWindowReady,
-        },
-        {
+          : 'Set a pre-order window that closes before the event starts.',
+        ready: preorderWindowReady,
+        });
+        baseItems.push({
         icon: CalendarClock,
-        label: event?.selling_mode === 'post_event' ? 'Starts after event end' : 'Close time is before event end',
-        detail: event?.selling_mode === 'post_event'
-          ? postOrderStartsAfterEvent ? 'Post-event sale starts after the event ends.' : 'Move the post-event open time after the event end.'
-          : preorderClosesBeforeEventEnds ? 'Pre-order close time does not exceed the event end.' : 'Move the pre-order close time before the event ends.',
-        ready: event?.selling_mode === 'post_event' ? postOrderStartsAfterEvent : preorderClosesBeforeEventEnds,
-        },
-        {
+        label: 'Pre-order closes before event',
+        detail: preorderClosesBeforeEventStarts ? 'Pre-order ends before event-day live sales begin.' : 'Move the pre-order close time before the event starts.',
+        ready: preorderClosesBeforeEventStarts,
+        });
+      }
+
+      if (postorderEnabled) {
+        baseItems.push({
+          icon: Clock3,
+          label: 'Post-order window is valid',
+          detail: postorderWindowReady ? 'Open and close times are ready.' : 'Set a post-order window that starts after the event ends.',
+          ready: postorderWindowReady,
+        });
+        baseItems.push({
+          icon: CalendarClock,
+          label: 'Post-order starts after event',
+          detail: postOrderStartsAfterEvent ? 'Post-order starts after the event ends.' : 'Move the post-order open time after the event end.',
+          ready: postOrderStartsAfterEvent,
+        });
+      }
+
+      if (isAdvanceOrderMode) {
+        baseItems.push({
         icon: CheckCircle2,
         label: 'Pickup instructions added',
         detail: hasPickupInstructions ? 'Customers will see pickup instructions after ordering.' : 'Tell customers where and when to show their pickup code.',
         ready: hasPickupInstructions,
-        },
-        {
+        });
+        baseItems.push({
         icon: CheckCircle2,
         label: 'Payment instructions added',
         detail: hasPaymentInstructions ? 'Customers can see how to transfer before uploading a slip.' : 'Add PromptPay, bank account, QR image, or clear payment instructions.',
         ready: hasPaymentInstructions,
-        },
-      ];
+        });
+      }
+
+      return baseItems;
     },
-    [catalogProducts.length, event?.selling_mode, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, modeCopy.window, orderWindowReady, postOrderStartsAfterEvent, preorderClosesBeforeEventEnds]
+    [catalogProducts.length, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, orderingClosed, postOrderStartsAfterEvent, postorderEnabled, postorderWindowReady, preorderClosesBeforeEventStarts, preorderEnabled, preorderWindowReady]
   );
 
   const readyCount = readinessItems.filter((item) => item.ready).length;
@@ -324,28 +318,42 @@ export default function PreorderSettings() {
     setPaymentMethod((current) => ({ ...current, [key]: value }));
   };
 
-  const applySellingMode = (mode: EventSellingMode) => {
+  const togglePreorder = () => {
     setEvent((current) => {
       if (!current) return current;
-      const next = { ...current, selling_mode: mode };
-      const hasWindow = Boolean(current.preorder_opens_at && current.preorder_closes_at);
-
-      if (mode === 'preorder' && (!hasWindow || current.selling_mode === 'post_event')) {
+      const enabled = !current.preorder_enabled;
+      const next = { ...current, preorder_enabled: enabled };
+      if (enabled && (!current.preorder_opens_at || !current.preorder_closes_at)) {
         const now = new Date();
         const eventStart = new Date(current.start_date);
-        const defaultClose = !Number.isNaN(eventStart.getTime()) && eventStart > now
-          ? eventStart
-          : new Date(current.end_date);
+        const defaultClose = !Number.isNaN(eventStart.getTime()) && eventStart > now ? eventStart : new Date(current.end_date);
         next.preorder_opens_at = now.toISOString();
         next.preorder_closes_at = Number.isNaN(defaultClose.getTime()) ? addDaysIso(null, 7) : defaultClose.toISOString();
       }
-
-      if (mode === 'post_event' && (!hasWindow || current.selling_mode === 'preorder')) {
-        next.preorder_opens_at = current.end_date || new Date().toISOString();
-        next.preorder_closes_at = addDaysIso(current.end_date, 14);
-      }
-
       return next;
+    });
+  };
+
+  const togglePostorder = () => {
+    setEvent((current) => {
+      if (!current) return current;
+      const enabled = !current.postorder_enabled;
+      const next = { ...current, postorder_enabled: enabled };
+      if (enabled && (!current.postorder_opens_at || !current.postorder_closes_at)) {
+        next.postorder_opens_at = current.end_date || new Date().toISOString();
+        next.postorder_closes_at = addDaysIso(current.end_date, 14);
+      }
+      return next;
+    });
+  };
+
+  const toggleEmergencyClose = () => {
+    setEvent((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        sales_status_override: current.sales_status_override === 'closed' ? 'auto' : 'closed',
+      };
     });
   };
 
@@ -354,6 +362,13 @@ export default function PreorderSettings() {
     setSaving(true);
 
     try {
+      const compatibilitySellingMode: EventSellingMode = event.sales_status_override === 'closed'
+        ? 'closed'
+        : event.preorder_enabled
+          ? 'preorder'
+          : event.postorder_enabled
+            ? 'post_event'
+            : 'live';
       const { error } = await supabase
         .from('events')
         .update({
@@ -368,9 +383,14 @@ export default function PreorderSettings() {
           queueing_area: event.queueing_area || '',
           entrance_fee: event.entrance_fee || '',
           transit_info: event.transit_info || '',
-          selling_mode: event.selling_mode || 'live',
+          selling_mode: compatibilitySellingMode,
+          preorder_enabled: event.preorder_enabled,
           preorder_opens_at: event.preorder_opens_at,
           preorder_closes_at: event.preorder_closes_at,
+          postorder_enabled: event.postorder_enabled,
+          postorder_opens_at: event.postorder_opens_at,
+          postorder_closes_at: event.postorder_closes_at,
+          sales_status_override: event.sales_status_override || 'auto',
           preorder_pickup_instructions: event.preorder_pickup_instructions?.trim() || null,
         })
         .eq('id', event.id);
@@ -440,10 +460,10 @@ export default function PreorderSettings() {
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">{modeCopy.eyebrow}</div>
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">Order Settings</div>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-950 md:text-3xl">{event.event_name}</h1>
             <p className="mt-1 text-sm font-semibold text-gray-500">
-              Set event details, sales channels, order windows, pickup notes, and payment instructions in one place.
+              Set event details, sales schedule, pickup notes, and payment instructions in one place.
             </p>
           </div>
           <div className="rounded-xl border border-pink-100 bg-white px-4 py-3 text-sm font-black text-gray-800 shadow-sm">
@@ -548,57 +568,57 @@ export default function PreorderSettings() {
 
               <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4">
                 <div className="mb-4">
-                  <h2 className="text-base font-black text-gray-950">Sales channels</h2>
-                  <p className="mt-1 text-xs font-semibold text-gray-500">Live queue / POS is the default. Turn on pre-order or post-event sale only when this event needs it.</p>
+                  <h2 className="text-base font-black text-gray-950">Sales schedule</h2>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">Live queue / POS is automatic during the event day. Turn on pre-order or post-order when this event needs customer orders outside the live booth.</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                   <SalesModeCard
                     icon={ShoppingCart}
-                    title="Live queue / POS"
-                    detail="Default for event-day selling."
-                    active={(event.selling_mode || 'live') === 'live'}
-                    onClick={() => applySellingMode('live')}
+                    title="Live event day"
+                    detail="Auto-active from event start to end."
+                    active={!orderingClosed}
+                    locked
                   />
                   <SalesModeCard
                     icon={PackageCheck}
                     title="Pre-order"
                     detail="Reserve before event, pickup at booth."
-                    active={event.selling_mode === 'preorder'}
-                    onClick={() => applySellingMode('preorder')}
+                    active={preorderEnabled}
+                    onClick={togglePreorder}
                   />
                   <SalesModeCard
                     icon={Truck}
-                    title="Post-event sale"
+                    title="Post-order"
                     detail="Order after event, fulfill later."
-                    active={event.selling_mode === 'post_event'}
-                    onClick={() => applySellingMode('post_event')}
+                    active={postorderEnabled}
+                    onClick={togglePostorder}
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => applySellingMode('closed')}
+                    onClick={toggleEmergencyClose}
                     className={`rounded-full px-3 py-1.5 text-xs font-black transition-colors ${
-                      event.selling_mode === 'closed'
+                      orderingClosed
                         ? 'bg-slate-900 text-white'
                         : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    Emergency close ordering
+                    Emergency close customer ordering
                   </button>
-                  <span className="text-xs font-semibold text-gray-500">Use only when customers should not place new orders.</span>
+                  <span className="text-xs font-semibold text-gray-500">Use only when customers should not place new orders even if a schedule window is open.</span>
                 </div>
               </div>
 
-              {isAdvanceOrderMode && (
+              {preorderEnabled && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
-                    <h2 className="text-base font-black text-gray-950">{modeCopy.window}</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">{modeCopy.intro}</p>
+                    <h2 className="text-base font-black text-gray-950">Pre-order window</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can reserve items before the event, then pick them up at the booth.</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{modeCopy.opens}</span>
+                      <span className="text-sm font-black text-gray-700">Pre-order opens</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_opens_at, eventTimeZone)}
@@ -607,11 +627,43 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{modeCopy.closes}</span>
+                      <span className="text-sm font-black text-gray-700">Pre-order closes</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_closes_at, eventTimeZone)}
                         onChange={(e) => updateEvent('preorder_closes_at', fromInputValue(e.target.value, eventTimeZone))}
+                        className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
+                    Times are saved using the event timezone: <span className="font-black">{eventTimeZone}</span>.
+                  </div>
+                </div>
+              )}
+
+              {postorderEnabled && (
+                <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                  <div className="mb-4">
+                    <h2 className="text-base font-black text-gray-950">Post-order window</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can order after the event, then you fulfill by shipping or post-event handling.</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-black text-gray-700">Post-order opens</span>
+                      <input
+                        type="datetime-local"
+                        value={toInputValue(event.postorder_opens_at, eventTimeZone)}
+                        onChange={(e) => updateEvent('postorder_opens_at', fromInputValue(e.target.value, eventTimeZone))}
+                        className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
+                      />
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="text-sm font-black text-gray-700">Post-order closes</span>
+                      <input
+                        type="datetime-local"
+                        value={toInputValue(event.postorder_closes_at, eventTimeZone)}
+                        onChange={(e) => updateEvent('postorder_closes_at', fromInputValue(e.target.value, eventTimeZone))}
                         className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
@@ -803,7 +855,7 @@ export default function PreorderSettings() {
               <div>
                 <h2 className="text-base font-black text-gray-900">Readiness checklist</h2>
                 <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">
-                  Use this to catch setup gaps before customers see the {modeCopy.readyScope}.
+                  Use this to catch setup gaps before customers see the {readinessScope}.
                 </p>
               </div>
             </div>
@@ -845,23 +897,26 @@ function SalesModeCard({
   detail,
   active,
   onClick,
+  locked = false,
 }: {
   icon: LucideIcon;
   title: string;
   detail: string;
   active: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  locked?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      disabled={locked}
       className={`rounded-xl border p-4 text-left transition-colors ${
         active
           ? 'border-pink-300 bg-white shadow-sm ring-2 ring-pink-100'
           : 'border-pink-100 bg-white/70 hover:border-pink-200 hover:bg-white'
-      }`}
+      } ${locked ? 'cursor-default disabled:opacity-100' : ''}`}
     >
       <div className="flex items-start gap-3">
         <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -870,7 +925,7 @@ function SalesModeCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-black text-gray-950">{title}</h3>
-            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">Active</span>}
+            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">{locked ? 'Auto' : 'Enabled'}</span>}
           </div>
           <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{detail}</p>
         </div>

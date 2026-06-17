@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import type { EventSalesPhase } from '../types/preorder';
 
 // Optimized Interfaces (Only essential fields)
 export interface RealtimeArtist {
@@ -24,8 +25,14 @@ export interface RealtimeEvent {
   end_date: string;
   event_timezone?: string | null;
   selling_mode?: 'preorder' | 'live' | 'post_event' | 'closed';
+  preorder_enabled?: boolean | null;
   preorder_opens_at?: string | null;
   preorder_closes_at?: string | null;
+  postorder_enabled?: boolean | null;
+  postorder_opens_at?: string | null;
+  postorder_closes_at?: string | null;
+  sales_status_override?: 'auto' | 'closed' | null;
+  sales_phase?: EventSalesPhase;
   preorder_pickup_instructions?: string | null;
   location?: string | null;
   booth_detail?: string | null;
@@ -63,13 +70,13 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
           .eq('id', artistId)
           .single(),
         // Filter strictly by date string to prevent timezone dropouts.
-        // Ended events stay included while their post-event store is open
-        // (selling_mode = post_event); the client-side window filter decides visibility.
+        // Include scheduled pre/post-order events; the client-side phase filter
+        // decides whether each event is visible right now.
         supabase
           .from('events')
-          .select('id, event_name, start_date, end_date, event_timezone, selling_mode, preorder_opens_at, preorder_closes_at, preorder_pickup_instructions, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
+          .select('id, event_name, start_date, end_date, event_timezone, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
           .eq('artist_id', artistId)
-          .or(`end_date.gte.${todayStr},selling_mode.eq.post_event`)
+          .or(`end_date.gte.${todayStr},preorder_enabled.eq.true,postorder_enabled.eq.true`)
           .order('start_date', { ascending: true })
       ]);
 

@@ -1,4 +1,5 @@
 import type { RealtimeEvent } from '../hooks/useArtistRealtime';
+import type { EventSalesPhase } from '../types/preorder';
 
 export const customerEventStorageKey = (artistId: string) => `customerSelectedEventId:${artistId}`;
 
@@ -91,29 +92,86 @@ export const clearStoredTicketId = (artistId: string | undefined | null): void =
   dispatchTicketUpdated();
 };
 
-// Post-event store: an ended event (status Confirmed or Ended) stays visible
-// to customers while its selling window is open.
-export const isPostEventStoreOpen = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
-  if (event.selling_mode !== 'post_event') return false;
-  if (event.status !== 'Confirmed' && event.status !== 'Ended') return false;
-  if (event.preorder_opens_at && event.preorder_opens_at > nowIso) return false;
-  if (event.preorder_closes_at && event.preorder_closes_at <= nowIso) return false;
+const isWithinWindow = (opensAt: string | null | undefined, closesAt: string | null | undefined, nowIso: string) => {
+  if (opensAt && opensAt > nowIso) return false;
+  if (closesAt && closesAt <= nowIso) return false;
   return true;
 };
 
-export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
-  if (event.status !== 'Confirmed' || event.end_date < nowIso) {
-    return isPostEventStoreOpen(event, nowIso);
+export const getEventSalesPhase = (event: RealtimeEvent, nowIso = new Date().toISOString()): EventSalesPhase => {
+  if (event.sales_status_override === 'closed' || event.status === 'Cancelled') return 'closed';
+  const preorderEnabled = Boolean(event.preorder_enabled) || event.selling_mode === 'preorder';
+  const postorderEnabled = Boolean(event.postorder_enabled) || event.selling_mode === 'post_event';
+  const postorderOpensAt = event.postorder_opens_at || (event.selling_mode === 'post_event' ? event.preorder_opens_at : null);
+  const postorderClosesAt = event.postorder_closes_at || (event.selling_mode === 'post_event' ? event.preorder_closes_at : null);
+
+  if (event.status === 'Confirmed' && event.start_date <= nowIso && event.end_date > nowIso) {
+    return 'live';
   }
 
+  if (
+    event.status === 'Confirmed' &&
+    preorderEnabled &&
+    isWithinWindow(event.preorder_opens_at, event.preorder_closes_at, nowIso)
+  ) {
+    return 'preorder';
+  }
+
+  if (
+    (event.status === 'Confirmed' || event.status === 'Ended') &&
+    postorderEnabled &&
+    isWithinWindow(postorderOpensAt, postorderClosesAt, nowIso)
+  ) {
+    return 'post_event';
+  }
+
+  return 'closed';
+};
+
+export const isPostEventStoreOpen = (event: RealtimeEvent, nowIso = new Date().toISOString()) =>
+  getEventSalesPhase(event, nowIso) === 'post_event';
+
+export const isPreorderStoreOpen = (event: RealtimeEvent, nowIso = new Date().toISOString()) =>
+  getEventSalesPhase(event, nowIso) === 'preorder';
+
+export const isLiveEventOpen = (event: RealtimeEvent, nowIso = new Date().toISOString()) =>
+  getEventSalesPhase(event, nowIso) === 'live';
+
+const isLegacyCustomerEvent = (event: RealtimeEvent, nowIso: string) => {
+  if (event.selling_mode === 'post_event') {
+    if (event.status !== 'Confirmed' && event.status !== 'Ended') return false;
+    return isWithinWindow(event.preorder_opens_at, event.preorder_closes_at, nowIso);
+  }
+
+  if (event.status !== 'Confirmed' || event.end_date < nowIso) return false;
   if (event.start_date <= nowIso) return true;
-
   if (event.selling_mode !== 'preorder') return false;
+  return isWithinWindow(event.preorder_opens_at, event.preorder_closes_at, nowIso);
+};
 
-  if (event.preorder_opens_at && event.preorder_opens_at > nowIso) return false;
-  if (event.preorder_closes_at && event.preorder_closes_at <= nowIso) return false;
+export const isCurrentCustomerEvent = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
+  const hasExplicitSchedule =
+    event.sales_status_override !== undefined ||
+    event.preorder_enabled !== undefined ||
+    event.postorder_enabled !== undefined;
 
-  return true;
+  if (!hasExplicitSchedule) return isLegacyCustomerEvent(event, nowIso);
+
+  return getEventSalesPhase(event, nowIso) !== 'closed';
+};
+
+export const getEventPhaseWindow = (event: RealtimeEvent, nowIso = new Date().toISOString()) => {
+  const phase = getEventSalesPhase(event, nowIso);
+  if (phase === 'post_event') {
+    return {
+      opensAt: event.postorder_opens_at || (event.selling_mode === 'post_event' ? event.preorder_opens_at : null) || null,
+      closesAt: event.postorder_closes_at || (event.selling_mode === 'post_event' ? event.preorder_closes_at : null) || null,
+    };
+  }
+  if (phase === 'preorder') {
+    return { opensAt: event.preorder_opens_at || null, closesAt: event.preorder_closes_at || null };
+  }
+  return { opensAt: null, closesAt: null };
 };
 
 export const sortCustomerEvents = (events: RealtimeEvent[], nowIso = new Date().toISOString()) => {

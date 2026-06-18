@@ -1,4 +1,5 @@
-import { ImageOff, ShoppingBag, Plus, Minus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ImageOff, ShoppingBag, Plus, Minus, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
@@ -68,6 +69,16 @@ const buildProductEntries = (products: Product[]): ProductEntry[] => {
 
 const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity, onClearFilters }: ProductListProps) => {
    const { t } = useI18n();
+   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+   useEffect(() => {
+      if (!selectedProduct) return;
+      const handleKeyDown = (event: KeyboardEvent) => {
+         if (event.key === 'Escape') setSelectedProduct(null);
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+   }, [selectedProduct]);
 
    if (products.length === 0) {
       return (
@@ -123,10 +134,19 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
       return (
          <motion.div
             key={product.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedProduct(product)}
+            onKeyDown={(event) => {
+               if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setSelectedProduct(product);
+               }
+            }}
             className={`group flex h-full flex-col overflow-hidden rounded-3xl border bg-white shadow-sm transition-all ${
                qty > 0
                   ? 'border-pink-200 ring-2 ring-pink-500 shadow-lg shadow-pink-100'
-                  : 'border-pink-50'
+                  : 'border-pink-50 hover:border-pink-200 hover:shadow-lg hover:shadow-pink-100'
             }`}
             variants={{
                hidden: { opacity: 0, y: 30 },
@@ -196,7 +216,10 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                   </div>
                   {qty === 0 ? (
                      <button
-                        onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.name)}
+                        onClick={(event) => {
+                           event.stopPropagation();
+                           if (!soldOut) onUpdateQuantity(product.id, 1, product.name);
+                        }}
                         disabled={soldOut || isOrderSent}
                         className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-black transition-all ${
                            soldOut || isOrderSent
@@ -209,7 +232,10 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                   ) : (
                      <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
                         <button
-                           onClick={() => onUpdateQuantity(product.id, -1, product.name)}
+                           onClick={(event) => {
+                              event.stopPropagation();
+                              onUpdateQuantity(product.id, -1, product.name);
+                           }}
                            className="grid h-11 w-11 place-items-center rounded-xl bg-white text-pink-700 shadow-sm active:scale-95"
                            aria-label={t('productDecrease', { name: product.name })}
                         >
@@ -217,7 +243,10 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                         </button>
                         <span className="min-w-[40px] text-center text-sm font-black text-gray-950">{qty}</span>
                         <button
-                           onClick={() => onUpdateQuantity(product.id, 1, product.name)}
+                           onClick={(event) => {
+                              event.stopPropagation();
+                              onUpdateQuantity(product.id, 1, product.name);
+                           }}
                            disabled={!product.is_unlimited && qty >= availableUnits}
                            className={[
                               'grid h-11 w-11 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
@@ -236,8 +265,15 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
    };
 
    const entries = buildProductEntries(products);
+   const selectedQty = selectedProduct ? cart[selectedProduct.id] || 0 : 0;
+   const selectedAvailableUnits = selectedProduct ? getAvailableUnits(selectedProduct) : 0;
+   const selectedSoldOut = selectedProduct
+      ? selectedProduct.status === 'soldout' || selectedAvailableUnits <= 0
+      : false;
+   const selectedPromoBadges = selectedProduct ? getPromotionBadgesForProduct(selectedProduct, promotions) : [];
 
    return (
+      <>
       <motion.div
          className="grid grid-cols-2 gap-3 overflow-y-auto px-3 pb-40 pt-3 sm:grid-cols-3 lg:grid-cols-2 lg:overflow-visible lg:px-0 lg:pb-10 lg:pt-0 xl:grid-cols-3"
          initial="hidden"
@@ -271,6 +307,165 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
          })}
          <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[11px] font-semibold text-gray-600">{t('productEnd')}</div>
       </motion.div>
+      {selectedProduct && (
+         <div
+            className="fixed inset-0 z-[95] flex items-end justify-center bg-gray-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={selectedProduct.name}
+            onClick={() => setSelectedProduct(null)}
+         >
+            <motion.div
+               initial={{ opacity: 0, y: 28, scale: 0.98 }}
+               animate={{ opacity: 1, y: 0, scale: 1 }}
+               transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+               className="relative max-h-[92vh] w-full overflow-hidden rounded-t-[2rem] bg-white shadow-2xl sm:max-w-5xl sm:rounded-[2rem]"
+               onClick={(event) => event.stopPropagation()}
+            >
+               <button
+                  type="button"
+                  onClick={() => setSelectedProduct(null)}
+                  className="absolute right-3 top-3 z-30 grid h-11 w-11 place-items-center rounded-full bg-white/95 text-gray-600 shadow-sm transition-colors hover:text-gray-950"
+                  aria-label={t('productDetailClose')}
+               >
+                  <X size={20} />
+               </button>
+               <div className="grid max-h-[92vh] overflow-y-auto sm:grid-cols-2">
+                  <div className="relative min-w-0 overflow-hidden bg-pink-50 sm:border-r sm:border-pink-100">
+                     <div className="flex aspect-square min-h-[280px] items-center justify-center p-4 sm:h-full sm:min-h-[560px] sm:p-6">
+                        {selectedProduct.image_url ? (
+                           <img
+                              src={getProductImageUrl(selectedProduct.image_url, 900)}
+                              alt={selectedProduct.name}
+                              className="h-full max-h-full w-full max-w-full object-contain"
+                           />
+                        ) : (
+                           <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-3xl bg-gray-100 text-gray-400">
+                              <ImageOff size={44} strokeWidth={1.6} aria-hidden="true" />
+                              <span className="text-sm font-black text-gray-500">{selectedProduct.name}</span>
+                           </div>
+                        )}
+                     </div>
+                     {selectedSoldOut && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+                           <span className="rotate-[-10deg] border-2 border-white px-4 py-2 text-sm font-black uppercase tracking-wide text-white">
+                              {t('productSoldOut')}
+                           </span>
+                        </div>
+                     )}
+                  </div>
+
+                  <div className="flex min-h-0 min-w-0 flex-col p-5 pt-14 sm:p-7 sm:pt-16">
+                     <div className="mb-4 flex flex-wrap gap-2">
+                        {selectedProduct.category && (
+                           <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">{selectedProduct.category}</span>
+                        )}
+                        {selectedPromoBadges.map((badge) => (
+                           <span key={badge.shortLabel} className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
+                              {badge.shortLabel}
+                           </span>
+                        ))}
+                     </div>
+
+                     <div className="space-y-2">
+                        <h2 className="text-2xl font-black leading-tight text-gray-950 sm:text-3xl">
+                           {selectedProduct.variant_group_name && selectedProduct.variant_name ? selectedProduct.variant_name : selectedProduct.name}
+                        </h2>
+                        {selectedProduct.variant_group_name && selectedProduct.variant_name && (
+                           <p className="text-sm font-black text-pink-700">{selectedProduct.name}</p>
+                        )}
+                        <div className="text-3xl font-black text-pink-600">
+                           {formatPrice(selectedProduct.price, selectedProduct.currency)}
+                        </div>
+                     </div>
+
+                     <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                           {!selectedProduct.is_unlimited ? (
+                              <span className="text-sm font-black text-gray-700">
+                                 {t('productLeft')} {Math.max(0, selectedAvailableUnits - selectedQty)}
+                              </span>
+                           ) : (
+                              <span className="text-sm font-black text-gray-700">{t('productUnlimited')}</span>
+                           )}
+                           {Number.isFinite(selectedAvailableUnits) && selectedAvailableUnits > 0 && selectedAvailableUnits <= 3 && (
+                              <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">{t('productLowStock')}</span>
+                           )}
+                        </div>
+                     </div>
+
+                     {selectedProduct.description ? (
+                        <div className="mt-5">
+                           <h3 className="text-xs font-black uppercase tracking-wide text-gray-400">{t('productDetailDescription')}</h3>
+                           <p className="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-gray-600">{selectedProduct.description}</p>
+                        </div>
+                     ) : (
+                        <div className="mt-5 rounded-2xl border border-dashed border-gray-200 p-4 text-sm font-semibold text-gray-400">
+                           {t('productDetailNoDescription')}
+                        </div>
+                     )}
+
+                     {!!selectedProduct.variant_group_name && (
+                        <div className="mt-5">
+                           <h3 className="text-xs font-black uppercase tracking-wide text-gray-400">{t('productDetailVariantGroup')}</h3>
+                           <div className="mt-2 inline-flex rounded-full bg-pink-50 px-3 py-1 text-sm font-black text-pink-700">
+                              {selectedProduct.variant_group_name}
+                           </div>
+                        </div>
+                     )}
+
+                     {!!selectedProduct.category && (
+                        <div className="mt-5">
+                           <h3 className="text-xs font-black uppercase tracking-wide text-gray-400">{t('productDetailCategory')}</h3>
+                           <div className="mt-2 inline-flex rounded-full bg-gray-100 px-3 py-1 text-sm font-black text-gray-700">
+                              {selectedProduct.category}
+                           </div>
+                        </div>
+                     )}
+
+                     <div className="mt-auto pt-6">
+                        {selectedQty === 0 ? (
+                           <button
+                              onClick={() => !selectedSoldOut && onUpdateQuantity(selectedProduct.id, 1, selectedProduct.name)}
+                              disabled={selectedSoldOut || isOrderSent}
+                              className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-sm font-black transition-all ${
+                                 selectedSoldOut || isOrderSent
+                                    ? 'bg-gray-100 text-gray-400'
+                                    : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg shadow-pink-100 active:scale-[0.99]'
+                              }`}
+                           >
+                              <ShoppingBag size={18} /> {t('productAdd')}
+                           </button>
+                        ) : (
+                           <div className="flex min-h-[56px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1.5">
+                              <button
+                                 onClick={() => onUpdateQuantity(selectedProduct.id, -1, selectedProduct.name)}
+                                 className="grid h-12 w-12 place-items-center rounded-xl bg-white text-pink-700 shadow-sm active:scale-95"
+                                 aria-label={t('productDecrease', { name: selectedProduct.name })}
+                              >
+                                 <Minus size={18} />
+                              </button>
+                              <span className="min-w-[64px] text-center text-base font-black text-gray-950">{selectedQty}</span>
+                              <button
+                                 onClick={() => onUpdateQuantity(selectedProduct.id, 1, selectedProduct.name)}
+                                 disabled={!selectedProduct.is_unlimited && selectedQty >= selectedAvailableUnits}
+                                 className={[
+                                    'grid h-12 w-12 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
+                                    'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
+                                 ].join(' ')}
+                                 aria-label={t('productIncrease', { name: selectedProduct.name })}
+                              >
+                                 <Plus size={18} />
+                              </button>
+                           </div>
+                        )}
+                     </div>
+                  </div>
+               </div>
+            </motion.div>
+         </div>
+      )}
+      </>
    );
 };
 

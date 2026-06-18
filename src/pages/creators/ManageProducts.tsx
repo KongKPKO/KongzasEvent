@@ -364,6 +364,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [eventCatalogCategory, setEventCatalogCategory] = useState('All');
    const [eventCatalogTag, setEventCatalogTag] = useState('All');
    const [eventCatalogView, setEventCatalogView] = useState<'all' | 'selling' | 'hidden' | 'overrides'>('all');
+   const [eventCatalogDisplayMode, setEventCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
    const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
    const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
@@ -540,6 +541,60 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
+   const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => {
+      if (product.is_unlimited) {
+         return (
+            <div className={compact ? 'space-y-1' : 'min-w-[220px] space-y-1.5'}>
+               <div className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">
+                  Central unlimited
+               </div>
+               <div className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ${
+                  draft.is_unlimited ? 'bg-pink-50 text-pink-700' : 'bg-gray-100 text-gray-600'
+               }`}>
+                  Event {draft.is_unlimited ? 'unlimited' : `${Number(draft.stock_total || 0)} allocated`}
+               </div>
+            </div>
+         );
+      }
+
+      const eventAllocated = draft.is_unlimited ? 0 : Math.max(Number(draft.stock_total || 0), 0);
+      const centralAvailable = Number.isFinite(stockLimit)
+         ? Math.max(stockLimit - eventAllocated, 0)
+         : Math.max((product.stock_total || 0) - eventAllocated, 0);
+      const reservedSold = Math.max((draft.stock_reserved || 0) + (draft.stock_sold || 0), 0);
+      const pool = Math.max(product.stock_total || 0, centralAvailable + eventAllocated + reservedSold, 1);
+      const centralPct = Math.max(0, Math.min(100, (centralAvailable / pool) * 100));
+      const eventPct = Math.max(0, Math.min(100, (eventAllocated / pool) * 100));
+      const reservedPct = Math.max(0, Math.min(100, (reservedSold / pool) * 100));
+
+      return (
+         <div className={compact ? 'min-w-0' : 'min-w-[220px]'}>
+            <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
+               <div>
+                  <div className="font-black text-emerald-700">{centralAvailable}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">Central</div>
+               </div>
+               <div>
+                  <div className="font-black text-pink-700">{eventAllocated}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">Event</div>
+               </div>
+               <div>
+                  <div className="font-black text-amber-700">{reservedSold}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">Sold/held</div>
+               </div>
+            </div>
+            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
+               <div className="bg-emerald-400" style={{ width: `${centralPct}%` }} />
+               <div className="bg-pink-400" style={{ width: `${eventPct}%` }} />
+               {reservedSold > 0 && <div className="bg-amber-400" style={{ width: `${reservedPct}%` }} />}
+            </div>
+            <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-400'}>
+               Pool {pool} · Move central stock into this event
+            </div>
+         </div>
+      );
+   };
+
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
       setToast(message);
    };
@@ -669,8 +724,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft) || hasUnsavedNewEventProducts;
    const hasEventCurrencyChange = eventCurrencyDraft !== eventCurrencySaved;
    const hasPendingEventCatalogChanges = hasEventCatalogChanges || hasEventCurrencyChange;
-   const eventCurrencyLabel = eventCurrencyDraft || DEFAULT_CURRENCY;
-
    const getEventCatalogStockLimit = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const calculatedLimit = eventCatalogStockLimitByProduct[product.id];
@@ -1388,7 +1441,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       if (rows.length === 0) {
-         showToast({ tone: 'warning', title: 'No variants', detail: 'Add at least one variant name.' });
+         showToast({ tone: 'warning', title: 'No options', detail: 'Add at least one option name.' });
          return;
       }
 
@@ -1628,7 +1681,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                const status = getCsvValue(sanitizedRow, ['status']);
                const stockRaw = getCsvValue(sanitizedRow, ['stock', 'stock_total', 'stocktotal', 'qty', 'quantity']);
                const unlimitedRaw = getCsvValue(sanitizedRow, ['is_unlimited', 'unlimited', 'isunlimited']);
-               const variantGroupRaw = getCsvValue(sanitizedRow, ['variant_group_name', 'variant_group', 'folder', 'folder_name']);
+               const variantGroupRaw = getCsvValue(sanitizedRow, ['product_line', 'variant_group_name', 'variant_group', 'folder', 'folder_name']);
                const variantNameRaw = getCsvValue(sanitizedRow, ['variant_name', 'variant', 'option', 'option_name']);
                const variantSortRaw = getCsvValue(sanitizedRow, ['variant_sort_order', 'variant_sort', 'sort_order']);
 
@@ -1819,7 +1872,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       const parsedVariants = parseTemplateVariantsInput(templateVariantsInput);
       if (parsedVariants.length === 0) {
-         showToast({ tone: 'warning', title: 'No variants', detail: 'Add at least one variant name.' });
+         showToast({ tone: 'warning', title: 'No options', detail: 'Add at least one option name.' });
          return;
       }
 
@@ -1889,7 +1942,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
 
       if (parsedVariants.length === 0) {
-         showToast({ tone: 'warning', title: 'No new variants', detail: 'Add at least one new variant name that is not already in this template.' });
+         showToast({ tone: 'warning', title: 'No new options', detail: 'Add at least one new option name that is not already in this template.' });
          return;
       }
 
@@ -2178,7 +2231,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  </span>
                               </div>
                               <p className="mt-1 text-xs font-semibold text-gray-500">
-                                 New names will use prefix: <span className="font-black text-gray-800">{variantSourceProduct.variant_group_name || variantSourceProduct.name}</span>
+                                 New option names will stay under product line: <span className="font-black text-gray-800">{variantSourceProduct.variant_group_name || variantSourceProduct.name}</span>
                               </p>
                               {!!variantSourceProduct.tags?.length && (
                                  <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2194,7 +2247,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                      <div className="space-y-2">
                         <div className="flex items-end justify-between gap-3">
-                           <label htmlFor="duplicate-variants-input" className="block text-xs font-black uppercase tracking-wide text-gray-500">Variant names and stock</label>
+                           <label htmlFor="duplicate-variants-input" className="block text-xs font-black uppercase tracking-wide text-gray-500">Option names and stock</label>
                            <span className="text-xs font-black text-pink-600">
                               {parseDuplicateVariantRows(duplicateVariantsInput).rows.length} parsed
                            </span>
@@ -2208,7 +2261,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            required
                         />
                         <p className="text-[11px] font-semibold text-gray-400">
-                           Format: name | stock. Optional: name | stock | extra tags | price override. Leave stock blank to copy this product's stock mode.
+                           Format: option name | stock. Optional: option name | stock | extra tags | price override. Leave stock blank to copy this product's stock mode.
                         </p>
                      </div>
 
@@ -2427,14 +2480,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-4">
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variant Folder</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product line</label>
                         <input
                            list="variant-group-suggestions"
                            type="text"
                            value={variantGroupName}
                            onChange={(e) => setVariantGroupName(e.target.value)}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="e.g. Acrylic Charm Set"
+                           placeholder="e.g. Sticker Bualoi"
                         />
                         <datalist id="variant-group-suggestions">
                            {allVariantGroupSuggestions.map(group => (
@@ -2443,13 +2496,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </datalist>
                      </div>
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variant Name</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Option name</label>
                         <input
                            type="text"
                            value={variantName}
                            onChange={(e) => setVariantName(e.target.value)}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="e.g. A / Blue / 57mm"
+                           placeholder="e.g. Paimon / Blue / 57mm"
                         />
                      </div>
                      <div className="space-y-1">
@@ -2872,7 +2925,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
                            <p className="text-xs text-gray-500">
-                              CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited, variant_group, variant_name, variant_sort_order)
+                              CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited, product_line/variant_group, option_name/variant_name, sort_order)
                            </p>
                            <p className="mt-1 text-[11px] text-gray-400">Use this for large catalog setup. Existing duplicates will be ignored instead of inserted twice.</p>
                         </div>
@@ -3085,6 +3138,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               {label}
                            </button>
                         ))}
+                        <div className="ml-0 inline-grid grid-cols-2 rounded-lg border border-gray-200 bg-white p-1 sm:ml-2">
+                           {([
+                              ['visual', LayoutGrid, 'Visual'],
+                              ['operations', List, 'Operations'],
+                           ] as const).map(([mode, Icon, label]) => (
+                              <button
+                                 key={mode}
+                                 type="button"
+                                 onClick={() => setEventCatalogDisplayMode(mode)}
+                                 className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-black transition-colors ${
+                                    eventCatalogDisplayMode === mode
+                                       ? 'bg-pink-50 text-pink-700 ring-1 ring-pink-100'
+                                       : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                                 }`}
+                                 aria-pressed={eventCatalogDisplayMode === mode}
+                              >
+                                 <Icon size={14} aria-hidden="true" />
+                                 {label}
+                              </button>
+                           ))}
+                        </div>
                         <span className="ml-auto rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-600">
                            {filteredEventCatalogProducts.length} of {products.length}
                         </span>
@@ -3125,196 +3199,300 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            Create or confirm an event before assigning products.
                         </div>
                      ) : (
-                        <div className="overflow-hidden rounded-xl border border-gray-200">
-                           <div className="hidden md:grid grid-cols-[minmax(240px,1.4fr)_170px_150px_160px_140px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
-                              <div>Product</div>
-                              <div>Sell / Event Price</div>
-                              <div>Central / Available</div>
-                              <div>Event Stock</div>
-                              <div>Actions</div>
-                           </div>
-                           <div className="divide-y divide-gray-100">
-                              {filteredEventCatalogProducts.map((product) => {
-                                 const draft = eventCatalogDraft[product.id] || {
-                                    is_enabled: getEffectiveStatus(product) === 'enable',
-                                    price_override: '',
-                                    is_unlimited: product.is_unlimited ?? true,
-                                    stock_total: product.stock_total != null ? String(product.stock_total) : '',
-                                 };
-                                 const stockLimit = getEventCatalogStockLimit(product);
-                                 const eventStockValue = Number(draft.stock_total || 0);
-                                 const hasAllocatedEventStock = !!draft.id && !draft.is_unlimited;
-                                 const stockOverLimit =
-                                    draft.is_enabled &&
-                                    !product.is_unlimited &&
-                                    !draft.is_unlimited &&
-                                    Number.isFinite(stockLimit) &&
-                                    eventStockValue > stockLimit;
-                                 return (
-                                    <div key={`event-catalog-${product.id}`} className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.4fr)_170px_150px_160px_140px] gap-3 px-4 py-3 items-start">
-                                       <div className="min-w-0 flex items-center gap-3">
-                                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
-                                             {product.image_url ? (
-                                                <img
-                                                   src={getProductImageUrl(product.image_url, 120)}
-                                                   alt={product.name}
-                                                   className="h-full w-full object-cover"
-                                                   loading="lazy"
-                                                   decoding="async"
+                        <>
+	                           {eventCatalogDisplayMode === 'visual' ? (
+	                              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+	                                 {filteredEventCatalogProducts.map((product) => {
+	                                    const draft = eventCatalogDraft[product.id] || buildEventCatalogFallback(product);
+	                                    const stockLimit = getEventCatalogStockLimit(product);
+	                                    const eventStockValue = Number(draft.stock_total || 0);
+	                                    const hasAllocatedEventStock = !!draft.id && !draft.is_unlimited;
+	                                    const hasCustomSetup = draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '');
+	                                    const displayPrice = draft.price_override.trim() !== '' ? Number(draft.price_override) : product.price;
+	                                    const stockOverLimit =
+	                                       draft.is_enabled &&
+	                                       !product.is_unlimited &&
+	                                       !draft.is_unlimited &&
+	                                       Number.isFinite(stockLimit) &&
+	                                       eventStockValue > stockLimit;
+
+	                                    return (
+	                                       <article
+	                                          key={`event-catalog-${product.id}`}
+	                                          className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+	                                             stockOverLimit
+	                                                ? 'border-red-200'
+	                                                : draft.is_enabled
+	                                                  ? 'border-pink-100'
+	                                                  : 'border-gray-100'
+	                                          }`}
+	                                       >
+	                                          <div className="relative aspect-[4/3] bg-pink-50/50">
+	                                             {product.image_url ? (
+	                                                <img
+	                                                   src={getProductImageUrl(product.image_url, 420)}
+	                                                   alt={product.name}
+	                                                   className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${draft.is_enabled ? '' : 'grayscale'}`}
+	                                                   loading="lazy"
+	                                                   decoding="async"
+	                                                />
+	                                             ) : (
+	                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">No image</div>
+	                                             )}
+	                                             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+	                                                <button
+	                                                   type="button"
+	                                                   onClick={() => updateEventCatalogDraft(product.id, { is_enabled: !draft.is_enabled })}
+	                                                   className={`rounded-full px-3 py-1.5 text-[11px] font-black shadow-sm backdrop-blur ${
+	                                                      draft.is_enabled
+	                                                         ? 'bg-emerald-50/95 text-emerald-700 ring-1 ring-emerald-100'
+	                                                         : 'bg-white/90 text-gray-500 ring-1 ring-gray-200'
+	                                                   }`}
+	                                                >
+	                                                   {draft.is_enabled ? 'Selling' : 'Hidden'}
+	                                                </button>
+	                                                {hasCustomSetup && (
+	                                                   <span className="rounded-full bg-amber-50/95 px-3 py-1.5 text-[11px] font-black text-amber-700 shadow-sm ring-1 ring-amber-100 backdrop-blur">
+	                                                      Custom
+	                                                   </span>
+	                                                )}
+	                                             </div>
+	                                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent p-3">
+	                                                <div className="text-2xl font-black text-white drop-shadow-sm">
+	                                                   {formatPrice(displayPrice, eventCurrencyDraft || product.currency)}
+	                                                </div>
+	                                             </div>
+	                                          </div>
+
+	                                          <div className="space-y-3 p-4">
+	                                             <div className="min-w-0">
+	                                                <h3 className="line-clamp-2 min-h-10 text-base font-black leading-tight text-gray-950">{product.name}</h3>
+	                                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+	                                                   {product.variant_group_name && (
+	                                                      <span className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-700">{product.variant_group_name}</span>
+	                                                   )}
+	                                                   {product.variant_name && (
+	                                                      <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.variant_name}</span>
+	                                                   )}
+	                                                   <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.category || 'Other'}</span>
+	                                                </div>
+	                                             </div>
+
+	                                             <div className={`rounded-xl p-3 ${stockOverLimit ? 'bg-red-50 ring-1 ring-red-100' : 'bg-gray-50 ring-1 ring-gray-100'}`}>
+	                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
+	                                                {stockOverLimit && (
+	                                                   <p className="mt-2 text-[11px] font-bold text-red-600">Max {stockLimit} available for this event.</p>
+	                                                )}
+	                                             </div>
+
+	                                             <div className="grid grid-cols-2 gap-2">
+	                                                <label className="min-w-0">
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event price</span>
+	                                                   <input
+	                                                      type="number"
+	                                                      min="0"
+	                                                      step="0.01"
+	                                                      value={draft.price_override}
+	                                                      onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
+	                                                      className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-black text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
+	                                                      placeholder={String(product.price)}
+	                                                      aria-label={`Event price for ${product.name}`}
+	                                                   />
+	                                                </label>
+	                                                <label className="min-w-0">
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event stock</span>
+	                                                   <input
+	                                                      type="number"
+	                                                      min="0"
+	                                                      max={Number.isFinite(stockLimit) ? stockLimit : undefined}
+	                                                      step="1"
+	                                                      value={draft.stock_total}
+	                                                      onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
+	                                                      disabled={draft.is_unlimited || hasAllocatedEventStock}
+	                                                      className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-black text-gray-900 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
+	                                                         stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
+	                                                      }`}
+	                                                      placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
+	                                                      aria-label={`Event stock for ${product.name}`}
+	                                                   />
+	                                                </label>
+	                                             </div>
+
+	                                             <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+	                                                <label className="inline-flex min-h-9 items-center gap-2 rounded-full bg-gray-50 px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-100">
+	                                                   <input
+	                                                      type="checkbox"
+	                                                      checked={draft.is_unlimited}
+	                                                      onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: product.is_unlimited ? event.target.checked : false })}
+	                                                      disabled={!product.is_unlimited || hasAllocatedEventStock}
+	                                                      className="h-3.5 w-3.5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-40"
+	                                                   />
+	                                                   Unlimited
+	                                                </label>
+	                                                {draft.id && !draft.is_unlimited ? (
+	                                                   <>
+	                                                      <button
+	                                                         type="button"
+	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
+	                                                         className="min-h-9 rounded-full bg-emerald-50 px-3 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100"
+	                                                      >
+	                                                         Add stock
+	                                                      </button>
+	                                                      <button
+	                                                         type="button"
+	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
+	                                                         className="min-h-9 rounded-full bg-white px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+	                                                      >
+	                                                         Remove
+	                                                      </button>
+	                                                   </>
+	                                                ) : (
+	                                                   <span className="text-[11px] font-bold text-gray-400">Save first to move stock.</span>
+	                                                )}
+	                                             </div>
+	                                          </div>
+	                                       </article>
+	                                    );
+	                                 })}
+	                              </div>
+                           ) : (
+                              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                                 <div className="hidden xl:grid xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                                    <div>Product</div>
+                                    <div>Sell / Price</div>
+                                    <div>Central to event</div>
+                                    <div>Event stock</div>
+                                    <div>Actions</div>
+                                 </div>
+                                 <div className="divide-y divide-gray-100">
+                                    {filteredEventCatalogProducts.map((product) => {
+                                       const draft = eventCatalogDraft[product.id] || buildEventCatalogFallback(product);
+                                       const stockLimit = getEventCatalogStockLimit(product);
+                                       const eventStockValue = Number(draft.stock_total || 0);
+                                       const hasAllocatedEventStock = !!draft.id && !draft.is_unlimited;
+                                       const stockOverLimit =
+                                          draft.is_enabled &&
+                                          !product.is_unlimited &&
+                                          !draft.is_unlimited &&
+                                          Number.isFinite(stockLimit) &&
+                                          eventStockValue > stockLimit;
+
+                                       return (
+                                          <div
+                                             key={`event-catalog-operation-${product.id}`}
+                                             className="grid grid-cols-1 gap-3 px-4 py-4 xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] xl:items-start"
+                                          >
+                                             <div className="min-w-0 flex items-center gap-3">
+                                                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
+                                                   {product.image_url ? (
+                                                      <img
+                                                         src={getProductImageUrl(product.image_url, 120)}
+                                                         alt={product.name}
+                                                         className="h-full w-full object-cover"
+                                                         loading="lazy"
+                                                         decoding="async"
+                                                      />
+                                                   ) : (
+                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">No image</div>
+                                                   )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                   <div className="truncate text-sm font-black text-gray-900">{product.name}</div>
+                                                   <div className="mt-1 flex flex-wrap gap-1">
+                                                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
+                                                         draft.is_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                                                      }`}>
+                                                         {draft.is_enabled ? 'Selling' : 'Hidden'}
+                                                      </span>
+                                                      {product.category && (
+                                                         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">{product.category}</span>
+                                                      )}
+                                                   </div>
+                                                </div>
+                                             </div>
+
+                                             <div className="space-y-2">
+                                                <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
+                                                   <span>Sell</span>
+                                                   <input
+                                                      type="checkbox"
+                                                      checked={draft.is_enabled}
+                                                      onChange={(event) => updateEventCatalogDraft(product.id, { is_enabled: event.target.checked })}
+                                                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                                   />
+                                                </label>
+                                                <input
+                                                   type="number"
+                                                   min="0"
+                                                   step="0.01"
+                                                   value={draft.price_override}
+                                                   onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
+                                                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                                   placeholder={String(product.price)}
+                                                   aria-label={`Event price for ${product.name}`}
                                                 />
-                                             ) : (
-                                                <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-gray-400">No image</div>
-                                             )}
-                                          </div>
-                                          <div className="min-w-0">
-                                             <div className="text-sm font-bold text-gray-800 truncate">{product.name}</div>
-                                             {product.variant_group_name && (
-                                                <div className="mt-1 flex flex-wrap items-center gap-1">
-                                                   <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-700">
-                                                      {product.variant_group_name}
-                                                   </span>
-                                                   <span className="text-[10px] font-bold text-gray-500">
-                                                      {product.variant_name || product.name}
-                                                   </span>
-                                                </div>
-                                             )}
-                                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                                {draft.price_override.trim() !== '' || (!draft.is_unlimited && draft.stock_total.trim() !== '') ? (
-                                                   <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">
-                                                      Custom
-                                                   </span>
+                                             </div>
+
+                                             <div className={stockOverLimit ? 'rounded-lg bg-red-50 p-2' : 'rounded-lg bg-gray-50 p-2'}>
+                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
+                                             </div>
+
+                                             <div className="space-y-2">
+                                                <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
+                                                   <span>Unlimited</span>
+                                                   <input
+                                                      type="checkbox"
+                                                      checked={draft.is_unlimited}
+                                                      onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: product.is_unlimited ? event.target.checked : false })}
+                                                      disabled={!product.is_unlimited || hasAllocatedEventStock}
+                                                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-40"
+                                                   />
+                                                </label>
+                                                <input
+                                                   type="number"
+                                                   min="0"
+                                                   max={Number.isFinite(stockLimit) ? stockLimit : undefined}
+                                                   step="1"
+                                                   value={draft.stock_total}
+                                                   onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
+                                                   disabled={draft.is_unlimited || hasAllocatedEventStock}
+                                                   className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
+                                                      stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
+                                                   }`}
+                                                   placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
+                                                   aria-label={`Event stock for ${product.name}`}
+                                                />
+                                             </div>
+
+                                             <div>
+                                                {draft.id && !draft.is_unlimited ? (
+                                                   <div className="flex flex-col gap-1.5">
+                                                      <button
+                                                         type="button"
+                                                         onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
+                                                         className="rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
+                                                      >
+                                                         Add stock
+                                                      </button>
+                                                      <button
+                                                         type="button"
+                                                         onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
+                                                         className="rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-black text-gray-700 hover:bg-gray-200"
+                                                      >
+                                                         Remove
+                                                      </button>
+                                                   </div>
                                                 ) : (
-                                                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-500">
-                                                      Global
-                                                   </span>
+                                                   <div className="text-[11px] font-semibold text-gray-400">Save first</div>
                                                 )}
-                                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">
-                                                   {product.category || 'Other'}
-                                                </span>
-                                                {(product.tags || []).slice(0, 3).map((tag) => (
-                                                   <span key={`${product.id}-event-${tag}`} className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-600">
-                                                      #{tag}
-                                                   </span>
-                                                ))}
-                                                {(product.tags || []).length > 3 && (
-                                                   <span className="text-[10px] font-bold text-gray-400">+{(product.tags || []).length - 3}</span>
-                                                )}
-                                             </div>
-                                             <div className="mt-1 text-[11px] font-semibold text-gray-500">
-                                                Global: {formatPrice(product.price, product.currency)} · Event currency: {eventCurrencyLabel}
                                              </div>
                                           </div>
-                                       </div>
-
-                                       <div className="space-y-2">
-                                          <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
-                                             <input
-                                                type="checkbox"
-                                                checked={draft.is_enabled}
-                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_enabled: event.target.checked })}
-                                                className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                                             />
-                                             Sell
-                                          </label>
-
-                                          <input
-                                             type="number"
-                                             min="0"
-                                             step="0.01"
-                                             value={draft.price_override}
-                                             onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
-                                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                             placeholder={String(product.price)}
-                                             aria-label={`Event price for ${product.name}`}
-                                          />
-                                       </div>
-
-                                       <div className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                                          stockOverLimit
-                                             ? 'border border-red-200 bg-red-50 text-red-700'
-                                             : 'bg-gray-50 text-gray-600'
-                                       }`}>
-                                          {product.is_unlimited ? (
-                                             <>
-                                                <div>Unlimited</div>
-                                                <div className="mt-0.5 text-[11px] font-semibold text-gray-500">No allocation cap</div>
-                                             </>
-                                          ) : (
-                                             <>
-                                                <div>{product.stock_total || 0} central</div>
-                                                <div className="mt-0.5 text-[11px] font-semibold">
-                                                   {stockLimit} available
-                                                </div>
-                                             </>
-                                          )}
-                                       </div>
-
-                                       <div className="space-y-2">
-                                          <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-700">
-                                             <input
-                                                type="checkbox"
-                                                checked={draft.is_unlimited}
-                                                onChange={(event) => updateEventCatalogDraft(product.id, { is_unlimited: product.is_unlimited ? event.target.checked : false })}
-                                                disabled={!product.is_unlimited || hasAllocatedEventStock}
-                                                className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                                             />
-                                             Unlimited
-                                          </label>
-                                          <input
-                                             type="number"
-                                             min="0"
-                                             max={Number.isFinite(stockLimit) ? stockLimit : undefined}
-                                             step="1"
-                                             value={draft.stock_total}
-                                             onChange={(event) => updateEventCatalogDraft(product.id, { stock_total: event.target.value })}
-                                             disabled={draft.is_unlimited || hasAllocatedEventStock}
-                                             className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
-                                                stockOverLimit
-                                                   ? 'border-red-300 bg-red-50 focus:ring-red-100'
-                                                   : 'border-gray-200 focus:ring-pink-200'
-                                             }`}
-                                             placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
-                                             aria-label={`Event stock for ${product.name}`}
-                                          />
-                                          {!draft.is_unlimited && (
-                                             <div className="text-[11px] font-semibold text-gray-500">
-                                                Reserved {draft.stock_reserved || 0} · Sold {draft.stock_sold || 0}
-                                             </div>
-                                          )}
-                                          {stockOverLimit && (
-                                             <p className="text-[11px] font-bold text-red-600">
-                                                Max {stockLimit} available for this event
-                                             </p>
-                                          )}
-                                       </div>
-
-                                       <div className="pt-0.5">
-                                          {draft.id && !draft.is_unlimited ? (
-                                             <div className="flex flex-col gap-1.5">
-                                                <button
-                                                   type="button"
-                                                   onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
-                                                   className="rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
-                                                >
-                                                   Add to event
-                                                </button>
-                                                <button
-                                                   type="button"
-                                                   onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
-                                                   className="rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-black text-gray-700 hover:bg-gray-200"
-                                                >
-                                                   Remove from event
-                                                </button>
-                                             </div>
-                                          ) : (
-                                             <div className="text-[11px] font-semibold text-gray-400">No actions</div>
-                                          )}
-                                       </div>
-                                   </div>
-                                 );
-                              })}
-                           </div>
-                        </div>
+                                       );
+                                    })}
+                                 </div>
+                              </div>
+                           )}
+                        </>
                      )}
 	                  </div>
 	            </section>
@@ -3987,14 +4165,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Variant Folder</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">Product line</label>
                            <input
                               list="edit-variant-group-suggestions"
                               type="text"
                               value={variantGroupName}
                               onChange={(e) => setVariantGroupName(e.target.value)}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="e.g. Acrylic Charm Set"
+                              placeholder="e.g. Sticker Bualoi"
                            />
                            <datalist id="edit-variant-group-suggestions">
                               {allVariantGroupSuggestions.map(group => (
@@ -4005,13 +4183,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                         <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Variant Name</label>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Option name</label>
                               <input
                                  type="text"
                                  value={variantName}
                                  onChange={(e) => setVariantName(e.target.value)}
                                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                                 placeholder="e.g. A / Blue / 57mm"
+                                 placeholder="e.g. Paimon / Blue / 57mm"
                               />
                            </div>
                            <div>

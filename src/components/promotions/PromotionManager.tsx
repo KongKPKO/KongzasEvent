@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../ui';
-import { BarChart3, Copy, Edit2, Loader, Plus, Tag, TicketPercent, Trash2, X } from 'lucide-react';
+import { BarChart3, CalendarClock, Copy, Edit2, Gift, Layers3, Loader, Plus, Search, Sparkles, Tag, TicketPercent, Trash2, X } from 'lucide-react';
 import type { PromotionRule, PromotionRuleType, PromotionTargetType } from '../../utils/promotionPricing';
 import { getPromotionLabel, matchesPromotionRule } from '../../utils/promotionPricing';
 import { formatPrice } from '../../utils/currency';
@@ -13,6 +13,8 @@ interface ProductLite {
   currency?: string;
   category?: string;
   tags?: string[];
+  variant_group_name?: string | null;
+  variant_name?: string | null;
 }
 
 interface EventLite {
@@ -41,17 +43,23 @@ interface PromotionManagerProps {
   lockedEventName?: string;
 }
 
-const targetTypeOptions: Array<{ value: PromotionTargetType; label: string }> = [
+type PromotionFormTargetType = PromotionTargetType | 'product_line';
+
+const targetTypeOptions: Array<{ value: PromotionFormTargetType; label: string }> = [
   { value: 'category', label: 'Category' },
+  { value: 'product_line', label: 'Product line' },
   { value: 'tag', label: 'Tag' },
   { value: 'category_tag', label: 'Category + Tag' },
   { value: 'product', label: 'Specific product' },
 ];
 
 const ruleTypeOptions: Array<{ value: PromotionRuleType; label: string }> = [
-  { value: 'discount', label: 'Buy X, discount Y THB' },
+  { value: 'discount', label: 'Buy X, discount Y' },
   { value: 'free_items', label: 'Buy X, get Y free' },
 ];
+
+const promotionSelectColumns = 'id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status, event_scope, event_ids, excluded_event_ids, starts_at, ends_at, created_at';
+const fallbackPromotionSelectColumns = 'id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status, event_scope, event_ids, starts_at, ends_at, created_at';
 
 export default function PromotionManager({
   artistId,
@@ -69,7 +77,7 @@ export default function PromotionManager({
   const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
-  const [targetType, setTargetType] = useState<PromotionTargetType>('category');
+  const [targetType, setTargetType] = useState<PromotionFormTargetType>('category');
   const [ruleType, setRuleType] = useState<PromotionRuleType>('discount');
   const [eventScope, setEventScope] = useState<'all' | 'selected'>('all');
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
@@ -77,6 +85,7 @@ export default function PromotionManager({
   const [endsAt, setEndsAt] = useState('');
   const [matchCategory, setMatchCategory] = useState('');
   const [matchTag, setMatchTag] = useState('');
+  const [matchProductLine, setMatchProductLine] = useState('');
   const [matchProductIds, setMatchProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [buyQuantity, setBuyQuantity] = useState('3');
@@ -86,6 +95,16 @@ export default function PromotionManager({
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, { ...product, price: Number(product.price || 0) }])),
     [products]
+  );
+  const productLineSuggestions = useMemo(
+    () => Array.from(new Set(products.map((product) => product.variant_group_name?.trim()).filter(Boolean) as string[])).sort(),
+    [products]
+  );
+  const productLineProductIds = useMemo(
+    () => products
+      .filter((product) => (product.variant_group_name || '').trim().toLowerCase() === matchProductLine.trim().toLowerCase())
+      .map((product) => product.id),
+    [matchProductLine, products]
   );
   const effectiveSelectedEventIds = useMemo(
     () => lockedEventId ? [lockedEventId] : selectedEventIds,
@@ -112,22 +131,28 @@ export default function PromotionManager({
     if (!artistId) return;
     setLoading(true);
     try {
-      let query = supabase
+      const buildQuery = (columns: string) => supabase
         .from('artist_promotions')
-        .select('id, artist_id, name, target_type, rule_type, match_category, match_tag, match_product_id, match_product_ids, buy_quantity, reward_value, reward_quantity, priority, status, event_scope, event_ids, starts_at, ends_at, created_at')
-        .eq('artist_id', artistId);
-
-      if (lockedEventId) {
-        query = query.eq('event_scope', 'selected').contains('event_ids', [lockedEventId]);
-      }
-
-      const { data, error } = await query
+        .select(columns)
+        .eq('artist_id', artistId)
         .order('status', { ascending: true })
         .order('priority', { ascending: true })
         .order('created_at', { ascending: false });
 
+      let { data, error } = await buildQuery(promotionSelectColumns);
+      if (error && /excluded_event_ids/i.test(error.message || '')) {
+        const fallback = await buildQuery(fallbackPromotionSelectColumns);
+        data = fallback.data;
+        error = fallback.error;
+      }
+
       if (error) throw error;
-      setPromotions((data || []) as PromotionRule[]);
+      const scopedPromotions = ((data || []) as unknown as PromotionRule[]).filter((promotion) => {
+        if (!lockedEventId) return true;
+        if ((promotion.event_scope || 'all') === 'all') return true;
+        return (promotion.event_ids || []).includes(lockedEventId);
+      });
+      setPromotions(scopedPromotions);
     } catch (error) {
       console.error('[PromotionManager] fetchPromotions failed:', error);
     } finally {
@@ -168,6 +193,7 @@ export default function PromotionManager({
     setEndsAt('');
     setMatchCategory('');
     setMatchTag('');
+    setMatchProductLine('');
     setMatchProductIds([]);
     setProductSearch('');
     setBuyQuantity('3');
@@ -186,6 +212,7 @@ export default function PromotionManager({
     setEndsAt(formatDateTimeLocal(promotion.ends_at));
     setMatchCategory(promotion.match_category || '');
     setMatchTag(promotion.match_tag || '');
+    setMatchProductLine('');
     setMatchProductIds(
       promotion.match_product_ids && promotion.match_product_ids.length > 0
         ? promotion.match_product_ids
@@ -231,6 +258,10 @@ export default function PromotionManager({
       alert('Please select at least one product for this promotion.');
       return;
     }
+    if (targetType === 'product_line' && productLineProductIds.length === 0) {
+      alert('Please select a product line with at least one product.');
+      return;
+    }
     if (targetType === 'category' && !matchCategory.trim()) {
       alert('Please enter a category.');
       return;
@@ -255,19 +286,21 @@ export default function PromotionManager({
 
     setSaving(true);
     try {
+      const persistedTargetType: PromotionTargetType = targetType === 'product_line' ? 'product' : targetType;
+      const persistedProductIds = targetType === 'product_line' ? productLineProductIds : matchProductIds;
       const payload = {
         artist_id: artistId,
-        name: name.trim() || null,
-        target_type: targetType,
+        name: name.trim() || (targetType === 'product_line' ? matchProductLine.trim() : null),
+        target_type: persistedTargetType,
         rule_type: ruleType,
         match_category: targetType === 'category' || targetType === 'category_tag' ? matchCategory.trim() : null,
         match_tag: targetType === 'tag' || targetType === 'category_tag' ? matchTag.trim() : null,
         match_product_id: null,
-        match_product_ids: targetType === 'product' ? matchProductIds : null,
+        match_product_ids: persistedTargetType === 'product' ? persistedProductIds : null,
         buy_quantity: buyQty,
         reward_value: ruleType === 'discount' ? discountValue : null,
         reward_quantity: ruleType === 'free_items' ? freeQty : null,
-        priority: targetType === 'product' ? 10 : targetType === 'category_tag' ? 20 : targetType === 'tag' ? 30 : 40,
+        priority: persistedTargetType === 'product' ? 10 : targetType === 'category_tag' ? 20 : targetType === 'tag' ? 30 : 40,
         status: 'active' as const,
         event_scope: lockedEventId ? 'selected' as const : eventScope,
         event_ids: lockedEventId ? [lockedEventId] : eventScope === 'selected' ? effectiveSelectedEventIds : null,
@@ -307,6 +340,27 @@ export default function PromotionManager({
     }
   };
 
+  const handleToggleEventExclusion = async (promotion: PromotionRule) => {
+    if (!lockedEventId) return;
+    try {
+      const excludedEventIds = promotion.excluded_event_ids || [];
+      const isExcluded = excludedEventIds.includes(lockedEventId);
+      const nextExcludedEventIds = isExcluded
+        ? excludedEventIds.filter((eventId) => eventId !== lockedEventId)
+        : Array.from(new Set([...excludedEventIds, lockedEventId]));
+      const { error } = await supabase
+        .from('artist_promotions')
+        .update({ excluded_event_ids: nextExcludedEventIds.length > 0 ? nextExcludedEventIds : null })
+        .eq('id', promotion.id);
+      if (error) throw error;
+      await fetchPromotions();
+      await fetchAnalytics();
+    } catch (error: any) {
+      console.error('[PromotionManager] event exclusion toggle failed:', error);
+      alert(error.message || 'Failed to update this event promotion. If this is a fresh local DB, apply the latest promotion exclusion migration first.');
+    }
+  };
+
   const handleDelete = async (promotionId: string) => {
     if (!confirm('Delete this promotion?')) return;
     try {
@@ -343,17 +397,19 @@ export default function PromotionManager({
     if (!Number.isInteger(buyQty) || buyQty <= 0) return null;
     if (ruleType === 'discount' && (!discountValue || discountValue <= 0)) return null;
     if (ruleType === 'free_items' && (!Number.isInteger(freeQty) || freeQty <= 0)) return null;
+    const previewTargetType: PromotionTargetType = targetType === 'product_line' ? 'product' : targetType;
+    const previewProductIds = targetType === 'product_line' ? productLineProductIds : matchProductIds;
 
     return {
       id: editingPromotionId || 'draft',
       artist_id: artistId,
       name: name || null,
-      target_type: targetType,
+      target_type: previewTargetType,
       rule_type: ruleType,
       match_category: targetType === 'category' || targetType === 'category_tag' ? matchCategory : null,
       match_tag: targetType === 'tag' || targetType === 'category_tag' ? matchTag : null,
       match_product_id: null,
-      match_product_ids: targetType === 'product' ? matchProductIds : null,
+      match_product_ids: previewTargetType === 'product' ? previewProductIds : null,
       buy_quantity: buyQty,
       reward_value: ruleType === 'discount' ? discountValue : null,
       reward_quantity: ruleType === 'free_items' ? freeQty : null,
@@ -363,7 +419,7 @@ export default function PromotionManager({
       starts_at: toIsoOrNull(startsAt),
       ends_at: toIsoOrNull(endsAt),
     };
-  }, [artistId, buyQuantity, editingPromotionId, endsAt, eventScope, lockedEventId, matchCategory, matchProductIds, matchTag, name, rewardQuantity, rewardValue, ruleType, effectiveSelectedEventIds, startsAt, targetType]);
+  }, [artistId, buyQuantity, editingPromotionId, endsAt, eventScope, lockedEventId, matchCategory, matchProductIds, matchProductLine, matchTag, name, productLineProductIds, rewardQuantity, rewardValue, ruleType, effectiveSelectedEventIds, startsAt, targetType]);
 
   const previewProducts = useMemo(() => {
     if (!draftPromotion) return [];
@@ -378,29 +434,75 @@ export default function PromotionManager({
     return products.filter((product) =>
       product.name.toLowerCase().includes(query) ||
       (product.category || '').toLowerCase().includes(query) ||
+      (product.variant_group_name || '').toLowerCase().includes(query) ||
+      (product.variant_name || '').toLowerCase().includes(query) ||
       (product.tags || []).some((tag) => tag.toLowerCase().includes(query))
     );
   }, [productSearch, products]);
 
+  const isPromotionStoppedForThisEvent = (promotion: PromotionRule) =>
+    Boolean(lockedEventId && (promotion.excluded_event_ids || []).includes(lockedEventId));
+  const isPromotionActiveHere = (promotion: PromotionRule) =>
+    (promotion.status || 'active') === 'active' && !isPromotionStoppedForThisEvent(promotion);
+  const inheritedPromotionCount = lockedEventId
+    ? promotions.filter((promotion) => (promotion.event_scope || 'all') === 'all').length
+    : 0;
+  const activePromotionCount = promotions.filter(isPromotionActiveHere).length;
+  const selectedScopeLabel = lockedEventId
+    ? effectiveEventName
+    : eventScope === 'selected'
+      ? `${effectiveSelectedEventIds.length} selected event${effectiveSelectedEventIds.length === 1 ? '' : 's'}`
+      : 'All events';
+  const isFreeItemRule = ruleType === 'free_items';
+  const rewardFieldLabel = isFreeItemRule ? 'Get free Y' : 'Discount Y';
+  const rewardFieldValue = isFreeItemRule ? rewardQuantity : rewardValue;
+  const draftWindowLabel = startsAt || endsAt
+    ? `${startsAt ? `Starts ${new Date(toIsoOrNull(startsAt) || '').toLocaleString()}` : 'Starts now'} · ${endsAt ? `Ends ${new Date(toIsoOrNull(endsAt) || '').toLocaleString()}` : 'No end date'}`
+    : 'Always active';
+  const totalDiscount = analytics.reduce((sum, row) => sum + Number(row.discount_total || 0), 0);
+  const fieldClass = 'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-800 shadow-sm shadow-gray-100/50 focus:border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-100 disabled:bg-gray-100 disabled:text-gray-400';
+  const labelClass = 'mb-1.5 block text-[11px] font-black uppercase tracking-wide text-gray-400';
+
   return (
-    <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <div>
-          <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-            <TicketPercent className="text-pink-500" size={18} />
-            Promotions
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">Set pricing rules for POS. Product scope overrides broader rules on the same items.</p>
+    <section className="mb-6 space-y-5">
+      <div className="overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm">
+        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-pink-700">
+              <TicketPercent size={14} />
+              Promotions
+            </div>
+            <h2 className="mt-3 text-2xl font-black leading-tight text-gray-950">
+              {lockedEventId ? 'Event promotion setup' : 'Promotion workspace'}
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-gray-500">
+              {lockedEventId ? effectiveEventName : 'Campaign rules for customer menu and POS.'}
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-gray-50 p-3 ring-1 ring-gray-100">
+              <div className="text-xl font-black text-gray-950">{promotions.length}</div>
+              <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">{lockedEventId ? 'Shown' : 'Rules'}</div>
+            </div>
+            <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+              <div className="text-xl font-black text-emerald-700">{activePromotionCount}</div>
+              <div className="text-[10px] font-black uppercase tracking-wide text-emerald-600">{lockedEventId ? 'Applied' : 'Active'}</div>
+            </div>
+            <div className="rounded-xl bg-pink-50 p-3 ring-1 ring-pink-100">
+              <div className="truncate text-xl font-black text-pink-700">{lockedEventId ? inheritedPromotionCount : formatPrice(totalDiscount, products[0]?.currency)}</div>
+              <div className="text-[10px] font-black uppercase tracking-wide text-pink-600">{lockedEventId ? 'Inherited' : 'Saved'}</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className={editingPromotionId ? 'fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-gray-950/55 p-4 backdrop-blur-sm' : ''}>
-        <div className={editingPromotionId ? 'my-6 w-full max-w-4xl rounded-2xl bg-white p-4 shadow-2xl' : ''}>
+        <div className={editingPromotionId ? 'my-6 w-full max-w-5xl rounded-2xl bg-white p-4 shadow-2xl' : 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'}>
           {editingPromotionId && (
             <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
               <div>
                 <h3 className="text-lg font-black text-gray-900">Edit Promotion</h3>
-                <p className="mt-1 text-xs font-semibold text-gray-500">Update the selected promotion without changing the Add Promotion form.</p>
+                <p className="mt-1 text-xs font-semibold text-gray-500">Update this saved rule.</p>
               </div>
               <button
                 type="button"
@@ -414,289 +516,348 @@ export default function PromotionManager({
           )}
 
           <form id="promotion-form" onSubmit={handleSave} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Promotion Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Optional display name"
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Rule Type</label>
-            <select
-              value={ruleType}
-              onChange={(e) => setRuleType(e.target.value as PromotionRuleType)}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            >
-              {ruleTypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Event Scope</label>
-            {lockedEventId ? (
-              <div className="w-full rounded border border-pink-100 bg-white px-3 py-2 text-sm font-black text-pink-700">
-                {effectiveEventName}
-              </div>
-            ) : (
-              <select
-                value={eventScope}
-                onChange={(e) => {
-                  const nextScope = e.target.value as 'all' | 'selected';
-                  setEventScope(nextScope);
-                  if (nextScope === 'all') setSelectedEventIds([]);
-                }}
-                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-              >
-                <option value="all">All events</option>
-                <option value="selected">Selected events only</option>
-              </select>
-            )}
-            <p className="mt-1 text-xs text-gray-500">
-              {lockedEventId ? 'This promotion is locked to the current event.' : 'Use selected events for booth-specific campaigns.'}
-            </p>
-          </div>
-
-          {!lockedEventId && eventScope === 'selected' && (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Events</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                {eventOptions.length === 0 ? (
-                  <div className="rounded border border-dashed border-pink-100 bg-white px-3 py-2 text-xs font-semibold text-gray-400">
-                    No confirmed events yet.
+            <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr]">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-pink-50 text-pink-600 ring-1 ring-pink-100">
+                      <Gift size={18} />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900">Offer</h3>
+                      <p className="text-xs font-semibold text-gray-500">Buy condition and reward.</p>
+                    </div>
                   </div>
-                ) : eventOptions.map((event) => {
-                  const checked = selectedEventIds.includes(event.id);
-                  return (
-                    <label key={event.id} className={`flex items-center gap-2 rounded border px-3 py-2 text-xs font-bold cursor-pointer ${checked ? 'border-pink-200 bg-white text-pink-700' : 'border-gray-100 bg-white text-gray-600'}`}>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="md:col-span-2">
+                      <span className={labelClass}>Promotion Name</span>
                       <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleEventSelection(event.id)}
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Optional display name"
+                        className={fieldClass}
                       />
-                      <span className="truncate">{event.event_name}</span>
                     </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Starts At</label>
-            <input
-              type="datetime-local"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ends At</label>
-            <input
-              type="datetime-local"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Scope</label>
-            <select
-              value={targetType}
-              onChange={(e) => setTargetType(e.target.value as PromotionTargetType)}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            >
-              {targetTypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {(targetType === 'category' || targetType === 'category_tag') && (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Category</label>
-              <input
-                list="promotion-category-suggestions"
-                type="text"
-                value={matchCategory}
-                onChange={(e) => setMatchCategory(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-                placeholder="Photocard"
-              />
-              <datalist id="promotion-category-suggestions">
-                {categorySuggestions.map((category) => <option key={category} value={category} />)}
-              </datalist>
-            </div>
-          )}
-
-          {(targetType === 'tag' || targetType === 'category_tag') && (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Tag</label>
-              <input
-                list="promotion-tag-suggestions"
-                type="text"
-                value={matchTag}
-                onChange={(e) => setMatchTag(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-                placeholder="Genshin Impact"
-              />
-              <datalist id="promotion-tag-suggestions">
-                {tagSuggestions.map((tag) => <option key={tag} value={tag} />)}
-              </datalist>
-            </div>
-          )}
-
-          {targetType === 'product' && (
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Product</label>
-              <input
-                type="search"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Search products..."
-                className="mb-2 w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-              />
-              <div className="max-h-40 overflow-y-auto rounded border border-gray-200 bg-white">
-                {filteredProducts.map((product) => {
-                  const checked = matchProductIds.includes(product.id);
-                  return (
-                    <label key={product.id} className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0 text-sm cursor-pointer hover:bg-gray-50">
+                    <label>
+                      <span className={labelClass}>Rule Type</span>
+                      <select
+                        value={ruleType}
+                        onChange={(e) => {
+                          const nextRuleType = e.target.value as PromotionRuleType;
+                          setRuleType(nextRuleType);
+                          if (nextRuleType === 'discount') {
+                            setRewardQuantity('1');
+                          } else {
+                            setRewardValue('');
+                          }
+                        }}
+                        className={fieldClass}
+                      >
+                        {ruleTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className={labelClass}>Buy X</span>
                       <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleProductSelection(product.id)}
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={buyQuantity}
+                        onChange={(e) => setBuyQuantity(e.target.value)}
+                        className={fieldClass}
                       />
-                      <span className="font-medium text-gray-700">{product.name}</span>
                     </label>
-                  );
-                })}
+                    <label key={ruleType} className="md:col-span-2">
+                      <span className={labelClass}>{rewardFieldLabel}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step={isFreeItemRule ? '1' : '0.01'}
+                        value={rewardFieldValue}
+                        onChange={(e) => {
+                          if (isFreeItemRule) {
+                            setRewardQuantity(e.target.value);
+                          } else {
+                            setRewardValue(e.target.value);
+                          }
+                        }}
+                        className={fieldClass}
+                      />
+                      {!isFreeItemRule && (
+                        <p className="mt-1 text-[11px] font-semibold text-gray-400">
+                          Uses the checkout currency for the selected event or product.
+                        </p>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-gray-100 text-gray-700">
+                      <Layers3 size={18} />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900">Scope</h3>
+                      <p className="text-xs font-semibold text-gray-500">{selectedScopeLabel}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label>
+                      <span className={labelClass}>Event Scope</span>
+                      {lockedEventId ? (
+                        <div className={`${fieldClass} text-pink-700`}>{effectiveEventName}</div>
+                      ) : (
+                        <select
+                          value={eventScope}
+                          onChange={(e) => {
+                            const nextScope = e.target.value as 'all' | 'selected';
+                            setEventScope(nextScope);
+                            if (nextScope === 'all') setSelectedEventIds([]);
+                          }}
+                          className={fieldClass}
+                        >
+                          <option value="all">All events</option>
+                          <option value="selected">Selected events only</option>
+                        </select>
+                      )}
+                    </label>
+                    <label>
+                      <span className={labelClass}>Product Scope</span>
+                      <select
+                        value={targetType}
+                        onChange={(e) => {
+                          const nextTargetType = e.target.value as PromotionFormTargetType;
+                          setTargetType(nextTargetType);
+                          if (nextTargetType !== 'product_line') setMatchProductLine('');
+                          if (nextTargetType !== 'product') setMatchProductIds([]);
+                        }}
+                        className={fieldClass}
+                      >
+                        {targetTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {!lockedEventId && eventScope === 'selected' && (
+                      <div className="md:col-span-2">
+                        <span className={labelClass}>Events</span>
+                        <div className="grid max-h-36 gap-2 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2 md:grid-cols-2">
+                          {eventOptions.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-400">
+                              No confirmed events yet.
+                            </div>
+                          ) : eventOptions.map((event) => {
+                            const checked = selectedEventIds.includes(event.id);
+                            return (
+                              <label key={event.id} className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs font-black ${checked ? 'bg-pink-50 text-pink-700 ring-1 ring-pink-100' : 'bg-white text-gray-600 ring-1 ring-gray-100'}`}>
+                                <input type="checkbox" checked={checked} onChange={() => toggleEventSelection(event.id)} />
+                                <span className="truncate">{event.event_name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {(targetType === 'category' || targetType === 'category_tag') && (
+                      <label>
+                        <span className={labelClass}>Category</span>
+                        <input
+                          list="promotion-category-suggestions"
+                          type="text"
+                          value={matchCategory}
+                          onChange={(e) => setMatchCategory(e.target.value)}
+                          className={fieldClass}
+                          placeholder="Photocard"
+                        />
+                        <datalist id="promotion-category-suggestions">
+                          {categorySuggestions.map((category) => <option key={category} value={category} />)}
+                        </datalist>
+                      </label>
+                    )}
+
+                    {targetType === 'product_line' && (
+                      <label className="md:col-span-2">
+                        <span className={labelClass}>Product line</span>
+                        <input
+                          list="promotion-product-line-suggestions"
+                          type="text"
+                          value={matchProductLine}
+                          onChange={(e) => setMatchProductLine(e.target.value)}
+                          className={fieldClass}
+                          placeholder="Sticker Bualoi"
+                        />
+                        <datalist id="promotion-product-line-suggestions">
+                          {productLineSuggestions.map((line) => <option key={line} value={line} />)}
+                        </datalist>
+                        <p className="mt-1 text-[11px] font-semibold text-gray-400">
+                          Matches products sharing the same product line, then saves them as selected products.
+                        </p>
+                      </label>
+                    )}
+
+                    {(targetType === 'tag' || targetType === 'category_tag') && (
+                      <label>
+                        <span className={labelClass}>Tag</span>
+                        <input
+                          list="promotion-tag-suggestions"
+                          type="text"
+                          value={matchTag}
+                          onChange={(e) => setMatchTag(e.target.value)}
+                          className={fieldClass}
+                          placeholder="Genshin Impact"
+                        />
+                        <datalist id="promotion-tag-suggestions">
+                          {tagSuggestions.map((tag) => <option key={tag} value={tag} />)}
+                        </datalist>
+                      </label>
+                    )}
+
+                    {targetType === 'product' && (
+                      <div className="md:col-span-2">
+                        <span className={labelClass}>Products</span>
+                        <div className="relative mb-2">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                          <input
+                            type="search"
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Search products..."
+                            className={`${fieldClass} pl-9`}
+                          />
+                        </div>
+                        <div className="max-h-44 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
+                          {filteredProducts.map((product) => {
+                            const checked = matchProductIds.includes(product.id);
+                            return (
+                              <label key={product.id} className={`mb-1 flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm last:mb-0 ${checked ? 'bg-pink-50 text-pink-700 ring-1 ring-pink-100' : 'bg-white text-gray-700 ring-1 ring-gray-100'}`}>
+                                <input type="checkbox" checked={checked} onChange={() => toggleProductSelection(product.id)} />
+                                <span className="min-w-0 flex-1 truncate font-bold">
+                                  {product.name}
+                                  {product.variant_group_name && (
+                                    <span className="ml-1 text-xs text-gray-400">· {product.variant_group_name}</span>
+                                  )}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-1 text-xs font-bold text-gray-400">{matchProductIds.length} product(s) selected</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="mt-1 text-xs text-gray-400">{matchProductIds.length} product(s) selected</p>
-            </div>
-          )}
 
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Buy X</label>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={buyQuantity}
-              onChange={(e) => setBuyQuantity(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-            />
-          </div>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                      <CalendarClock size={18} />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900">Schedule</h3>
+                      <p className="text-xs font-semibold text-gray-500">{draftWindowLabel}</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+                    <label>
+                      <span className={labelClass}>Starts At</span>
+                      <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={fieldClass} />
+                    </label>
+                    <label>
+                      <span className={labelClass}>Ends At</span>
+                      <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={fieldClass} />
+                    </label>
+                  </div>
+                </div>
 
-          {ruleType === 'discount' ? (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Discount Y (THB)</label>
-              <input
-                type="number"
-                min="1"
-                step="0.01"
-                value={rewardValue}
-                onChange={(e) => setRewardValue(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Free Y</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={rewardQuantity}
-                onChange={(e) => setRewardQuantity(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
-              />
-            </div>
-          )}
-        </div>
+                <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-wide text-pink-600">Preview</div>
+                      <div className="mt-1 text-3xl font-black text-gray-950">{previewProducts.length}</div>
+                      <div className="text-xs font-bold text-gray-500">eligible product{previewProducts.length === 1 ? '' : 's'}</div>
+                    </div>
+                    <Sparkles className="text-pink-500" size={24} />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {previewProducts.slice(0, 8).map((product) => (
+                      <span key={product.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-700 ring-1 ring-pink-100">
+                        {product.name}
+                      </span>
+                    ))}
+                    {previewProducts.length > 8 && (
+                      <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-400 ring-1 ring-pink-100">
+                        +{previewProducts.length - 8} more
+                      </span>
+                    )}
+                    {previewProducts.length === 0 && (
+                      <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-400 ring-1 ring-pink-100">
+                        No products matched
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-        <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-            <div>
-              <div className="text-xs font-black uppercase tracking-wider text-gray-500">Preview</div>
-              <div className="mt-1 text-sm font-bold text-gray-800">
-                {previewProducts.length} eligible product{previewProducts.length === 1 ? '' : 's'}
-                {lockedEventId
-                  ? ` · ${effectiveEventName}`
-                  : eventScope === 'selected' ? ` · ${effectiveSelectedEventIds.length} event${effectiveSelectedEventIds.length === 1 ? '' : 's'}` : ' · all events'}
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  {editingPromotionId && (
+                    <Button
+                      type="button"
+                      onClick={resetForm}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-xs font-black text-gray-700 transition-all hover:bg-gray-50 active:scale-95"
+                    >
+                      <X size={14} />
+                      Close
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 text-xs font-black text-white shadow-md shadow-pink-100 transition-all hover:bg-pink-700 active:scale-95 disabled:bg-pink-300"
+                  >
+                    {saving ? <Loader className="animate-spin" size={14} /> : editingPromotionId ? <Edit2 size={14} /> : <Plus size={14} />}
+                    {saving ? 'Saving...' : editingPromotionId ? 'Save Promotion' : 'Add Promotion'}
+                  </Button>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-gray-500">
-                {startsAt || endsAt
-                  ? `${startsAt ? `Starts ${new Date(toIsoOrNull(startsAt) || '').toLocaleString()}` : 'Starts now'} · ${endsAt ? `Ends ${new Date(toIsoOrNull(endsAt) || '').toLocaleString()}` : 'No end date'}`
-                  : 'No active window set'}
-              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5 md:justify-end">
-              {previewProducts.slice(0, 5).map((product) => (
-                <span key={product.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-600 border border-gray-200">
-                  {product.name}
-                </span>
-              ))}
-              {previewProducts.length > 5 && (
-                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-400 border border-gray-200">
-                  +{previewProducts.length - 5} more
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2">
-          {editingPromotionId && (
-            <Button
-              type="button"
-              onClick={resetForm}
-              className="flex h-9 items-center gap-2 rounded border border-gray-700 bg-gray-700 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-gray-800 active:scale-95"
-            >
-              <X size={14} />
-              Close
-            </Button>
-          )}
-          <Button
-            type="submit"
-            disabled={saving}
-            className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9 flex items-center gap-2"
-          >
-            {saving ? <Loader className="animate-spin" size={14} /> : editingPromotionId ? <Edit2 size={14} /> : <Plus size={14} />}
-            {saving ? 'Saving...' : editingPromotionId ? 'Save Edit Promotion' : 'Add Promotion'}
-          </Button>
-        </div>
           </form>
         </div>
       </div>
 
-      <div className="mt-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Tag size={15} className="text-gray-400" />
-          <h3 className="text-sm font-bold text-gray-700">Promotion Rules ({promotions.length})</h3>
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gray-100 text-gray-700">
+              <Tag size={16} />
+            </span>
+            <div>
+              <h3 className="text-sm font-black text-gray-900">Promotion Rules</h3>
+              <p className="text-xs font-semibold text-gray-500">{promotions.length} saved rule{promotions.length === 1 ? '' : 's'}</p>
+            </div>
+          </div>
         </div>
 
         {loading ? (
-          <div className="text-sm text-gray-400">Loading promotions...</div>
+          <div className="rounded-xl border border-dashed border-gray-200 px-4 py-6 text-sm font-semibold text-gray-400">Loading promotions...</div>
         ) : promotions.length === 0 ? (
-          <div className="text-sm text-gray-400 border border-dashed border-gray-200 rounded-lg px-4 py-5">No promotions yet.</div>
+          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm font-semibold text-gray-400">No promotions yet.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {promotions.map((promotion) => {
               const rowAnalytics = analyticsByRuleId.get(promotion.id);
+              const isGloballyActive = (promotion.status || 'active') === 'active';
+              const isInheritedRule = Boolean(lockedEventId && (promotion.event_scope || 'all') === 'all');
+              const isStoppedHere = isPromotionStoppedForThisEvent(promotion);
+              const isActive = isPromotionActiveHere(promotion);
               const eventNames = lockedEventId
                 ? effectiveEventName
                 : promotion.event_scope === 'selected'
@@ -708,77 +869,122 @@ export default function PromotionManager({
               const windowLabel = promotion.starts_at || promotion.ends_at
                 ? `${promotion.starts_at ? new Date(promotion.starts_at).toLocaleDateString() : 'Now'} - ${promotion.ends_at ? new Date(promotion.ends_at).toLocaleDateString() : 'No end'}`
                 : 'Always active';
+              const ruleLabel = promotion.rule_type === 'discount'
+                ? `Buy ${promotion.buy_quantity}, save ${promotion.reward_value}`
+                : `Buy ${promotion.buy_quantity}, get ${promotion.reward_quantity} free`;
+              const statusLabel = isStoppedHere
+                ? 'Stopped here'
+                : isActive
+                  ? isInheritedRule ? 'Applied' : 'Active'
+                  : isInheritedRule && !isGloballyActive ? 'Paused globally' : 'Inactive';
 
               return (
-                <div key={promotion.id} className="flex flex-col gap-3 border border-gray-100 rounded-xl px-4 py-3">
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-bold text-gray-800">{getPromotionLabel(promotion, productsById)}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Scope: <span className="font-semibold">{promotion.target_type}</span>
-                        {' '}| Rule: <span className="font-semibold">{promotion.rule_type === 'discount' ? `Buy ${promotion.buy_quantity}, save ${promotion.reward_value}` : `Buy ${promotion.buy_quantity}, get ${promotion.reward_quantity} free`}</span>
+                <article key={promotion.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${isActive ? 'border-emerald-100' : 'border-gray-100 opacity-80'}`}>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {statusLabel}
+                          </span>
+                          {lockedEventId && (
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isInheritedRule ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'}`}>
+                              {isInheritedRule ? 'Global rule' : 'Event rule'}
+                            </span>
+                          )}
+                          {isInheritedRule && isStoppedHere && (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700">
+                              Override
+                            </span>
+                          )}
+                          <span className="rounded-full bg-pink-50 px-2.5 py-1 text-[11px] font-black text-pink-700">
+                            {promotion.target_type}
+                          </span>
+                        </div>
+                        <h4 className="mt-3 line-clamp-2 text-base font-black leading-tight text-gray-950">
+                          {getPromotionLabel(promotion, productsById)}
+                        </h4>
+                        <p className="mt-1 text-sm font-black text-pink-700">{ruleLabel}</p>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Event: <span className="font-semibold">{eventNames || 'Selected events'}</span>
-                        {' '}| Window: <span className="font-semibold">{windowLabel}</span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => loadPromotionIntoForm(promotion, 'edit')}
+                          disabled={isInheritedRule}
+                          className="grid h-9 w-9 place-items-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label={isInheritedRule ? 'Edit this global promotion in the Promotion workspace' : `Edit promotion ${promotion.id}`}
+                          title={isInheritedRule ? 'Edit global rules in the Promotion workspace' : 'Edit promotion'}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loadPromotionIntoForm(promotion, 'duplicate')}
+                          className="grid h-9 w-9 place-items-center rounded-lg border border-pink-100 text-pink-500 hover:bg-pink-50"
+                          aria-label={`Duplicate promotion ${promotion.id}`}
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(promotion.id)}
+                          disabled={isInheritedRule}
+                          className="grid h-9 w-9 place-items-center rounded-lg border border-red-100 text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label={isInheritedRule ? 'Delete this global promotion in the Promotion workspace' : `Delete promotion ${promotion.id}`}
+                          title={isInheritedRule ? 'Delete global rules in the Promotion workspace' : 'Delete promotion'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(promotion)}
-                        className={[
-                          'px-3 py-1.5 rounded-full text-xs font-bold border',
-                          promotion.status === 'active'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                            : 'bg-white text-slate-600 border-gray-200'
-                        ].join(' ')}
-                      >
-                        {promotion.status === 'active' ? 'Active' : 'Inactive'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => loadPromotionIntoForm(promotion, 'edit')}
-                        className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
-                        aria-label={`Edit promotion ${promotion.id}`}
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => loadPromotionIntoForm(promotion, 'duplicate')}
-                        className="p-2 rounded-lg border border-pink-100 text-pink-500 hover:bg-pink-50"
-                        aria-label={`Duplicate promotion ${promotion.id}`}
-                      >
-                        <Copy size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(promotion.id)}
-                        className="p-2 rounded-lg border border-red-100 text-red-500 hover:bg-red-50"
-                        aria-label={`Delete promotion ${promotion.id}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+
+                    <div className="mt-4 grid gap-2 text-xs font-semibold text-gray-500 sm:grid-cols-2">
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Event</div>
+                        <div className="mt-1 line-clamp-2 font-black text-gray-800">{eventNames || 'Selected events'}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Window</div>
+                        <div className="mt-1 font-black text-gray-800">{windowLabel}</div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
-                      <BarChart3 size={13} className="text-pink-500" />
-                      Analytics
+                  <div className="grid grid-cols-3 border-t border-gray-100 bg-gray-50">
+                    <div className="p-3">
+                      <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-gray-400">
+                        <BarChart3 size={12} />
+                        Orders
+                      </div>
+                      <div className="mt-1 text-sm font-black text-gray-900">{rowAnalytics?.order_count || 0}</div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      Orders: <span className="font-black text-gray-800">{rowAnalytics?.order_count || 0}</span>
+                    <div className="border-x border-gray-100 p-3">
+                      <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Uses</div>
+                      <div className="mt-1 text-sm font-black text-gray-900">{rowAnalytics?.bundle_count || 0}</div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      Uses: <span className="font-black text-gray-800">{rowAnalytics?.bundle_count || 0}</span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Discount: <span className="font-black text-emerald-700">{formatPrice(Number(rowAnalytics?.discount_total || 0), products[0]?.currency)}</span>
+                    <div className="p-3">
+                      <div className="text-[10px] font-black uppercase tracking-wide text-gray-400">Discount</div>
+                      <div className="mt-1 truncate text-sm font-black text-emerald-700">{formatPrice(Number(rowAnalytics?.discount_total || 0), products[0]?.currency)}</div>
                     </div>
                   </div>
-                </div>
+
+                  <button
+                    type="button"
+                    onClick={() => isInheritedRule ? handleToggleEventExclusion(promotion) : handleToggleStatus(promotion)}
+                    className={`w-full border-t px-4 py-2 text-xs font-black ${isInheritedRule
+                      ? isStoppedHere
+                        ? 'border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        : 'border-amber-100 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      : isActive
+                        ? 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-gray-100 bg-white text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {isInheritedRule
+                      ? isStoppedHere ? 'Use in this event' : 'Stop in this event'
+                      : isActive ? 'Pause promotion' : 'Activate promotion'}
+                  </button>
+                </article>
               );
             })}
           </div>

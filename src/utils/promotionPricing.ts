@@ -20,6 +20,7 @@ export interface PromotionRule {
   status?: PromotionStatus;
   event_scope?: PromotionEventScope;
   event_ids?: string[] | null;
+  excluded_event_ids?: string[] | null;
   starts_at?: string | null;
   ends_at?: string | null;
 }

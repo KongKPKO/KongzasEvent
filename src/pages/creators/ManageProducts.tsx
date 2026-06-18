@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy } from 'lucide-react';
+import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy, LayoutGrid, List } from 'lucide-react';
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
@@ -348,6 +348,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
    const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
+   const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
    const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>(initialTab);
    const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
    const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
@@ -3389,6 +3390,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                     <div className="inline-grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1">
+                        {([
+                           ['visual', LayoutGrid, 'Visual'],
+                           ['operations', List, 'Operations'],
+                        ] as const).map(([mode, Icon, label]) => (
+                           <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setCatalogDisplayMode(mode)}
+                              className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-black transition-colors ${
+                                 catalogDisplayMode === mode
+                                    ? 'bg-white text-pink-700 shadow-sm ring-1 ring-pink-100'
+                                    : 'text-gray-500 hover:bg-white/70 hover:text-gray-800'
+                              }`}
+                              aria-pressed={catalogDisplayMode === mode}
+                           >
+                              <Icon size={14} aria-hidden="true" />
+                              {label}
+                           </button>
+                        ))}
+                     </div>
                      <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600">
                         <Filter size={12} />
                         {filteredProducts.length} of {products.length} items
@@ -3529,88 +3551,223 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             </div>
 
             {/* PRODUCT LIST */}
-            <h2 className="mb-4 px-1 text-lg font-bold text-gray-800">Catalog items ({filteredProducts.length})</h2>
+            <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
+               <div>
+                  <h2 className="text-lg font-bold text-gray-800">Catalog items ({filteredProducts.length})</h2>
+                  <p className="text-xs font-semibold text-gray-500">
+                     {catalogDisplayMode === 'visual'
+                        ? 'Visual check for product photos, names, price, and stock before customers see them.'
+                        : 'Operations view for dense stock and maintenance actions.'}
+                  </p>
+               </div>
+            </div>
             
             {loading ? (
                <div className="text-center py-12 text-gray-400">Loading products...</div>
             ) : filteredProducts.length > 0 ? (
                <>
-                  {/* MOBILE VIEW: List/Cards (<768px) */}
-                  <div className="flex flex-col gap-3 md:hidden">
-                     {filteredProducts.map(product => {
-                        const effectiveStatus = getEffectiveStatus(product);
-                        return (
-                        <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row min-h-36 group relative">
-                           {/* Image */}
-                           <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
-                              <img 
-                                 src={getProductImageUrl(product.image_url, 400)} 
-                                 alt={product.name}
-                                 className="w-full h-full object-cover"
-                                 loading="lazy"
-                                 decoding="async"
-                              />
-                              {(effectiveStatus === 'disable' || effectiveStatus === 'soldout') && (
-                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                    <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
-                                       effectiveStatus === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
-                                    }`}>
-                                       {effectiveStatus === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
-                                    </span>
-                                 </div>
-                              )}
-                           </div>
-                           
-                           {/* Content */}
-                           <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
-                              <div>
-                                 <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
-                                 {product.variant_group_name && (
-                                    <div className="mt-1 flex items-center gap-1">
-                                       <span className="truncate rounded bg-pink-50 px-1.5 py-0.5 text-[9px] font-black text-pink-700">
-                                          {product.variant_group_name}
-                                       </span>
-                                       <span className="truncate text-[9px] font-bold text-gray-500">
-                                          {product.variant_name || product.name}
-                                       </span>
-                                    </div>
-                                 )}
-                                 <div className="mt-1 flex items-baseline gap-2">
-                                    <span className="text-pink-600 font-black text-sm">{formatPrice(product.price, product.currency)}</span>
-                                    {product.category && (
-                                       <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] font-bold uppercase rounded">
-                                          {product.category}
-                                       </span>
+                  {catalogDisplayMode === 'visual' ? (
+                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredProducts.map(product => {
+                           const effectiveStatus = getEffectiveStatus(product);
+                           const hasImage = Boolean(product.image_url);
+                           return (
+                              <article key={product.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
+                                 <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                                    {hasImage ? (
+                                       <img
+                                          src={getProductImageUrl(product.image_url, 600)}
+                                          alt={product.name}
+                                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                                          loading="lazy"
+                                          decoding="async"
+                                       />
+                                    ) : (
+                                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400">
+                                          <PackageSearch size={28} aria-hidden="true" />
+                                          <span className="text-xs font-black uppercase tracking-wide">Need image</span>
+                                       </div>
                                     )}
-                                 </div>
-                                 {!!product.tags?.length && (
-                                    <div className="mt-1 flex flex-wrap gap-1">
-                                       {product.tags.slice(0, 3).map((tag) => (
-                                          <span key={`${product.id}-${tag}`} className="px-1.5 py-0.5 bg-pink-50 text-pink-600 text-[9px] font-bold rounded">
-                                             #{tag}
-                                          </span>
-                                       ))}
-                                       {product.tags.length > 3 && (
-                                          <span className="text-[9px] font-bold text-gray-400">+{product.tags.length - 3}</span>
+
+                                    <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+                                       <span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">
+                                          {product.category || 'Other'}
+                                       </span>
+                                       {effectiveStatus === 'disable' && (
+                                          <span className="rounded-full bg-gray-900/85 px-2 py-1 text-[10px] font-black text-white shadow-sm">Disabled</span>
+                                       )}
+                                       {effectiveStatus === 'soldout' && (
+                                          <span className="rounded-full bg-red-600/90 px-2 py-1 text-[10px] font-black text-white shadow-sm">Sold out</span>
                                        )}
                                     </div>
+
+                                    <div className="absolute right-3 top-3 flex gap-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                                       <button
+                                          onClick={(e) => { e.stopPropagation(); handleEditClick(product); }}
+                                          className="icon-touch inline-flex items-center justify-center rounded-full border border-white/70 bg-white/95 text-gray-600 shadow-sm hover:text-blue-700"
+                                          aria-label={`Edit ${product.name}`}
+                                          title="Edit"
+                                       >
+                                          <Edit2 size={15} />
+                                       </button>
+                                       <button
+                                          onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }}
+                                          className="icon-touch inline-flex items-center justify-center rounded-full border border-white/70 bg-white/95 text-gray-600 shadow-sm hover:text-red-700"
+                                          aria-label={`Delete ${product.name}`}
+                                          title="Delete"
+                                       >
+                                          <Trash2 size={15} />
+                                       </button>
+                                    </div>
+                                 </div>
+
+                                 <div className="space-y-3 p-4">
+                                    <div className="min-h-[76px]">
+                                       <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-900">{product.name}</h3>
+                                       {product.variant_group_name && (
+                                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                             <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-black text-pink-700">
+                                                {product.variant_group_name}
+                                             </span>
+                                             {product.variant_name && (
+                                                <span className="text-[11px] font-bold text-gray-500">{product.variant_name}</span>
+                                             )}
+                                          </div>
+                                       )}
+                                       <div className="mt-2 text-xl font-black text-pink-600">
+                                          {formatPrice(product.price, product.currency)}
+                                       </div>
+                                    </div>
+
+                                    {!!product.tags?.length && (
+                                       <div className="flex min-h-6 flex-wrap gap-1">
+                                          {product.tags.slice(0, 3).map((tag) => (
+                                             <span key={`${product.id}-grid-${tag}`} className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-600">
+                                                #{tag}
+                                             </span>
+                                          ))}
+                                          {product.tags.length > 3 && (
+                                             <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-500">+{product.tags.length - 3}</span>
+                                          )}
+                                       </div>
+                                    )}
+
+                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                                       {renderCatalogStockFlow(product, true)}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                       {!product.is_unlimited ? (
+                                          <button
+                                             onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
+                                             className="min-h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                                          >
+                                             Add stock
+                                          </button>
+                                       ) : (
+                                          <div className="min-h-10 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-400">
+                                             Unlimited
+                                          </div>
+                                       )}
+                                       <button
+                                          onClick={() => openDuplicateVariants(product)}
+                                          className="min-h-10 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700 hover:bg-pink-100"
+                                          aria-label={`Create variants from ${product.name}`}
+                                       >
+                                          Variants
+                                       </button>
+                                    </div>
+                                 </div>
+                              </article>
+                           );
+                        })}
+                     </div>
+                  ) : (
+                     <>
+                     {/* MOBILE VIEW: List/Cards (<768px) */}
+                     <div className="flex flex-col gap-3 md:hidden">
+                        {filteredProducts.map(product => {
+                           const effectiveStatus = getEffectiveStatus(product);
+                           const hasImage = Boolean(product.image_url);
+                           return (
+                           <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row min-h-36 group relative">
+                              {/* Image */}
+                              <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
+                                 {hasImage ? (
+                                    <img
+                                       src={getProductImageUrl(product.image_url, 400)}
+                                       alt={product.name}
+                                       className="w-full h-full object-cover"
+                                       loading="lazy"
+                                       decoding="async"
+                                    />
+                                 ) : (
+                                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400">
+                                       <PackageSearch size={20} aria-hidden="true" />
+                                       <span className="text-[10px] font-black">Image</span>
+                                    </div>
                                  )}
-                                 {renderCatalogStockFlow(product, true)}
+                                 {(effectiveStatus === 'disable' || effectiveStatus === 'soldout') && (
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                       <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
+                                          effectiveStatus === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
+                                       }`}>
+                                          {effectiveStatus === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
+                                       </span>
+                                    </div>
+                                 )}
                               </div>
                               
-                              {/* Mobile Actions (Always Visible) */}
-                              <div className="absolute bottom-2 right-2 flex gap-2">
-                                  <button onClick={(e) => { e.stopPropagation(); openDuplicateVariants(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-pink-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Create variants from ${product.name}`}><Copy size={14}/></button>
-                                  <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
-                                  <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
+                              {/* Content */}
+                              <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
+                                 <div>
+                                    <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
+                                    {product.variant_group_name && (
+                                       <div className="mt-1 flex items-center gap-1">
+                                          <span className="truncate rounded bg-pink-50 px-1.5 py-0.5 text-[9px] font-black text-pink-700">
+                                             {product.variant_group_name}
+                                          </span>
+                                          <span className="truncate text-[9px] font-bold text-gray-500">
+                                             {product.variant_name || product.name}
+                                          </span>
+                                       </div>
+                                    )}
+                                    <div className="mt-1 flex items-baseline gap-2">
+                                       <span className="text-pink-600 font-black text-sm">{formatPrice(product.price, product.currency)}</span>
+                                       {product.category && (
+                                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] font-bold uppercase rounded">
+                                             {product.category}
+                                          </span>
+                                       )}
+                                    </div>
+                                    {!!product.tags?.length && (
+                                       <div className="mt-1 flex flex-wrap gap-1">
+                                          {product.tags.slice(0, 3).map((tag) => (
+                                             <span key={`${product.id}-${tag}`} className="px-1.5 py-0.5 bg-pink-50 text-pink-600 text-[9px] font-bold rounded">
+                                                #{tag}
+                                             </span>
+                                          ))}
+                                          {product.tags.length > 3 && (
+                                             <span className="text-[9px] font-bold text-gray-400">+{product.tags.length - 3}</span>
+                                          )}
+                                       </div>
+                                    )}
+                                    {renderCatalogStockFlow(product, true)}
+                                 </div>
+
+                                 {/* Mobile Actions (Always Visible) */}
+                                 <div className="absolute bottom-2 right-2 flex gap-2">
+                                     <button onClick={(e) => { e.stopPropagation(); openDuplicateVariants(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-pink-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Create variants from ${product.name}`}><Copy size={14}/></button>
+                                     <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
+                                     <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
+                                 </div>
                               </div>
                            </div>
-                        </div>
-                     )})}
-                  </div>
+                        )})}
+                     </div>
 
-                  {/* DESKTOP VIEW: Table (>=768px) */}
-                  <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+                     {/* DESKTOP VIEW: Table (>=768px) */}
+                     <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
                      <table className="w-full text-left border-collapse">
                         <thead>
                            <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
@@ -3728,7 +3885,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            )})}
                         </tbody>
                      </table>
-                  </div>
+                     </div>
+                     </>
+                  )}
                </>
             ) : (
                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">

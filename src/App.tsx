@@ -37,6 +37,7 @@ import ManageLogin from './pages/ManageLogin';
 import { useI18n } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 import InvitationsPage from './pages/InvitationsPage';
+import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
 
 function App() {
   const { t } = useI18n();
@@ -61,6 +62,7 @@ function App() {
       if (!nextSession) {
         setActorContext(null);
         setPendingInvitations([]);
+        clearObservabilityUser();
         return;
       }
 
@@ -69,6 +71,7 @@ function App() {
         loadPendingInvitations(),
       ]);
       setActorContext(ctx);
+      identifyObservabilityUser(nextSession, ctx);
     } catch (error) {
       console.error('[App] Failed to sync session context:', error);
       setActorContext(null);

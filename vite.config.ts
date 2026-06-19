@@ -54,7 +54,9 @@ export default defineConfig({
     })
   ],
   build: {
-    chunkSizeWarningLimit: 1000,
+    // heic2any is loaded only on HEIC uploads in the admin catalog flow.
+    // Keep the warning above that lazy tool chunk while still catching larger bundles.
+    chunkSizeWarningLimit: 1400,
     rollupOptions: {
       output: {
         manualChunks(id) {

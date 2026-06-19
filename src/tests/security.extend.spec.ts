@@ -126,8 +126,8 @@ test.describe('Extended Security Behaviors', () => {
       await page.getByPlaceholder('Search products...').fill(pattern);
       await page.waitForTimeout(500);
       // Catalog workspace should stay rendered after hostile-looking input.
-      await expect(page.getByText('Browse Current Catalog', { exact: true })).toBeVisible();
-      await expect(page.getByText(/Current Catalog \(\d+\)/)).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Find products in the library' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Catalog items \(\d+\)/ })).toBeVisible();
     }
   });
 

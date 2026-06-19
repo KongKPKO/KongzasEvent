@@ -784,7 +784,7 @@ const ManageArtist = () => {
                   <input 
                     id="artist-display-name"
                     name="display_name"
-                    value={artist.display_name}
+                    value={artist.display_name || ''}
                     onChange={handleProfileChange}
                     className="w-full min-h-11 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-500 transition-all"
                   />
@@ -796,7 +796,7 @@ const ManageArtist = () => {
                   <textarea 
                     id="artist-bio"
                     name="bio"
-                    value={artist.bio}
+                    value={artist.bio || ''}
                     onChange={handleProfileChange}
                     rows={3}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-500 transition-all resize-none leading-relaxed"

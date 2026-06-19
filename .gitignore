@@ -103,3 +103,6 @@ debug-*.png
 .env.*.local
 CreateEQ_Source_Code.md
 CreateEQ_Source_Code.md
+
+# Legacy nested checkout kept locally during consolidation. Root is the deploy source.
+KongzasEvent/

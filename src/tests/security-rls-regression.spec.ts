@@ -28,6 +28,9 @@ const ids = {
   secondProduct: randomUUID(),
   raceProduct: randomUUID(),
   allocationProduct: randomUUID(),
+  promotion: randomUUID(),
+  excludedPromotion: randomUUID(),
+  selectedPromotion: randomUUID(),
   order: randomUUID(),
   secondOrder: randomUUID(),
   raceOrder: randomUUID(),
@@ -216,6 +219,7 @@ const seedFixtures = async () => {
 };
 
 const cleanupFixtures = async () => {
+  await service.from('artist_promotions').delete().eq('artist_id', ids.artist);
   await service.from('order_items').delete().in('product_id', [ids.product, ids.secondProduct, ids.raceProduct, ids.allocationProduct]);
   await service.from('event_products').delete().in('event_id', [ids.event, ids.secondEvent, ids.endedEvent]);
   await service.from('orders').delete().in('event_id', [ids.event, ids.secondEvent, ids.endedEvent]);
@@ -546,6 +550,93 @@ test.describe('RLS and mutation security regressions', () => {
       .maybeSingle();
     expect(walkinOrderItem.error).toBeNull();
     expect(walkinOrderItem.data?.currency).toBe('USD');
+  });
+
+  test('promotion event exclusions hide global rules only for the excluded event', async () => {
+    const seedPromotions = await service.from('artist_promotions').insert([
+      {
+        id: ids.promotion,
+        artist_id: ids.artist,
+        name: 'Global Bualoi Promo',
+        target_type: 'product',
+        rule_type: 'discount',
+        match_product_id: null,
+        match_product_ids: [ids.product],
+        buy_quantity: 2,
+        reward_value: 10,
+        reward_quantity: null,
+        priority: 10,
+        status: 'active',
+        event_scope: 'all',
+        event_ids: null,
+        excluded_event_ids: null,
+      },
+      {
+        id: ids.excludedPromotion,
+        artist_id: ids.artist,
+        name: 'Excluded Event Promo',
+        target_type: 'product',
+        rule_type: 'discount',
+        match_product_id: null,
+        match_product_ids: [ids.product],
+        buy_quantity: 2,
+        reward_value: 20,
+        reward_quantity: null,
+        priority: 20,
+        status: 'active',
+        event_scope: 'all',
+        event_ids: null,
+        excluded_event_ids: [ids.event],
+      },
+      {
+        id: ids.selectedPromotion,
+        artist_id: ids.artist,
+        name: 'Selected Second Event Promo',
+        target_type: 'product',
+        rule_type: 'discount',
+        match_product_id: null,
+        match_product_ids: [ids.secondProduct],
+        buy_quantity: 2,
+        reward_value: 30,
+        reward_quantity: null,
+        priority: 30,
+        status: 'active',
+        event_scope: 'selected',
+        event_ids: [ids.secondEvent],
+        excluded_event_ids: null,
+      },
+    ]);
+    expect(seedPromotions.error).toBeNull();
+
+    const currentEventPromotions = await anon.rpc('list_active_promotions', {
+      p_artist_id: ids.artist,
+      p_event_id: ids.event,
+    });
+    expect(currentEventPromotions.error).toBeNull();
+    const currentEventNames = new Set((currentEventPromotions.data || []).map((row: any) => row.name));
+    expect(currentEventNames.has('Global Bualoi Promo')).toBe(true);
+    expect(currentEventNames.has('Excluded Event Promo')).toBe(false);
+    expect(currentEventNames.has('Selected Second Event Promo')).toBe(false);
+
+    const secondEventPromotions = await anon.rpc('list_active_promotions', {
+      p_artist_id: ids.artist,
+      p_event_id: ids.secondEvent,
+    });
+    expect(secondEventPromotions.error).toBeNull();
+    const secondEventNames = new Set((secondEventPromotions.data || []).map((row: any) => row.name));
+    expect(secondEventNames.has('Global Bualoi Promo')).toBe(true);
+    expect(secondEventNames.has('Excluded Event Promo')).toBe(true);
+    expect(secondEventNames.has('Selected Second Event Promo')).toBe(true);
+
+    const allEventPromotions = await anon.rpc('list_active_promotions', {
+      p_artist_id: ids.artist,
+      p_event_id: null,
+    });
+    expect(allEventPromotions.error).toBeNull();
+    const allEventNames = new Set((allEventPromotions.data || []).map((row: any) => row.name));
+    expect(allEventNames.has('Global Bualoi Promo')).toBe(true);
+    expect(allEventNames.has('Excluded Event Promo')).toBe(true);
+    expect(allEventNames.has('Selected Second Event Promo')).toBe(false);
   });
 
   test('event catalog still saves per-product price and stock overrides correctly', async () => {

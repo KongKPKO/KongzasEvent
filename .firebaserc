@@ -5,8 +5,8 @@
   "targets": {
     "event-queue-app": {
       "hosting": {
-        "createeq": [
-          "createeq"
+        "nireqapp": [
+          "nireqapp"
         ]
       }
     }

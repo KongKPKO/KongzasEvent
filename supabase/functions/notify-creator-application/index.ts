@@ -17,8 +17,8 @@ Deno.serve(async (req: Request) => {
       return json({ error: "applicationId is required" }, 400);
     }
 
-    if (!["submitted", "approved", "rejected"].includes(event)) {
-      return json({ error: "event must be submitted, approved, or rejected" }, 400);
+    if (!["submitted", "auto_approved", "approved", "rejected"].includes(event)) {
+      return json({ error: "event must be submitted, auto_approved, approved, or rejected" }, 400);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -41,6 +41,25 @@ Deno.serve(async (req: Request) => {
     const adminEmail = Deno.env.get("ADMIN_APPLICATION_EMAIL") || "konglnwzas@gmail.com";
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const message = buildEmailMessage(application, event, adminEmail);
+    const emailMode = String(Deno.env.get("APPLICATION_EMAIL_MODE") || "send").toLowerCase();
+
+    if (["log", "disabled", "off"].includes(emailMode)) {
+      console.info("[notify-creator-application] Email delivery skipped", {
+        mode: emailMode,
+        event,
+        to: message.to,
+        subject: message.subject,
+        applicationId,
+      });
+      return json({
+        ok: true,
+        delivered: false,
+        provider: emailMode,
+        event,
+        to: message.to,
+        subject: message.subject,
+      });
+    }
 
     if (!resendApiKey) {
       const mailpitApiUrl = Deno.env.get("MAILPIT_API_URL") || "http://host.docker.internal:54324/api/v1/send";
@@ -141,6 +160,16 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
     };
   }
 
+  if (event === "auto_approved") {
+    return {
+      to: adminEmail,
+      toName: "Nireq Admin",
+      subject: `New self-serve creator workspace: ${String(application.creator_name ?? "")}`,
+      html: renderAutoApprovedApplicationEmail(application),
+      text: renderAutoApprovedApplicationText(application),
+    };
+  }
+
   return {
     to: adminEmail,
     toName: "Nireq Admin",
@@ -148,6 +177,48 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
     html: renderApplicationEmail(application),
     text: renderApplicationText(application),
   };
+}
+
+function renderAutoApprovedApplicationText(application: Record<string, unknown>) {
+  return [
+    "New self-serve creator workspace",
+    `Status: ${String(application.status ?? "")}`,
+    `Monitor page: ${appUrl("/admin/applications")}`,
+    `Creator: ${String(application.creator_name ?? "")}`,
+    `Contact: ${String(application.contact_name ?? "")} <${String(application.email ?? "")}>`,
+    `Desired slug: ${String(application.desired_slug ?? "")}`,
+    `Workspace login: ${appUrl("/manage-login")}`,
+    `Primary social: ${String(application.primary_social_url ?? "")}`,
+    `Website: ${String(application.website_url ?? "")}`,
+    `Instagram: ${String(application.instagram_url ?? "")}`,
+    `X: ${String(application.x_url ?? "")}`,
+    `Facebook: ${String(application.facebook_url ?? "")}`,
+    `TikTok: ${String(application.tiktok_url ?? "")}`,
+    "",
+    String(application.application_note ?? ""),
+  ].join("\n");
+}
+
+function renderAutoApprovedApplicationEmail(application: Record<string, unknown>) {
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+      <h1 style="font-size:20px;margin:0 0 12px">New self-serve creator workspace</h1>
+      <p>The workspace was created automatically and is logged for monitoring.</p>
+      <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open signup monitor</a></p>
+      <p><strong>Status:</strong> ${escapeHtml(application.status)}</p>
+      <p><strong>Creator:</strong> ${escapeHtml(application.creator_name)}</p>
+      <p><strong>Contact:</strong> ${escapeHtml(application.contact_name)} &lt;${escapeHtml(application.email)}&gt;</p>
+      <p><strong>Desired slug:</strong> ${escapeHtml(application.desired_slug)}</p>
+      <p><strong>Primary social:</strong> ${renderLink(application.primary_social_url)}</p>
+      <p><strong>Website:</strong> ${renderLink(application.website_url)}</p>
+      <p><strong>Instagram:</strong> ${renderLink(application.instagram_url)}</p>
+      <p><strong>X:</strong> ${renderLink(application.x_url)}</p>
+      <p><strong>Facebook:</strong> ${renderLink(application.facebook_url)}</p>
+      <p><strong>TikTok:</strong> ${renderLink(application.tiktok_url)}</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0" />
+      <p style="white-space:pre-wrap">${escapeHtml(application.application_note)}</p>
+    </div>
+  `;
 }
 
 function appUrl(path: string) {

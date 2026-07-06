@@ -16,7 +16,7 @@ import { ConfirmDialog, Toast } from '../components/ui/Feedback';
 import { LanguageToggle, useI18n } from '../i18n';
 import { invokeNotificationFunction } from '../utils/edgeFunctions';
 
-type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+type ApplicationStatus = 'pending' | 'auto_approved' | 'approved' | 'rejected';
 
 type CreatorApplication = {
   id: string;
@@ -51,8 +51,16 @@ type PendingAction =
 
 const statusClasses: Record<ApplicationStatus, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',
+  auto_approved: 'border-sky-200 bg-sky-50 text-sky-800',
   approved: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   rejected: 'border-red-200 bg-red-50 text-red-700',
+};
+
+const statusLabelKey: Record<ApplicationStatus, 'adminPending' | 'adminAutoApproved' | 'adminApproved' | 'adminRejected'> = {
+  pending: 'adminPending',
+  auto_approved: 'adminAutoApproved',
+  approved: 'adminApproved',
+  rejected: 'adminRejected',
 };
 
 const formatDate = (value: string | null, locale: string) => {
@@ -78,7 +86,7 @@ export default function AdminApplications() {
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [applications, setApplications] = useState<CreatorApplication[]>([]);
-  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('pending');
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -257,7 +265,7 @@ export default function AdminApplications() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {(['pending', 'approved', 'rejected', 'all'] as const).map((status) => (
+            {(['all', 'auto_approved', 'pending', 'approved', 'rejected'] as const).map((status) => (
               <button
                 key={status}
                 type="button"
@@ -267,7 +275,7 @@ export default function AdminApplications() {
                   statusFilter === status ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                 }`}
               >
-                {t(status === 'pending' ? 'adminPending' : status === 'approved' ? 'adminApproved' : status === 'rejected' ? 'adminRejected' : 'adminAll')}
+                {t(status === 'all' ? 'adminAll' : statusLabelKey[status])}
               </button>
             ))}
             <button
@@ -301,7 +309,7 @@ export default function AdminApplications() {
                   <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase ${statusClasses[application.status]}`}>
-                        {application.status}
+                        {t(statusLabelKey[application.status])}
                       </span>
                       <span className="text-xs font-bold text-gray-500">{t('adminApplied', { date: formatDate(application.created_at, dateLocale) })}</span>
                       {application.reviewed_at && <span className="text-xs font-bold text-gray-500">{t('adminReviewed', { date: formatDate(application.reviewed_at, dateLocale) })}</span>}

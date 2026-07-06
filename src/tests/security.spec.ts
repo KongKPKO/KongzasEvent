@@ -4,7 +4,7 @@ import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
 const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword123!';
-const BASE_URL = 'http://localhost:5173';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 // Setup Supabase Client
 const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();

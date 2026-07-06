@@ -1,0 +1,3 @@
+-- PROD already records migration version 20260522100453, but the original
+-- migration file is not present in this checkout. Keep this no-op file so
+-- local migration history stays aligned without rewriting remote history.

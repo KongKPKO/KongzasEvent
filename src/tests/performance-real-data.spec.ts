@@ -10,7 +10,7 @@ const ARTIST_ID = randomUUID();
 const EVENT_ID = randomUUID();
 const ARTIST_SLUG = `perf-${Date.now()}`;
 
-test.skip(!SERVICE_KEY, 'Set TEST_SUPABASE_SERVICE_KEY to seed and clean real-data performance fixtures.');
+test.skip(!SERVICE_KEY, 'Set the service-role test key to seed and clean real-data performance fixtures.');
 
 const service = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: {

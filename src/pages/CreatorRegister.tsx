@@ -45,7 +45,7 @@ const slugify = (value: string) =>
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
+    .slice(0, 30);
 
 const normalizeOptionalUrl = (value: string) => value.trim() || null;
 
@@ -56,7 +56,7 @@ export default function CreatorRegister() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
-  const slugValid = /^[a-z0-9][a-z0-9-]{2,38}[a-z0-9]$/.test(form.desiredSlug);
+  const slugValid = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(form.desiredSlug);
   const hasSocialProof = form.primarySocialUrl.trim().startsWith('http');
   const noteValid = form.applicationNote.trim().length >= 20;
   const passwordsMatch = form.password.length >= 8 && form.password === form.confirmPassword;
@@ -150,7 +150,7 @@ export default function CreatorRegister() {
       if (applicationError) throw applicationError;
 
       if (application?.id) {
-        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId: application.id });
+        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId: application.id, event: 'auto_approved' });
         if (notifyError) {
           console.warn('[CreatorRegister] Notification failed:', notifyError);
         }

@@ -4,7 +4,7 @@ import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
 const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword123!';
-const BASE_URL = 'http://localhost:5173';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 // Setup Supabase Client
 const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
@@ -66,8 +66,11 @@ test.describe('Extended Security Behaviors', () => {
     await clickSignOut(page);
     await expect(page).toHaveURL(/\/manage-login/, { timeout: 10000 });
 
-    // Try visiting a protected route again
-    await page.goto(`${BASE_URL}/manage-products`);
+    // Try visiting a protected route again. Some mobile WebKit runs redirect so
+    // quickly that Playwright reports the protected navigation as interrupted.
+    await page.goto(`${BASE_URL}/manage-products`).catch((error) => {
+      if (!String(error).includes('interrupted by another navigation')) throw error;
+    });
     await expect(page).toHaveURL(/\/manage-login/);
   });
 

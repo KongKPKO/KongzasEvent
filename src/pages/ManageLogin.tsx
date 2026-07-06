@@ -49,7 +49,7 @@ const ManageLogin = () => {
       : `/live/queue${query}`;
   }, []);
 
-  const routeAfterAuth = useCallback(async () => {
+  const routeAfterAuth = useCallback(async (options?: { allowAdminFallback?: boolean }) => {
     if (routeInFlightRef.current) return;
     routeInFlightRef.current = true;
 
@@ -68,9 +68,9 @@ const ManageLogin = () => {
         navigate(await getLivePathForRole(ctx?.role));
       } else if ((invites || []).length > 0) {
         navigate('/invitations');
-      } else if (isAdmin) {
+      } else if (isAdmin && options?.allowAdminFallback) {
         navigate('/admin/applications');
-      } else {
+      } else if (!isAdmin) {
         setErrorMsg(t('loginNoWorkspace'));
       }
     } finally {
@@ -128,7 +128,7 @@ const ManageLogin = () => {
         return;
       }
 
-      await routeAfterAuth();
+      await routeAfterAuth({ allowAdminFallback: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
       setErrorMsg(message);

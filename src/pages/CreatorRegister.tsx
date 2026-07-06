@@ -49,6 +49,11 @@ const slugify = (value: string) =>
 
 const normalizeOptionalUrl = (value: string) => value.trim() || null;
 
+const isExistingAccountResponse = (errorMessage: string | null | undefined, identities?: unknown[]) => {
+  const normalized = String(errorMessage || '').toLowerCase();
+  return normalized.includes('already registered') || normalized.includes('already exists') || (Array.isArray(identities) && identities.length === 0);
+};
+
 export default function CreatorRegister() {
   const { t } = useI18n();
   const [form, setForm] = useState<FormState>(initialForm);
@@ -96,6 +101,17 @@ export default function CreatorRegister() {
     }));
   };
 
+  const resolveSubmitError = (error: unknown) => {
+    const rawMessage = error instanceof Error ? error.message : String(error || '');
+    const normalized = rawMessage.toLowerCase();
+
+    if (normalized.includes('workspace already exists')) return t('registerErrWorkspaceExists');
+    if (normalized.includes('desired url slug is already taken') || (normalized.includes('slug') && normalized.includes('duplicate'))) return t('registerErrSlugTaken');
+    if (normalized.includes('already registered') || normalized.includes('already exists')) return t('registerErrEmailExists');
+    if (normalized.includes('row-level security')) return t('registerErrSubmit');
+    return rawMessage || t('registerErrSubmit');
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setErrorMsg(null);
@@ -109,6 +125,21 @@ export default function CreatorRegister() {
 
     try {
       const email = form.email.trim().toLowerCase();
+      const desiredSlug = form.desiredSlug.trim();
+      let userId = '';
+
+      const { data: slugAvailable, error: slugCheckError } = await supabase.rpc('is_creator_slug_available', {
+        p_slug: desiredSlug,
+      });
+
+      if (slugCheckError) {
+        console.warn('[CreatorRegister] Slug availability check failed:', slugCheckError);
+      }
+
+      if (slugAvailable === false) {
+        throw new Error('Desired URL slug is already taken');
+      }
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password: form.password,
@@ -116,14 +147,24 @@ export default function CreatorRegister() {
           data: {
             creator_name: form.creatorName.trim(),
             contact_name: form.contactName.trim(),
-            desired_slug: form.desiredSlug.trim(),
+            desired_slug: desiredSlug,
           },
         },
       });
 
-      if (signUpError) throw signUpError;
+      if (signUpError && !isExistingAccountResponse(signUpError.message)) throw signUpError;
 
-      const userId = signUpData.user?.id;
+      userId = signUpData.user?.id || '';
+
+      if (isExistingAccountResponse(signUpError?.message, signUpData.user?.identities)) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: form.password,
+        });
+        if (signInError) throw new Error(t('registerErrEmailExists'));
+        userId = signInData.user?.id || userId;
+      }
+
       if (!userId) {
         throw new Error('Could not create an auth user for this application.');
       }
@@ -132,10 +173,11 @@ export default function CreatorRegister() {
         .from('creator_applications')
         .insert({
           auth_user_id: userId,
+          status: 'auto_approved',
           email,
           contact_name: form.contactName.trim(),
           creator_name: form.creatorName.trim(),
-          desired_slug: form.desiredSlug.trim(),
+          desired_slug: desiredSlug,
           primary_social_url: form.primarySocialUrl.trim(),
           website_url: normalizeOptionalUrl(form.websiteUrl),
           instagram_url: normalizeOptionalUrl(form.instagramUrl),
@@ -159,8 +201,7 @@ export default function CreatorRegister() {
       setSubmittedEmail(email);
       setForm(initialForm);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not submit application';
-      setErrorMsg(message);
+      setErrorMsg(resolveSubmitError(error));
     } finally {
       setLoading(false);
     }

@@ -352,6 +352,10 @@ const translations = {
     registerErrSocial: 'Primary social link must start with http:// or https://.',
     registerErrNote: 'Application note needs {count} more characters.',
     registerErrTruthful: 'Please confirm this is a real creator/business application.',
+    registerErrWorkspaceExists: 'This email already has a workspace. Please sign in instead.',
+    registerErrSlugTaken: 'This URL slug is already taken. Try another one.',
+    registerErrEmailExists: 'This email already exists. Sign in with the same password, or use another email.',
+    registerErrSubmit: 'Could not create the workspace. Please try again or contact support.',
 
     adminChecking: 'Checking admin access...',
     adminAccessRequired: 'Admin access required',
@@ -797,6 +801,10 @@ const translations = {
     registerErrSocial: 'ลิงก์ social หลักต้องขึ้นต้นด้วย http:// หรือ https://.',
     registerErrNote: 'รายละเอียดใบสมัครต้องเพิ่มอีก {count} ตัวอักษร.',
     registerErrTruthful: 'กรุณายืนยันว่านี่คือใบสมัคร creator/ธุรกิจจริง.',
+    registerErrWorkspaceExists: 'อีเมลนี้มี workspace แล้ว กรุณาเข้าสู่ระบบแทน.',
+    registerErrSlugTaken: 'URL slug นี้ถูกใช้แล้ว ลองเปลี่ยนชื่อใหม่.',
+    registerErrEmailExists: 'อีเมลนี้มีบัญชีอยู่แล้ว ให้ใช้รหัสเดิมเพื่อสมัครต่อ หรือใช้อีเมลอื่น.',
+    registerErrSubmit: 'สร้าง workspace ไม่สำเร็จ กรุณาลองใหม่หรือติดต่อผู้ดูแล.',
 
     adminChecking: 'กำลังตรวจสอบสิทธิ์ admin...',
     adminAccessRequired: 'ต้องใช้สิทธิ์ Admin',

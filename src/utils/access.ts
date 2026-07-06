@@ -76,6 +76,31 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
   };
 };
 
+type CreatorSignupCompletionStatus = 'created' | 'exists' | 'not_pending' | 'email_unconfirmed' | 'error';
+
+export const completePendingVerifiedCreatorSignup = async (): Promise<CreatorSignupCompletionStatus> => {
+  try {
+    const { data, error } = await withTimeout(supabase.rpc('complete_verified_creator_signup'), 8000);
+    if (error) {
+      console.error('[Access] complete_verified_creator_signup failed:', error);
+      return 'error';
+    }
+
+    const status = typeof data === 'object' && data && 'status' in data
+      ? String((data as { status?: unknown }).status)
+      : 'not_pending';
+
+    if (status === 'created' || status === 'exists' || status === 'not_pending' || status === 'email_unconfirmed') {
+      return status;
+    }
+
+    return 'error';
+  } catch (error) {
+    console.error('[Access] complete_verified_creator_signup request failed:', error);
+    return 'error';
+  }
+};
+
 export const fetchActorContext = async (): Promise<ActorContext | null> => {
   try {
     const { data, error } = await withTimeout(supabase.rpc('get_actor_context'));

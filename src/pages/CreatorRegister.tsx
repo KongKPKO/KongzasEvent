@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n } from '../i18n';
-import { invokeNotificationFunction } from '../utils/edgeFunctions';
 
 type FormState = {
   email: string;
@@ -49,9 +48,9 @@ const slugify = (value: string) =>
 
 const normalizeOptionalUrl = (value: string) => value.trim() || null;
 
-const isExistingAccountResponse = (errorMessage: string | null | undefined, identities?: unknown[]) => {
+const isExistingAccountResponse = (errorMessage: string | null | undefined) => {
   const normalized = String(errorMessage || '').toLowerCase();
-  return normalized.includes('already registered') || normalized.includes('already exists') || (Array.isArray(identities) && identities.length === 0);
+  return normalized.includes('already registered') || normalized.includes('already exists');
 };
 
 export default function CreatorRegister() {
@@ -126,7 +125,6 @@ export default function CreatorRegister() {
     try {
       const email = form.email.trim().toLowerCase();
       const desiredSlug = form.desiredSlug.trim();
-      let userId = '';
 
       const { data: slugAvailable, error: slugCheckError } = await supabase.rpc('is_creator_slug_available', {
         p_slug: desiredSlug,
@@ -144,59 +142,29 @@ export default function CreatorRegister() {
         email,
         password: form.password,
         options: {
+          emailRedirectTo: `${window.location.origin}/manage-login?verified=1`,
           data: {
+            creator_signup: 'self_serve',
             creator_name: form.creatorName.trim(),
             contact_name: form.contactName.trim(),
             desired_slug: desiredSlug,
+            primary_social_url: form.primarySocialUrl.trim(),
+            website_url: normalizeOptionalUrl(form.websiteUrl),
+            instagram_url: normalizeOptionalUrl(form.instagramUrl),
+            x_url: normalizeOptionalUrl(form.xUrl),
+            facebook_url: normalizeOptionalUrl(form.facebookUrl),
+            tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
+            application_note: form.applicationNote.trim(),
           },
         },
       });
 
-      if (signUpError && !isExistingAccountResponse(signUpError.message)) throw signUpError;
-
-      userId = signUpData.user?.id || '';
-
-      if (isExistingAccountResponse(signUpError?.message, signUpData.user?.identities)) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password: form.password,
-        });
-        if (signInError) throw new Error(t('registerErrEmailExists'));
-        userId = signInData.user?.id || userId;
+      if (signUpError) {
+        if (isExistingAccountResponse(signUpError.message)) throw new Error(t('registerErrEmailExists'));
+        throw signUpError;
       }
 
-      if (!userId) {
-        throw new Error('Could not create an auth user for this application.');
-      }
-
-      const { data: application, error: applicationError } = await supabase
-        .from('creator_applications')
-        .insert({
-          auth_user_id: userId,
-          status: 'auto_approved',
-          email,
-          contact_name: form.contactName.trim(),
-          creator_name: form.creatorName.trim(),
-          desired_slug: desiredSlug,
-          primary_social_url: form.primarySocialUrl.trim(),
-          website_url: normalizeOptionalUrl(form.websiteUrl),
-          instagram_url: normalizeOptionalUrl(form.instagramUrl),
-          x_url: normalizeOptionalUrl(form.xUrl),
-          facebook_url: normalizeOptionalUrl(form.facebookUrl),
-          tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
-          application_note: form.applicationNote.trim(),
-        })
-        .select('id')
-        .single();
-
-      if (applicationError) throw applicationError;
-
-      if (application?.id) {
-        const { error: notifyError } = await invokeNotificationFunction('notify-creator-application', { applicationId: application.id, event: 'auto_approved' });
-        if (notifyError) {
-          console.warn('[CreatorRegister] Notification failed:', notifyError);
-        }
-      }
+      if (signUpData.session) await supabase.auth.signOut();
 
       setSubmittedEmail(email);
       setForm(initialForm);

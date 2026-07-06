@@ -7,7 +7,7 @@ function LiveQueueRedirect() {
   return <Navigate to={`/live/queue${search}`} replace />;
 }
 import { supabase } from './supabaseClient';
-import { fetchActorContext } from './utils/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext } from './utils/access';
 import type { ActorContext } from './types/access';
 import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages, canUsePos } from './types/access';
 
@@ -65,6 +65,8 @@ function App() {
         clearObservabilityUser();
         return;
       }
+
+      await completePendingVerifiedCreatorSignup();
 
       const [ctx] = await Promise.all([
         fetchActorContext(),

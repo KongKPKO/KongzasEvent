@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import { Card, Button } from '../components/ui';
 import { KeyRound, Mail, AlertCircle, Send } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchActorContext } from '../utils/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
@@ -54,6 +54,7 @@ const ManageLogin = () => {
     routeInFlightRef.current = true;
 
     try {
+      const signupCompletionStatus = await completePendingVerifiedCreatorSignup();
       const ctx = await fetchActorContext();
       const [{ data: isAdmin }, { data: invites }] = await Promise.all([
         supabase.rpc('is_platform_admin'),
@@ -70,6 +71,8 @@ const ManageLogin = () => {
         navigate('/invitations');
       } else if (isAdmin && options?.allowAdminFallback) {
         navigate('/admin/applications');
+      } else if (signupCompletionStatus === 'email_unconfirmed') {
+        setErrorMsg(t('loginConfirmEmailFirst'));
       } else if (!isAdmin) {
         setErrorMsg(t('loginNoWorkspace'));
       }

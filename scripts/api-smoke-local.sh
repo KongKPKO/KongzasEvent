@@ -63,6 +63,14 @@ if ! grep -q '"id":"Avatar"' /tmp/api_smoke_resp.txt; then
 fi
 
 SMOKE_PATH="public/_smoke/$(date +%s).webp"
+cleanup_smoke_object() {
+  curl -sS -o /dev/null -X DELETE "${API_URL}/storage/v1/object/Menu/${SMOKE_PATH}" \
+    -H "apikey: ${SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" || true
+  rm -f /tmp/api_smoke_upload.webp /tmp/api_smoke_resp.txt
+}
+trap cleanup_smoke_object EXIT
+
 printf 'api-smoke-image' > /tmp/api_smoke_upload.webp
 code="$(request_code -X POST "${API_URL}/storage/v1/object/Menu/${SMOKE_PATH}" \
   -H "apikey: ${SERVICE_ROLE_KEY}" \

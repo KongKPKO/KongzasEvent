@@ -80,6 +80,8 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   const [slipPreview, setSlipPreview] = useState<{ order: PreorderPaymentReviewRow; url: string } | null>(null);
   const [slipLoadingId, setSlipLoadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+  const [failedNotification, setFailedNotification] = useState<{ orderId: string; event: 'confirmed' | 'rejected'; pickupCode: string } | null>(null);
+  const [notificationRetrying, setNotificationRetrying] = useState(false);
   const slipCloseRef = useRef<HTMLButtonElement | null>(null);
   const slipPreviousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -252,6 +254,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             : order
         )));
         const { error: notifyError } = await notifyPreorderPayment({ orderId: targetOrder.order_id, event: 'confirmed' });
+        setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'confirmed', pickupCode: targetOrder.pickup_code } : null);
         const readyMessage = targetOrder.order_type === 'post_event'
           ? `${targetOrder.pickup_code} is ready for shipment.`
           : `${targetOrder.pickup_code} is ready for pickup.`;
@@ -259,7 +262,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           tone: notifyError ? 'warning' : 'success',
           title: 'Payment confirmed',
           detail: notifyError
-            ? `${readyMessage} Email delivery failed.`
+            ? `${readyMessage} Email was not sent. Use Retry email; the payment will not be confirmed twice.`
             : `${readyMessage} Customer email was sent.`,
         });
       } else if (reviewAction.type === 'reject') {
@@ -275,11 +278,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             : order
         )));
         const { error: notifyError } = await notifyPreorderPayment({ orderId: targetOrder.order_id, event: 'rejected' });
+        setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'rejected', pickupCode: targetOrder.pickup_code } : null);
         setToast({
           tone: notifyError ? 'warning' : 'success',
           title: 'Payment rejected',
           detail: notifyError
-            ? 'Reserved stock was released. Email delivery failed.'
+            ? 'Reserved stock was released. Email was not sent; use Retry email.'
             : 'Reserved stock was released and the customer email was sent.',
         });
       } else {
@@ -317,6 +321,22 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const retryFailedNotification = async () => {
+    if (!failedNotification || notificationRetrying) return;
+    setNotificationRetrying(true);
+    const { error } = await notifyPreorderPayment({
+      orderId: failedNotification.orderId,
+      event: failedNotification.event,
+    });
+    setNotificationRetrying(false);
+    if (error) {
+      setToast({ tone: 'warning', title: 'Email still not sent', detail: 'The order state is already saved. Try the email again later.' });
+      return;
+    }
+    setToast({ tone: 'success', title: 'Customer email sent', detail: `${failedNotification.pickupCode} notification delivered without repeating the payment action.` });
+    setFailedNotification(null);
   };
 
   const statCards: Array<{ key: StatusFilter; label: string; value: string; classes: string; activeClasses: string }> = [
@@ -379,7 +399,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         open={Boolean(reviewAction)}
         title={
           reviewAction?.type === 'confirm'
-            ? 'Confirm payment?'
+            ? 'Confirm transfer received?'
             : reviewAction?.type === 'ship'
               ? 'Mark order shipped?'
               : 'Reject payment?'
@@ -387,7 +407,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         detail={
           reviewAction
             ? reviewAction.type === 'confirm'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nOrder will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
+              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Nireq does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
               : reviewAction.type === 'ship'
                 ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
                 : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
@@ -395,7 +415,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         }
         confirmLabel={
           reviewAction?.type === 'confirm'
-            ? 'Confirm payment'
+            ? 'Confirm transfer received'
             : reviewAction?.type === 'ship'
               ? 'Mark shipped'
               : 'Reject payment'
@@ -543,7 +563,20 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
           </div>
           <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {scope === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.</p>
         </section>
+
+        {failedNotification && (
+          <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
+            <div>
+              <p className="text-sm font-black text-amber-900">Order saved · email not sent</p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">Retry only sends the email for {failedNotification.pickupCode}; it does not repeat payment, stock, or fulfillment changes.</p>
+            </div>
+            <button type="button" onClick={retryFailedNotification} disabled={notificationRetrying} className="min-h-11 rounded-xl bg-amber-900 px-4 text-sm font-black text-white hover:bg-amber-950 disabled:opacity-60">
+              {notificationRetrying ? 'Sending…' : 'Retry email'}
+            </button>
+          </section>
+        )}
 
         <section aria-label="Order status filters" className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           {statCards.map((card) => (

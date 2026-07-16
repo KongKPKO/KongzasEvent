@@ -31,6 +31,20 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Validate non-production test environment
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+        run: node scripts/validate-release-env.mjs ci
+
+      - name: Run Lint & Build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+          VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+          VITE_RELEASE_SHA: ${{ github.sha }}
+        run: npm run lint && npm run build
+
       # 5. ติดตั้ง Browser สำหรับ Playwright
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
@@ -38,18 +52,19 @@ jobs:
       # 6. เริ่มรัน Server (Frontend) แบบ Background
       - name: Start Frontend App
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
+          VITE_RELEASE_SHA: ${{ github.sha }}
         run: |
           npm run dev -- --host &
           npx wait-on tcp:5173 --timeout 60000
 
       # 7. รัน Security Tests
       - name: 🔒 Run Security Tests
-        run: npx playwright test security.spec.ts --project=chromium
+        run: npx playwright test security.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
@@ -58,54 +73,54 @@ jobs:
 
       # 8. รัน Resilience Tests
       - name: 💪 Run Resilience Tests
-        run: npx playwright test resilience.spec.ts --project=chromium
+        run: npx playwright test resilience.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
 
       # 9. รัน E2E Tests
       - name: 🔄 Run E2E Tests (Full Service Loop)
-        run: npx playwright test full-service-loop.spec.ts --project=chromium
+        run: npx playwright test full-service-loop.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
 
       # 10. รัน Performance Tests
       - name: ⚡ Run Performance Tests
-        run: npx playwright test performance.spec.ts --project=chromium
+        run: npx playwright test performance.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
 
       # 11. รัน Mobile Responsive Tests
       - name: 📱 Run Mobile Responsive Tests
-        run: npx playwright test mobile-responsive.spec.ts --project=chromium
+        run: npx playwright test mobile-responsive.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
 
       # 12. รัน Offline/Network Tests
       - name: 📡 Run Offline & Network Tests
-        run: npx playwright test offline-poor-network.spec.ts --project=chromium
+        run: npx playwright test offline-poor-network.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
 
       # 13. รัน Accessibility Tests
       - name: ♿ Run Accessibility Tests (WCAG 2.1)
-        run: npx playwright test accessibility.spec.ts --project=chromium
+        run: npx playwright test accessibility.spec.ts --project=desktop-chromium
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_EMAIL: ${{ vars.TEST_USER_A_EMAIL }}
           TEST_PASSWORD: ${{ secrets.TEST_USER_A_PASS }}
@@ -114,17 +129,17 @@ jobs:
       - name: 🌐 Run Browser Compatibility Tests
         run: npx playwright test browser-compatibility.spec.ts
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
           TEST_SLUG: ${{ vars.TEST_SLUG || 'test1' }}
 
       # 15. รัน Load Test (30 VUs - Realistic Event Load)
       - name: 🔥 Run Load Test (30 Concurrent Users)
-        run: k6 run -e SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} -e SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }} -e ARTIST_SLUG=test1 src/tests/load-test.k6.ts
+        run: k6 run -e SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} -e SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} -e ARTIST_SLUG=test1 src/tests/load-test.k6.ts
 
       # 16. รัน K6 Soak Test (Extended API Performance)
       - name: 🔥 Run K6 Soak Test (API Performance)
-        run: k6 run -e SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} -e SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }} -e ARTIST_SLUG=test1 src/tests/api-soak-test.js
+        run: k6 run -e SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} -e SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} -e ARTIST_SLUG=test1 src/tests/api-soak-test.js
 
       # 17. เก็บผลเทสไว้ดู (Artifacts)
       - name: 📊 Upload Test Report

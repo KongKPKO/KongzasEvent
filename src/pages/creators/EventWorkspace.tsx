@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
+import GuidedSetupPanel from '../../components/creator/GuidedSetupPanel';
+import { deriveSetupReadiness } from '../../lib/setupReadiness';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../../types/access';
@@ -66,6 +68,20 @@ interface WorkspaceEvent {
   queueing_area?: string | null;
   entrance_fee?: string | null;
   transit_info?: string | null;
+}
+
+interface WorkspaceArtistSetup {
+  display_name?: string | null;
+  slug?: string | null;
+  email?: string | null;
+  is_public?: boolean | null;
+}
+
+interface WorkspacePaymentMethod {
+  promptpay_id?: string | null;
+  account_number?: string | null;
+  qr_image_url?: string | null;
+  instructions?: string | null;
 }
 
 interface WorkspaceOrder {
@@ -643,6 +659,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   const navigate = useNavigate();
   const [event, setEvent] = useState<WorkspaceEvent | null>(null);
   const [metrics, setMetrics] = useState<WorkspaceMetrics>(emptyMetrics);
+  const [artistSetup, setArtistSetup] = useState<WorkspaceArtistSetup | null>(null);
+  const [hasPaymentInstructions, setHasPaymentInstructions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -671,7 +689,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       if (!eventData) throw new Error('Event not found.');
 
       const normalizedEvent = normalizeEventRecord(eventData, getBrowserTimeZone()) as WorkspaceEvent;
-      const [ordersResult, queuesResult, productsResult] = await Promise.all([
+      const [ordersResult, queuesResult, productsResult, artistResult, paymentResult] = await Promise.all([
         supabase
           .from('orders')
           .select('id, event_id, status, total_price, currency, order_type, pickup_status')
@@ -683,19 +701,43 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         canAccessManagementPages(actorContext.role)
           ? supabase.rpc('list_event_products', { p_event_id: eventId })
           : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from('artists')
+          .select('display_name, slug, email, is_public')
+          .eq('id', normalizedEvent.artist_id)
+          .maybeSingle(),
+        canAccessManagementPages(actorContext.role)
+          ? supabase
+            .from('event_payment_methods')
+            .select('promptpay_id, account_number, qr_image_url, instructions')
+            .eq('event_id', eventId)
+            .eq('is_enabled', true)
+            .limit(1)
+            .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (ordersResult.error) throw ordersResult.error;
       if (queuesResult.error) throw queuesResult.error;
       if (productsResult.error) throw productsResult.error;
+      if (artistResult.error) throw artistResult.error;
+      if (paymentResult.error) throw paymentResult.error;
 
       const orders = (ordersResult.data || []) as WorkspaceOrder[];
       const queues = (queuesResult.data || []) as WorkspaceQueue[];
       const products = (productsResult.data || []) as WorkspaceProduct[];
+      const paymentMethod = paymentResult.data as WorkspacePaymentMethod | null;
       const completedOrders = orders.filter((order) => order.status === 'completed');
       const currency = completedOrders[0]?.currency || orders[0]?.currency || 'THB';
 
       setEvent(normalizedEvent);
+      setArtistSetup(artistResult.data as WorkspaceArtistSetup | null);
+      setHasPaymentInstructions(Boolean(
+        paymentMethod?.promptpay_id?.trim()
+        || paymentMethod?.account_number?.trim()
+        || paymentMethod?.qr_image_url?.trim()
+        || paymentMethod?.instructions?.trim()
+      ));
       setMetrics({
         awaitingPickup: orders.filter((order) => ['preorder', 'post_event'].includes(order.order_type || '') && order.pickup_status === 'awaiting_pickup').length,
         completedOrders: completedOrders.length,
@@ -736,6 +778,32 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     if (!event) return [];
     return buildSetupGroups(event, metrics, actorContext);
   }, [actorContext, event, metrics]);
+
+  const setupReadiness = useMemo(() => {
+    if (!event || !artistSetup || !canAccessManagementPages(actorContext.role)) return null;
+    return deriveSetupReadiness({
+      profile: {
+        displayName: artistSetup.display_name,
+        slug: artistSetup.slug,
+        contact: artistSetup.email,
+      },
+      event: {
+        status: event.status,
+        startDate: event.start_date,
+        endDate: event.end_date,
+        timezone: event.event_timezone,
+        location: event.location || event.location_name,
+        booth: event.booth_detail || event.booth_number,
+        queueArea: event.queueing_area,
+        preorderEnabled: event.preorder_enabled || event.selling_mode === 'preorder',
+        postorderEnabled: event.postorder_enabled || event.selling_mode === 'post_event',
+      },
+      sellingProductCount: metrics.sellingProductCount,
+      hasPaymentInstructions,
+      hasPickupInstructions: Boolean(event.preorder_pickup_instructions?.trim()),
+      isPublished: Boolean(artistSetup.is_public),
+    });
+  }, [actorContext.role, artistSetup, event, hasPaymentInstructions, metrics.sellingProductCount]);
 
 
   const goToAllEvents = () => {
@@ -957,6 +1025,15 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           </div>
         </section>
 
+        {setupReadiness && !setupReadiness.complete && (
+          <GuidedSetupPanel
+            readiness={setupReadiness}
+            eventId={event.id}
+            onEditEvent={openEventEditor}
+            onNavigate={navigate}
+          />
+        )}
+
         {primaryAction ? (
           <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label="Current event status">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -987,7 +1064,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           </section>
         )}
 
-        {setupGroups.length > 0 && (
+        {setupReadiness?.complete && setupGroups.length > 0 && (
           <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event setup checklist">
             <div className="mb-4">
               <p className="text-xs font-black uppercase tracking-wide text-gray-400">Setup</p>

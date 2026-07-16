@@ -59,6 +59,8 @@ export default function CreatorRegister() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   const slugValid = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(form.desiredSlug);
   const hasSocialProof = form.primarySocialUrl.trim().startsWith('http');
@@ -175,6 +177,25 @@ export default function CreatorRegister() {
     }
   };
 
+  const handleResendConfirmation = async () => {
+    if (!submittedEmail || resendLoading) return;
+    setResendLoading(true);
+    setResendMessage(null);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: submittedEmail,
+        options: { emailRedirectTo: `${window.location.origin}/manage-login?verified=1` },
+      });
+      if (error) throw error;
+      setResendMessage('ส่งอีเมลยืนยันใหม่แล้ว กรุณาใช้ลิงก์ล่าสุดในกล่องข้อความ');
+    } catch {
+      setResendMessage('ยังส่งอีเมลใหม่ไม่ได้ กรุณารอสักครู่แล้วลองอีกครั้ง หรือติดต่อ Nireq');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   if (submittedEmail) {
     return (
       <div className="min-h-screen bg-[#f7f4ef] px-4 py-8 text-gray-900">
@@ -190,13 +211,19 @@ export default function CreatorRegister() {
             <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
               {t('registerApplicationLocked')}
             </div>
-            <Link
-              to="/manage-login"
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-bold text-white hover:bg-black"
-            >
-              <ArrowLeft size={16} />
-              {t('registerBackLogin')}
-            </Link>
+            {resendMessage && <p className="mt-4 rounded-xl border border-pink-100 bg-pink-50 p-3 text-sm font-semibold text-pink-900" role="status">{resendMessage}</p>}
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                to="/manage-login"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-bold text-white hover:bg-black"
+              >
+                <ArrowLeft size={16} />
+                {t('registerBackLogin')}
+              </Link>
+              <button type="button" onClick={handleResendConfirmation} disabled={resendLoading} className="min-h-11 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm font-black text-pink-700 hover:bg-pink-50 disabled:opacity-60">
+                {resendLoading ? 'กำลังส่ง…' : 'ส่งอีเมลยืนยันอีกครั้ง'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -329,7 +356,12 @@ export default function CreatorRegister() {
                 onChange={(event) => updateField('truthful', event.target.checked)}
                 className="mt-1 h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600"
               />
-              <span>{t('registerTruthful')}</span>
+              <span>
+                {t('registerTruthful')}{' '}
+                <Link to="/terms" className="font-bold text-pink-700 underline underline-offset-2">ข้อกำหนด</Link>
+                {' '}และ{' '}
+                <Link to="/privacy" className="font-bold text-pink-700 underline underline-offset-2">นโยบายความเป็นส่วนตัว</Link>
+              </span>
             </label>
 
             <button

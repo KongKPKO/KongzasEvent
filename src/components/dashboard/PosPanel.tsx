@@ -1500,8 +1500,8 @@ export default function POSPanel({
             {isPaymentModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
-                        <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Confirm Payment</h3>
-                        <p className="text-gray-500 text-center mb-6">Amount: <span className="text-pink-600 font-bold">{formatPrice(pricing.total, cart[0]?.product.currency)}</span></p>
+                        <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Record payment</h3>
+                        <p className="text-gray-500 text-center mb-6">Confirm what you received directly from the customer. Nireq does not check your bank account.<br />Amount: <span className="text-pink-600 font-bold">{formatPrice(pricing.total, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
@@ -1517,7 +1517,7 @@ export default function POSPanel({
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>
-                                <span className="font-bold text-sky-700">TRANSFER</span>
+                                <span className="text-center font-bold text-sky-700">Confirm transfer received</span>
                             </button>
                         </div>
                         <button

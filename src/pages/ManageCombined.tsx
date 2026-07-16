@@ -129,11 +129,10 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
         try {
             setBoothToggleLoading(true);
-            const { error } = await supabase
-                .from('events')
-                .update({ is_booth_open: nextOpen })
-                .eq('id', activeEvent.id)
-                .eq('artist_id', actorContext.artist_id);
+            const { error } = await supabase.rpc('set_booth_open_status', {
+                p_event_id: activeEvent.id,
+                p_is_open: nextOpen,
+            });
 
             if (error) throw error;
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
@@ -143,7 +142,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         } finally {
             setBoothToggleLoading(false);
         }
-    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, actorContext.artist_id, boothToggleLoading]);
+    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading]);
 
     const fetchActiveEvents = useCallback(async () => {
         try {

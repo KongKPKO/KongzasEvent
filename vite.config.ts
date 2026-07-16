@@ -8,22 +8,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['nireq-mark.svg', 'apple-touch-icon.png', 'mask-icon.svg', 'robots.txt', 'sitemap.xml'],
       manifest: {
-        name: 'Event Queue - Artist Alley',
-        short_name: 'Queue',
-        description: 'Real-time Event Queue Management',
-        theme_color: '#6366f1',
+        name: 'Nireq',
+        short_name: 'Nireq',
+        description: 'Creator booth queues, orders, payment evidence, and pickup.',
+        theme_color: '#be185d',
+        background_color: '#fffafc',
+        display: 'standalone',
+        start_url: '/',
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       },

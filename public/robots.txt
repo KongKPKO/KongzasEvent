@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /manage-
+Disallow: /live/
+Disallow: /admin/
+
+Sitemap: https://nireqapp.com/sitemap.xml

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const {
@@ -95,7 +96,10 @@ test.describe('Public Nireq smoke', () => {
     await page.getByRole('button', { name: /switch language|เปลี่ยนภาษา/i }).click();
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
-    await expect(page.getByRole('heading', { name: /ค้นหาบูธครีเอเตอร์/ })).toBeVisible();
+    const thaiHeading = page.getByRole('heading', { name: /ค้นหาบูธครีเอเตอร์/ });
+    await expect(thaiHeading).toBeVisible();
+    await expect(thaiHeading).toHaveCSS('font-family', /Noto Sans Thai/);
+    expect((await thaiHeading.boundingBox())?.height).toBeGreaterThan(0);
     await expect(page.getByText(/Mobile Test Artist|Security Test Artist|Performance/i)).toHaveCount(0);
   });
 
@@ -150,5 +154,23 @@ test.describe('Public Nireq smoke', () => {
     await expect(page.getByRole('heading', { name: 'Creator not found' })).toBeVisible();
     await expect(page.getByText('missing-creator-smoke')).toBeVisible();
     await expect(page.getByRole('link', { name: /Browse creators/ })).toBeVisible();
+  });
+});
+
+test.describe('Public release assets', () => {
+  test('robots, sitemap, manifest, and install icons are served', async ({ request }) => {
+    for (const path of ['/robots.txt', '/sitemap.xml']) {
+      const response = await request.get(path);
+      expect(response.ok(), `${path} should be served`).toBeTruthy();
+    }
+
+    const manifest = JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8'));
+    expect(manifest.name).toBe('Nireq');
+
+    for (const icon of manifest.icons) {
+      const response = await request.get(`/${icon.src}`);
+      expect(response.ok(), icon.src).toBeTruthy();
+      expect(response.headers()['content-type']).toContain('image/png');
+    }
   });
 });

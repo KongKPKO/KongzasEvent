@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureObservabilityMessage } from '../lib/observability';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -13,6 +14,12 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Unhandled render error:', error, info);
+    captureObservabilityMessage('error', 'Unhandled render error', {
+      errorName: error.name,
+      message: error.message,
+      componentStack: info.componentStack || '',
+      release: import.meta.env.VITE_RELEASE_SHA || import.meta.env.VITE_APP_VERSION || 'unknown',
+    });
   }
 
   render() {

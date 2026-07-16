@@ -55,8 +55,8 @@ Deno.serve(async (req: Request) => {
       .eq("id", order_id)
       .single();
 
-    if (orderError || !order || order.order_type !== "preorder") {
-      return json({ error: "Pre-order not found" }, 404);
+    if (orderError || !order || !["preorder", "post_event"].includes(String(order.order_type || ""))) {
+      return json({ error: "Order not found" }, 404);
     }
 
     const payment = await fetchPayment(supabase, order_id);
@@ -66,7 +66,7 @@ Deno.serve(async (req: Request) => {
 
     if (event === "submitted") {
       if (String(order.pickup_code || "").toUpperCase() !== String(pickup_code || "").trim().toUpperCase()) {
-        return json({ error: "Pre-order not found" }, 404);
+        return json({ error: "Order not found" }, 404);
       }
       if (payment.payment_status !== "payment_submitted") {
         return json({ error: "Payment is not submitted" }, 409);
@@ -108,10 +108,26 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Customer email is missing" }, 422);
     }
 
-    const items = await fetchItems(supabase, order_id);
-    const message = buildPreorderEmail(order, payment, items, event as NotificationEvent);
-    const delivery = await deliverEmail(customerEmail, String(order.customer_name || customerEmail), message);
-    return json({ ok: true, delivered: true, ...delivery });
+    const notificationEvent = event as NotificationEvent;
+    const deliveryKey = notificationEvent === "submitted"
+      ? `submitted:${String(payment.submitted_at || "unknown")}`
+      : notificationEvent;
+    const claim = await claimDelivery(supabase, order_id, deliveryKey, notificationEvent);
+    if (!claim.shouldDeliver) {
+      return json({ ok: true, delivered: false, duplicate: true, status: claim.status });
+    }
+
+    try {
+      const items = await fetchItems(supabase, order_id);
+      const message = buildPreorderEmail(order, payment, items, notificationEvent);
+      const delivery = await deliverEmail(customerEmail, String(order.customer_name || customerEmail), message);
+      await finishDelivery(supabase, claim.id, "delivered");
+      return json({ ok: true, delivered: true, ...delivery });
+    } catch (deliveryError) {
+      const detail = deliveryError instanceof Error ? deliveryError.message : "Email delivery failed";
+      await finishDelivery(supabase, claim.id, "failed", detail);
+      throw deliveryError;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json({ error: message }, 500);
@@ -127,6 +143,83 @@ async function fetchPayment(supabase: ReturnType<typeof createClient>, orderId: 
 
   if (error) return null;
   return data;
+}
+
+async function claimDelivery(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+  deliveryKey: string,
+  event: NotificationEvent,
+): Promise<{ id: string; shouldDeliver: boolean; status: string }> {
+  const now = new Date();
+  const { data: inserted, error: insertError } = await supabase
+    .from("preorder_notification_deliveries")
+    .insert({
+      order_id: orderId,
+      delivery_key: deliveryKey,
+      notification_event: event,
+      status: "sending",
+      attempts: 1,
+      claimed_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .select("id, status")
+    .single();
+
+  if (!insertError && inserted) {
+    return { id: inserted.id, shouldDeliver: true, status: inserted.status };
+  }
+  if (insertError?.code !== "23505") throw insertError;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("preorder_notification_deliveries")
+    .select("id, status, attempts, claimed_at")
+    .eq("order_id", orderId)
+    .eq("delivery_key", deliveryKey)
+    .single();
+  if (existingError || !existing) throw existingError || new Error("Notification delivery claim is missing");
+
+  const claimedAt = new Date(existing.claimed_at).getTime();
+  const claimIsFresh = Number.isFinite(claimedAt) && now.getTime() - claimedAt < 2 * 60 * 1000;
+  if (existing.status === "delivered" || (existing.status === "sending" && claimIsFresh)) {
+    return { id: existing.id, shouldDeliver: false, status: existing.status };
+  }
+
+  const { data: reclaimed, error: reclaimError } = await supabase
+    .from("preorder_notification_deliveries")
+    .update({
+      status: "sending",
+      attempts: Number(existing.attempts || 0) + 1,
+      claimed_at: now.toISOString(),
+      updated_at: now.toISOString(),
+      last_error: null,
+    })
+    .eq("id", existing.id)
+    .eq("claimed_at", existing.claimed_at)
+    .select("id, status")
+    .maybeSingle();
+  if (reclaimError) throw reclaimError;
+  if (!reclaimed) return { id: existing.id, shouldDeliver: false, status: "sending" };
+  return { id: reclaimed.id, shouldDeliver: true, status: reclaimed.status };
+}
+
+async function finishDelivery(
+  supabase: ReturnType<typeof createClient>,
+  deliveryId: string,
+  status: "delivered" | "failed",
+  lastError?: string,
+) {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("preorder_notification_deliveries")
+    .update({
+      status,
+      delivered_at: status === "delivered" ? now : null,
+      last_error: lastError || null,
+      updated_at: now,
+    })
+    .eq("id", deliveryId);
+  if (error) throw error;
 }
 
 async function fetchItems(supabase: ReturnType<typeof createClient>, orderId: string) {
@@ -201,6 +294,8 @@ function buildPreorderEmail(
   const eventInfo = getEventInfo(order);
   const artistName = eventInfo.artistName || "NireQ creator";
   const eventName = eventInfo.eventName || "your event";
+  const isPostOrder = order.order_type === "post_event";
+  const orderLabel = isPostOrder ? "Post-order" : "Pre-order";
   const pickupCode = String(order.pickup_code || "");
   const amount = formatPrice(Number(payment.amount_expected || order.total_price || 0), String(payment.currency || order.currency || "THB"));
   const itemLines = items.map((item) => {
@@ -218,15 +313,17 @@ function buildPreorderEmail(
     return renderMessage({
       subject: `Payment confirmed: ${pickupCode}`,
       heading: "Payment confirmed",
-      intro: `${artistName} confirmed your pre-order payment. Show this pickup code at the booth.`,
-      status: "Ready for pickup",
+      intro: isPostOrder
+        ? `${artistName} confirmed your post-order payment and will prepare the shipment.`
+        : `${artistName} confirmed your pre-order payment. Show this pickup code at the booth.`,
+      status: isPostOrder ? "Preparing shipment" : "Ready for pickup",
       eventName,
       pickupCode,
       amount,
       locationLine,
       itemLines,
       orderUrl,
-      note: String(order.pickup_instructions || "Show your pickup code to the booth staff."),
+      note: String(order.pickup_instructions || (isPostOrder ? "The seller will update your order after shipment." : "Show your pickup code to the booth staff.")),
     });
   }
 
@@ -247,8 +344,8 @@ function buildPreorderEmail(
   }
 
   return renderMessage({
-    subject: `Pre-order submitted: ${pickupCode}`,
-    heading: "Pre-order submitted",
+    subject: `${orderLabel} submitted: ${pickupCode}`,
+    heading: `${orderLabel} submitted`,
     intro: `${artistName} received your payment evidence. Your items are reserved while the seller checks the transfer.`,
     status: "Waiting for seller confirmation",
     eventName,
@@ -257,7 +354,7 @@ function buildPreorderEmail(
     locationLine,
     itemLines,
     orderUrl,
-    note: "We will email you again after the seller confirms or rejects the payment.",
+    note: "We will email you again after the seller confirms or rejects the payment evidence.",
   });
 }
 

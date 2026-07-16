@@ -20,6 +20,7 @@ import QueueView from './pages/customer/QueueView';
 import ResetPassword from './pages/ResetPassword';
 import CreatorRegister from './pages/CreatorRegister';
 import AdminApplications from './pages/AdminApplications';
+import LegalPage from './pages/LegalPage';
 
 const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
@@ -137,7 +138,7 @@ function App() {
   const isCustomerRoute = typeof window !== 'undefined'
     ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order)/.test(window.location.pathname)
     : false;
-  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations'].includes(currentPath);
+  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
@@ -177,6 +178,9 @@ function App() {
             <Route path="/creator/register" element={<CreatorRegister />} />
             <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+            <Route path="/terms" element={<LegalPage kind="terms" />} />
+            <Route path="/cookies" element={<LegalPage kind="cookies" />} />
             <Route
               path="/admin/applications"
               element={session ? <AdminApplications /> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}

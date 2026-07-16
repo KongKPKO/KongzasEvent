@@ -125,6 +125,23 @@ const formatEventDateRange = (event: Event) => {
   };
 };
 
+const getPublishErrorMessage = (error: unknown) => {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  const messages: Array<[string, string]> = [
+    ['artist_slug_required', 'Add a public booth URL before publishing.'],
+    ['artist_display_name_required', 'Add the booth display name before publishing.'],
+    ['artist_contact_required', 'Add a creator contact email before publishing.'],
+    ['event_timezone_required', 'Set the event timezone before publishing.'],
+    ['event_location_required', 'Set the event location before publishing.'],
+    ['event_booth_or_queue_area_required', 'Add a booth number/detail or queue meeting area before publishing.'],
+    ['customer_visible_product_required', 'Add at least one enabled product to the customer catalog before publishing.'],
+    ['fulfillment_instructions_required', 'Add pickup or fulfillment instructions before publishing timed orders.'],
+    ['payment_instructions_required', 'Add an enabled payment method or payment instructions before publishing timed orders.'],
+    ['event_not_customer_visible', 'Choose a confirmed event that has not ended.'],
+  ];
+  return messages.find(([code]) => raw.includes(code))?.[1] || raw || 'Failed to publish public booth.';
+};
+
 const emptyMetric: EventMetric = {
   awaitingPickup: 0,
   completedOrders: 0,
@@ -164,6 +181,7 @@ const ManageArtist = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishingPublicLink, setIsPublishingPublicLink] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [publishError, setPublishError] = useState<string | null>(null);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -619,7 +637,7 @@ const ManageArtist = () => {
     return customerVisibleEvents[0] || null;
   };
 
-  const ensurePublicBoothIsPublished = async () => {
+  const publishPublicBooth = async () => {
     if (!artist?.id || !artist.slug) {
       throw new Error('Set a public slug before sharing this booth.');
     }
@@ -649,18 +667,34 @@ const ManageArtist = () => {
     return shareableEvent;
   };
 
+  const handlePublishPublicBooth = async () => {
+    if (isPublishingPublicLink) return;
+
+    try {
+      setIsPublishingPublicLink(true);
+      setPublishError(null);
+      await publishPublicBooth();
+      setCopyFeedback('idle');
+    } catch (error) {
+      console.error('[ManageArtist] Failed to publish public booth:', error);
+      setPublishError(getPublishErrorMessage(error));
+    } finally {
+      setIsPublishingPublicLink(false);
+    }
+  };
+
   const handleCopyPublicUrl = async () => {
     if (!publicPageUrl || isPublishingPublicLink) return;
 
     try {
       setIsPublishingPublicLink(true);
-      await ensurePublicBoothIsPublished();
+      if (!artist?.is_public) throw new Error('Publish the booth before copying its public URL.');
       await navigator.clipboard.writeText(publicPageUrl);
       setCopyFeedback('copied');
     } catch (error) {
       console.error('[ManageArtist] Failed to copy public URL:', error);
       setCopyFeedback('failed');
-      alert(error instanceof Error ? error.message : 'Failed to publish and copy public URL.');
+      alert(error instanceof Error ? error.message : 'Failed to copy public URL.');
     } finally {
       setIsPublishingPublicLink(false);
     }
@@ -677,10 +711,10 @@ const ManageArtist = () => {
 
     try {
       setIsPublishingPublicLink(true);
-      await ensurePublicBoothIsPublished();
+      if (!artist?.is_public) throw new Error('Publish the booth before opening its public catalog.');
       window.open(publicMenuUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.error('[ManageArtist] Failed to publish public catalog:', error);
+      console.error('[ManageArtist] Failed to open public catalog:', error);
       setCopyFeedback('failed');
       alert(error instanceof Error ? error.message : 'Failed to publish public catalog.');
       window.setTimeout(() => setCopyFeedback('idle'), 2500);
@@ -736,21 +770,36 @@ const ManageArtist = () => {
            </div>
            {artist.slug && (
              <div className="flex flex-col sm:flex-row gap-2">
+               {!artist.is_public && (
+                 <button
+                   type="button"
+                   onClick={handlePublishPublicBooth}
+                   disabled={isPublishingPublicLink || !getShareableEvent()}
+                   className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl bg-pink-700 px-4 py-2 text-sm font-black text-white hover:bg-pink-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+                   title={getShareableEvent() ? `Publish /${artist.slug} for ${getShareableEvent()?.event_name}` : 'Add a confirmed, non-expired event first'}
+                 >
+                   <ExternalLink size={16} aria-hidden="true" />
+                   {isPublishingPublicLink ? 'Publishing…' : 'Publish booth'}
+                 </button>
+               )}
                <button
                  type="button"
                  onClick={handleCopyPublicUrl}
-                 disabled={isPublishingPublicLink}
+                 disabled={isPublishingPublicLink || !artist.is_public}
+                 title={artist.is_public ? publicPageUrl : 'Publish the booth before sharing'}
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                >
                  <Copy size={16} aria-hidden="true" />
-                 {isPublishingPublicLink ? 'Publishing...' : copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
+                 {copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
                </button>
                <a
                  href={publicMenuUrl}
                  target="_blank"
                  rel="noreferrer"
                  onClick={handleOpenPublicCatalog}
-                 className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
+                 aria-disabled={!artist.is_public}
+                 title={artist.is_public ? publicMenuUrl : 'Publish the booth before opening the customer catalog'}
+                 className={`workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black ${artist.is_public ? 'text-gray-700 hover:bg-gray-50' : 'cursor-not-allowed text-gray-400'}`}
                >
                  <ExternalLink size={16} aria-hidden="true" />
                  Open public catalog
@@ -758,6 +807,13 @@ const ManageArtist = () => {
              </div>
            )}
         </div>
+
+        {publishError && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900" role="alert">
+            <span>{publishError}</span>
+            <button type="button" onClick={() => setPublishError(null)} className="min-h-11 shrink-0 rounded-lg px-3 text-xs font-black text-amber-900 hover:bg-amber-100">Dismiss</button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           

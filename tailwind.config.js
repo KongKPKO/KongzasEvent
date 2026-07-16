@@ -30,9 +30,9 @@ export default {
         "text-dark": "#e4e4e7",
       },
       fontFamily: {
-        display: ["Outfit", "Inter", "sans-serif"],
-        body: ["Outfit", "Inter", "sans-serif"],
-        sans: ["Inter", "sans-serif"],
+        display: ["Outfit", "Noto Sans Thai", "Inter", "system-ui", "sans-serif"],
+        body: ["Outfit", "Noto Sans Thai", "Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "Noto Sans Thai", "system-ui", "sans-serif"],
       },
       borderRadius: {
         DEFAULT: "0.75rem", // 12px

@@ -375,6 +375,15 @@ deno_version = 2
 [functions.notify-team-invitation]
 verify_jwt = false
 
+[functions.notify-creator-application]
+verify_jwt = false
+
+# Customer evidence submission is intentionally anonymous and authorized by
+# order id + pickup code inside the function. Creator review events verify the
+# caller and event role inside the same function.
+[functions.notify-preorder-payment]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

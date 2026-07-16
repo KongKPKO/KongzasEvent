@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
+import { resolveQueueAvailability } from '../../lib/queueAvailability';
 import {
     TICKET_UPDATED_EVENT,
     clearStoredTicketId,
@@ -687,17 +688,23 @@ const QueueView = () => {
 
     // NOTE: artist prop from useArtistRealtime now contains is_queue_open
     const isQueueOpen = displayArtist?.is_queue_open ?? true; // Default to true if undefined
-    const isQueueUnavailable = !activeEvent || !isBoothOpen || !isQueueOpen;
+    const queueAvailability = resolveQueueAvailability({
+        hasActiveEvent: Boolean(activeEvent),
+        isBoothOpen: Boolean(isBoothOpen),
+        isQueueOpen,
+        broadcastMessage: displayArtist?.broadcast_message,
+    });
+    const isQueueUnavailable = !queueAvailability.acceptsTickets;
     const queueActionGuidance = (() => {
         if (!myTicket) {
-            if (!isQueueOpen) {
+            if (queueAvailability.state === 'queue-paused') {
                 return {
                     title: t('queuePausedTitle'),
-                    detail: t('queuePausedDetail'),
+                    detail: queueAvailability.pauseReason || t('queuePausedDetail'),
                     tone: 'amber',
                 };
             }
-            if (activeEvent && isBoothOpen) {
+            if (queueAvailability.state === 'accepting') {
                 return {
                     title: t('queueGetTicketFirstTitle'),
                     detail: t('queueGetTicketFirstDetail'),

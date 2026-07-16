@@ -2448,6 +2448,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            type="text"
                            value={category}
                            onChange={(e) => setCategory(e.target.value)}
+                           onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                 event.preventDefault();
+                                 event.stopPropagation();
+                              }
+                           }}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
                            placeholder="Select or type..."
                            required
@@ -2660,6 +2666,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               list="category-suggestions"
                               value={templateCategory}
                               onChange={(event) => setTemplateCategory(event.target.value)}
+                              onKeyDown={(event) => {
+                                 if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                 }
+                              }}
                               className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
                               placeholder="Sticker"
                               required
@@ -4145,6 +4157,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               type="text"
                               value={category}
                               onChange={(e) => setCategory(e.target.value)}
+                              onKeyDown={(event) => {
+                                 if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                 }
+                              }}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
                               placeholder="Select or type category..."
                            />

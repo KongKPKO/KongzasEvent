@@ -26,12 +26,21 @@ const ManageLogin = () => {
   const [loading, setLoading] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(() => {
+    const authError = searchParams.get('error_description') || searchParams.get('error');
+    if (!authError) return null;
+    const decoded = authError.replace(/\+/g, ' ');
+    if (/expired|invalid/i.test(decoded)) return 'This email link is expired or invalid. Return to registration to resend confirmation, or reset your password if the account is already confirmed.';
+    return decoded;
+  });
   const [magicMsg, setMagicMsg] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetErrorMsg, setResetErrorMsg] = useState<string | null>(null);
+  const resetOpenerRef = useRef<HTMLButtonElement>(null);
+  const resetDialogRef = useRef<HTMLDivElement>(null);
+  const resetEmailRef = useRef<HTMLInputElement>(null);
 
   const getStaffRedirectUrl = () => `${window.location.origin}/manage-login?staff=1`;
 
@@ -190,12 +199,46 @@ const ManageLogin = () => {
     setResetMsg(null);
   };
 
-  const closeResetModal = () => {
+  const closeResetModal = useCallback(() => {
     setIsResetModalOpen(false);
     setResetEmail('');
     setResetErrorMsg(null);
     setResetMsg(null);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isResetModalOpen) return;
+
+    resetEmailRef.current?.focus();
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !resetLoading) {
+        event.preventDefault();
+        closeResetModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(resetDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ) || []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      resetOpenerRef.current?.focus();
+    };
+  }, [closeResetModal, isResetModalOpen, resetLoading]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -315,6 +358,7 @@ const ManageLogin = () => {
                 <div className="mt-2 text-right">
                   <button
                     type="button"
+                    ref={resetOpenerRef}
                     onClick={openResetModal}
                     disabled={resetLoading}
                     className="text-sm font-bold text-pink-700 hover:text-pink-800 disabled:text-pink-300"
@@ -379,10 +423,15 @@ const ManageLogin = () => {
             {t('loginApplyAccess')}
           </Link>
         </div>
+        <nav aria-label="Legal" className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
+          <Link to="/privacy" className="hover:text-pink-700">Privacy</Link>
+          <Link to="/terms" className="hover:text-pink-700">Terms</Link>
+          <Link to="/cookies" className="hover:text-pink-700">Cookies</Link>
+        </nav>
       </div>
 
       {isResetModalOpen && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+        <div ref={resetDialogRef} className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
           <form onSubmit={handleForgotPassword} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <h2 id="reset-password-title" className="text-lg font-black text-gray-900">Reset password</h2>
             <p className="mt-2 text-sm font-medium text-gray-600">
@@ -393,6 +442,7 @@ const ManageLogin = () => {
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
+                  ref={resetEmailRef}
                   type="email"
                   id="reset-email"
                   name="reset-email"
@@ -424,14 +474,14 @@ const ManageLogin = () => {
                 type="button"
                 onClick={closeResetModal}
                 disabled={resetLoading}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="min-h-11 rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={resetLoading}
-                className="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-50"
+                className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-50"
               >
                 {resetLoading ? t('sendPasswordReset') : 'Send reset link'}
               </button>

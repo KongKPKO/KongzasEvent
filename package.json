@@ -10,6 +10,7 @@
     "build:staging": "node scripts/validate-env.mjs staging && tsc && vite build --mode staging",
     "build:prod": "node scripts/validate-env.mjs production && tsc && vite build --mode production",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "verify": "npm run lint && npm run test:release",
     "check:public": "node scripts/release-check.mjs",
     "check:hygiene": "node scripts/release-check.mjs hygiene",
     "preview": "vite preview",

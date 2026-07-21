@@ -60,8 +60,7 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
     if (!artistId) return;
 
     try {
-      // Timezone-safe date string (YYYY-MM-DD) for broad filtering
-      const todayStr = new Date().toLocaleDateString('en-CA');
+      const nowIso = new Date().toISOString();
 
       const [artistRes, eventsRes] = await Promise.all([
         supabase
@@ -76,7 +75,7 @@ export const useArtistRealtime = ({ artistId, initialArtist }: UseArtistRealtime
           .from('events')
           .select('id, event_name, start_date, end_date, event_timezone, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions, location, booth_detail, queueing_area, location_name, location_detail, booth_number, entrance_fee, transit_info, status, is_booth_open')
           .eq('artist_id', artistId)
-          .or(`end_date.gte.${todayStr},preorder_enabled.eq.true,postorder_enabled.eq.true`)
+          .or(`end_date.gte.${nowIso},preorder_enabled.eq.true,postorder_enabled.eq.true`)
           .order('start_date', { ascending: true })
       ]);
 

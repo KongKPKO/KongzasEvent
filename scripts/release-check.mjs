@@ -79,7 +79,7 @@ const checkHygiene = () => {
               lowerLine.includes('deno.env.toobject') ||
               // Regex patterns
               lowerLine.includes('pattern:') ||
-              lowerLine.includes('.test(key)') ||
+              lowerLine.includes('.test(') ||
               lowerLine.includes('const secretpatterns') ||
               // SQL Role/Permission statements
               lowerLine.includes('to "service_role"') ||

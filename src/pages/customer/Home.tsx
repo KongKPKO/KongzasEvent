@@ -113,12 +113,12 @@ const Home = () => {
     const loadNearbyCreators = async () => {
       if (!displayArtist?.id) return;
 
-      const todayStr = new Date().toLocaleDateString('en-CA');
+      const nowIso = new Date().toISOString();
       const { data: upcomingEvents, error } = await supabase
         .from('events')
         .select('*')
         .in('status', ['Confirmed', 'confirmed'])
-        .gte('end_date', todayStr)
+        .gte('end_date', nowIso)
         .order('start_date', { ascending: true })
         .limit(24);
 

@@ -121,9 +121,19 @@ test.describe('Public Nireq smoke', () => {
     await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
     await page.context().clearCookies();
 
+    const currentEventsRequest = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname.endsWith('/rest/v1/events') && url.searchParams.has('or');
+    });
+    const nearbyEventsRequest = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname.endsWith('/rest/v1/events') && url.searchParams.has('end_date');
+    });
     await page.goto(`/${publicSlug}/home`);
     await expect(page.getByRole('heading', { name: 'Public Smoke Artist' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Anonymous Booth Smoke Event' })).toBeVisible();
+    expect(new URL((await currentEventsRequest).url()).searchParams.get('or')).toMatch(/end_date\.gte\.\d{4}-\d{2}-\d{2}T/);
+    expect(new URL((await nearbyEventsRequest).url()).searchParams.get('end_date')).toMatch(/^gte\.\d{4}-\d{2}-\d{2}T/);
 
     await page.goto(`/${publicSlug}/menu`);
 

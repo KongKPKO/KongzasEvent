@@ -367,7 +367,8 @@ npx supabase test db \
   supabase/tests/team_invitations_test.sql \
   supabase/tests/stock_adjustment_flows_test.sql \
   supabase/tests/preorder_pickup_mvp_test.sql \
-  supabase/tests/production_security_regression_test.sql
+  supabase/tests/notification_delivery_security_test.sql \
+  supabase/tests/publication_security_test.sql
 ```
 
 Expected: every pgTAP file passes with no failed assertions.

@@ -1,7 +1,7 @@
 # Signup Idempotency, Notification Delivery, and Full-Flow UAT Design
 
-**Date:** 2026-08-25  
-**Status:** Approved design direction  
+**Date:** 2026-08-25
+**Status:** Approved design direction
 **Environment:** Local Supabase and local web app only; no remote migration or deployment
 
 ## 1. Goal

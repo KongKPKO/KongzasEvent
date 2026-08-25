@@ -41,7 +41,6 @@ Deno.serve(async (req: Request) => {
         customer_email,
         total_price,
         currency,
-        pickup_instructions,
         events (
           id,
           artist_id,
@@ -49,13 +48,18 @@ Deno.serve(async (req: Request) => {
           start_date,
           location,
           booth_detail,
+          preorder_pickup_instructions,
           artists (display_name, slug)
         )
       `)
       .eq("id", order_id)
       .single();
 
-    if (orderError || !order || !["preorder", "post_event"].includes(String(order.order_type || ""))) {
+    if (orderError && orderError.code !== "PGRST116") {
+      console.error("[notify-preorder-payment] Order lookup failed:", orderError);
+      throw new Error("Failed to load order");
+    }
+    if (!order || !["preorder", "post_event"].includes(String(order.order_type || ""))) {
       return json({ error: "Order not found" }, 404);
     }
 
@@ -323,7 +327,7 @@ function buildPreorderEmail(
       locationLine,
       itemLines,
       orderUrl,
-      note: String(order.pickup_instructions || (isPostOrder ? "The seller will update your order after shipment." : "Show your pickup code to the booth staff.")),
+      note: eventInfo.pickupInstructions || (isPostOrder ? "The seller will update your order after shipment." : "Show your pickup code to the booth staff."),
     });
   }
 
@@ -422,6 +426,7 @@ function getEventInfo(order: Record<string, unknown>) {
     eventName: String(value?.event_name || ""),
     location: String(value?.location || ""),
     boothDetail: String(value?.booth_detail || ""),
+    pickupInstructions: String(value?.preorder_pickup_instructions || ""),
     artistName: String(artistValue?.display_name || ""),
     artistSlug: String(artistValue?.slug || ""),
   };

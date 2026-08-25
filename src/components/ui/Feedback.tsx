@@ -39,14 +39,14 @@ export function Toast({ message, onClose }: ToastProps) {
   if (!message) return null;
 
   return (
-    <div className="fixed inset-x-0 top-4 z-[120] mx-auto w-[calc(100%-2rem)] max-w-md" role="status" aria-live="polite">
+    <div className="pointer-events-none fixed inset-x-0 top-4 z-[120] mx-auto w-[calc(100%-2rem)] max-w-md" role="status" aria-live="polite">
       <div className={`rounded-xl border p-3 shadow-lg ${toneClasses[message.tone || 'info']}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-black">{message.title}</div>
             {message.detail && <div className="mt-0.5 whitespace-pre-line text-xs font-medium opacity-90">{message.detail}</div>}
           </div>
-          <button type="button" onClick={onClose} className="min-h-11 shrink-0 rounded-md px-3 text-xs font-bold opacity-70 hover:opacity-100">
+          <button type="button" onClick={onClose} className="pointer-events-auto min-h-11 shrink-0 rounded-md px-3 text-xs font-bold opacity-70 hover:opacity-100">
             {t('commonClose')}
           </button>
         </div>

@@ -714,8 +714,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       return matchesSearch && matchesCategory && matchesTag && matchesView;
    });
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
-   const hasExistingEventCatalog = Object.values(eventCatalogSavedDraft).some((draft) => !!draft?.id);
-   const hasUnsavedNewEventProducts = Boolean(selectedEventId && hasExistingEventCatalog) && products.some((product) => {
+   const hasUnsavedNewEventProducts = Boolean(selectedEventId) && products.some((product) => {
       const savedDraft = eventCatalogSavedDraft[product.id];
       if (savedDraft?.id) return false;
       const draft = eventCatalogDraft[product.id];

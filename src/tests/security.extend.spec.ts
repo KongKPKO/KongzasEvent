@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
@@ -7,8 +8,11 @@ const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 // Setup Supabase Client
-const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
+const { url: SUPABASE_URL, key: SUPABASE_KEY, serviceKey: SERVICE_KEY } = resolveSupabaseTestEnv();
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const service = createClient(SUPABASE_URL, SERVICE_KEY || SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 // Helpers
 async function ensureTestUserAndArtist() {
@@ -135,7 +139,7 @@ test.describe('Extended Security Behaviors', () => {
   });
 
   // 5) Direct resource access to another artist should be blocked (authorization)
-  test('Security: Cannot access another artist\'s event/products via direct navigation', async ({ page }) => {
+  test('Security: Cannot access another artist\'s event dashboard via direct navigation', async ({ page }) => {
     // Ensure we are logged in
     await page.goto(`${BASE_URL}/manage-login`);
     await page.fill('input[type="email"]', TEST_USER_Y_EMAIL);
@@ -143,9 +147,87 @@ test.describe('Extended Security Behaviors', () => {
     await page.getByRole('button', { name: /Login/i }).click();
     await expect(page).toHaveURL(/\/manage-events/);
 
-    // Try to visit an arbitrary artist slug customer page to ensure no leakage of admin views
-    await page.goto(`${BASE_URL}/creators/ManageProducts?artist_id=someone-else`);
-    // The app should route back to login or an allowed page, but never expose other artist admin data
-    await expect(page).not.toHaveURL(/artist_id=someone-else/);
+    const foreignArtistId = randomUUID();
+    const foreignEventId = randomUUID();
+    const suffix = foreignArtistId.slice(0, 8);
+
+    try {
+      expect((await service.from('artists').insert({
+        id: foreignArtistId,
+        email: `foreign-${suffix}@example.com`,
+        slug: `foreign-${suffix}`,
+        display_name: 'Foreign Event Route Guard',
+        is_public: true,
+        is_verified: true,
+        published_at: new Date().toISOString(),
+      })).error).toBeNull();
+      expect((await service.from('events').insert({
+        id: foreignEventId,
+        artist_id: foreignArtistId,
+        event_name: 'Foreign Public Event Metadata',
+        start_date: new Date(Date.now() - 60_000).toISOString(),
+        end_date: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'Confirmed',
+      })).error).toBeNull();
+
+      await page.goto(`${BASE_URL}/manage-events/${foreignEventId}/dashboard`);
+      await expect(page).toHaveURL(`${BASE_URL}/manage-events`);
+      await expect(page.getByText('Foreign Public Event Metadata')).toHaveCount(0);
+    } finally {
+      await service.from('events').delete().eq('id', foreignEventId);
+      await service.from('artists').delete().eq('id', foreignArtistId);
+    }
+  });
+
+  test('Event catalog requires an explicit first save before POS use', async ({ page }) => {
+    const userId = await ensureTestUserAndArtist();
+    const eventId = randomUUID();
+    const productId = randomUUID();
+
+    try {
+      expect((await service.from('products').insert({
+        id: productId,
+        artist_id: userId,
+        name: 'Unsaved Catalog Regression Product',
+        price: 100,
+        currency: 'THB',
+        status: 'enable',
+        is_unlimited: false,
+        stock_total: 5,
+      })).error).toBeNull();
+      expect((await service.from('events').insert({
+        id: eventId,
+        artist_id: userId,
+        event_name: 'Unsaved Catalog Regression Event',
+        start_date: new Date(Date.now() + 3_600_000).toISOString(),
+        end_date: new Date(Date.now() + 7_200_000).toISOString(),
+        status: 'Confirmed',
+      })).error).toBeNull();
+
+      await page.goto(`${BASE_URL}/manage-login`);
+      await page.fill('input[type="email"]', TEST_USER_Y_EMAIL);
+      await page.fill('input[type="password"]', TEST_USER_Y_PASS);
+      await page.getByRole('button', { name: /Login/i }).click();
+      await expect(page).toHaveURL(/\/manage-events/);
+
+      await page.goto(`${BASE_URL}/manage-events/${eventId}/catalog`);
+      const save = page.getByRole('button', { name: 'Save Changes', exact: true });
+      await expect(save).toBeVisible({ timeout: 20000 });
+      await save.click();
+      await expect.poll(async () => {
+        const persisted = await service
+          .from('event_products')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('product_id', productId)
+          .maybeSingle();
+        expect(persisted.error).toBeNull();
+        return persisted.data?.id;
+      }, { timeout: 20000 }).toBeTruthy();
+    } finally {
+      await service.from('event_products').delete().eq('event_id', eventId);
+      await service.from('events').delete().eq('id', eventId);
+      await service.from('products').delete().eq('id', productId);
+    }
   });
 });

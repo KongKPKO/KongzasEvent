@@ -1,5 +1,5 @@
-import { Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Suspense, lazy, useState, useEffect, type ReactNode } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 
 /** Redirects to /live/queue while keeping the current search string (e.g. ?eventId=). */
 function LiveQueueRedirect() {
@@ -8,8 +8,16 @@ function LiveQueueRedirect() {
 }
 import { supabase } from './supabaseClient';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from './utils/access';
-import type { ActorContext } from './types/access';
-import { canAccessManagementPages, canAccessOwnerPages, canAccessQueuePages, canUsePos } from './types/access';
+import type { ActorContext, ActorRole } from './types/access';
+import {
+  MANAGEMENT_ROLES,
+  POS_ROLES,
+  QUEUE_ROLES,
+  canAccessManagementPages,
+  canAccessOwnerPages,
+  canAccessQueuePages,
+  canUsePos,
+} from './types/access';
 
 import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
@@ -39,6 +47,45 @@ import { useI18n } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 import InvitationsPage from './pages/InvitationsPage';
 import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
+
+function EventAccessRoute({
+  allowedRoles,
+  fallbackPath,
+  children,
+}: {
+  allowedRoles: ActorRole[];
+  fallbackPath: string;
+  children: ReactNode;
+}) {
+  const { eventId } = useParams();
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const allowedRoleKey = allowedRoles.join(',');
+
+  useEffect(() => {
+    let active = true;
+    setAllowed(null);
+
+    if (!eventId) {
+      setAllowed(false);
+      return () => { active = false; };
+    }
+
+    void supabase.rpc('has_event_role', {
+      p_event_id: eventId,
+      p_allowed_roles: allowedRoleKey.split(','),
+    }).then(({ data, error }) => {
+      if (active) setAllowed(!error && data === true);
+    });
+
+    return () => { active = false; };
+  }, [allowedRoleKey, eventId]);
+
+  if (allowed === null) {
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">Checking event access…</div>;
+  }
+
+  return allowed ? children : <Navigate to={fallbackPath} replace />;
+}
 
 function App() {
   const { t } = useI18n();
@@ -212,39 +259,75 @@ function App() {
             />
             <Route
               path="/manage-events/:eventId/workspace"
-              element={session && actorContext && canUseQueueWorkspace ? <EventWorkspace actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
+              element={session && actorContext && canUseQueueWorkspace ? (
+                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues">
+                  <EventWorkspace actorContext={actorContext} />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/history"
-              element={session ? (canUseManagement ? <OrderHistory /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? (
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                  <OrderHistory />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/dashboard"
-              element={session ? (canUseManagement ? <EventDashboard /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? (
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                  <EventDashboard />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/catalog"
-              element={session ? (canUseManagement ? <ManageProducts initialTab="event-catalog" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? (
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                  <ManageProducts initialTab="event-catalog" />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/promotion"
-              element={session ? (canUseManagement ? <ManageProducts initialTab="promotions" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? (
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                  <ManageProducts initialTab="promotions" />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/preorder"
-              element={session ? (canUseManagement ? <PreorderSettings /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement ? (
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                  <PreorderSettings />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/preorder-dashboard"
-              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} scope="preorder" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session && actorContext ? (canSell ? (
+                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues">
+                  <PreorderDashboard actorContext={actorContext} scope="preorder" />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/postorder-dashboard"
-              element={session && actorContext ? (canSell ? <PreorderDashboard actorContext={actorContext} scope="post_event" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session && actorContext ? (canSell ? (
+                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues">
+                  <PreorderDashboard actorContext={actorContext} scope="post_event" />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId/pickup"
-              element={session && actorContext && canUseQueueWorkspace ? <PreorderPickup actorContext={actorContext} /> : <Navigate to="/manage-login" replace />}
+              element={session && actorContext && canUseQueueWorkspace ? (
+                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues">
+                  <PreorderPickup actorContext={actorContext} />
+                </EventAccessRoute>
+              ) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-pos-queues"

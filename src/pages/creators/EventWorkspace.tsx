@@ -689,7 +689,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       if (!eventData) throw new Error('Event not found.');
 
       const normalizedEvent = normalizeEventRecord(eventData, getBrowserTimeZone()) as WorkspaceEvent;
-      const [ordersResult, queuesResult, productsResult, artistResult, paymentResult] = await Promise.all([
+      const [ordersResult, queuesResult, productsResult, catalogRowsResult, artistResult, paymentResult] = await Promise.all([
         supabase
           .from('orders')
           .select('id, event_id, status, total_price, currency, order_type, pickup_status')
@@ -700,6 +700,9 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           .eq('event_id', eventId),
         canAccessManagementPages(actorContext.role)
           ? supabase.rpc('list_event_products', { p_event_id: eventId })
+          : Promise.resolve({ data: [], error: null }),
+        canAccessManagementPages(actorContext.role)
+          ? supabase.from('event_products').select('id').eq('event_id', eventId).limit(1)
           : Promise.resolve({ data: [], error: null }),
         supabase
           .from('artists')
@@ -720,12 +723,15 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       if (ordersResult.error) throw ordersResult.error;
       if (queuesResult.error) throw queuesResult.error;
       if (productsResult.error) throw productsResult.error;
+      if (catalogRowsResult.error) throw catalogRowsResult.error;
       if (artistResult.error) throw artistResult.error;
       if (paymentResult.error) throw paymentResult.error;
 
       const orders = (ordersResult.data || []) as WorkspaceOrder[];
       const queues = (queuesResult.data || []) as WorkspaceQueue[];
-      const products = (productsResult.data || []) as WorkspaceProduct[];
+      const products = catalogRowsResult.data?.length
+        ? (productsResult.data || []) as WorkspaceProduct[]
+        : [];
       const paymentMethod = paymentResult.data as WorkspacePaymentMethod | null;
       const completedOrders = orders.filter((order) => order.status === 'completed');
       const currency = completedOrders[0]?.currency || orders[0]?.currency || 'THB';

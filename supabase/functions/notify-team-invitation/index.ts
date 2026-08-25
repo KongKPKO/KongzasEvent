@@ -109,7 +109,7 @@ Deno.serve(async (req: Request) => {
     const artistName = (invitation.artists as { display_name?: string } | null)?.display_name || "a booth";
     const roleLabel = getRoleLabel(invitation.role);
 
-    const appUrl = Deno.env.get("APPLICATION_SITE_URL") || Deno.env.get("PUBLIC_SITE_URL") || "http://localhost:5174";
+    const appUrl = Deno.env.get("APPLICATION_SITE_URL") || Deno.env.get("PUBLIC_SITE_URL") || "http://localhost:5173";
     const inviteUrl = `${appUrl.replace(/\/$/, "")}/staff-signup?email=${encodeURIComponent(invitation.invited_email)}&workspace=${encodeURIComponent(artistName)}`;
     const subject = `You've been invited to join ${artistName} on NireQ`;
     const html = buildInviteHtml(artistName, roleLabel, inviteUrl);

@@ -112,6 +112,7 @@ export default function StaffSignup() {
                 <input
                   id="staff-password"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-pink-500"
@@ -128,6 +129,7 @@ export default function StaffSignup() {
                 <input
                   id="staff-confirm-password"
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-pink-500"

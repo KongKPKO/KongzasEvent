@@ -1,4 +1,4 @@
-import { supabase, supabaseAnonKey } from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 export const invokeNotificationFunction = (
   name: 'notify-creator-application' | 'notify-team-invitation',
@@ -6,8 +6,4 @@ export const invokeNotificationFunction = (
 ) =>
   supabase.functions.invoke(name, {
     body,
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-    },
   });

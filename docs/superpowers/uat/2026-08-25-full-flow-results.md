@@ -7,7 +7,7 @@
 - บั๊ก creator signup ซ้ำจาก concurrent requests: แก้และผ่าน regression
 - บั๊ก pre-order notification: แก้ทั้ง UUID validation และ schema lookup; Mailpit รับ submitted/confirmed/rejected ครบ
 - Full lifecycle: ผ่านทุกเส้นทางหลัก
-- Authorization: backend/RLS tests ผ่าน; browser role matrix ทำงานตามที่คาด ยกเว้น UX findings ด้านล่าง
+- Authorization: backend/RLS tests และ browser role matrix ผ่านครบทั้ง positive/negative permission
 - ไม่มี production mutation หรือ remote migration
 
 ## Fixes verified
@@ -70,27 +70,28 @@
 | Role | Positive browser evidence | Negative browser/security evidence |
 |---|---|---|
 | Owner | Team, catalog, all own events, queue, POS, payment review, pickup, shipping | cross-artist mutation/access regression passed; no foreign mutation attempted during UAT |
-| Manager | profile/catalog/events ทุก event, live queue/POS, future pre-order dashboard | Team route redirects to staff workspace; Team nav absent |
-| Seller | assigned live event queue + POS; completed queue #2 cash sale | Team redirects; unassigned future pre-order dashboard shows `Permission denied` and no order data |
-| Queue Staff | assigned live queue; called and arrived queue #2 | POS area explicitly says `POS Access Restricted`; Team redirects; unassigned event returns no protected order data |
+| Manager | profile/catalog/events ทุก event, live queue/POS และ post-order dashboard | Team route redirects to staff workspace; Team nav absent |
+| Seller | assigned live event queue + POS/pickup; completed queue #2 cash sale | Team และ unassigned future event redirect ไป staff workspace โดยไม่ mount หน้าของ event |
+| Queue Staff | assigned live queue/pickup; called and arrived queue #2 | POS redirect กลับ queue พร้อม `POS Access Restricted`; unassigned event redirect โดยไม่ mount หน้าของ event |
 
 Backend checks additionally cover direct writes, cross-artist access, payment idempotency, stock boundaries and queue ownership.
 
 ## Verification
 
 - `npx supabase test db`: 7 files, 102 tests passed
-- `npm run test:security`: 147 tests passed across configured desktop/mobile/tablet projects
+- `npm run test:security`: 154 tests passed across configured desktop/mobile/tablet projects
 - `npm run verify`: lint, repository hygiene, env validation, production build, 6 public smoke tests and local API smoke passed
 - Manual browser UAT: all lifecycle scenarios above completed against the real local API/database
 
-## Findings not fixed in this scope
+## Findings fixed and replayed
 
-1. Manager invitation row is created, but local `notify-team-invitation` reports email failure. Seller/queue magic-link email works. Manager signup and acceptance still worked through the real pending invitation.
-2. A new event catalog initially looks usable through global-product fallback before `event_products` is persisted. Explicitly changing/saving event stock creates the allocation; the UI should make this distinction clearer.
-3. Unassigned seller/queue routes can render an empty page shell instead of redirecting immediately. RLS protects rows/mutations, but the UX should show a clear access-denied state.
-4. A foreign event dashboard can render public event metadata with zero protected aggregates before route-level ownership feedback. Cross-artist product/event access and mutation regression still passes.
-5. Success toasts can temporarily intercept header clicks until dismissed.
-6. Post-order phone input is labeled optional although shipping flow requires it.
+1. Manager invitation now forwards the signed-in owner token to the Edge Function. Mailpit received the invitation, resend worked, and the local signup link uses the Vite default port `5173`.
+2. A new event catalog stays explicitly unsaved until `event_products` is persisted. The event workspace reports an empty catalog before first save and the saved allocation after it.
+3. Protected event routes check `has_event_role` before mounting their page. Unassigned seller/queue routes redirect immediately instead of rendering an empty shell.
+4. Foreign event dashboard navigation redirects before the dashboard can load public metadata or protected aggregates. A browser regression creates a real foreign public event and verifies this behavior.
+5. Toast surfaces are click-through except for their Close button, so header navigation remains usable while feedback is visible.
+6. Post-order phone copy now says it is required for shipping in English and Thai; empty phone submission shows inline and toast validation.
+7. Staff signup password fields now declare `autocomplete="new-password"`, removing the browser autocomplete warning found during replay.
 
 ## Evidence
 
@@ -109,8 +110,8 @@ Screenshots are in `output/playwright/full-flow-20260825/`:
 Local-only UAT fixtures were removed after evidence collection:
 
 - UAT artist/events/products/orders/queues and memberships
-- four `uat-20260825-*` auth users
+- four `fixuat-20260825-9417-*` auth users
 - three payment-evidence storage objects
-- eight Mailpit messages
+- eleven Mailpit messages from the replay (invitation resends and order notifications)
 
-Post-cleanup checks returned zero remaining UAT artist, auth user, storage object and Mailpit message records.
+Post-cleanup checks returned zero remaining `fixuat-20260825-9417` artist, event, auth user, storage object and Mailpit message records.

@@ -1378,7 +1378,7 @@ const MenuView = () => {
                                                     setPostOrderPhoneTouched(true);
                                                     setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }));
                                                 }}
-                                                placeholder={t('menuPreorderPhonePlaceholder')}
+                                                placeholder={t(isPostOrderMode ? 'menuPostOrderPhonePlaceholder' : 'menuPreorderPhonePlaceholder')}
                                                 inputMode="tel"
                                                 required={isPostOrderMode}
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"

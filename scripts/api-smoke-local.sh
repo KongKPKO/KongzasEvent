@@ -33,6 +33,19 @@ assert_2xx() {
   echo "[PASS] ${name}"
 }
 
+assert_status_and_body() {
+  local code="$1"
+  local expected_code="$2"
+  local expected_body="$3"
+  local name="$4"
+  if [[ "${code}" != "${expected_code}" ]] || ! grep -Fq "${expected_body}" /tmp/api_smoke_resp.txt; then
+    echo "[FAIL] ${name} (HTTP ${code})"
+    cat /tmp/api_smoke_resp.txt
+    exit 1
+  fi
+  echo "[PASS] ${name}"
+}
+
 echo "Running local API smoke checks against ${API_URL}"
 
 code="$(request_code -H "apikey: ${ANON_KEY}" "${API_URL}/auth/v1/health")"
@@ -40,6 +53,20 @@ assert_2xx "${code}" "Auth health"
 
 code="$(request_code -H "apikey: ${ANON_KEY}" -H "Authorization: Bearer ${ANON_KEY}" "${API_URL}/rest/v1/products?select=id&limit=1")"
 assert_2xx "${code}" "REST products select"
+
+code="$(request_code -X POST "${API_URL}/functions/v1/notify-preorder-payment" \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Authorization: Bearer ${ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"00000000-0000-4000-8000-000000000001","event":"submitted"}')"
+assert_status_and_body "${code}" "404" '"error":"Order not found"' "Notification accepts canonical UUID"
+
+code="$(request_code -X POST "${API_URL}/functions/v1/notify-preorder-payment" \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Authorization: Bearer ${ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"not-a-uuid","event":"submitted"}')"
+assert_status_and_body "${code}" "400" '"error":"order_id must be a valid UUID"' "Notification rejects malformed UUID"
 
 code="$(request_code -H "apikey: ${SERVICE_ROLE_KEY}" -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" "${API_URL}/storage/v1/bucket")"
 assert_2xx "${code}" "Storage bucket list"

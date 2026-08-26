@@ -28,4 +28,24 @@ test.describe('Creator Google auth', () => {
     await page.goto('/manage-login#error=access_denied&error_description=Google+sign-in+was+cancelled');
     await expect(page.getByText('Google sign-in was cancelled')).toBeVisible();
   });
+
+  test('creator signup starts Google OAuth before the application form', async ({ page }) => {
+    await page.route('**/auth/v1/authorize**', async (route) => route.abort());
+    await page.goto('/creator/register');
+
+    const authorizeRequest = page.waitForRequest((request) =>
+      request.url().includes('/auth/v1/authorize')
+    );
+    await page.getByRole('button', { name: 'Continue with Google' }).click();
+
+    const url = new URL((await authorizeRequest).url());
+    expect(url.searchParams.get('provider')).toBe('google');
+    expect(url.searchParams.get('redirect_to')).toBe('http://127.0.0.1:5173/creator/register');
+  });
+
+  test('creator signup recovers from a cancelled Google flow', async ({ page }) => {
+    await page.goto('/creator/register#error=access_denied&error_description=Google+sign-in+was+cancelled');
+    await expect(page.getByText('Google sign-in was cancelled')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  });
 });

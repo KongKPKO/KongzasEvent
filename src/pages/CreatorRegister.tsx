@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import type { User } from '@supabase/supabase-js';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n } from '../i18n';
+import { fetchActorContext } from '../utils/access';
+import { getAuthRedirectError } from '../utils/authRedirect';
 
 type FormState = {
   email: string;
@@ -55,17 +58,57 @@ const isExistingAccountResponse = (errorMessage: string | null | undefined) => {
 
 export default function CreatorRegister() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(initialForm);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(() => getAuthRedirectError());
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const applySessionUser = async (user: User | null) => {
+      if (!active) return;
+      setAuthUser(user);
+      setAuthLoading(false);
+      if (!user) return;
+
+      const actor = await fetchActorContext();
+      if (!active) return;
+      if (actor) {
+        navigate('/manage-login', { replace: true });
+        return;
+      }
+
+      setForm((current) => ({
+        ...current,
+        email: user.email || '',
+        contactName: current.contactName || String(user.user_metadata?.full_name || user.user_metadata?.name || ''),
+      }));
+    };
+
+    void supabase.auth.getSession().then(({ data }) => applySessionUser(data.session?.user || null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      void applySessionUser(session?.user || null);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const slugValid = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(form.desiredSlug);
   const hasSocialProof = form.primarySocialUrl.trim().startsWith('http');
   const noteValid = form.applicationNote.trim().length >= 20;
-  const passwordsMatch = form.password.length >= 8 && form.password === form.confirmPassword;
+  const passwordsMatch = authUser
+    ? true
+    : form.password.length >= 8 && form.password === form.confirmPassword;
   const incompleteReasons = [
     !form.email.trim() && t('registerErrEmail'),
     !passwordsMatch && t('registerErrPassword'),
@@ -100,6 +143,21 @@ export default function CreatorRegister() {
       creatorName: value,
       desiredSlug: current.desiredSlug ? current.desiredSlug : slugify(value),
     }));
+  };
+
+  const handleGoogleSignup = async () => {
+    setGoogleLoading(true);
+    setErrorMsg(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/creator/register`,
+      },
+    });
+    if (error) {
+      setErrorMsg(t('googleLoginFailed'));
+      setGoogleLoading(false);
+    }
   };
 
   const resolveSubmitError = (error: unknown) => {
@@ -291,18 +349,46 @@ export default function CreatorRegister() {
               </div>
             )}
 
+            {!authLoading && !authUser && (
+              <div className="mb-6 space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <button
+                  type="button"
+                  onClick={() => void handleGoogleSignup()}
+                  disabled={googleLoading}
+                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-black text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
+                </button>
+                <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>
+                <div className="flex items-center gap-3 text-xs font-bold text-gray-400">
+                  <span className="h-px flex-1 bg-gray-200" />
+                  {t('orUseEmail')}
+                  <span className="h-px flex-1 bg-gray-200" />
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-5 md:grid-cols-2">
-              <Field label={t('registerEmail')} required>
-                <IconInput id="creator-email" name="email" icon={<Mail size={17} />} type="email" autoComplete="email" value={form.email} onChange={(value) => updateField('email', value)} placeholder={t('registerEmailPlaceholder')} />
-              </Field>
+              {authUser ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 md:col-span-2">
+                  <p className="text-xs font-black uppercase tracking-wide text-emerald-800">{t('registerSignedInAs')}</p>
+                  <p className="mt-1 break-all text-sm font-bold text-gray-900">{authUser.email}</p>
+                </div>
+              ) : (
+                <>
+                  <Field label={t('registerEmail')} required>
+                    <IconInput id="creator-email" name="email" icon={<Mail size={17} />} type="email" autoComplete="email" value={form.email} onChange={(value) => updateField('email', value)} placeholder={t('registerEmailPlaceholder')} />
+                  </Field>
+                  <Field label={t('registerPassword')} required hint={t('registerPasswordHint')}>
+                    <IconInput id="creator-password" name="password" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.password} onChange={(value) => updateField('password', value)} placeholder={t('registerPasswordPlaceholder')} />
+                  </Field>
+                  <Field label={t('registerConfirmPassword')} required>
+                    <IconInput id="creator-confirm-password" name="confirmPassword" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.confirmPassword} onChange={(value) => updateField('confirmPassword', value)} placeholder={t('registerConfirmPasswordPlaceholder')} />
+                  </Field>
+                </>
+              )}
               <Field label={t('registerContactName')} required>
                 <IconInput id="creator-contact-name" name="contactName" icon={<UserRound size={17} />} value={form.contactName} onChange={(value) => updateField('contactName', value)} placeholder={t('registerContactNamePlaceholder')} />
-              </Field>
-              <Field label={t('registerPassword')} required hint={t('registerPasswordHint')}>
-                <IconInput id="creator-password" name="password" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.password} onChange={(value) => updateField('password', value)} placeholder={t('registerPasswordPlaceholder')} />
-              </Field>
-              <Field label={t('registerConfirmPassword')} required>
-                <IconInput id="creator-confirm-password" name="confirmPassword" icon={<Lock size={17} />} type="password" autoComplete="new-password" value={form.confirmPassword} onChange={(value) => updateField('confirmPassword', value)} placeholder={t('registerConfirmPasswordPlaceholder')} />
               </Field>
               <Field label={t('registerCreatorName')} required>
                 <input id="creator-name" name="creatorName" className="input-surface" value={form.creatorName} onChange={(event) => handleCreatorNameChange(event.target.value)} placeholder={t('registerCreatorNamePlaceholder')} required />
@@ -371,7 +457,11 @@ export default function CreatorRegister() {
               className="mt-6 w-full rounded-2xl bg-gray-900 px-5 py-4 text-sm font-black text-white shadow-lg shadow-gray-200 transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               title={!canSubmit && incompleteReasons.length > 0 ? incompleteReasons[0] : undefined}
             >
-              {loading ? t('registerSubmitting') : canSubmit ? t('registerSubmit') : t('registerCompleteRequired')}
+              {loading
+                ? t('registerSubmitting')
+                : canSubmit
+                  ? t(authUser ? 'registerSubmitAuthenticated' : 'registerSubmit')
+                  : t('registerCompleteRequired')}
             </button>
 
             {!canSubmit && incompleteReasons.length > 0 && (

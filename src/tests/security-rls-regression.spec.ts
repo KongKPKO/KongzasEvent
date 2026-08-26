@@ -44,14 +44,13 @@ const signInClient = async (email: string, password: string) => {
 };
 
 const createConfirmedUser = async (email: string, password: string) => {
-  const client = createClient(SUPABASE_URL, ANON_KEY);
-  const signUp = await client.auth.signUp({ email, password });
-  if (signUp.data.user) return signUp.data.user.id;
-
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw signIn.error;
-  if (!signIn.data.user) throw new Error(`Failed to create or sign in user ${email}`);
-  return signIn.data.user.id;
+  const { data, error } = await service.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (error || !data.user) throw error || new Error(`Failed to create confirmed user ${email}`);
+  return data.user.id;
 };
 
 const seedFixtures = async () => {
@@ -227,6 +226,8 @@ const cleanupFixtures = async () => {
   await service.from('products').delete().in('id', [ids.product, ids.secondProduct, ids.raceProduct, ids.allocationProduct]);
   await service.from('events').delete().in('id', [ids.event, ids.secondEvent, ids.endedEvent]);
   await service.from('artists').delete().eq('id', ids.artist);
+  await service.auth.admin.deleteUser(ids.artist);
+  if (ids.unrelatedUser) await service.auth.admin.deleteUser(ids.unrelatedUser);
 };
 
 test.describe('RLS and mutation security regressions', () => {

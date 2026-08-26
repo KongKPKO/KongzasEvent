@@ -84,6 +84,7 @@ const checkHygiene = () => {
               // SQL Role/Permission statements
               lowerLine.includes('to "service_role"') ||
               lowerLine.includes('to service_role') ||
+              /has_function_privilege\(\s*['"]service_role['"]\s*,/.test(lowerLine) ||
               lowerLine.includes('on table') ||
               lowerLine.includes('on function') ||
               lowerLine.includes('on sequence') ||

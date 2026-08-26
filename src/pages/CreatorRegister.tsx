@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
@@ -68,28 +68,55 @@ export default function CreatorRegister() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const authRequestRef = useRef(0);
+  const authUserIdRef = useRef<string | null>(null);
+  const authPrefillRef = useRef<{ email: string; previousEmail: string; contactName: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
 
     const applySessionUser = async (user: User | null) => {
       if (!active) return;
+      const request = ++authRequestRef.current;
+      const userId = user?.id || null;
+
+      if (authUserIdRef.current !== userId && authPrefillRef.current) {
+        const previous = authPrefillRef.current;
+        authPrefillRef.current = null;
+        setForm((current) => ({
+          ...current,
+          email: current.email === previous.email ? previous.previousEmail : current.email,
+          contactName: previous.contactName !== null && current.contactName === previous.contactName ? '' : current.contactName,
+        }));
+      }
+
+      authUserIdRef.current = userId;
       setAuthUser(user);
       setAuthLoading(false);
       if (!user) return;
 
       const actor = await fetchActorContext();
-      if (!active) return;
+      if (!active || request !== authRequestRef.current || authUserIdRef.current !== user.id) return;
       if (actor) {
         navigate('/manage-login', { replace: true });
         return;
       }
 
-      setForm((current) => ({
-        ...current,
-        email: user.email || '',
-        contactName: current.contactName || String(user.user_metadata?.full_name || user.user_metadata?.name || ''),
-      }));
+      setForm((current) => {
+        if (!active || request !== authRequestRef.current || authUserIdRef.current !== user.id) return current;
+        const email = user.email || '';
+        const suggestedContactName = String(user.user_metadata?.full_name || user.user_metadata?.name || '');
+        const contactName = current.contactName || suggestedContactName;
+        const previousEmail = authPrefillRef.current?.email === current.email
+          ? authPrefillRef.current.previousEmail
+          : current.email;
+        authPrefillRef.current = {
+          email,
+          previousEmail,
+          contactName: current.contactName ? null : suggestedContactName || null,
+        };
+        return { ...current, email, contactName };
+      });
     };
 
     void supabase.auth.getSession().then(({ data }) => applySessionUser(data.session?.user || null));

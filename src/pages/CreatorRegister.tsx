@@ -110,10 +110,13 @@ export default function CreatorRegister() {
         const previousEmail = authPrefillRef.current?.email === current.email
           ? authPrefillRef.current.previousEmail
           : current.email;
+        const previousContactName = authPrefillRef.current?.contactName === current.contactName
+          ? authPrefillRef.current.contactName
+          : null;
         authPrefillRef.current = {
           email,
           previousEmail,
-          contactName: current.contactName ? null : suggestedContactName || null,
+          contactName: current.contactName ? previousContactName : suggestedContactName || null,
         };
         return { ...current, email, contactName };
       });

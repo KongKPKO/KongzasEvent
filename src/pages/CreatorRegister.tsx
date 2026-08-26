@@ -70,7 +70,6 @@ export default function CreatorRegister() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const authRequestRef = useRef(0);
   const authUserIdRef = useRef<string | null>(null);
-  const authPrefillRef = useRef<{ email: string; previousEmail: string; contactName: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -80,15 +79,7 @@ export default function CreatorRegister() {
       const request = ++authRequestRef.current;
       const userId = user?.id || null;
 
-      if (authUserIdRef.current !== userId && authPrefillRef.current) {
-        const previous = authPrefillRef.current;
-        authPrefillRef.current = null;
-        setForm((current) => ({
-          ...current,
-          email: current.email === previous.email ? previous.previousEmail : current.email,
-          contactName: previous.contactName !== null && current.contactName === previous.contactName ? '' : current.contactName,
-        }));
-      }
+      if (authUserIdRef.current !== userId) setForm(initialForm);
 
       authUserIdRef.current = userId;
       setAuthUser(user);
@@ -107,17 +98,6 @@ export default function CreatorRegister() {
         const email = user.email || '';
         const suggestedContactName = String(user.user_metadata?.full_name || user.user_metadata?.name || '');
         const contactName = current.contactName || suggestedContactName;
-        const previousEmail = authPrefillRef.current?.email === current.email
-          ? authPrefillRef.current.previousEmail
-          : current.email;
-        const previousContactName = authPrefillRef.current?.contactName === current.contactName
-          ? authPrefillRef.current.contactName
-          : null;
-        authPrefillRef.current = {
-          email,
-          previousEmail,
-          contactName: current.contactName ? previousContactName : suggestedContactName || null,
-        };
         return { ...current, email, contactName };
       });
     };

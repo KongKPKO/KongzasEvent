@@ -7,7 +7,7 @@ const { url: SUPABASE_URL, key: SUPABASE_KEY, serviceKey: SERVICE_KEY } = resolv
 const service = SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null;
 const localPassword = 'LocalCreatorSessionRace123!';
 
-const createConfirmedUser = async () => {
+const createConfirmedUser = async (userMetadata?: Record<string, string>) => {
   if (!service) throw new Error('Local Supabase service key is required');
   const email = `google-onboarding-${randomUUID()}@example.com`;
   const password = 'CreatorPass123!';
@@ -15,6 +15,7 @@ const createConfirmedUser = async () => {
     email,
     password,
     email_confirm: true,
+    user_metadata: userMetadata,
   });
   if (error || !data.user) throw error || new Error('Confirmed user was not created');
   return { userId: data.user.id, email, password };
@@ -144,19 +145,31 @@ test.describe('Creator Google auth', () => {
     await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
   });
 
-  test('same-user refresh keeps only genuine Google-prefill markers', async ({ page }) => {
-    test.skip(!SUPABASE_URL.includes('127.0.0.1'), 'Prefill regression requires local Supabase');
-    const session = await getLocalCreatorSession('creator-prefill-refresh@example.com');
+  test('same-user refresh preserves drafts while identity changes clear them', async ({ page }) => {
+    test.skip(!SERVICE_KEY, 'Draft privacy regression requires local Supabase');
+    const firstUser = await createConfirmedUser({ full_name: 'First Google Prefill' });
+    const secondUser = await createConfirmedUser({ full_name: 'Second Google Prefill' });
+    const signIn = async (user: { email: string; password: string }) => {
+      const auth = createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await auth.auth.signInWithPassword(user);
+      if (error || !data.session) throw error || new Error('Missing local test session');
+      return data.session;
+    };
+    const session = await signIn(firstUser);
+    const switchedSession = await signIn(secondUser);
 
-    await page.route('**/rest/v1/rpc/get_actor_context', async (route) => {
+    try {
+      await page.route('**/rest/v1/rpc/get_actor_context', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
-    });
-    await page.route('**/rest/v1/artist_members**', async (route) => {
+      });
+      await page.route('**/rest/v1/artist_members**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
-    });
-    await page.route('**/rest/v1/artists**', async (route) => {
+      });
+      await page.route('**/rest/v1/artists**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
-    });
+      });
 
     await page.goto('/robots.txt');
     const setSession = async (tokens: { access_token: string; refresh_token: string }) => {
@@ -173,32 +186,69 @@ test.describe('Creator Google auth', () => {
         await supabase.auth.signOut({ scope: 'local' });
       });
     };
-    const refreshSession = async () => await page.evaluate(async () => {
+    const refreshSession = async () => page.evaluate(async () => {
       const modulePath = '/src/supabaseClient.ts';
       const { supabase } = await import(modulePath);
-      const { data, error } = await supabase.auth.refreshSession();
-      if (error || !data.session) throw error || new Error('Missing refreshed session');
-      return { access_token: data.session.access_token, refresh_token: data.session.refresh_token };
+      const { error } = await supabase.auth.refreshSession();
+      if (error) throw error;
     });
 
     await setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
     await page.goto('/creator/register');
-    const contactName = page.getByLabel('Contact name');
-    await expect(contactName).toHaveValue('Google Prefilled Name');
+    const contactName = page.locator('#creator-contact-name');
+    const creatorName = page.locator('#creator-name');
+    const slug = page.locator('#creator-slug');
+    const primarySocial = page.getByTestId('creator-primary-social');
+    const website = page.locator('#creator-website');
+    const note = page.getByTestId('creator-application-note');
+    const truthful = page.getByTestId('creator-truthful');
+    await expect(contactName).toHaveValue('First Google Prefill');
+
+    await contactName.fill('Private draft owner');
+    await creatorName.fill('Private Draft Booth');
+    await primarySocial.fill('https://instagram.com/private-draft');
+    await website.fill('https://private.example.com');
+    await note.fill('Private event plan that must not cross account identities.');
+    await truthful.check();
 
     await refreshSession();
     await page.waitForTimeout(100);
+    await expect(contactName).toHaveValue('Private draft owner');
+    await expect(creatorName).toHaveValue('Private Draft Booth');
+    await expect(slug).toHaveValue('private-draft-booth');
+    await expect(primarySocial).toHaveValue('https://instagram.com/private-draft');
+    await expect(website).toHaveValue('https://private.example.com');
+    await expect(note).toHaveValue('Private event plan that must not cross account identities.');
+    await expect(truthful).toBeChecked();
+
+    await setSession({
+      access_token: switchedSession.access_token,
+      refresh_token: switchedSession.refresh_token,
+    });
+    await expect(page.getByText(secondUser.email)).toBeVisible();
+    await expect(contactName).toHaveValue('Second Google Prefill');
+    await expect(creatorName).toHaveValue('');
+    await expect(slug).toHaveValue('');
+    await expect(primarySocial).toHaveValue('');
+    await expect(website).toHaveValue('');
+    await expect(note).toHaveValue('');
+    await expect(truthful).not.toBeChecked();
+
+    await contactName.fill('Second private owner');
+    await creatorName.fill('Second Private Booth');
+    await note.fill('Another private event draft that must be cleared on sign-out.');
+    await truthful.check();
     await signOut();
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
     await expect(contactName).toHaveValue('');
-
-    const editedSession = await getLocalCreatorSession('creator-prefill-edited@example.com');
-    await setSession({ access_token: editedSession.access_token, refresh_token: editedSession.refresh_token });
-    await expect(contactName).toHaveValue('Google Prefilled Name');
-    await contactName.fill('My saved draft name');
-    await refreshSession();
-    await page.waitForTimeout(100);
-    await signOut();
-    await expect(contactName).toHaveValue('My saved draft name');
+    await expect(creatorName).toHaveValue('');
+    await expect(slug).toHaveValue('');
+    await expect(note).toHaveValue('');
+    await expect(truthful).not.toBeChecked();
+    } finally {
+      await cleanupUser(firstUser.userId);
+      await cleanupUser(secondUser.userId);
+    }
   });
 
   test('verified authenticated user creates one creator workspace without password fields', async ({ page }) => {

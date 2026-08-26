@@ -7,6 +7,7 @@ import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../util
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
+import { getAuthRedirectError } from '../utils/authRedirect';
 
 interface AccessibleEvent {
   id: string;
@@ -27,12 +28,13 @@ const ManageLogin = () => {
   const [magicLoading, setMagicLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(() => {
-    const authError = searchParams.get('error_description') || searchParams.get('error');
+    const authError = getAuthRedirectError();
     if (!authError) return null;
-    const decoded = authError.replace(/\+/g, ' ');
-    if (/expired|invalid/i.test(decoded)) return 'This email link is expired or invalid. Return to registration to resend confirmation, or reset your password if the account is already confirmed.';
-    return decoded;
+    if (/expired|invalid/i.test(authError)) return 'This email link is expired or invalid. Return to registration to resend confirmation, or reset your password if the account is already confirmed.';
+    return authError;
   });
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showCreatorApply, setShowCreatorApply] = useState(false);
   const [magicMsg, setMagicMsg] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -83,6 +85,7 @@ const ManageLogin = () => {
       } else if (signupCompletionStatus === 'email_unconfirmed') {
         setErrorMsg(t('loginConfirmEmailFirst'));
       } else if (!isAdmin) {
+        setShowCreatorApply(true);
         setErrorMsg(t('loginNoWorkspace'));
       }
     } finally {
@@ -95,7 +98,7 @@ const ManageLogin = () => {
 
     const routeAfterAuthLockReleases = () => {
       window.setTimeout(() => {
-        if (isMounted) void routeAfterAuth();
+        if (isMounted) void routeAfterAuth({ allowAdminFallback: true });
       }, 0);
     };
 
@@ -127,6 +130,7 @@ const ManageLogin = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setShowCreatorApply(false);
     setErrorMsg(null);
 
     try {
@@ -146,6 +150,27 @@ const ManageLogin = () => {
       setErrorMsg(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    setShowCreatorApply(false);
+    setErrorMsg(null);
+
+    const next = redirectTo?.startsWith('/') && !redirectTo.startsWith('//')
+      ? `?redirect=${encodeURIComponent(redirectTo)}`
+      : '';
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/manage-login${next}`,
+      },
+    });
+
+    if (error) {
+      setErrorMsg(t('googleLoginFailed'));
+      setGoogleLoading(false);
     }
   };
 
@@ -181,6 +206,7 @@ const ManageLogin = () => {
 
   const switchLoginMode = (nextMode: LoginMode) => {
     setLoginMode(nextMode);
+    setShowCreatorApply(false);
     setErrorMsg(null);
     setMagicMsg(null);
     setResetMsg(null);
@@ -318,8 +344,34 @@ const ManageLogin = () => {
             </div>
           )}
 
+          {showCreatorApply && (
+            <Link
+              to="/creator/register"
+              className="mb-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gray-900 px-4 py-3 text-sm font-black text-white"
+            >
+              {t('loginApplyAsCreator')}
+            </Link>
+          )}
+
           {loginMode === 'creator' ? (
-            <form onSubmit={handleLogin} aria-label={t('creatorManagerLoginTitle')} data-testid="creator-login-form" className="space-y-4">
+            <>
+              <div className="mb-5 space-y-3">
+                <Button
+                  type="button"
+                  onClick={() => void handleGoogleLogin()}
+                  disabled={googleLoading}
+                  className="w-full border border-gray-300 bg-white py-3 font-black text-gray-900 hover:bg-gray-50"
+                >
+                  {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
+                </Button>
+                <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>
+                <div className="flex items-center gap-3 text-xs font-bold text-gray-400">
+                  <span className="h-px flex-1 bg-gray-200" />
+                  {t('orUseEmail')}
+                  <span className="h-px flex-1 bg-gray-200" />
+                </div>
+              </div>
+              <form onSubmit={handleLogin} aria-label={t('creatorManagerLoginTitle')} data-testid="creator-login-form" className="space-y-4">
               <div>
                 <label htmlFor="login-email" className="block text-sm font-bold text-gray-700 mb-1">{t('loginEmail')}</label>
                 <div className="relative">
@@ -376,7 +428,8 @@ const ManageLogin = () => {
               >
                 {loading ? t('loginSubmitting') : t('loginSubmit')}
               </Button>
-            </form>
+              </form>
+            </>
           ) : (
             <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
               <p className="text-xs leading-5 text-gray-500">

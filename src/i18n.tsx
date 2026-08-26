@@ -299,6 +299,11 @@ const translations = {
     loginApplyAccess: 'Apply for access',
     loginNoWorkspace: 'No workspace role assigned for this account.',
     loginConfirmEmailFirst: 'Please confirm your email before creating the workspace. Check your inbox, then sign in again.',
+    continueWithGoogle: 'Continue with Google',
+    orUseEmail: 'or use email',
+    googleSameEmailHint: 'Already have a Nireq account? Choose the Google account with the same email. Linking different emails is not supported yet.',
+    googleLoginFailed: 'Google sign-in could not start. Try again or use email.',
+    loginApplyAsCreator: 'Apply as a creator with this account',
 
     registerBack: 'Creator login',
     registerEyebrow: 'Creator Access',
@@ -750,6 +755,11 @@ const translations = {
     loginApplyAccess: 'สมัครใช้งาน',
     loginNoWorkspace: 'บัญชีนี้ยังไม่มี role สำหรับ workspace',
     loginConfirmEmailFirst: 'กรุณายืนยันอีเมลก่อนสร้าง workspace เช็คกล่องจดหมาย แล้วเข้าสู่ระบบอีกครั้ง.',
+    continueWithGoogle: 'ดำเนินการต่อด้วย Google',
+    orUseEmail: 'หรือใช้อีเมล',
+    googleSameEmailHint: 'มีบัญชี Nireq แล้ว? เลือก Google ที่ใช้อีเมลเดียวกัน ขณะนี้ยังไม่รองรับการเชื่อมคนละอีเมล',
+    googleLoginFailed: 'เริ่มเข้าสู่ระบบด้วย Google ไม่สำเร็จ ลองใหม่หรือใช้อีเมล',
+    loginApplyAsCreator: 'สมัครเป็น Creator ด้วยบัญชีนี้',
 
     registerBack: 'เข้าสู่ระบบ Creator',
     registerEyebrow: 'สิทธิ์ Creator',

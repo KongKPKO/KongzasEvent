@@ -4,7 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n } from '../i18n';
-import { fetchActorContext } from '../utils/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
 type FormState = {
@@ -228,33 +228,45 @@ export default function CreatorRegister() {
         throw new Error('Desired URL slug is already taken');
       }
 
+      const creatorMetadata = {
+        creator_signup: 'self_serve',
+        creator_name: form.creatorName.trim(),
+        contact_name: form.contactName.trim(),
+        desired_slug: desiredSlug,
+        primary_social_url: form.primarySocialUrl.trim(),
+        website_url: normalizeOptionalUrl(form.websiteUrl),
+        instagram_url: normalizeOptionalUrl(form.instagramUrl),
+        x_url: normalizeOptionalUrl(form.xUrl),
+        facebook_url: normalizeOptionalUrl(form.facebookUrl),
+        tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
+        application_note: form.applicationNote.trim(),
+      };
+
+      if (authUser) {
+        const { error: metadataError } = await supabase.auth.updateUser({ data: creatorMetadata });
+        if (metadataError) throw metadataError;
+
+        const completion = await completePendingVerifiedCreatorSignup();
+        if (completion === 'created' || completion === 'exists') {
+          navigate('/manage-login', { replace: true });
+          return;
+        }
+        if (completion === 'email_unconfirmed') throw new Error(t('loginConfirmEmailFirst'));
+        throw new Error(t('registerErrSubmit'));
+      }
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password: form.password,
         options: {
           emailRedirectTo: `${window.location.origin}/manage-login?verified=1`,
-          data: {
-            creator_signup: 'self_serve',
-            creator_name: form.creatorName.trim(),
-            contact_name: form.contactName.trim(),
-            desired_slug: desiredSlug,
-            primary_social_url: form.primarySocialUrl.trim(),
-            website_url: normalizeOptionalUrl(form.websiteUrl),
-            instagram_url: normalizeOptionalUrl(form.instagramUrl),
-            x_url: normalizeOptionalUrl(form.xUrl),
-            facebook_url: normalizeOptionalUrl(form.facebookUrl),
-            tiktok_url: normalizeOptionalUrl(form.tiktokUrl),
-            application_note: form.applicationNote.trim(),
-          },
+          data: creatorMetadata,
         },
       });
 
-      if (signUpError) {
-        if (isExistingAccountResponse(signUpError.message)) throw new Error(t('registerErrEmailExists'));
-        throw signUpError;
-      }
+      if (signUpError && !isExistingAccountResponse(signUpError.message)) throw signUpError;
 
-      if (signUpData.session) await supabase.auth.signOut();
+      if (signUpData?.session) await supabase.auth.signOut();
 
       setSubmittedEmail(email);
       setForm(initialForm);
@@ -276,9 +288,9 @@ export default function CreatorRegister() {
         options: { emailRedirectTo: `${window.location.origin}/manage-login?verified=1` },
       });
       if (error) throw error;
-      setResendMessage('ส่งอีเมลยืนยันใหม่แล้ว กรุณาใช้ลิงก์ล่าสุดในกล่องข้อความ');
+      setResendMessage(t('registerResendNeutral'));
     } catch {
-      setResendMessage('ยังส่งอีเมลใหม่ไม่ได้ กรุณารอสักครู่แล้วลองอีกครั้ง หรือติดต่อ Nireq');
+      setResendMessage(t('registerResendUnavailable'));
     } finally {
       setResendLoading(false);
     }
@@ -312,6 +324,7 @@ export default function CreatorRegister() {
                 {resendLoading ? 'กำลังส่ง…' : 'ส่งอีเมลยืนยันอีกครั้ง'}
               </button>
             </div>
+            <p className="mt-3 text-sm text-gray-600">{t('registerResetGuidance')}</p>
           </div>
         </div>
       </div>

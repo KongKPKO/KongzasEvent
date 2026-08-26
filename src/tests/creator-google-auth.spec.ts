@@ -1,9 +1,40 @@
 import { expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
-const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
+const { url: SUPABASE_URL, key: SUPABASE_KEY, serviceKey: SERVICE_KEY } = resolveSupabaseTestEnv();
+const service = SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null;
 const localPassword = 'LocalCreatorSessionRace123!';
+
+const createConfirmedUser = async () => {
+  if (!service) throw new Error('Local Supabase service key is required');
+  const email = `google-onboarding-${randomUUID()}@example.com`;
+  const password = 'CreatorPass123!';
+  const { data, error } = await service.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (error || !data.user) throw error || new Error('Confirmed user was not created');
+  return { userId: data.user.id, email, password };
+};
+
+const cleanupUser = async (userId: string) => {
+  if (!service) return;
+  await service.from('artist_members').delete().eq('artist_id', userId);
+  await service.from('creator_applications').delete().eq('auth_user_id', userId);
+  await service.from('artists').delete().eq('id', userId);
+  await service.auth.admin.deleteUser(userId);
+};
+
+const signInThroughUi = async (page: import('@playwright/test').Page, email: string, password: string) => {
+  await page.goto('/manage-login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByTestId('creator-login-submit').click();
+  await expect(page.getByText('No workspace role assigned for this account.')).toBeVisible();
+};
 
 const getLocalCreatorSession = async (email: string) => {
   const auth = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -168,5 +199,65 @@ test.describe('Creator Google auth', () => {
     await page.waitForTimeout(100);
     await signOut();
     await expect(contactName).toHaveValue('My saved draft name');
+  });
+
+  test('verified authenticated user creates one creator workspace without password fields', async ({ page }) => {
+    test.skip(!SERVICE_KEY, 'Local Supabase service key is required');
+    if (!service) throw new Error('Local Supabase service key is required');
+    const user = await createConfirmedUser();
+    const slug = `google-${randomUUID().slice(0, 8)}`;
+
+    try {
+      await signInThroughUi(page, user.email, user.password);
+      await page.getByRole('link', { name: 'Apply as a creator with this account' }).click();
+
+      await expect(page.getByText(user.email)).toBeVisible();
+      await expect(page.locator('#creator-password')).toHaveCount(0);
+      await expect(page.locator('#creator-email')).toHaveCount(0);
+
+      await page.locator('#creator-contact-name').fill('Google Creator');
+      await page.locator('#creator-name').fill('Google Pilot Booth');
+      await page.locator('#creator-slug').fill(slug);
+      await page.getByTestId('creator-primary-social').fill('https://instagram.com/google-pilot');
+      await page.getByTestId('creator-application-note').fill('Testing Google creator onboarding for an event booth.');
+      await page.getByTestId('creator-truthful').check();
+      await page.getByTestId('creator-register-submit').click();
+
+      await expect(page).toHaveURL(/\/manage-events/, { timeout: 20000 });
+
+      const [{ count: artists }, { count: applications }, { count: owners }] = await Promise.all([
+        service.from('artists').select('*', { count: 'exact', head: true }).eq('id', user.userId),
+        service.from('creator_applications').select('*', { count: 'exact', head: true }).eq('auth_user_id', user.userId),
+        service.from('artist_members').select('*', { count: 'exact', head: true }).eq('artist_id', user.userId).eq('role', 'owner'),
+      ]);
+      expect({ artists, applications, owners }).toEqual({ artists: 1, applications: 1, owners: 1 });
+    } finally {
+      await cleanupUser(user.userId);
+    }
+  });
+
+  test('duplicate email signup gives neutral login and reset guidance', async ({ page }) => {
+    test.skip(!SERVICE_KEY, 'Local Supabase service key is required');
+    const user = await createConfirmedUser();
+
+    try {
+      await page.goto('/creator/register');
+      await page.getByLabel('Email').fill(user.email);
+      await page.locator('#creator-password').fill(user.password);
+      await page.getByLabel('Confirm password').fill(user.password);
+      await page.getByLabel('Contact name').fill('Existing Creator');
+      await page.getByLabel('Creator / shop name').fill('Existing Pilot Booth');
+      await page.getByLabel('Desired URL slug').fill(`existing-${randomUUID().slice(0, 8)}`);
+      await page.getByTestId('creator-primary-social').fill('https://instagram.com/existing-pilot');
+      await page.getByTestId('creator-application-note').fill('Testing neutral duplicate account recovery guidance.');
+      await page.getByTestId('creator-truthful').check();
+      await page.getByTestId('creator-register-submit').click();
+
+      await expect(page.getByRole('heading', { name: 'Check your email or sign in' })).toBeVisible();
+      await expect(page.getByText('Already used this email? Go to login and choose Forgot password.')).toBeVisible();
+      await expect(page.getByText('No second account is created for an existing confirmed email.')).toBeVisible();
+    } finally {
+      await cleanupUser(user.userId);
+    }
   });
 });

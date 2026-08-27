@@ -358,10 +358,18 @@ const ManageLogin = () => {
               <div className="mb-5 space-y-3">
                 <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => void handleGoogleLogin()}
                   disabled={googleLoading}
-                  className="w-full border border-gray-300 bg-white py-3 font-black text-gray-900 hover:bg-gray-50"
+                  className="min-h-12 w-full border-gray-300 bg-white px-4 py-3 font-black text-gray-900 shadow-none hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:opacity-60"
                 >
+                  <img
+                    src="/google-g-logo.svg"
+                    alt=""
+                    aria-hidden="true"
+                    data-testid="google-auth-logo"
+                    className="h-5 w-5 shrink-0"
+                  />
                   {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
                 </Button>
                 <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>

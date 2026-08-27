@@ -378,8 +378,15 @@ export default function CreatorRegister() {
                   type="button"
                   onClick={() => void handleGoogleSignup()}
                   disabled={googleLoading}
-                  className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-black text-gray-900 hover:bg-gray-50 disabled:opacity-60"
+                  className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-black text-gray-900 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:opacity-60"
                 >
+                  <img
+                    src="/google-g-logo.svg"
+                    alt=""
+                    aria-hidden="true"
+                    data-testid="google-auth-logo"
+                    className="h-5 w-5 shrink-0"
+                  />
                   {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
                 </button>
                 <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>

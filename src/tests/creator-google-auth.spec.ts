@@ -67,7 +67,9 @@ test.describe('Creator Google auth', () => {
 
   test('Google login stays in creator mode and staff magic link remains available', async ({ page }) => {
     await page.goto('/manage-login');
-    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+    const googleLoginButton = page.getByRole('button', { name: 'Continue with Google' });
+    await expect(googleLoginButton).toBeVisible();
+    await expect(googleLoginButton.getByTestId('google-auth-logo')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Staff' }).click();
     await expect(page.getByRole('button', { name: 'Continue with Google' })).toHaveCount(0);
@@ -86,7 +88,9 @@ test.describe('Creator Google auth', () => {
     const authorizeRequest = page.waitForRequest((request) =>
       request.url().includes('/auth/v1/authorize')
     );
-    await page.getByRole('button', { name: 'Continue with Google' }).click();
+    const googleSignupButton = page.getByRole('button', { name: 'Continue with Google' });
+    await expect(googleSignupButton.getByTestId('google-auth-logo')).toBeVisible();
+    await googleSignupButton.click();
 
     const url = new URL((await authorizeRequest).url());
     expect(url.searchParams.get('provider')).toBe('google');

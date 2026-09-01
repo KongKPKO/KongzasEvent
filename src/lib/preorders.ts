@@ -49,6 +49,7 @@ export const getPreorderErrorMessage = (error: unknown) => {
   if (message.includes('preorder_not_open_yet')) return 'Pre-order has not opened yet.';
   if (message.includes('preorder_closed')) return 'Pre-order is already closed.';
   if (message.includes('preorder_not_open')) return 'This event is not accepting pre-orders right now.';
+  if (message.includes('stock_hold_expired')) return 'This 15-minute stock hold expired. Place a new order to try again.';
   if (message.includes('insufficient_stock')) return 'One or more items just sold out.';
   if (message.includes('order_not_cancellable')) return 'This pre-order cannot be cancelled.';
   if (message.includes('order_not_pickup_ready')) return 'This pre-order is not ready for pickup.';
@@ -122,11 +123,13 @@ export const submitPaymentEvidence = async (input: {
     p_client_request_id: input.clientRequestId || null,
   });
 
-  return firstRow<SubmitPaymentEvidenceResult>(
+  const result = firstRow<SubmitPaymentEvidenceResult>(
     data as SubmitPaymentEvidenceResult[] | SubmitPaymentEvidenceResult | null,
     error,
     'preorder_payment_submit_response_missing'
   );
+  if (result.payment_status === 'payment_expired') throw new Error('stock_hold_expired');
+  return result;
 };
 
 export const confirmPreorderPayment = async (orderId: string, note = '') => {

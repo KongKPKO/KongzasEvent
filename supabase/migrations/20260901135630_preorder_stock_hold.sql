@@ -106,6 +106,7 @@ begin
   update public.order_payments
   set payment_status = 'payment_expired',
       expired_at = now(),
+      review_note = 'stock_hold_expired',
       updated_at = now()
   where id = v_order.payment_id;
 

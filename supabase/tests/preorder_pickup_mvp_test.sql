@@ -414,11 +414,11 @@ select results_eq(
 );
 
 select results_eq(
-  $$ select op.payment_status, o.pickup_status, o.status
+  $$ select op.payment_status, o.pickup_status, o.status, op.review_note
      from public.order_payments op
      join public.orders o on o.id = op.order_id
      where o.id = (select order_id from _expired_hold) $$,
-  $$ values ('payment_expired'::text, 'expired'::text, 'cancelled'::text) $$,
+  $$ values ('payment_expired'::text, 'expired'::text, 'cancelled'::text, 'stock_hold_expired'::text) $$,
   'expired hold becomes a cancelled expired order'
 );
 

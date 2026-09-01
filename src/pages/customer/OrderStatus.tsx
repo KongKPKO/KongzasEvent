@@ -36,6 +36,7 @@ const OrderStatus: React.FC = () => {
   const [linkCopied, setLinkCopied] = useState(false);
   const [trackingCopied, setTrackingCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const expiryRefreshRequestedRef = useRef(false);
 
   const load = useCallback(async (silent = false) => {
     if (!slug || !code) return;
@@ -86,6 +87,11 @@ const OrderStatus: React.FC = () => {
 
   const handleSubmitSlip = async () => {
     if (!detail) return;
+    if (deadlinePassed) {
+      setFeedback({ tone: 'error', title: t('orderSubmitError'), detail: t('orderPayDeadlinePassed') });
+      await load(true);
+      return;
+    }
     if (!slipFile) {
       setFeedback({ tone: 'warning', title: t('orderSlipRequired') });
       return;
@@ -119,6 +125,7 @@ const OrderStatus: React.FC = () => {
     } catch (error) {
       console.error(error);
       setFeedback({ tone: 'error', title: t('orderSubmitError'), detail: getPreorderErrorMessage(error) });
+      await load(true);
     } finally {
       setSubmitting(false);
     }
@@ -182,9 +189,12 @@ const OrderStatus: React.FC = () => {
 
   const terminal = detail
     && ['payment_rejected', 'payment_expired', 'payment_cancelled'].includes(detail.payment_status);
+  const stockHoldExpired = detail?.payment_status === 'payment_expired'
+    && detail.review_note === 'stock_hold_expired';
   // The submit RPC accepts re-submission from rejected/expired (it re-reserves stock),
   // so those states get the payment + upload section back instead of a dead end.
   const canResubmit = Boolean(detail
+    && !stockHoldExpired
     && ['payment_rejected', 'payment_expired'].includes(detail.payment_status));
   const pickedUp = detail?.pickup_status === 'picked_up';
   const codeShowableAtBooth = !isPostOrder && (detail?.payment_status === 'payment_confirmed' || pickedUp);
@@ -205,6 +215,16 @@ const OrderStatus: React.FC = () => {
   }, [deadlineMs, nowMs]);
 
   const deadlinePassed = Boolean(awaitingPayment && deadlineMs && deadlineMs <= nowMs);
+
+  useEffect(() => {
+    if (!deadlinePassed) {
+      expiryRefreshRequestedRef.current = false;
+      return;
+    }
+    if (expiryRefreshRequestedRef.current) return;
+    expiryRefreshRequestedRef.current = true;
+    void load(true);
+  }, [deadlinePassed, load]);
 
   const steps = isPostOrder
     ? [t('orderStepPlaced'), t('orderStepPay'), t('orderStepReview'), t('orderStepShip')]
@@ -263,7 +283,7 @@ const OrderStatus: React.FC = () => {
           tone: 'border-gray-200 bg-gray-50 text-gray-800',
           icon: <XCircle size={22} className="text-gray-500" />,
           title: t('orderStatusExpiredTitle'),
-          detail: t('orderStatusExpiredDetail'),
+          detail: t(stockHoldExpired ? 'orderStatusHoldExpiredDetail' : 'orderStatusExpiredDetail'),
         };
       case 'payment_cancelled':
         return {
@@ -507,6 +527,7 @@ const OrderStatus: React.FC = () => {
                     id="order-slip-input"
                     type="file"
                     accept="image/*,.pdf"
+                    disabled={deadlinePassed}
                     onChange={(event) => handleSlipChange(event.target.files?.[0] || null)}
                     className="sr-only"
                   />
@@ -522,6 +543,7 @@ const OrderStatus: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
+                          disabled={deadlinePassed}
                           className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50"
                         >
                           {t('orderUploadChange')}
@@ -532,6 +554,7 @@ const OrderStatus: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
+                      disabled={deadlinePassed}
                       className="mt-2 flex min-h-14 w-full items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50"
                     >
                       {t('orderUploadHint')}
@@ -540,7 +563,7 @@ const OrderStatus: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleSubmitSlip}
-                    disabled={!slipFile || submitting}
+                    disabled={!slipFile || submitting || deadlinePassed}
                     className="mt-3 min-h-12 w-full rounded-xl bg-pink-600 px-4 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {submitting ? t('orderSubmitting') : canResubmit ? t('orderSubmitNewSlip') : t('orderSubmitSlip')}

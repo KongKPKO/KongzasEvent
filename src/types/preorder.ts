@@ -69,7 +69,7 @@ export interface CreatePreorderResult {
 
 export interface SubmitPaymentEvidenceResult {
   order_id: string;
-  payment_status: 'payment_submitted';
+  payment_status: 'payment_submitted' | 'payment_expired';
   stock_reserved: number;
   submitted_at: string;
 }

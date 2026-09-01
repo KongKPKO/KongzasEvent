@@ -1,6 +1,6 @@
 begin;
 
-select plan(6);
+select plan(7);
 
 create function public.rpc_default_privilege_probe()
 returns boolean
@@ -120,6 +120,12 @@ select is(
   ),
   4::bigint,
   'internal helpers are executable only by trusted backend roles'
+);
+
+select ok(
+  not has_function_privilege('anon', 'private.expire_preorder_stock_holds()', 'execute')
+  and not has_function_privilege('authenticated', 'private.expire_preorder_stock_holds()', 'execute'),
+  'stock-hold cleanup is unavailable to API roles'
 );
 
 select is(

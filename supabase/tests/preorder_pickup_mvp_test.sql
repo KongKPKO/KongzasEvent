@@ -1,5 +1,5 @@
 begin;
-select plan(44);
+select plan(53);
 
 do $$
 declare
@@ -111,8 +111,15 @@ set first_order_id = (select order_id from _created_preorder),
 
 select is(
   (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
-  0,
-  'pre-order creation does not reserve event stock before payment evidence'
+  2,
+  'pre-order creation reserves event stock immediately'
+);
+
+select ok(
+  (select stock_hold_expires_at between now() + interval '14 minutes' and now() + interval '16 minutes'
+   from public.order_payments
+   where order_id = (select first_order_id from _preorder_ids)),
+  'pre-order creation creates a fixed 15-minute stock hold'
 );
 
 select is(
@@ -167,7 +174,7 @@ from public.submit_preorder_payment_evidence(
 select is(
   (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
   2,
-  'payment evidence submission reserves stock'
+  'payment evidence keeps the existing stock reservation without double-reserving'
 );
 
 select is(
@@ -184,31 +191,26 @@ select throws_ok(
   'pickup is blocked until seller confirms payment'
 );
 
-create temp table _oversell_preorder as
-select *
-from public.create_preorder_with_stock(
-  (select event_id from _preorder_ids),
-  jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 4)),
-  'Oversell Customer',
-  '',
-  '',
-  gen_random_uuid(),
-  '0800000000',
-  '',
-  'oversell@example.com'
-);
-
-update _preorder_ids set oversell_order_id = (select order_id from _oversell_preorder);
-
 select throws_ok(
-  $$ select * from public.submit_preorder_payment_evidence(
-    (select oversell_order_id from _preorder_ids),
-    (select pickup_code from _oversell_preorder),
-    'artist/event/order/slip-oversell.png',
-    gen_random_uuid()
+  $$ select * from public.create_preorder_with_stock(
+    (select event_id from _preorder_ids),
+    jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 4)),
+    'Oversell Customer',
+    '',
+    '',
+    gen_random_uuid(),
+    '0800000000',
+    '',
+    'oversell@example.com'
   ) $$,
   'insufficient_stock',
-  'finite stock cannot be oversold by payment evidence submission'
+  'finite stock cannot be oversold at checkout'
+);
+
+select is(
+  (select count(*) from public.orders where customer_email = 'oversell@example.com'),
+  0::bigint,
+  'failed stock hold leaves no draft order behind'
 );
 
 update public.events
@@ -385,8 +387,125 @@ select is(
 select is(
   (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
   0,
-  'customer cancel before payment does not reserve stock'
+  'customer cancel before payment releases its checkout hold'
 );
+
+create temp table _expired_hold as
+select * from public.create_preorder_with_stock(
+  (select event_id from _preorder_ids),
+  jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
+  'Expired Hold',
+  '',
+  '',
+  gen_random_uuid(),
+  '',
+  '@expired',
+  'expired-hold@example.com'
+);
+
+update public.order_payments
+set stock_hold_expires_at = now() - interval '1 second'
+where order_id = (select order_id from _expired_hold);
+
+select results_eq(
+  $$ select expired_count, released_stock_count from private.expire_preorder_stock_holds() $$,
+  $$ values (1, 1) $$,
+  'automatic cleanup expires one abandoned hold and releases one unit'
+);
+
+select results_eq(
+  $$ select op.payment_status, o.pickup_status, o.status
+     from public.order_payments op
+     join public.orders o on o.id = op.order_id
+     where o.id = (select order_id from _expired_hold) $$,
+  $$ values ('payment_expired'::text, 'expired'::text, 'cancelled'::text) $$,
+  'expired hold becomes a cancelled expired order'
+);
+
+select is(
+  (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
+  0,
+  'expired checkout hold releases stock'
+);
+
+create temp table _submitted_hold as
+select * from public.create_preorder_with_stock(
+  (select event_id from _preorder_ids),
+  jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
+  'Submitted Hold',
+  '',
+  '',
+  gen_random_uuid(),
+  '',
+  '@submitted-hold',
+  'submitted-hold@example.com'
+);
+
+create temp table _submitted_hold_payment as
+select * from public.submit_preorder_payment_evidence(
+  (select order_id from _submitted_hold),
+  (select pickup_code from _submitted_hold),
+  'artist/event/order/slip-submitted-hold.png',
+  gen_random_uuid()
+);
+
+update public.order_payments
+set stock_hold_expires_at = now() - interval '1 second'
+where order_id = (select order_id from _submitted_hold);
+
+select results_eq(
+  $$ select expired_count, released_stock_count from private.expire_preorder_stock_holds() $$,
+  $$ values (0, 0) $$,
+  'automatic cleanup leaves submitted payments reserved'
+);
+
+select is(
+  (select payment_status from public.order_payments where order_id = (select order_id from _submitted_hold)),
+  'payment_submitted',
+  'submitted payment remains under review after its checkout deadline'
+);
+
+create temp table _submitted_hold_cancel as
+select * from public.cancel_preorder_with_stock((select order_id from _submitted_hold), 'test cleanup');
+
+create temp table _legacy_hold as
+select * from public.create_preorder_with_stock(
+  (select event_id from _preorder_ids),
+  jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
+  'Legacy Hold',
+  '',
+  '',
+  gen_random_uuid(),
+  '',
+  '@legacy-hold',
+  'legacy-hold@example.com'
+);
+
+create temp table _legacy_hold_release as
+select public.release_preorder_order_stock((select order_id from _legacy_hold));
+
+update public.order_payments
+set stock_hold_expires_at = null
+where order_id = (select order_id from _legacy_hold);
+
+select isnt_empty(
+  $$ select 1 from public.submit_preorder_payment_evidence(
+    (select order_id from _legacy_hold),
+    (select pickup_code from _legacy_hold),
+    'artist/event/order/slip-legacy.png',
+    gen_random_uuid()
+  ) $$,
+  'legacy awaiting-payment order still reserves at slip submission'
+);
+
+select is(
+  (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
+  1,
+  'legacy slip submission reserves stock exactly once'
+);
+
+create temp table _legacy_hold_cancel as
+select * from public.cancel_preorder_with_stock((select order_id from _legacy_hold), 'test cleanup');
 
 create temp table _reject_preorder as
 select *

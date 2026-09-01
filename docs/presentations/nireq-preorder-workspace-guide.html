@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nireq Feature Guide: Event Workspace + Pre-order Pickup MVP</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --muted: #4b5563;
+      --soft: #f9fafb;
+      --panel: #ffffff;
+      --line: #e5e7eb;
+      --brand: #be185d;
+      --brand-dark: #9d174d;
+      --brand-soft: #fdf2f8;
+      --green: #047857;
+      --green-soft: #ecfdf5;
+      --amber: #92400e;
+      --amber-soft: #fffbeb;
+      --blue: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --slate: #0f172a;
+      --shadow: 0 20px 55px rgba(15, 23, 42, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #f3f4f6;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .deck {
+      width: min(1180px, 100%);
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--slate);
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: #cbd5e1; background: #f8fafc; }
+    button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    button.primary:hover { background: var(--brand-dark); }
+
+    .slide {
+      display: none;
+      min-height: 660px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .slide.active { display: grid; }
+
+    .slide-inner {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 660px;
+      padding: 44px 52px 30px;
+      gap: 26px;
+    }
+
+    .kicker {
+      color: var(--brand);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { max-width: 860px; font-size: 52px; line-height: 1.02; letter-spacing: 0; }
+    h2 { max-width: 880px; font-size: 36px; line-height: 1.08; letter-spacing: 0; }
+    h3 { font-size: 18px; line-height: 1.2; }
+    p { color: var(--muted); font-size: 17px; line-height: 1.55; }
+
+    .lead {
+      max-width: 760px;
+      color: #374151;
+      font-size: 20px;
+      line-height: 1.55;
+      font-weight: 650;
+      margin-top: 18px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 18px;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--slate);
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .card p, .card li {
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .route {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      border-radius: 8px;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .badge.brand { background: var(--brand-soft); color: var(--brand-dark); }
+    .badge.green { background: var(--green-soft); color: var(--green); }
+    .badge.amber { background: var(--amber-soft); color: var(--amber); }
+    .badge.blue { background: var(--blue-soft); color: var(--blue); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 14px;
+      min-height: 128px;
+      position: relative;
+    }
+
+    .flow-step .num {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+
+    .flow-step strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.25;
+      margin-bottom: 6px;
+    }
+
+    .flow-step p { font-size: 12px; line-height: 1.38; }
+
+    .mock {
+      border: 1px solid #d1d5db;
+      border-radius: 18px;
+      background: #f8fafc;
+      padding: 16px;
+      min-height: 300px;
+    }
+
+    .mock-bar {
+      height: 34px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+
+    .mock-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .mock-tile {
+      min-height: 96px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .mock-line {
+      height: 10px;
+      border-radius: 99px;
+      background: #e5e7eb;
+      margin-bottom: 8px;
+    }
+
+    .mock-line.brand { background: #f9a8d4; width: 46%; }
+    .mock-line.short { width: 58%; }
+    .mock-line.long { width: 92%; }
+
+    .checklist {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .checklist li {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: #1f2937;
+      font-size: 15px;
+      line-height: 1.45;
+      font-weight: 650;
+    }
+
+    .check {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .speaker-note {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 650;
+    }
+
+    .wide-list {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .wide-list li {
+      display: grid;
+      grid-template-columns: minmax(210px, 280px) 1fr;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding: 11px 0;
+      color: #374151;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .wide-list li:last-child { border-bottom: 0; }
+
+    .wide-list strong { color: var(--slate); }
+
+    @media (max-width: 820px) {
+      body { padding: 12px; }
+      .slide, .slide-inner { min-height: auto; }
+      .slide-inner { padding: 28px 24px 22px; }
+      h1 { font-size: 36px; }
+      h2 { font-size: 28px; }
+      .grid-2, .grid-3, .flow { grid-template-columns: 1fr; }
+      .wide-list li { grid-template-columns: 1fr; gap: 4px; }
+    }
+
+    @media print {
+      body { display: block; padding: 0; background: #fff; }
+      .deck { width: 100%; }
+      .toolbar { display: none; }
+      .slide {
+        display: grid !important;
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        page-break-after: always;
+      }
+      .slide-inner { min-height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Nireq feature guide deck">
+    <div class="toolbar">
+      <div><span id="counter">1 / 12</span> · Nireq Feature Guide</div>
+      <div class="toolbar-actions">
+        <button type="button" id="prev">Back</button>
+        <button type="button" id="next" class="primary">Next</button>
+        <button type="button" id="print">Print / Export PDF</button>
+      </div>
+    </div>
+
+    <section class="slide active">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Feature guide · June 2026</div>
+          <h1>Nireq Event Workspace + Pre-order Pickup MVP</h1>
+          <p class="lead">สรุปของใหม่ที่เพิ่มเข้ามา, อยู่หน้าไหน, ใช้ทำอะไร, และควรเทสด้วยมือยังไงก่อน release.</p>
+        </header>
+        <div class="grid-3">
+          <div class="card"><span class="badge brand">Admin</span><strong>Event-first workspace</strong><p>ลดหน้า event management ที่มี action เยอะ ให้เลือก event ก่อน แล้วค่อยเข้า workspace ของ event นั้น.</p></div>
+          <div class="card"><span class="badge green">Commerce</span><strong>Pre-order ก่อน event</strong><p>ลูกค้าสั่งสินค้าได้โดยไม่ต้องมี queue ticket เมื่อ event อยู่ใน pre-order mode และอยู่ในช่วงเวลาที่เปิด.</p></div>
+          <div class="card"><span class="badge amber">Ops</span><strong>Pickup fulfillment</strong><p>staff ค้น pickup code, mark picked up, cancel no-show, และ expire รายการค้างเพื่อคืน stock.</p></div>
+        </div>
+        <footer class="footer"><span>Use this before manual browser testing</span><span>Slide 1</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">What changed</div>
+          <h2>จาก “event row ที่มีปุ่มเต็มไปหมด” เป็น “workspace ของ event”</h2>
+          <p class="lead">เป้าคือให้คนขายไม่ต้อง scan action 8 ปุ่มในแถวเดียว และให้ live ops, stock, pickup, dashboard อยู่ใน context ของ event นั้น.</p>
+        </header>
+        <div class="grid-2">
+          <div class="mock" aria-label="Old command shelf concept">
+            <div class="mock-bar"></div>
+            <div class="mock-grid">
+              <div class="mock-tile"><div class="mock-line long"></div><div class="mock-line"></div><div class="mock-line short"></div></div>
+              <div class="mock-tile"><div class="mock-line long"></div><div class="mock-line"></div><div class="mock-line short"></div></div>
+              <div class="mock-tile"><div class="mock-line long"></div><div class="mock-line"></div><div class="mock-line short"></div></div>
+              <div class="mock-tile"><div class="mock-line long"></div><div class="mock-line"></div><div class="mock-line short"></div></div>
+            </div>
+          </div>
+          <div>
+            <ul class="checklist">
+              <li><span class="check">1</span><span>หน้าแรกของ creator เห็น event เป็น grid พร้อมสถานะและ metric ย่อ.</span></li>
+              <li><span class="check">2</span><span>กด Manage แล้วเข้า workspace ที่จัด module ตาม context เช่น prep, pre-order open, live, ended.</span></li>
+              <li><span class="check">3</span><span>Live Queue และ Live POS ยังอยู่หนึ่งคลิกในช่วง booth operation.</span></li>
+              <li><span class="check">4</span><span>Profile ยังเข้าถึงได้ผ่าน Creator Profile หรือ <span class="route">/manage-events?view=all</span>.</span></li>
+            </ul>
+          </div>
+        </div>
+        <footer class="footer"><span>Primary IA change</span><span>Slide 2</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Page map</div>
+          <h2>หน้าใหม่และหน้าที่ถูกต่อเข้ากัน</h2>
+          <p class="lead">นี่คือ map ที่ใช้ตอนเทส. ถ้าไม่รู้จะไปไหน ให้เริ่มจาก <span class="route">/manage-events</span>.</p>
+        </header>
+        <ul class="wide-list">
+          <li><strong><span class="route">/manage-events</span></strong><span>Event grid + profile panel. ถ้ามี active event เดียวจะ auto-open workspace ยกเว้นมี <span class="route">?view=all</span>.</span></li>
+          <li><strong><span class="route">/manage-events/:eventId/workspace</span></strong><span>ศูนย์กลางของ event นั้น: settings, catalog, pre-order, pickup, queue, POS, dashboard, history.</span></li>
+          <li><strong><span class="route">/manage-events/:eventId/preorder</span></strong><span>ตั้ง selling mode, เวลาเปิด/ปิด pre-order, และ pickup instructions.</span></li>
+          <li><strong><span class="route">/:slug/menu</span></strong><span>ลูกค้า browse menu. ถ้า event เป็น pre-order mode จะ checkout แบบไม่ต้องมี queue ticket.</span></li>
+          <li><strong><span class="route">/manage-events/:eventId/pickup</span></strong><span>staff fulfillment: ค้น code, mark picked up, cancel, expire no-show.</span></li>
+          <li><strong><span class="route">/manage-events/:eventId/dashboard</span> / <span class="route">history</span></strong><span>ดูยอด pre-order, order type, pickup status, และรายการย้อนหลัง.</span></li>
+        </ul>
+        <footer class="footer"><span>Route reference</span><span>Slide 3</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Event workspace</div>
+          <h2>Workspace cards เลือกงานถัดไปให้เหมาะกับ state ของ event</h2>
+        </header>
+        <div class="grid-3">
+          <div class="card"><span class="badge brand">Prep</span><strong>ก่อนเปิดขาย</strong><p>Pre-order settings และ catalog จะเด่น เพื่อให้ creator ตั้ง window, instruction, และ stock ให้พร้อม.</p></div>
+          <div class="card"><span class="badge green">Pre-order open</span><strong>ช่วงรับ order</strong><p>Pickup count, pre-order status, dashboard และ catalog เป็นสิ่งที่ควรเห็นเร็ว.</p></div>
+          <div class="card"><span class="badge blue">Live booth</span><strong>วันงาน</strong><p>Queue/POS ยังเข้าถึงไว และ pickup จะถูกดันขึ้นถ้ามี awaiting pickup.</p></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><strong>สิ่งที่ควรลอง</strong><p>เข้าจาก grid, กด Manage, กดกลับ “ดู event ทั้งหมด”, กด Creator Profile, และลอง active/ended tab.</p></div>
+          <div class="card"><strong>สิ่งที่ควรเห็น</strong><p>module card ไม่ล้น, role ที่ไม่มีสิทธิ์ไม่เห็น action เกินจำเป็น, event name/date/location ไม่ทับกัน.</p></div>
+        </div>
+        <footer class="footer"><span>Creator workflow</span><span>Slide 4</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Pre-order settings</div>
+          <h2>เปิด pre-order ได้จากหน้า event workspace</h2>
+          <p class="lead">หน้านี้เป็นจุดที่ creator ตั้งกติกาก่อนลูกค้าสั่งได้จริง.</p>
+        </header>
+        <div class="grid-2">
+          <ul class="checklist">
+            <li><span class="check">1</span><span>เลือก selling mode เป็น <strong>Pre-order</strong>.</span></li>
+            <li><span class="check">2</span><span>ตั้ง <strong>opens_at</strong> และ <strong>closes_at</strong> ตาม timezone ของ event.</span></li>
+            <li><span class="check">3</span><span>ใส่ pickup instructions เช่น “แสดงโค้ดที่ Booth A12 เวลา 12:00-17:00”.</span></li>
+            <li><span class="check">4</span><span>เช็ก readiness: มี instruction, close ก่อน event end, catalog มีสินค้าและ stock.</span></li>
+          </ul>
+          <div class="card">
+            <strong>สำคัญตอนเทส</strong>
+            <p>ลองตั้งเวลาปิด/เปิดเป็นเวลาท้องถิ่นไทย แล้ว reload ดูว่าค่าไม่เพี้ยน. ระบบใช้ helper timezone แทนการ slice ISO UTC แล้ว.</p>
+          </div>
+        </div>
+        <footer class="footer"><span>Route: /manage-events/:eventId/preorder</span><span>Slide 5</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Customer checkout</div>
+          <h2>ลูกค้า pre-order ได้โดยไม่ต้องมี queue ticket</h2>
+        </header>
+        <div class="flow">
+          <div class="flow-step"><span class="num">1</span><strong>เข้า menu</strong><p>เปิด <span class="route">/:slug/menu</span> และเลือก event ที่เป็น pre-order.</p></div>
+          <div class="flow-step"><span class="num">2</span><strong>เลือกสินค้า</strong><p>สินค้าใช้ event catalog และ stock ของ event นั้น.</p></div>
+          <div class="flow-step"><span class="num">3</span><strong>กรอกข้อมูลรับของ</strong><p>ชื่อ, contact, note เก็บใน checkout sheet.</p></div>
+          <div class="flow-step"><span class="num">4</span><strong>Place Pre-order</strong><p>backend reserve stock และสร้าง order type <strong>preorder</strong>.</p></div>
+          <div class="flow-step"><span class="num">5</span><strong>รับ pickup code</strong><p>ลูกค้าเห็น code, total, และ pickup instructions.</p></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><strong>Expected behavior</strong><p>ถ้าเป็น pre-order mode ปุ่ม checkout ไม่ควรถาม queue number. ถ้าเป็น live mode ยังต้องมี queue ticket เหมือนเดิม.</p></div>
+          <div class="card"><strong>Receipt state</strong><p>receipt ถูกจำใน localStorage เฉพาะ artist + event เพื่อกลับมาเห็น pickup code ได้.</p></div>
+        </div>
+        <footer class="footer"><span>Customer path</span><span>Slide 6</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Pickup page</div>
+          <h2>staff ใช้ pickup code เพื่อจบ fulfillment</h2>
+        </header>
+        <div class="grid-2">
+          <ul class="checklist">
+            <li><span class="check">1</span><span>เปิด <span class="route">/manage-events/:eventId/pickup</span>.</span></li>
+            <li><span class="check">2</span><span>ค้นด้วย pickup code, customer name/contact, หรือ product name.</span></li>
+            <li><span class="check">3</span><span>filter: Awaiting pickup, Picked up, หรือ All.</span></li>
+            <li><span class="check">4</span><span>กด Mark picked up แล้ว confirm. reserved stock จะกลายเป็น sold stock.</span></li>
+          </ul>
+          <div class="grid-2">
+            <div class="card"><span class="badge green">Picked up</span><strong>complete order</strong><p>ใช้เมื่อคนมารับของจริง.</p></div>
+            <div class="card"><span class="badge amber">Cancel</span><strong>release stock</strong><p>ใช้กับ order เดี่ยวที่ไม่มารับหรือยกเลิก.</p></div>
+            <div class="card"><span class="badge amber">Expire</span><strong>bulk no-show</strong><p>ใช้หลัง event จบเพื่อปล่อยรายการค้าง.</p></div>
+            <div class="card"><span class="badge blue">Role gate</span><strong>staff-safe</strong><p>queue staff pickup ได้ แต่ cancel/expire จำกัด role สูงกว่า.</p></div>
+          </div>
+        </div>
+        <footer class="footer"><span>Staff operations</span><span>Slide 7</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Stock safety</div>
+          <h2>DB/RPC ถูกออกแบบให้ reserve, pickup, cancel, expire ไม่ทำ stock leak</h2>
+        </header>
+        <div class="grid-2">
+          <ul class="wide-list">
+            <li><strong><span class="route">create_preorder_with_stock</span></strong><span>จอง stock_reserved, กัน oversell, validate mode/window/idempotency.</span></li>
+            <li><strong><span class="route">mark_preorder_picked_up</span></strong><span>เปลี่ยน awaiting pickup เป็น picked_up และย้าย reserved เป็น sold.</span></li>
+            <li><strong><span class="route">cancel_preorder_with_stock</span></strong><span>ยกเลิก order เดี่ยวและคืน reserved stock.</span></li>
+            <li><strong><span class="route">expire_preorders_for_event</span></strong><span>ปล่อย no-show หลัง event โดยไม่แตะ stock_sold.</span></li>
+            <li><strong><span class="route">get_public_order_receipt</span></strong><span>public read ได้เฉพาะเมื่อ order id และ pickup code match.</span></li>
+          </ul>
+          <div class="card">
+            <strong>DB test gate</strong>
+            <p>รันผ่านแล้ว: <span class="route">supabase test db supabase/tests/preorder_pickup_mvp_test.sql</span></p>
+            <p style="margin-top:10px">ผลลัพธ์: <strong>18/18 PASS</strong>. ครอบคลุม oversell, window, pickup ซ้ำ, cancel, expire, receipt, anon access, และ walk-in order type.</p>
+          </div>
+        </div>
+        <footer class="footer"><span>Backend correctness</span><span>Slide 8</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Dashboard and history</div>
+          <h2>pre-order ไม่ได้หายไปจาก reporting</h2>
+        </header>
+        <div class="grid-3">
+          <div class="card"><span class="badge brand">Dashboard</span><strong>Pre-order revenue</strong><p>แยก completed pre-orders และ revenue ให้เห็นใน event dashboard.</p></div>
+          <div class="card"><span class="badge blue">History</span><strong>Order type</strong><p>order history แสดงว่าเป็น preorder, live queue, หรือ POS walk-in.</p></div>
+          <div class="card"><span class="badge green">Pickup status</span><strong>Audit trail</strong><p>เห็น pickup code/status สำหรับตรวจสอบหลังงาน.</p></div>
+        </div>
+        <div class="card">
+          <strong>สิ่งที่ควรลอง</strong>
+          <p>หลัง mark picked up แล้วเข้า dashboard/history ดูว่า order กลายเป็น completed, pickup status เปลี่ยน, และยอด pre-order สะท้อนใน summary.</p>
+        </div>
+        <footer class="footer"><span>Post-event review</span><span>Slide 9</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">UI polish</div>
+          <h2>สิ่งที่ปรับด้าน UX/UI ก่อนให้เทสจริง</h2>
+        </header>
+        <div class="grid-2">
+          <ul class="checklist">
+            <li><span class="check">✓</span><span>P1: contrast, landmark, modal dialog semantics ผ่าน axe serious/critical = 0.</span></li>
+            <li><span class="check">✓</span><span>P2: touch target บน mobile menu เป็น 44px, tiny target check = 0.</span></li>
+            <li><span class="check">✓</span><span>แทน bounce motion ด้วย nudge ที่เบากว่า และรองรับ prefers-reduced-motion.</span></li>
+            <li><span class="check">✓</span><span>lazy-load image compression library เพื่อลดของที่โหลดก่อนใช้ upload.</span></li>
+          </ul>
+          <div class="card">
+            <strong>Debt ที่ยังตั้งใจเลื่อนไว้</strong>
+            <p>token consolidation ทั้งแอพยังไม่เสร็จ. ยังมี hard-coded brand pink ในไฟล์อื่นที่ไม่ได้อยู่ใน scope เช่น queue/customer home/social footer. ไม่ใช่ blocker ของ flow นี้ แต่ควรทำ pass แยกภายหลัง.</p>
+          </div>
+        </div>
+        <footer class="footer"><span>Accessibility and performance polish</span><span>Slide 10</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Manual test checklist</div>
+          <h2>ลำดับที่คุณควรกดเทสด้วยมือ</h2>
+        </header>
+        <ul class="checklist">
+          <li><span class="check">1</span><span>Login creator แล้วเข้า <span class="route">/manage-events</span>. ถ้ามี active event เดียวควรเข้า workspace อัตโนมัติ.</span></li>
+          <li><span class="check">2</span><span>กลับ <span class="route">?view=all</span> แล้วเช็ก grid, profile panel, active/ended tab, และ Manage.</span></li>
+          <li><span class="check">3</span><span>ใน workspace เปิด Pre-order settings: ตั้ง mode, window, instructions, save.</span></li>
+          <li><span class="check">4</span><span>ไป catalog/stock แล้วมีสินค้า enabled และ stock เพียงพอ.</span></li>
+          <li><span class="check">5</span><span>เปิด customer <span class="route">/:slug/menu</span>, เลือก pre-order event, add item, กรอกชื่อ/contact, place pre-order.</span></li>
+          <li><span class="check">6</span><span>จด pickup code แล้วเข้า pickup page. ค้น code, mark picked up, confirm.</span></li>
+          <li><span class="check">7</span><span>ดู dashboard/history ว่า order type, pickup status, และยอด pre-order ถูกต้อง.</span></li>
+          <li><span class="check">8</span><span>ลอง negative case: live mode ยังต้องมี queue, duplicate pickup ไม่ควรเกิด, cancel/expire คืน stock.</span></li>
+        </ul>
+        <footer class="footer"><span>Hands-on QA</span><span>Slide 11</span></footer>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide-inner">
+        <header>
+          <div class="kicker">Release readiness</div>
+          <h2>automated gates ผ่านแล้ว เหลือแค่ความรู้สึกจากการใช้จริง</h2>
+          <p class="lead">ตอนนี้สิ่งที่ต้องตัดสินด้วยมือคือ copy เข้าใจไหม, flow สั้นพอไหม, staff หา order ได้เร็วไหม, และลูกค้ารู้ไหมว่าต้องเอา pickup code ไปทำอะไร.</p>
+        </header>
+        <div class="grid-2">
+          <div class="card">
+            <strong>ผ่านแล้ว</strong>
+            <p>DB test 18/18, build, hygiene, Playwright regression 6/6, axe serious/critical 0, mobile touch targets 0 tiny.</p>
+          </div>
+          <div class="card">
+            <strong>สิ่งที่ยังไม่ใช่ scope รอบนี้</strong>
+            <p>post-event sale page, payment/refund workflow, token consolidation ทั้งแอพ, และการเปลี่ยน details menu เป็น popover/portal.</p>
+          </div>
+        </div>
+        <footer class="footer"><span>Next: manual browser testing</span><span>Slide 12</span></footer>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const counter = document.getElementById('counter');
+    const prev = document.getElementById('prev');
+    const next = document.getElementById('next');
+    const printButton = document.getElementById('print');
+    let index = 0;
+
+    function showSlide(nextIndex) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, slideIndex) => {
+        slide.classList.toggle('active', slideIndex === index);
+      });
+      counter.textContent = `${index + 1} / ${slides.length}`;
+      prev.disabled = index === 0;
+      next.disabled = index === slides.length - 1;
+    }
+
+    prev.addEventListener('click', () => showSlide(index - 1));
+    next.addEventListener('click', () => showSlide(index + 1));
+    printButton.addEventListener('click', () => window.print());
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'PageDown') showSlide(index + 1);
+      if (event.key === 'ArrowLeft' || event.key === 'PageUp') showSlide(index - 1);
+      if (event.key === 'Home') showSlide(0);
+      if (event.key === 'End') showSlide(slides.length - 1);
+    });
+
+    showSlide(0);
+  </script>
+</body>
+</html>

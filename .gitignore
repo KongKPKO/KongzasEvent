@@ -91,11 +91,19 @@ build/
 
 # local test artifacts
 .playwright-cli/
+.playwright-mcp/
+.impeccable/
+.superpowers/
 playwright-report/
 test-results/
 output/
 screenshots/
 debug-*.png
+
+# local/private content artifacts
+Menu_Image/
+EventQueueSocial_TCM_TestCases.xlsx
+Document/artifact-build-manifest.json
 
 # env
 .env

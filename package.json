@@ -26,8 +26,10 @@
     "test:api:smoke": "bash ./scripts/api-smoke-local.sh",
     "docker:test:up": "docker compose --env-file .env.docker.test -f docker-compose.test.yml up --build",
     "docker:test:down": "docker compose -f docker-compose.test.yml down",
-    "deploy:staging": "npm run build:staging && firebase hosting:channel:deploy dev --only nireqapp --expires 30d",
-    "deploy:prod": "npm run build:prod && firebase deploy --only hosting:nireqapp"
+    "check:deploy-source": "npm run check:hygiene && sh -c 'test -z \"$(git status --porcelain)\" || { echo \"Deploy stopped: commit the intended changes before deploying.\" >&2; exit 1; }'",
+    "push:current": "git push --set-upstream origin HEAD",
+    "deploy:staging": "npm run check:deploy-source && npm run build:staging && npm run push:current && firebase hosting:channel:deploy dev --only nireqapp --expires 30d",
+    "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --only hosting:nireqapp"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",

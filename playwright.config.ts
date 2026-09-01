@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import { execFileSync } from 'node:child_process';
 
 const envMode = process.env.PLAYWRIGHT_ENV || process.env.MODE || 'local';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
+const usesLocalWebServer = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(?:\/|$)/.test(baseURL);
 
 dotenv.config({ path: `.env.${envMode}` });
 dotenv.config({ path: '.env.local' });
@@ -36,7 +38,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'html',
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -84,7 +86,7 @@ export default defineConfig({
   ],
 
   // Test Server
-  webServer: {
+  webServer: usesLocalWebServer ? {
     command: 'npm run dev -- --host 127.0.0.1',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: true,
@@ -95,7 +97,7 @@ export default defineConfig({
         process.env.VITE_SUPABASE_KEY ||
         '',
     },
-  },
+  } : undefined,
 
   
 });

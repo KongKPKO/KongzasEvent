@@ -14,11 +14,13 @@ const startDate = new Date(now - 60 * 60 * 1000).toISOString();
 const endDate = new Date(now + 6 * 60 * 60 * 1000).toISOString();
 const futurePreorderStartDate = new Date(now + 24 * 60 * 60 * 1000).toISOString();
 const futurePreorderEndDate = new Date(now + 36 * 60 * 60 * 1000).toISOString();
+const stockHoldExpiresAt = new Date(now + 15 * 60 * 1000).toISOString();
 
 type MockEventMode = 'both-active' | 'single-active';
 
 interface MockOptions {
   eventMode: MockEventMode;
+  holdExpired?: boolean;
 }
 
 let mockOptions: MockOptions;
@@ -77,6 +79,23 @@ const mockSupabase = async (page: Page) => {
 
     if (path.includes('/rest/v1/rpc/is_platform_admin')) {
       return json(route, false);
+    }
+
+    if (path.includes('/rest/v1/rpc/has_event_role')) {
+      return json(route, true);
+    }
+
+    if (path.includes('/rest/v1/rpc/complete_verified_creator_signup')) {
+      return json(route, { status: 'not_pending' });
+    }
+
+    if (path.includes('/rest/v1/rpc/get_actor_context')) {
+      return json(route, [{
+        artist_id: artistId,
+        role: 'owner',
+        is_owner: true,
+        member_email: ownerEmail,
+      }]);
     }
 
     if (path.includes('/rest/v1/rpc/list_my_pending_invitations')) {
@@ -143,9 +162,51 @@ const mockSupabase = async (page: Page) => {
           pickup_instructions: 'Show this regression pickup code at the test booth.',
           payment_status: 'awaiting_payment',
           payment_methods: [],
-          payment_deadline_at: null,
+          payment_deadline_at: stockHoldExpiresAt,
         },
       ]);
+    }
+
+    if (path.includes('/rest/v1/rpc/get_public_preorder_by_code')) {
+      return json(route, [{
+        order_id: preorderOrderId,
+        event_id: preorderEventId,
+        event_name: 'Regression Preorder Event',
+        artist_name: 'Preorder Regression Artist',
+        artist_facebook_url: null,
+        order_type: 'preorder',
+        shipping_address: null,
+        tracking_number: null,
+        shipping_carrier: null,
+        shipped_at: null,
+        status: mockOptions.holdExpired ? 'cancelled' : 'pending',
+        pickup_status: mockOptions.holdExpired ? 'expired' : 'not_required',
+        pickup_code: pickupCode,
+        customer_name: 'No Queue Customer',
+        customer_email_masked: 'n***@example.com',
+        total_price: 120,
+        currency: 'THB',
+        pickup_instructions: 'Show this regression pickup code at the test booth.',
+        payment_status: mockOptions.holdExpired ? 'payment_expired' : 'awaiting_payment',
+        slip_url: null,
+        submitted_at: null,
+        confirmed_at: null,
+        rejected_at: null,
+        review_note: mockOptions.holdExpired ? 'stock_hold_expired' : null,
+        payment_methods: [],
+        payment_deadline_at: mockOptions.holdExpired
+          ? new Date(now - 1000).toISOString()
+          : stockHoldExpiresAt,
+        created_at: new Date(now).toISOString(),
+        picked_up_at: null,
+        items: [{
+          product_id: productId,
+          name: 'Regression Preorder Charm',
+          quantity: 1,
+          price_per_unit: 120,
+          currency: 'THB',
+        }],
+      }]);
     }
 
     if (path.includes('/rest/v1/artist_members')) {
@@ -154,6 +215,14 @@ const mockSupabase = async (page: Page) => {
         role: 'owner',
         member_email: ownerEmail,
       });
+    }
+
+    if (path.includes('/rest/v1/event_payment_methods')) {
+      return json(route, null);
+    }
+
+    if (path.includes('/rest/v1/event_products')) {
+      return json(route, [{ id: '66666666-6666-4666-8666-666666666666' }]);
     }
 
     if (path.includes('/rest/v1/artists')) {
@@ -300,7 +369,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await page.goto(`/${artistSlug}/menu`);
 
     await expect(page.getByText('Pre-order now. No queue ticket needed.').first()).toBeVisible({ timeout: 20000 });
-    const addButton = page.getByRole('button', { name: /Add/i }).first();
+    const addButton = page.getByRole('button', { name: /^Add$/i }).first();
     await expect(addButton).toBeVisible({ timeout: 20000 });
     await page.waitForTimeout(900);
     await addButton.click();
@@ -313,9 +382,22 @@ test.describe('pre-order pickup MVP regressions', () => {
     await page.getByRole('button', { name: /^Pre-order$/i }).click();
     await page.getByRole('button', { name: /Place Pre-order/i }).click();
 
-    await expect(page.getByText('Reference code', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Order code', { exact: true })).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(pickupCode)).toBeVisible();
-    await expect(page.getByText(/Submit payment evidence/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'How to pay' })).toBeVisible();
+    await expect(page.getByText(/Pay before/i)).toBeVisible();
+    await expect(page.getByText(/Time left: 14:/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Photo or PDF of your transfer slip' })).toBeVisible();
+  });
+
+  test('expired checkout hold requires a new order', async ({ page }) => {
+    mockOptions.holdExpired = true;
+    await page.goto(`/${artistSlug}/order/${pickupCode}`);
+
+    await expect(page.getByRole('heading', { name: 'Order expired' })).toBeVisible();
+    await expect(page.getByText(/reserved items were released/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Order again from menu' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Photo or PDF of your transfer slip' })).toHaveCount(0);
   });
 
   test('live mode customer menu still requires a queue ticket before checkout', async ({ page }) => {
@@ -323,7 +405,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await page.goto(`/${artistSlug}/menu`);
 
     await expect(page.getByText('Queue Number', { exact: true })).toBeVisible({ timeout: 20000 });
-    const addButton = page.getByRole('button', { name: /Add/i }).first();
+    const addButton = page.getByRole('button', { name: /^Add$/i }).first();
     await expect(addButton).toBeVisible({ timeout: 20000 });
     await page.waitForTimeout(900);
     await addButton.click();
@@ -347,9 +429,10 @@ test.describe('pre-order pickup MVP regressions', () => {
 
     await expect(page).toHaveURL(new RegExp(`/manage-events/${preorderEventId}/workspace`), { timeout: 20000 });
     await expect(page.getByRole('heading', { name: 'Regression Preorder Event' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Creator Profile' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Pickup Orders' })).toBeVisible();
-    await expect(page.getByText('1 awaiting', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Guided booth setup' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue setup' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '1 order waiting for pickup' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open pickup' })).toBeVisible();
   });
 
   test('full event grid escape hatch keeps profile access visible', async ({ page }) => {

@@ -16,19 +16,39 @@ export const ensureOwnerArtistFixture = async ({
 }: OwnerArtistFixtureInput) => {
   const { url, anonKey, serviceKey } = resolveSupabaseTestEnv();
   if (!serviceKey) throw new Error('Missing service role key for admin fixture seeding');
+  if (!anonKey) throw new Error('Missing anon key for admin fixture sign-in');
 
-  const auth = createClient(url, anonKey);
-  const service = createClient(url, serviceKey);
+  const auth = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const service = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
-  const signUp = await auth.auth.signUp({ email, password });
-  let userId = signUp.data.user?.id || '';
+  let signIn = await auth.auth.signInWithPassword({ email, password });
 
-  if (!userId) {
-    const signIn = await auth.auth.signInWithPassword({ email, password });
-    if (signIn.error) throw signIn.error;
-    userId = signIn.data.user?.id || '';
+  if (!signIn.data.user) {
+    const listed = await service.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (listed.error) throw listed.error;
+
+    const existing = listed.data.users.find((user) => user.email === email);
+    const ensured = existing
+      ? await service.auth.admin.updateUserById(existing.id, {
+          password,
+          email_confirm: true,
+        })
+      : await service.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+        });
+    if (ensured.error) throw ensured.error;
+
+    signIn = await auth.auth.signInWithPassword({ email, password });
   }
 
+  if (signIn.error) throw signIn.error;
+  const userId = signIn.data.user?.id || '';
   if (!userId) throw new Error(`Could not ensure admin fixture user ${email}`);
 
   const { error } = await service.from('artists').upsert({

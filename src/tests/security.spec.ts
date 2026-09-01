@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
@@ -7,7 +8,7 @@ const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 // Setup Supabase Client
-const { url: SUPABASE_URL, key: SUPABASE_KEY } = resolveSupabaseTestEnv();
+const { url: SUPABASE_URL, anonKey: SUPABASE_KEY } = resolveSupabaseTestEnv();
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 test.describe('Security & Vulnerability Testing', () => {
@@ -15,45 +16,12 @@ test.describe('Security & Vulnerability Testing', () => {
   test.setTimeout(120000);
 
   test.beforeAll(async () => {
-        test.setTimeout(60000);
-        console.log('🛡️ Security Test: Setup started...');
-        console.log('   - SUPABASE_URL:', SUPABASE_URL);
-        
-        // 1. Ensure User Exists
-        let userId = '';
-        console.log('   - Attempting SignUp...');
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
-        
-        if (signUpData.user) {
-            console.log('   - SignUp Success');
-            userId = signUpData.user.id;
-        } else {
-            console.log('   - SignUp skipped/failed, attempting SignIn...');
-            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
-            
-            if (signInData.user) {
-                console.log('   - SignIn Success');
-                userId = signInData.user.id;
-            } else {
-                console.error('   - Auth Failed:', signUpError || signInError);
-                throw new Error(`Failed to seed user: ${(signUpError || signInError)?.message}`);
-            }
-        }
-        
-        // 2. Upsert Artist Data
-        if (userId) {
-             console.log('   - Seeding Artist Data...');
-             const { error: artistError } = await supabase.from('artists').upsert({
-                id: userId,
-                email: TEST_USER_Y_EMAIL,
-                slug: 'test-security', 
-                display_name: 'Security Test Artist',
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
-            
-            if (artistError) console.error('   - Artist Seed Error:', artistError);
-            else console.log('   - Artist Data Seeded');
-        }
+    await ensureOwnerArtistFixture({
+      email: TEST_USER_Y_EMAIL,
+      password: TEST_USER_Y_PASS,
+      slug: 'test-security',
+      displayName: 'Security Test Artist',
+    });
   });
 
 

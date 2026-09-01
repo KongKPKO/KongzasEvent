@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 const TEST_USER_Y_EMAIL = process.env.TEST_USER_Y_EMAIL || 'local-user-y@example.com';
@@ -8,30 +9,19 @@ const TEST_USER_Y_PASS = process.env.TEST_USER_Y_PASS || 'LocalOnlyUserYPassword
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
 
 // Setup Supabase Client
-const { url: SUPABASE_URL, key: SUPABASE_KEY, serviceKey: SERVICE_KEY } = resolveSupabaseTestEnv();
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const { url: SUPABASE_URL, anonKey: SUPABASE_KEY, serviceKey: SERVICE_KEY } = resolveSupabaseTestEnv();
 const service = createClient(SUPABASE_URL, SERVICE_KEY || SUPABASE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 // Helpers
 async function ensureTestUserAndArtist() {
-  let userId = '';
-  const { data: signUpData } = await supabase.auth.signUp({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
-  if (signUpData.user) userId = signUpData.user.id;
-  if (!userId) {
-    const { data: signInData } = await supabase.auth.signInWithPassword({ email: TEST_USER_Y_EMAIL, password: TEST_USER_Y_PASS });
-    userId = signInData.user?.id || '';
-  }
-  if (!userId) throw new Error('Cannot ensure test user');
-
-  await supabase.from('artists').upsert({
-    id: userId,
+  const { userId } = await ensureOwnerArtistFixture({
     email: TEST_USER_Y_EMAIL,
+    password: TEST_USER_Y_PASS,
     slug: 'test-security',
-    display_name: 'Security Test Artist',
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'id' });
+    displayName: 'Security Test Artist',
+  });
   return userId;
 }
 

@@ -191,8 +191,8 @@ const OrderStatus: React.FC = () => {
     && ['payment_rejected', 'payment_expired', 'payment_cancelled'].includes(detail.payment_status);
   const stockHoldExpired = detail?.payment_status === 'payment_expired'
     && detail.review_note === 'stock_hold_expired';
-  // The submit RPC accepts re-submission from rejected/expired (it re-reserves stock),
-  // so those states get the payment + upload section back instead of a dead end.
+  // Rejected and legacy-expired payments can re-reserve on submission; an expired
+  // checkout hold requires a new order because its original allocation is gone.
   const canResubmit = Boolean(detail
     && !stockHoldExpired
     && ['payment_rejected', 'payment_expired'].includes(detail.payment_status));
@@ -544,7 +544,7 @@ const OrderStatus: React.FC = () => {
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={deadlinePassed}
-                          className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50"
+                          className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {t('orderUploadChange')}
                         </button>
@@ -555,7 +555,7 @@ const OrderStatus: React.FC = () => {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={deadlinePassed}
-                      className="mt-2 flex min-h-14 w-full items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50"
+                      className="mt-2 flex min-h-14 w-full items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t('orderUploadHint')}
                     </button>

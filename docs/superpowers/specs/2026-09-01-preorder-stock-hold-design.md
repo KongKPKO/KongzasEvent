@@ -86,4 +86,3 @@ Add SQL regression coverage for:
 - public roles cannot execute the maintenance function.
 
 Update the customer regression test for the returned deadline and countdown behavior. Run the narrow SQL and Playwright checks, the relevant security regression, then `npm run verify`.
-

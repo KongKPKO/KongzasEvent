@@ -1,5 +1,5 @@
 begin;
-select plan(53);
+select plan(54);
 
 do $$
 declare
@@ -120,6 +120,12 @@ select ok(
    from public.order_payments
    where order_id = (select first_order_id from _preorder_ids)),
   'pre-order creation creates a fixed 15-minute stock hold'
+);
+
+select ok(
+  (select payment_deadline_at between now() + interval '14 minutes' and now() + interval '16 minutes'
+   from _created_preorder),
+  'checkout returns the stock hold deadline to the customer'
 );
 
 select is(

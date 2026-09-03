@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(36);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -92,6 +92,35 @@ begin
     null, null, null, null
   );
 end $$;
+
+insert into public.products (
+  artist_id, name, category, price, currency, stock_total,
+  stock_reserved, stock_sold, is_unlimited, status
+) values
+  ((select artist_id from _campaign_ids), 'Cheki HSR SW999', 'Cheki', 350, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Hairclip Keito', 'Hairclip', 200, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Manual SKU Product', 'Other', 100, 'THB', 1, 0, 0, false, 'enable');
+
+update public.products
+set sku = 'my-own-7'
+where artist_id = (select artist_id from _campaign_ids)
+  and name = 'Manual SKU Product';
+
+select ok(
+  (select sku like 'CHE-SW999-%' from public.products where name = 'Cheki HSR SW999'),
+  'blank Cheki SKU becomes readable'
+);
+
+select ok(
+  (select sku like 'HCL-KEITO-%' from public.products where name = 'Hairclip Keito'),
+  'blank Hairclip SKU becomes readable'
+);
+
+select is(
+  (select sku from public.products where name = 'Manual SKU Product'),
+  'MY-OWN-7',
+  'manual SKU remains unchanged apart from normalization'
+);
 
 insert into public.events (id, artist_id, event_name, start_date, end_date, status)
 values (
@@ -350,6 +379,24 @@ select is(
   ) ->> 'payment_status',
   'payment_confirmed',
   'public order status survives campaign flow changes'
+);
+
+create temp table _sku_snapshot_before as
+select sku_snapshot
+from public.order_items
+where order_id = (select shipping_order_id from _campaign_ids)
+limit 1;
+
+update public.products
+set sku = 'CHE-RENAMED-999'
+where id = (select product_id from _campaign_ids);
+
+select is(
+  (select sku_snapshot from public.order_items
+   where order_id = (select shipping_order_id from _campaign_ids)
+   limit 1),
+  (select sku_snapshot from _sku_snapshot_before),
+  'historical order SKU snapshot does not change with the catalog SKU'
 );
 
 select throws_ok(

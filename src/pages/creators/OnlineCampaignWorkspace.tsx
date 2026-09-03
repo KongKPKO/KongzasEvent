@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2, ExternalLink, Eye, ImageOff, Loader2, PackageCheck, Plus, Save, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { useI18n } from '../../i18n';
 import {
   getCampaignWorkspace,
@@ -19,15 +20,16 @@ import type { ActorContext } from '../../types/access';
 import type { CampaignOrder, CampaignWorkspace } from '../../types/onlineCampaign';
 import { fetchActorContext } from '../../utils/access';
 import { formatPrice } from '../../utils/currency';
-import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
 
-const getProductImageUrl = (dbValue: string) => {
-  let path = dbValue;
-  if (dbValue.includes('http') && dbValue.includes('Menu/')) path = dbValue.split('Menu/')[1] || dbValue;
-  const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-  return getOptimizedImageUrl(data.publicUrl, 520);
+const normalizeSetting = (value: FormDataEntryValue | string | null | undefined) =>
+  String(value || '').trim().toLocaleLowerCase();
+
+const maskPaymentId = (value?: string | null) => {
+  const clean = String(value || '').trim();
+  return clean ? `•••• ${clean.slice(-4)}` : '—';
 };
 
 export default function OnlineCampaignWorkspace() {
@@ -44,6 +46,11 @@ export default function OnlineCampaignWorkspace() {
   const [search, setSearch] = useState('');
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
+  const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+  const [addingPickup, setAddingPickup] = useState(false);
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ kind: 'pickup' | 'payment'; id: string; name: string } | null>(null);
+  const [removing, setRemoving] = useState(false);
   const canManage = actor?.role === 'owner' || actor?.role === 'manager';
 
   const load = useCallback(async () => {
@@ -201,40 +208,89 @@ export default function OnlineCampaignWorkspace() {
   const addPickupPoint = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!workspace) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const name = String(form.get('name') || '').trim();
+    const address = String(form.get('address') || '').trim();
+    const startsAt = new Date(String(form.get('starts_at'))).toISOString();
+    const endsAt = new Date(String(form.get('ends_at'))).toISOString();
+    const duplicate = workspace.pickup_points.some((point) =>
+      normalizeSetting(point.name) === normalizeSetting(name)
+      && normalizeSetting(point.address) === normalizeSetting(address)
+      && new Date(point.starts_at).getTime() === new Date(startsAt).getTime()
+      && new Date(point.ends_at).getTime() === new Date(endsAt).getTime()
+    );
+    if (duplicate) {
+      setToast({ tone: 'warning', title: t('campaignDuplicateSetting') });
+      return;
+    }
+    setSaving(true);
     const { error } = await supabase.from('campaign_pickup_points').insert({
       campaign_id: workspace.campaign.id,
       artist_id: workspace.campaign.artist_id,
-      name: String(form.get('name') || ''),
-      address: String(form.get('address') || ''),
-      starts_at: new Date(String(form.get('starts_at'))).toISOString(),
-      ends_at: new Date(String(form.get('ends_at'))).toISOString(),
-      instructions: String(form.get('instructions') || ''),
+      name,
+      address,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      instructions: String(form.get('instructions') || '').trim(),
     });
-    if (error) setFeedback(t('campaignSaveFailed'));
+    if (error) setToast({ tone: 'error', title: t('campaignSaveFailed') });
     else {
-      event.currentTarget.reset();
+      formElement.reset();
+      setAddingPickup(false);
       await load();
+      setToast({ tone: 'success', title: t('campaignPickupAdded'), detail: name });
     }
+    setSaving(false);
   };
 
   const addPaymentMethod = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!workspace) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const displayName = String(form.get('display_name') || 'PromptPay').trim() || 'PromptPay';
+    const promptPayId = String(form.get('promptpay_id') || '').trim();
+    const duplicate = workspace.payment_methods.some((method) =>
+      normalizeSetting(method.display_name || 'PromptPay') === normalizeSetting(displayName)
+      && normalizeSetting(method.promptpay_id) === normalizeSetting(promptPayId)
+    );
+    if (duplicate) {
+      setToast({ tone: 'warning', title: t('campaignDuplicateSetting') });
+      return;
+    }
+    setSaving(true);
     const { error } = await supabase.from('campaign_payment_methods').insert({
       campaign_id: workspace.campaign.id,
       artist_id: workspace.campaign.artist_id,
       method_type: 'promptpay',
-      display_name: String(form.get('display_name') || 'PromptPay'),
-      promptpay_id: String(form.get('promptpay_id') || ''),
-      instructions: String(form.get('instructions') || ''),
+      display_name: displayName,
+      promptpay_id: promptPayId,
+      instructions: String(form.get('instructions') || '').trim(),
     });
-    if (error) setFeedback(t('campaignSaveFailed'));
+    if (error) setToast({ tone: 'error', title: t('campaignSaveFailed') });
     else {
-      event.currentTarget.reset();
+      formElement.reset();
+      setAddingPayment(false);
       await load();
+      setToast({ tone: 'success', title: t('campaignPaymentAdded'), detail: displayName });
     }
+    setSaving(false);
+  };
+
+  const removeSetting = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    const table = removeTarget.kind === 'pickup' ? 'campaign_pickup_points' : 'campaign_payment_methods';
+    const { error } = await supabase.from(table).delete().eq('id', removeTarget.id);
+    if (error) {
+      setToast({ tone: 'error', title: t('campaignRemoveSettingFailed') });
+    } else {
+      await load();
+      setToast({ tone: 'success', title: t('campaignSettingRemoved'), detail: removeTarget.name });
+    }
+    setRemoving(false);
+    setRemoveTarget(null);
   };
 
   const actOnOrder = async (order: CampaignOrder, action: string) => {
@@ -287,6 +343,17 @@ export default function OnlineCampaignWorkspace() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-slate-800">
+      <Toast message={toast} onClose={() => setToast(null)} />
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        title={t('campaignRemoveSetting')}
+        detail={removeTarget ? t('campaignRemoveSettingDetail', { name: removeTarget.name }) : ''}
+        confirmLabel={t('campaignConfirmRemove')}
+        tone="danger"
+        loading={removing}
+        onConfirm={() => void removeSetting()}
+        onCancel={() => setRemoveTarget(null)}
+      />
       <AdminHeader activePage="online-sales" actorRole={actor?.role} userEmail={actor?.member_email} />
       <main className="mx-auto w-full max-w-[1180px] px-4 py-5 md:px-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -351,11 +418,13 @@ export default function OnlineCampaignWorkspace() {
               const summary = getStockSummary(product);
               const isIncluded = allocatedIds.has(productId);
               const maxCampaignStock = Number(allocated?.stock_total || 0) + summary.available;
+              const campaignStock = Number(allocated?.stock_total || 0);
+              const committedElsewhere = Math.max(summary.on_hand - summary.available - campaignStock, 0);
               return (
                 <article key={productId} className={'group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ' + (isIncluded ? 'border-pink-300 ring-2 ring-pink-100' : 'border-gray-200')}>
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     {product.image_url ? (
-                      <img src={getProductImageUrl(product.image_url)} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                      <img src={getMenuImageUrl(product.image_url, 520)} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
                     ) : (
                       <div className="grid h-full place-items-center text-gray-300"><div className="text-center"><ImageOff className="mx-auto" size={28} /><span className="mt-1 block text-[10px] font-black uppercase tracking-widest">{t('catalogImage')}</span></div></div>
                     )}
@@ -377,8 +446,13 @@ export default function OnlineCampaignWorkspace() {
                       <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-50 p-3 text-center">
                         <div><div className="font-black text-gray-900">{summary.on_hand}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{t('campaignOnHandStock')}</div></div>
                         <div><div className="font-black text-emerald-700">{summary.available}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{t('campaignAvailableStock')}</div></div>
-                        <div><div className="font-black text-pink-700">{allocated?.stock_total || 0}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">Campaign</div></div>
+                        <div><div className="font-black text-pink-700">{campaignStock}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{t('campaignCurrentStock')}</div></div>
                       </div>
+                    )}
+                    {!product.is_unlimited && committedElsewhere > 0 && (
+                      <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600">
+                        {t('campaignStockElsewhere', { count: committedElsewhere })}
+                      </p>
                     )}
 
                     {allocated && isIncluded ? (
@@ -467,27 +541,74 @@ export default function OnlineCampaignWorkspace() {
               {campaign.publication_status !== 'archived' && <button onClick={() => window.confirm(t('campaignArchiveConfirm')) && void updateCampaign({ publication_status: 'archived' })} disabled={saving} className="ml-2 mt-4 min-h-11 rounded-xl border border-gray-200 px-4 text-sm font-black text-gray-600">{t('campaignArchive')}</button>}
             </section>
 
-            <form onSubmit={addPickupPoint} className="rounded-2xl border border-gray-200 bg-white p-4">
-              <h2 className="font-black">{t('campaignPickupPoints')}</h2>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <input name="name" required placeholder={t('campaignPickupName')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="address" required placeholder={t('campaignPickupAddress')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="starts_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="ends_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="instructions" placeholder={t('campaignPickupInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
+            <section className="rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-black">{t('campaignPickupPoints')} <span className="text-pink-700">({workspace.pickup_points.length})</span></h2>
+                {!addingPickup && <button type="button" onClick={() => setAddingPickup(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPickupPoint')}</button>}
               </div>
-              <button className="mt-3 min-h-11 rounded-xl border border-pink-200 px-4 text-sm font-black text-pink-700">{t('campaignAddPickupPoint')}</button>
-            </form>
+              <div className="mt-3 space-y-2">
+                {workspace.pickup_points.map((point) => (
+                  <article key={point.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div className="min-w-0">
+                      <h3 className="font-black text-gray-950">{point.name}</h3>
+                      <p className="text-sm font-semibold text-gray-600">{point.address}</p>
+                      <p className="mt-1 text-xs font-semibold text-gray-500">{new Date(point.starts_at).toLocaleString(dateLocale)} – {new Date(point.ends_at).toLocaleString(dateLocale)}</p>
+                      {point.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{point.instructions}</p>}
+                    </div>
+                    <button type="button" aria-label={t('campaignRemovePickupPoint', { name: point.name })} onClick={() => setRemoveTarget({ kind: 'pickup', id: point.id, name: point.name })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                  </article>
+                ))}
+              </div>
+              {addingPickup && (
+                <form onSubmit={addPickupPoint} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
+                  <h3 className="font-black">{t('campaignAddPickupPoint')}</h3>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <input name="name" required placeholder={t('campaignPickupName')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="address" required placeholder={t('campaignPickupAddress')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="starts_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="ends_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="instructions" placeholder={t('campaignPickupInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button disabled={saving} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{t('campaignSavePickupPoint')}</button>
+                    <button type="button" onClick={() => setAddingPickup(false)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600">{t('commonCancel')}</button>
+                  </div>
+                </form>
+              )}
+            </section>
 
-            <form onSubmit={addPaymentMethod} className="rounded-2xl border border-gray-200 bg-white p-4">
-              <h2 className="font-black">{t('campaignPaymentMethods')}</h2>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <input name="display_name" placeholder="PromptPay" className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="promptpay_id" required placeholder={t('campaignPromptPayId')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                <input name="instructions" placeholder={t('campaignPaymentInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
+            <section className="rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-black">{t('campaignPaymentMethods')} <span className="text-pink-700">({workspace.payment_methods.length})</span></h2>
+                {!addingPayment && <button type="button" onClick={() => setAddingPayment(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPaymentMethod')}</button>}
               </div>
-              <button className="mt-3 min-h-11 rounded-xl border border-pink-200 px-4 text-sm font-black text-pink-700">{t('campaignAddPaymentMethod')}</button>
-            </form>
+              <div className="mt-3 space-y-2">
+                {workspace.payment_methods.map((method) => (
+                  <article key={method.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div className="min-w-0">
+                      <h3 className="font-black text-gray-950">{method.display_name || 'PromptPay'}</h3>
+                      <p className="text-sm font-semibold text-gray-600">{maskPaymentId(method.promptpay_id || method.account_number)}</p>
+                      {method.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{method.instructions}</p>}
+                    </div>
+                    <button type="button" aria-label={t('campaignRemovePaymentMethod', { name: method.display_name || 'PromptPay' })} onClick={() => setRemoveTarget({ kind: 'payment', id: method.id, name: method.display_name || 'PromptPay' })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                  </article>
+                ))}
+              </div>
+              {addingPayment && (
+                <form onSubmit={addPaymentMethod} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
+                  <h3 className="font-black">{t('campaignAddPaymentMethod')}</h3>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <input name="display_name" placeholder="PromptPay" className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="promptpay_id" required placeholder={t('campaignPromptPayId')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="instructions" placeholder={t('campaignPaymentInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button disabled={saving} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{t('campaignSavePaymentMethod')}</button>
+                    <button type="button" onClick={() => setAddingPayment(false)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600">{t('commonCancel')}</button>
+                  </div>
+                </form>
+              )}
+            </section>
           </div>
         )}
       </main>

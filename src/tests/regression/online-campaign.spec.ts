@@ -55,6 +55,7 @@ test.describe('online campaign', () => {
     const product = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
       name: 'E2E Cheki',
+      image_url: 'public/e2e-cheki.webp',
       price: 100,
       currency: 'THB',
       status: 'enable',
@@ -146,6 +147,25 @@ test.describe('online campaign', () => {
     await expect(page.getByRole('heading', { name: 'Closed Campaign E2E' })).toBeVisible();
     await expect(page.getByText(/Sales are not open|ไม่ได้เปิดขาย/)).toBeVisible();
     await expect(page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ })).toHaveCount(0);
+  });
+
+  test('legacy campaign product image resolves through the public Menu URL', async ({ page }) => {
+    await page.route(/e2e-cheki\.webp/, (route) => route.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+    }));
+    await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+    await expect(page.getByRole('img', { name: 'E2E Cheki' })).toHaveAttribute(
+      'src',
+      /(?:storage\/v1\/object\/public\/Menu|ik\.imagekit\.io\/kongzas\/Menu)\/public\/e2e-cheki\.webp/,
+    );
+  });
+
+  test('broken campaign product image falls back cleanly', async ({ page }) => {
+    await page.route(/e2e-cheki\.webp/, (route) => route.abort());
+    await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+    await expect(page.getByTestId('campaign-product-image-fallback').first()).toBeVisible();
   });
 
   test('pickup checkout has no shipping fee', async ({ page }) => {
@@ -283,11 +303,70 @@ test.describe('online campaign', () => {
       const campaignCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
       await expect(campaignCard).toBeVisible();
       await expect(campaignCard.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
+      await expect(campaignCard.getByText(/Total stock|สต็อกทั้งหมด/)).toBeVisible();
+      await expect(campaignCard.getByText(/Ready to allocate|พร้อมจัดสรร/)).toBeVisible();
+      await expect(campaignCard.getByText(/This campaign|แคมเปญนี้/)).toBeVisible();
+      await expect(campaignCard.getByText(/8 units are in other sales|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
     } finally {
       await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', legacyProductId);
       await fixture.service.from('event_products').delete().eq('event_id', activeEventId);
       await fixture.service.from('events').delete().eq('id', activeEventId);
       await fixture.service.from('products').delete().eq('id', legacyProductId);
     }
+  });
+
+  test('merchant manages pickup and payment settings with visible feedback', async ({ page }) => {
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: /Settings|ตั้งค่า/ }).click();
+
+    await expect(page.getByText('Siam pickup')).toBeVisible();
+    await expect(page.getByText(/•••• 5678/)).toBeVisible();
+
+    await page.getByRole('button', { name: /^Add pickup point$|^เพิ่มจุดรับสินค้า$/ }).click();
+    let pickupForm = page.locator('form').filter({ has: page.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/) });
+    await pickupForm.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/).fill('Asok pickup');
+    await pickupForm.getByPlaceholder(/Address|ที่อยู่/).fill('BTS Asok exit 3');
+    await pickupForm.locator('[name="starts_at"]').fill('2026-09-10T18:00');
+    await pickupForm.locator('[name="ends_at"]').fill('2026-09-10T20:00');
+    await pickupForm.getByRole('button', { name: /Save pickup point|บันทึกจุดรับ/ }).click();
+    await expect(page.getByRole('status')).toContainText(/Pickup point added|เพิ่มจุดรับสินค้าแล้ว/);
+    await expect(page.getByRole('heading', { name: 'Asok pickup' })).toBeVisible();
+
+    await page.getByRole('button', { name: /^Add pickup point$|^เพิ่มจุดรับสินค้า$/ }).click();
+    pickupForm = page.locator('form').filter({ has: page.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/) });
+    await pickupForm.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/).fill(' asok pickup ');
+    await pickupForm.getByPlaceholder(/Address|ที่อยู่/).fill(' BTS ASOK EXIT 3 ');
+    await pickupForm.locator('[name="starts_at"]').fill('2026-09-10T18:00');
+    await pickupForm.locator('[name="ends_at"]').fill('2026-09-10T20:00');
+    await pickupForm.getByRole('button', { name: /Save pickup point|บันทึกจุดรับ/ }).click();
+    await expect(page.getByRole('status')).toContainText(/already exists|มีรายการนี้แล้ว/);
+    const pickupCount = await fixture.service.from('campaign_pickup_points').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).ilike('name', 'Asok pickup');
+    expect(pickupCount.count).toBe(1);
+
+    await page.getByRole('button', { name: /^(Cancel|ยกเลิก)$/ }).click();
+    await page.getByRole('button', { name: /Remove pickup point Asok pickup|ลบจุดรับสินค้า Asok pickup/ }).click();
+    await page.getByRole('button', { name: /^(Cancel|ยกเลิก)$/ }).click();
+    await expect(page.getByRole('heading', { name: 'Asok pickup' })).toBeVisible();
+    await page.getByRole('button', { name: /Remove pickup point Asok pickup|ลบจุดรับสินค้า Asok pickup/ }).click();
+    await page.getByRole('button', { name: /Confirm remove|ยืนยันการลบ/ }).click();
+    await expect(page.getByRole('heading', { name: 'Asok pickup' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: /^Add payment method$|^เพิ่มช่องทางชำระเงิน$/ }).click();
+    let paymentForm = page.locator('form').filter({ has: page.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/) });
+    await paymentForm.locator('[name="display_name"]').fill('Backup PromptPay');
+    await paymentForm.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/).fill('0899994321');
+    await paymentForm.getByRole('button', { name: /Save payment method|บันทึกช่องทางชำระเงิน/ }).click();
+    await expect(page.getByRole('status')).toContainText(/Payment method added|เพิ่มช่องทางชำระเงินแล้ว/);
+    await expect(page.getByText(/•••• 4321/)).toBeVisible();
+
+    await page.getByRole('button', { name: /^Add payment method$|^เพิ่มช่องทางชำระเงิน$/ }).click();
+    paymentForm = page.locator('form').filter({ has: page.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/) });
+    await paymentForm.locator('[name="display_name"]').fill(' backup promptpay ');
+    await paymentForm.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/).fill('0899994321');
+    await paymentForm.getByRole('button', { name: /Save payment method|บันทึกช่องทางชำระเงิน/ }).click();
+    await expect(page.getByRole('status')).toContainText(/already exists|มีรายการนี้แล้ว/);
+    const paymentCount = await fixture.service.from('campaign_payment_methods').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('promptpay_id', '0899994321');
+    expect(paymentCount.count).toBe(1);
   });
 });

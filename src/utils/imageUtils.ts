@@ -1,3 +1,5 @@
+import { supabase } from '../supabaseClient';
+
 /**
  * Transforms a Supabase Storage URL into an ImageKit URL for optimization.
  * 
@@ -32,4 +34,17 @@ export const getOptimizedImageUrl = (url: string, width: number = 600): string =
 
    // Fallback: If not a Supabase URL or error occurs, return original
    return url;
+};
+
+export const getMenuImageUrl = (dbValue: string, width: number = 600): string => {
+   if (!dbValue) return '';
+
+   let path = dbValue;
+   if (dbValue.includes('http') && dbValue.includes('Menu/')) {
+      path = dbValue.split('Menu/')[1] || dbValue;
+   }
+   if (path.includes('http')) return getOptimizedImageUrl(path, width);
+
+   const { data } = supabase.storage.from('Menu').getPublicUrl(path);
+   return getOptimizedImageUrl(data.publicUrl, width);
 };

@@ -5,6 +5,15 @@ import { useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign } from '../../lib/onlineCampaigns';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
 import { formatPrice } from '../../utils/currency';
+import { getMenuImageUrl } from '../../utils/imageUtils';
+
+function CampaignProductImage({ name, imageUrl }: { name: string; imageUrl?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) {
+    return <div data-testid="campaign-product-image-fallback" className="grid aspect-square place-items-center bg-gray-100 text-gray-400"><Store /></div>;
+  }
+  return <img src={getMenuImageUrl(imageUrl, 520)} alt={name} onError={() => setFailed(true)} className="aspect-square w-full object-cover" />;
+}
 
 export default function OnlineCampaignStorefront() {
   const { slug, campaignSlug } = useParams<{ slug: string; campaignSlug: string }>();
@@ -120,7 +129,7 @@ export default function OnlineCampaignStorefront() {
             const quantity = cart[product.product_id] || 0;
             return (
               <article key={product.product_id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                {product.image_url ? <img src={product.image_url} alt="" className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-gray-100 text-gray-400"><Store /></div>}
+                <CampaignProductImage name={product.name} imageUrl={product.image_url} />
                 <div className="p-4">
                   <div className="font-black text-gray-950">{product.name}</div>
                   {product.variant_name && <div className="text-xs font-bold text-gray-500">{product.variant_name}</div>}

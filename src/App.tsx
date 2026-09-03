@@ -23,7 +23,8 @@ import CustomerLayout from './pages/customer/CustomerLayout';
 import CustomerHome from './pages/customer/Home';
 const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
-const OrderStatus = lazy(() => import('./pages/customer/OrderStatus'));
+const CampaignAwareOrderStatus = lazy(() => import('./pages/customer/CampaignAwareOrderStatus'));
+const OnlineCampaignStorefront = lazy(() => import('./pages/customer/OnlineCampaignStorefront'));
 import QueueView from './pages/customer/QueueView';
 import ResetPassword from './pages/ResetPassword';
 import CreatorRegister from './pages/CreatorRegister';
@@ -39,6 +40,8 @@ const EventWorkspace = lazy(() => import('./pages/creators/EventWorkspace'));
 const PreorderSettings = lazy(() => import('./pages/creators/PreorderSettings'));
 const PreorderPickup = lazy(() => import('./pages/creators/PreorderPickup'));
 const PreorderDashboard = lazy(() => import('./pages/creators/PreorderDashboard'));
+const OnlineCampaigns = lazy(() => import('./pages/creators/OnlineCampaigns'));
+const OnlineCampaignWorkspace = lazy(() => import('./pages/creators/OnlineCampaignWorkspace'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
@@ -183,7 +186,7 @@ function App() {
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
   const isCustomerRoute = typeof window !== 'undefined'
-    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order)/.test(window.location.pathname)
+    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(window.location.pathname)
     : false;
   const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
@@ -248,6 +251,14 @@ function App() {
             <Route
               path="/manage-events"
               element={session ? (canUseManagement ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-online-sales"
+              element={session ? (canSell ? <OnlineCampaigns /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
+              path="/manage-online-sales/:campaignId"
+              element={session ? (canSell ? <OnlineCampaignWorkspace /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-team"
@@ -357,7 +368,8 @@ function App() {
             <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />
 
-            <Route path="/:slug/order/:code" element={<OrderStatus />} />
+            <Route path="/:slug/order/:code" element={<CampaignAwareOrderStatus />} />
+            <Route path="/:slug/campaign/:campaignSlug" element={<OnlineCampaignStorefront />} />
             <Route path="/:slug" element={<CustomerLayout />}>
               <Route path="home" element={<CustomerHome />} />
               <Route path="menu" element={<MenuView />} />

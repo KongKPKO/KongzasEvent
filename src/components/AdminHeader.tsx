@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n } from '../i18n';
 
@@ -11,7 +11,7 @@ interface ActiveEvent {
     event_name: string;
 }
 
-type ActivePage = 'events' | 'menu' | 'promotion' | 'pos';
+type ActivePage = 'events' | 'menu' | 'promotion' | 'pos' | 'online-sales';
 type VisiblePage = ActivePage | 'team';
 
 interface AdminHeaderProps {
@@ -26,6 +26,7 @@ interface AdminHeaderProps {
 // Live-mode items (operational, used during events)
 const navItems = [
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-online-sales', label: 'Online Sales', icon: ShoppingBag, page: 'online-sales' as VisiblePage, roles: ['owner', 'manager', 'seller'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-promotions', label: 'Promotion', icon: Sparkles, page: 'promotion' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
@@ -33,6 +34,7 @@ const navItems = [
 
 const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
     if (page === 'events') return 'workspaceNavEvents';
+    if (page === 'online-sales') return 'workspaceNavOnlineSales';
     if (page === 'menu') return 'workspaceNavMenu';
     if (page === 'pos') return 'workspaceNavPosQueue';
     return 'workspaceNavTeam';

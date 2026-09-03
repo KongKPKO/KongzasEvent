@@ -12,6 +12,9 @@ import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
 import type { ActorContext } from '../../types/access';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
+import { useI18n } from '../../i18n';
+import { listMyOnlineCampaigns, saveCampaignProducts } from '../../lib/onlineCampaigns';
+import type { OnlineCampaignSummary } from '../../types/onlineCampaign';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -44,6 +47,7 @@ interface Product {
   variant_sort_order?: number;
   product_template_id?: string | null;
   product_template_variant_id?: string | null;
+  sku?: string | null;
 }
 
 interface ProductTemplateVariant {
@@ -315,6 +319,7 @@ const buildProductDuplicateKey = (input: {
 };
 
 const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
+   const { t } = useI18n();
    const navigate = useNavigate();
    const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
@@ -328,7 +333,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [name, setName] = useState('');
    const [price, setPrice] = useState('');
    const [description, setDescription] = useState('');
-   const [category, setCategory] = useState(''); // Default
+   const [category, setCategory] = useState('Other');
    const [tagsInput, setTagsInput] = useState('');
    const [status, setStatus] = useState('enable'); // Default
    const [currency, setCurrency] = useState(DEFAULT_CURRENCY); // ✅ NEW: Currency state
@@ -337,6 +342,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [variantGroupName, setVariantGroupName] = useState('');
    const [variantName, setVariantName] = useState('');
    const [variantSortOrder, setVariantSortOrder] = useState('0');
+   const [sku, setSku] = useState('');
    const [file, setFile] = useState<File | null>(null);
    const [cropRequest, setCropRequest] = useState<{ file: File; target: ProductImageTarget } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
@@ -392,6 +398,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [variantSourceProduct, setVariantSourceProduct] = useState<Product | null>(null);
    const [duplicateVariantsInput, setDuplicateVariantsInput] = useState('');
    const [duplicateVariantsSaving, setDuplicateVariantsSaving] = useState(false);
+   const [addToSaleProduct, setAddToSaleProduct] = useState<Product | null>(null);
+   const [addToSaleType, setAddToSaleType] = useState<'event' | 'campaign'>('campaign');
+   const [addToSaleId, setAddToSaleId] = useState('');
+   const [addToSaleStock, setAddToSaleStock] = useState('');
+   const [addToSalePrice, setAddToSalePrice] = useState('');
+   const [addToSaleSaving, setAddToSaleSaving] = useState(false);
+   const [campaignOptions, setCampaignOptions] = useState<OnlineCampaignSummary[]>([]);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1278,10 +1291,69 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    };
 
+   const openAddToSale = async (product: Product) => {
+      setAddToSaleProduct(product);
+      setAddToSaleType('campaign');
+      setAddToSaleStock(product.is_unlimited ? '' : String(product.stock_total || 0));
+      setAddToSalePrice('');
+      try {
+         const campaigns = (await listMyOnlineCampaigns()).filter((item) => item.publication_status !== 'archived');
+         setCampaignOptions(campaigns);
+         setAddToSaleId(campaigns[0]?.id || eventOptions[0]?.id || '');
+         if (campaigns.length === 0 && eventOptions.length > 0) setAddToSaleType('event');
+      } catch (error) {
+         console.error('[ManageProducts] campaigns failed to load:', error);
+         setCampaignOptions([]);
+         setAddToSaleType('event');
+         setAddToSaleId(eventOptions[0]?.id || '');
+      }
+   };
+
+   const handleAddToSale = async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!addToSaleProduct || !addToSaleId) return;
+      const isUnlimitedProduct = Boolean(addToSaleProduct.is_unlimited);
+      const stockTotal = isUnlimitedProduct ? null : Number(addToSaleStock);
+      if (!isUnlimitedProduct && (!Number.isInteger(stockTotal) || Number(stockTotal) < 0)) {
+         showToast({ tone: 'warning', title: t('catalogInvalidAllocation') });
+         return;
+      }
+
+      const item = {
+         product_id: addToSaleProduct.id,
+         is_enabled: true,
+         is_unlimited: isUnlimitedProduct,
+         stock_total: stockTotal,
+         price_override: addToSalePrice === '' ? null : Number(addToSalePrice),
+      };
+
+      setAddToSaleSaving(true);
+      try {
+         if (addToSaleType === 'campaign') {
+            await saveCampaignProducts(addToSaleId, [item]);
+         } else {
+            const { error } = await supabase.rpc('save_event_catalog', {
+               p_event_id: addToSaleId,
+               p_items: [item],
+               p_currency_override: null,
+               p_update_event_currency: false,
+            });
+            if (error) throw error;
+         }
+         setAddToSaleProduct(null);
+         showToast({ tone: 'success', title: t('catalogAddedToSale'), detail: addToSaleProduct.name });
+      } catch (error: any) {
+         console.error('[ManageProducts] add to sale failed:', error);
+         showToast({ tone: 'error', title: t('catalogAddToSaleFailed'), detail: error?.message });
+      } finally {
+         setAddToSaleSaving(false);
+      }
+   };
+
    const handleAddProduct = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!name.trim() || !price || !category.trim()) {
-         showToast({ tone: 'warning', title: 'Required fields missing', detail: 'Fill in Product Name, Price & Currency, and Category.' });
+      if (!name.trim() || !price) {
+         showToast({ tone: 'warning', title: t('catalogRequiredFields'), detail: t('catalogRequiredFieldsDetail') });
          return;
       }
 
@@ -1339,7 +1411,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          }
 
          // 2. Insert to DB
-         const { error: dbError } = await supabase
+         const { data: createdProduct, error: dbError } = await supabase
             .from('products')
             .insert([{
                artist_id: ctx.artist_id,
@@ -1355,8 +1427,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                variant_group_name: normalizedVariantGroupName,
                variant_name: normalizedVariantName,
                variant_sort_order: normalizedVariantSortOrder,
+               sku: sku.trim() || null,
                image_url: filePath
-            }]);
+            }])
+            .select('*')
+            .single();
 
          if (dbError) throw dbError;
 
@@ -1364,7 +1439,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setName('');
          setPrice('');
          setDescription('');
-         setCategory('');
+         setCategory('Other');
          setTagsInput('');
          setStatus('enable');
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
@@ -1373,12 +1448,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setVariantGroupName('');
          setVariantName('');
          setVariantSortOrder('0');
+         setSku('');
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
          
          await fetchProducts();
-         showToast({ tone: 'success', title: 'Product added', detail: name });
+         showToast({ tone: 'success', title: t('catalogProductAdded'), detail: name });
          setIsAddProductModalOpen(false);
+         if (createdProduct) await openAddToSale(normalizeProductRecord(createdProduct) as Product);
 
       } catch (error: any) {
          console.error(error);
@@ -1521,6 +1598,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setVariantGroupName(product.variant_group_name || '');
       setVariantName(product.variant_name || '');
       setVariantSortOrder(String(product.variant_sort_order ?? 0));
+      setSku(product.sku || '');
       setEditFile(null);
       setIsEditModalOpen(true);
    };
@@ -1585,6 +1663,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                variant_group_name: normalizedVariantGroupName,
                variant_name: normalizedVariantName,
                variant_sort_order: normalizedVariantSortOrder,
+               sku: sku.trim() || null,
                image_url: imageUrl
             })
             .eq('id', editingProduct.id);
@@ -1598,7 +1677,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setName('');
          setPrice('');
          setDescription('');
-         setCategory('');
+         setCategory('Other');
          setTagsInput('');
          setStatus('enable');
          setCurrency(DEFAULT_CURRENCY);  // ✅ NEW: Reset currency
@@ -1607,6 +1686,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setVariantGroupName('');
          setVariantName('');
          setVariantSortOrder('0');
+         setSku('');
          
          await fetchProducts();
          showToast({ tone: 'success', title: 'Product updated', detail: name });
@@ -2180,6 +2260,28 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             </div>
          )}
          
+         {addToSaleProduct && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+               <form onSubmit={handleAddToSale} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+                  <div className="flex items-start justify-between gap-3">
+                     <div><h2 className="text-lg font-black text-gray-900">{t('catalogAddToSale')}</h2><p className="mt-1 text-sm font-semibold text-gray-500">{addToSaleProduct.name} · {addToSaleProduct.sku}</p></div>
+                     <button type="button" onClick={() => setAddToSaleProduct(null)} className="icon-touch text-gray-400" aria-label={t('campaignClose')}><X size={20} /></button>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                     <button type="button" onClick={() => { setAddToSaleType('campaign'); setAddToSaleId(campaignOptions[0]?.id || ''); }} className={`min-h-11 rounded-xl border text-sm font-black ${addToSaleType === 'campaign' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600'}`}>{t('catalogOnlineCampaign')}</button>
+                     <button type="button" onClick={() => { setAddToSaleType('event'); setAddToSaleId(eventOptions[0]?.id || ''); }} className={`min-h-11 rounded-xl border text-sm font-black ${addToSaleType === 'event' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600'}`}>{t('catalogPhysicalEvent')}</button>
+                  </div>
+                  <label className="mt-4 block"><span className="text-xs font-black text-gray-600">{t('catalogChooseSale')}</span><select required value={addToSaleId} onChange={(e) => setAddToSaleId(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3">
+                     <option value="">{t('catalogChooseSalePlaceholder')}</option>
+                     {(addToSaleType === 'campaign' ? campaignOptions : eventOptions).map((item) => <option key={item.id} value={item.id}>{'name' in item ? item.name : item.event_name}</option>)}
+                  </select></label>
+                  {!addToSaleProduct.is_unlimited && <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignAllocatedStock')}</span><input required type="number" min="0" step="1" value={addToSaleStock} onChange={(e) => setAddToSaleStock(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>}
+                  <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignPriceOverride')}</span><input type="number" min="0" step="0.01" value={addToSalePrice} onChange={(e) => setAddToSalePrice(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" placeholder={formatPrice(addToSaleProduct.price, addToSaleProduct.currency)} /></label>
+                  <button disabled={addToSaleSaving || !addToSaleId} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
+               </form>
+            </div>
+         )}
+
          {variantSourceProduct && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
                <section className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -2382,9 +2484,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div>
                         <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
                            <Plus className="text-pink-500" size={18} />
-                           Add Product
+                           {t('catalogAddProduct')}
                         </h2>
-                        <p className="mt-1 text-xs text-gray-500">Create one catalog item with stock, tags, status, and image.</p>
+                        <p className="mt-1 text-xs text-gray-500">{t('catalogQuickProductHint')}</p>
                      </div>
                      <button
                         type="button"
@@ -2398,11 +2500,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                <div className="p-5 animate-fade-in">
                <form onSubmit={handleAddProduct} className="space-y-4">
-                  {/* Row 1: Product Name | Price & Currency | Category */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product Name *</label>
+                        <label htmlFor="add-product-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogProductName')} *</label>
                         <input 
+                           id="add-product-name"
                            type="text" 
                            value={name}
                            onChange={(e) => setName(e.target.value)}
@@ -2413,11 +2515,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                           <Coins size={12} /> Price & Currency *
+                        <label htmlFor="add-product-price" className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                           <Coins size={12} /> {t('catalogPriceCurrency')} *
                         </label>
                         <div className="flex flex-col md:flex-row gap-2">
                            <input 
+                              id="add-product-price"
                               type="number" 
                               value={price}
                               onChange={(e) => setPrice(e.target.value)}
@@ -2440,33 +2543,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
                      </div>
 
-                     <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category *</label>
-                        <input
-                           list="category-suggestions"
-                           type="text"
-                           value={category}
-                           onChange={(e) => setCategory(e.target.value)}
-                           onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                 event.preventDefault();
-                                 event.stopPropagation();
-                              }
-                           }}
-                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="Select or type..."
-                           required
-                        />
-                        <datalist id="category-suggestions">
-                           {allCategorySuggestions.map(cat => (
-                              <option key={cat} value={cat} />
-                           ))}
-                        </datalist>
-                     </div>
                   </div>
 
+                  <details className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                     <summary className="cursor-pointer text-sm font-black text-gray-700">{t('catalogAdvanced')}</summary>
+                     <div className="mt-4 space-y-4">
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">{t('catalogCategory')}</label>
+                        <input list="category-suggestions" type="text" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700" />
+                        <datalist id="category-suggestions">{allCategorySuggestions.map(cat => <option key={cat} value={cat} />)}</datalist>
+                     </div>
                   <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Tags</label>
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogTags')}</label>
                      <input
                         list="tag-suggestions"
                         type="text"
@@ -2485,7 +2573,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-4">
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Product line</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogProductLine')}</label>
                         <input
                            list="variant-group-suggestions"
                            type="text"
@@ -2501,7 +2589,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </datalist>
                      </div>
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Option name</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogOptionName')}</label>
                         <input
                            type="text"
                            value={variantName}
@@ -2511,7 +2599,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         />
                      </div>
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Sort</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogSort')}</label>
                         <input
                            type="number"
                            value={variantSortOrder}
@@ -2522,10 +2610,31 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                   </div>
 
-                  {/* Row 2: Image | Status | Stock */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid gap-4 md:grid-cols-2">
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Image</label>
+                        <label htmlFor="product-status" className="block text-xs font-bold uppercase tracking-wider text-gray-500">{t('catalogStatus')}</label>
+                        <select id="product-status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-600">
+                           <option value="enable">{t('catalogActive')}</option>
+                           <option value="disable">{t('catalogDisabled')}</option>
+                           <option value="soldout">{t('campaignSoldOut')}</option>
+                        </select>
+                     </div>
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">SKU</label>
+                        <input value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700" />
+                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">{t('catalogDescription')} <span className="ml-2 text-[10px] font-normal text-gray-400">({description.length}/200)</span></label>
+                     <textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 200))} className="h-16 w-full resize-none rounded border border-gray-200 px-3 py-1.5 text-sm text-gray-700" />
+                  </div>
+                     </div>
+                  </details>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogImage')}</label>
                         <div className="relative">
                            <input 
                               type="file" 
@@ -2546,7 +2655,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            >
                               <Upload size={14} className="mr-2 shrink-0" />
                               <span className="truncate text-xs font-medium max-w-[200px] md:max-w-none">
-                                 {compressing ? 'Compressing...' : (file ? file.name : 'Choose Image')}
+                                 {compressing ? t('catalogPreparingImage') : (file ? file.name : t('catalogChooseImage'))}
                               </span>
                            </label>
                         </div>
@@ -2555,23 +2664,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
 
                      <div className="space-y-1">
-                        <label htmlFor="product-status" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Status *</label>
-                        <select
-                           id="product-status"
-                           value={status}
-                           onChange={(e) => setStatus(e.target.value)}
-                           className="w-full px-3 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white"
-                           aria-label="Product status"
-                           required
-                        >
-                           <option value="enable">Enable</option>
-                           <option value="disable">Disable</option>
-                           <option value="soldout">Sold Out</option>
-                        </select>
-                     </div>
-
-                     <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Stock *</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogStock')} *</label>
                         <div className="flex items-center gap-2 mb-2">
                            <input
                               id="is-unlimited"
@@ -2579,7 +2672,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               checked={isUnlimited}
                               onChange={(e) => setIsUnlimited(e.target.checked)}
                            />
-                           <label htmlFor="is-unlimited" className="text-xs text-gray-600 font-semibold">Unlimited</label>
+                           <label htmlFor="is-unlimited" className="text-xs text-gray-600 font-semibold">{t('catalogUnlimited')}</label>
                         </div>
                         <input
                            type="number"
@@ -2595,28 +2688,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                   </div>
 
-                  {/* Row 3: Description */}
-                  <div className="space-y-1">
-                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
-                        Description 
-                        <span className="text-[10px] text-gray-400 ml-2 font-normal">({description.length}/200)</span>
-                     </label>
-                     <textarea 
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value.slice(0, 200))}
-                        className="w-full px-3 py-1.5 text-sm text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all h-16 resize-none"
-                        placeholder="Brief description..."
-                     />
-                  </div>
-
-
                   <div className="flex justify-end">
                      <Button 
                         type="submit" 
                         disabled={uploading}
                         className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9"
                      >
-                        {uploading ? <Loader className="animate-spin mx-auto" size={16} /> : 'Add Product'}
+                        {uploading ? <Loader className="animate-spin mx-auto" size={16} /> : t('catalogAddProduct')}
                      </Button>
                   </div>
 
@@ -3813,6 +3891,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  <div className="space-y-3 p-4">
                                     <div className="min-h-[76px]">
                                        <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-900">{product.name}</h3>
+                                       {product.sku && <div className="mt-1 font-mono text-[10px] font-bold text-gray-400">{product.sku}</div>}
                                        {product.variant_group_name && (
                                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                              <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-black text-pink-700">
@@ -3845,7 +3924,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        {renderCatalogStockFlow(product, true)}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-3 gap-2">
+                                       <button onClick={() => void openAddToSale(product)} className="min-h-10 rounded-xl bg-pink-600 px-2 text-xs font-black text-white">{t('catalogAddToSale')}</button>
                                        {!product.is_unlimited ? (
                                           <button
                                              onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
@@ -3911,6 +3991,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
                                  <div>
                                     <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
+                                    {product.sku && <div className="font-mono text-[9px] font-bold text-gray-400">{product.sku}</div>}
                                     {product.variant_group_name && (
                                        <div className="mt-1 flex items-center gap-1">
                                           <span className="truncate rounded bg-pink-50 px-1.5 py-0.5 text-[9px] font-black text-pink-700">
@@ -3946,6 +4027,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                                  {/* Mobile Actions (Always Visible) */}
                                  <div className="absolute bottom-2 right-2 flex gap-2">
+                                     <button onClick={(e) => { e.stopPropagation(); void openAddToSale(product); }} className="min-h-8 rounded-full bg-pink-600 px-2 text-[10px] font-black text-white shadow-sm" aria-label={`${t('catalogAddToSale')} ${product.name}`}>{t('catalogAddToSale')}</button>
                                      <button onClick={(e) => { e.stopPropagation(); openDuplicateVariants(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-pink-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Create variants from ${product.name}`}><Copy size={14}/></button>
                                      <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
                                      <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
@@ -3987,6 +4069,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        </div>
                                        <div>
                                           <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
+                                          {product.sku && <div className="font-mono text-[10px] font-bold text-gray-400">{product.sku}</div>}
                                           {product.variant_group_name && (
                                              <div className="mt-1 flex flex-wrap items-center gap-1">
                                                 <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-700">
@@ -4028,6 +4111,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  </td>
                                  <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2 transition-opacity">
+                                       <button onClick={() => void openAddToSale(product)} className="min-h-8 rounded-md bg-pink-600 px-2 py-1 text-[11px] font-black text-white">{t('catalogAddToSale')}</button>
                                        {!product.is_unlimited && (
                                           <>
                                              <button
@@ -4166,6 +4250,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               placeholder="Select or type category..."
                            />
                            {/* Datalist is reusable, defined above in the Add form */}
+                        </div>
+
+                        <div>
+                           <label className="mb-2 block text-sm font-medium text-gray-700">SKU</label>
+                           <input value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded-lg border border-gray-200 px-4 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-pink-500" />
                         </div>
 
                         <div>

@@ -1,6 +1,6 @@
 begin;
 
-select plan(31);
+select plan(32);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -126,6 +126,18 @@ begin
   );
 end;
 $$ language plpgsql;
+
+select set_campaign_jwt('campaign.owner@nireq.local');
+
+select results_eq(
+  $$ select allocated, available
+     from public.list_product_stock_summaries((select artist_id from _campaign_ids))
+     where product_id = (select product_id from _campaign_ids) $$,
+  $$ values (5, 0) $$,
+  'catalog stock summary includes active online campaign allocation'
+);
+
+select set_config('request.jwt.claims', '{}'::text, true);
 
 select is(
   public.get_public_online_campaign('campaign-test-artist', 'cheki-online') ->> 'state',

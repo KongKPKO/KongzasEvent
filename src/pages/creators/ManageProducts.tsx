@@ -1294,7 +1294,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const openAddToSale = async (product: Product) => {
       setAddToSaleProduct(product);
       setAddToSaleType('campaign');
-      setAddToSaleStock(product.is_unlimited ? '' : String(product.stock_total || 0));
+      setAddToSaleStock(product.is_unlimited ? '' : String(getProductStockSummary(product).available));
       setAddToSalePrice('');
       try {
          const campaigns = (await listMyOnlineCampaigns()).filter((item) => item.publication_status !== 'archived');
@@ -1341,10 +1341,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             if (error) throw error;
          }
          setAddToSaleProduct(null);
-         showToast({ tone: 'success', title: t('catalogAddedToSale'), detail: addToSaleProduct.name });
+         showToast({
+            tone: 'success',
+            title: t('catalogAddedToSale'),
+            detail: stockTotal === 0 ? t('catalogAddedWithZeroStock') : addToSaleProduct.name,
+         });
       } catch (error: any) {
          console.error('[ManageProducts] add to sale failed:', error);
-         showToast({ tone: 'error', title: t('catalogAddToSaleFailed'), detail: error?.message });
+         showToast({
+            tone: 'error',
+            title: t('catalogAddToSaleFailed'),
+            detail: error?.message === 'campaign_stock_exceeds_catalog_stock' ? t('campaignStockExceeded') : error?.message,
+         });
       } finally {
          setAddToSaleSaving(false);
       }
@@ -2275,7 +2283,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <option value="">{t('catalogChooseSalePlaceholder')}</option>
                      {(addToSaleType === 'campaign' ? campaignOptions : eventOptions).map((item) => <option key={item.id} value={item.id}>{'name' in item ? item.name : item.event_name}</option>)}
                   </select></label>
-                  {!addToSaleProduct.is_unlimited && <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignAllocatedStock')}</span><input required type="number" min="0" step="1" value={addToSaleStock} onChange={(e) => setAddToSaleStock(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>}
+                  {!addToSaleProduct.is_unlimited && <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignAllocatedStock')}</span><input required type="number" min="0" max={getProductStockSummary(addToSaleProduct).available} step="1" value={addToSaleStock} onChange={(e) => setAddToSaleStock(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>}
+                  {!addToSaleProduct.is_unlimited && getProductStockSummary(addToSaleProduct).available === 0 && (
+                     <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-800">{t('campaignNoUnallocatedStock')}</p>
+                  )}
                   <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignPriceOverride')}</span><input type="number" min="0" step="0.01" value={addToSalePrice} onChange={(e) => setAddToSalePrice(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" placeholder={formatPrice(addToSaleProduct.price, addToSaleProduct.currency)} /></label>
                   <button disabled={addToSaleSaving || !addToSaleId} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
                </form>

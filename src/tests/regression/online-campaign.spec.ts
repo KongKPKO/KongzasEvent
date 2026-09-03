@@ -219,4 +219,75 @@ test.describe('online campaign', () => {
       return Boolean(allocation.data?.id);
     }).toBe(true);
   });
+
+  test('fully event-allocated catalog product can join a campaign with zero stock', async ({ page }) => {
+    const legacyProductId = randomUUID();
+    const activeEventId = randomUUID();
+    const productName = `Allocated Cheki ${legacyProductId.slice(0, 6)}`;
+
+    try {
+      const product = await fixture.service.from('products').insert({
+        id: legacyProductId,
+        artist_id: fixture.userId,
+        name: productName,
+        price: 350,
+        currency: 'THB',
+        status: 'enable',
+        stock_total: 8,
+        stock_reserved: 0,
+        stock_sold: 0,
+        is_unlimited: false,
+      });
+      if (product.error) throw product.error;
+
+      const activeEvent = await fixture.service.from('events').insert({
+        id: activeEventId,
+        artist_id: fixture.userId,
+        event_name: 'Active allocated event',
+        start_date: new Date(Date.now() - 60_000).toISOString(),
+        end_date: new Date(Date.now() + 3_600_000).toISOString(),
+        status: 'Confirmed',
+      });
+      if (activeEvent.error) throw activeEvent.error;
+
+      const allocation = await fixture.service.from('event_products').insert({
+        event_id: activeEventId,
+        product_id: legacyProductId,
+        artist_id: fixture.userId,
+        stock_total: 8,
+        stock_reserved: 0,
+        stock_sold: 0,
+        is_unlimited: false,
+        is_enabled: true,
+      });
+      if (allocation.error) throw allocation.error;
+
+      await login(page);
+      await page.goto('/manage-products');
+      const productCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
+      await productCard.getByRole('button', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }).click();
+
+      const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
+      await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);
+      await expect(handoff.getByLabel(/Allocated stock|สต็อกที่จัดสรร/)).toHaveValue('0');
+      await expect(handoff.getByText(/All stock is assigned|สต็อกทั้งหมดถูกจัด/)).toBeVisible();
+      await handoff.getByRole('button', { name: /^Add to sale$|^เพิ่มไปยังช่องทางขาย$/ }).click();
+
+      await expect.poll(async () => {
+        const row = await fixture.service.from('online_campaign_products').select('stock_total,is_enabled').eq('campaign_id', campaignId).eq('product_id', legacyProductId).maybeSingle();
+        return row.data?.is_enabled === true && row.data.stock_total === 0;
+      }).toBe(true);
+
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Products|สินค้า/ }).click();
+      const campaignCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
+      await expect(campaignCard).toBeVisible();
+      await expect(campaignCard.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
+    } finally {
+      await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', legacyProductId);
+      await fixture.service.from('event_products').delete().eq('event_id', activeEventId);
+      await fixture.service.from('events').delete().eq('id', activeEventId);
+      await fixture.service.from('products').delete().eq('id', legacyProductId);
+    }
+  });
 });

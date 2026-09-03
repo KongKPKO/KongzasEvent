@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ExternalLink, Eye, Loader2, PackageCheck, Save, Settings, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Eye, ImageOff, Loader2, PackageCheck, Plus, Save, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import { useI18n } from '../../i18n';
 import {
@@ -13,11 +13,13 @@ import {
   saveCampaignProducts,
 } from '../../lib/onlineCampaigns';
 import { createPaymentEvidenceSignedUrl } from '../../lib/preorders';
+import { fetchProductStockSummaries, type ProductStockSummary } from '../../lib/stockAdjustments';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
 import type { CampaignOrder, CampaignWorkspace } from '../../types/onlineCampaign';
 import { fetchActorContext } from '../../utils/access';
 import { formatPrice } from '../../utils/currency';
+import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
 
@@ -34,6 +36,7 @@ export default function OnlineCampaignWorkspace() {
   const [orderFilter, setOrderFilter] = useState('needs_action');
   const [search, setSearch] = useState('');
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
   const canManage = actor?.role === 'owner' || actor?.role === 'manager';
 
   const load = useCallback(async () => {
@@ -41,10 +44,16 @@ export default function OnlineCampaignWorkspace() {
     setLoading(true);
     try {
       const [context, data] = await Promise.all([fetchActorContext(), getCampaignWorkspace(campaignId)]);
-      const { data: artist } = await supabase.from('artists').select('slug').eq('id', data.campaign.artist_id).maybeSingle();
+      const [summaries, { data: artist }] = await Promise.all([
+        context?.role === 'owner' || context?.role === 'manager'
+          ? fetchProductStockSummaries(data.campaign.artist_id)
+          : Promise.resolve([]),
+        supabase.from('artists').select('slug').eq('id', data.campaign.artist_id).maybeSingle(),
+      ]);
       setActor(context);
       setArtistSlug(artist?.slug || '');
       setWorkspace(data);
+      setStockSummaries(Object.fromEntries(summaries.map((summary) => [summary.product_id, summary])));
     } catch (error) {
       console.error(error);
       setFeedback(t('campaignLoadFailed'));
@@ -59,6 +68,24 @@ export default function OnlineCampaignWorkspace() {
     () => new Set((workspace?.products || []).filter((product) => product.is_enabled !== false).map((product) => product.product_id)),
     [workspace?.products],
   );
+
+  const campaignCatalog = useMemo(
+    () => [...(workspace?.catalog || [])].sort((left, right) => {
+      const allocationOrder = Number(allocatedIds.has(right.product_id || right.id || '')) - Number(allocatedIds.has(left.product_id || left.id || ''));
+      return allocationOrder || left.name.localeCompare(right.name);
+    }),
+    [allocatedIds, workspace?.catalog],
+  );
+
+  const getStockSummary = (product: CampaignWorkspace['catalog'][number]) => {
+    const productId = product.product_id || product.id || '';
+    return stockSummaries[productId] || {
+      product_id: productId,
+      on_hand: Number(product.stock_total || 0),
+      allocated: 0,
+      available: Math.max(Number(product.stock_total || 0) - Number(product.stock_reserved || 0) - Number(product.stock_sold || 0), 0),
+    };
+  };
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -87,6 +114,11 @@ export default function OnlineCampaignWorkspace() {
     const product = workspace.catalog.find((item) => item.product_id === productId || item.id === productId);
     if (!product) return;
     const current = workspace.products.find((item) => item.product_id === productId);
+    const summary = getStockSummary(product);
+    const used = Number(current?.stock_reserved || 0) + Number(current?.stock_sold || 0);
+    const finiteStock = checked
+      ? Math.max(used, Math.min(Number(current?.stock_total ?? summary.available), used + summary.available))
+      : Number(current?.stock_total ?? 0);
     setSaving(true);
     setFeedback('');
     try {
@@ -94,13 +126,13 @@ export default function OnlineCampaignWorkspace() {
         product_id: product.product_id || product.id || productId,
         is_enabled: checked,
         is_unlimited: current?.is_unlimited ?? product.is_unlimited,
-        stock_total: current?.is_unlimited ? null : Number(current?.stock_total ?? product.stock_total ?? 0),
+        stock_total: (current?.is_unlimited ?? product.is_unlimited) ? null : finiteStock,
         price_override: current?.price_override ?? null,
       }]);
       await load();
     } catch (error) {
       console.error(error);
-      setFeedback(t('campaignSaveFailed'));
+      setFeedback(error instanceof Error && error.message === 'campaign_stock_exceeds_catalog_stock' ? t('campaignStockExceeded') : t('campaignSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -122,7 +154,7 @@ export default function OnlineCampaignWorkspace() {
       await load();
     } catch (error) {
       console.error(error);
-      setFeedback(t('campaignSaveFailed'));
+      setFeedback(error instanceof Error && error.message === 'campaign_stock_exceeds_catalog_stock' ? t('campaignStockExceeded') : t('campaignSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -294,29 +326,81 @@ export default function OnlineCampaignWorkspace() {
         )}
 
         {tab === 'products' && (
-          <section className="space-y-3">
-            {workspace.catalog.map((product) => {
+          <section>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+              <div>
+                <h2 className="text-lg font-black text-gray-950">{t('campaignCatalogTitle')}</h2>
+                <p className="mt-1 max-w-2xl text-sm font-semibold leading-relaxed text-gray-500">{t('campaignCatalogBody')}</p>
+              </div>
+              <div className="rounded-full bg-pink-50 px-3 py-1.5 text-xs font-black text-pink-700">
+                {allocatedIds.size} / {workspace.catalog.length} {t('campaignIncluded')}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {campaignCatalog.map((product) => {
               const allocated = workspace.products.find((item) => item.product_id === (product.product_id || product.id));
               const productId = product.product_id || product.id || '';
+              const summary = getStockSummary(product);
+              const isIncluded = allocatedIds.has(productId);
+              const maxCampaignStock = Number(allocated?.stock_total || 0) + summary.available;
               return (
-                <div key={productId} className="rounded-2xl border border-gray-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="flex min-h-11 flex-1 items-center gap-3">
-                      <input type="checkbox" checked={allocatedIds.has(productId)} disabled={saving} onChange={(event) => void toggleProduct(productId, event.target.checked)} />
-                      <span><span className="block font-black text-gray-950">{product.name}</span><span className="text-xs font-semibold text-gray-500">{product.sku || '—'} · {formatPrice(product.price, campaign.currency)}</span></span>
-                    </label>
-                    {allocated && (
-                      <>
-                        {!allocated.is_unlimited && (
-                          <input aria-label={t('campaignAllocatedStock')} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} defaultValue={allocated.stock_total || 0} onBlur={(event) => void updateAllocation(productId, Number(event.target.value), allocated.price_override ?? null)} className="h-11 w-28 rounded-xl border border-gray-200 px-3" />
-                        )}
-                        <input aria-label={t('campaignPriceOverride')} type="number" min="0" placeholder={t('campaignPriceOverride')} defaultValue={allocated.price_override ?? ''} onBlur={(event) => void updateAllocation(productId, allocated.stock_total ?? null, event.target.value === '' ? null : Number(event.target.value))} className="h-11 w-32 rounded-xl border border-gray-200 px-3" />
-                      </>
+                <article key={productId} className={'group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ' + (isIncluded ? 'border-pink-300 ring-2 ring-pink-100' : 'border-gray-200')}>
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                    {product.image_url ? (
+                      <img src={getOptimizedImageUrl(product.image_url, 520)} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                    ) : (
+                      <div className="grid h-full place-items-center text-gray-300"><div className="text-center"><ImageOff className="mx-auto" size={28} /><span className="mt-1 block text-[10px] font-black uppercase tracking-widest">{t('catalogImage')}</span></div></div>
+                    )}
+                    <div className={'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black shadow-sm ' + (isIncluded ? 'bg-pink-600 text-white' : 'bg-white/95 text-gray-600')}>
+                      {isIncluded ? <CheckCircle2 size={13} /> : <ShoppingBag size={13} />}{isIncluded ? t('campaignIncluded') : t('campaignAddProduct')}
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <h3 className="line-clamp-2 min-h-10 font-black leading-tight text-gray-950">{product.name}</h3>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <span className="truncate font-mono text-[10px] font-bold text-gray-400">{product.sku || '—'}</span>
+                      <span className="text-sm font-black text-pink-700">{formatPrice(allocated?.price_override ?? product.price, campaign.currency)}</span>
+                    </div>
+
+                    {product.is_unlimited ? (
+                      <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs font-black text-gray-600">{t('catalogUnlimited')}</div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-50 p-3 text-center">
+                        <div><div className="font-black text-gray-900">{summary.on_hand}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{t('campaignOnHandStock')}</div></div>
+                        <div><div className="font-black text-emerald-700">{summary.available}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{t('campaignAvailableStock')}</div></div>
+                        <div><div className="font-black text-pink-700">{allocated?.stock_total || 0}</div><div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">Campaign</div></div>
+                      </div>
+                    )}
+
+                    {allocated && isIncluded ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          {!allocated.is_unlimited && (
+                            <label className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                              {t('campaignAllocatedStock')}
+                              <input key={`stock-${allocated.stock_total}`} aria-label={`${t('campaignAllocatedStock')} ${product.name}`} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} max={maxCampaignStock} defaultValue={allocated.stock_total || 0} onBlur={(event) => void updateAllocation(productId, Number(event.target.value), allocated.price_override ?? null)} className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-bold" />
+                            </label>
+                          )}
+                          <label className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                            {t('campaignPriceOverride')}
+                            <input key={`price-${allocated.price_override}`} aria-label={`${t('campaignPriceOverride')} ${product.name}`} type="number" min="0" placeholder={String(product.price)} defaultValue={allocated.price_override ?? ''} onBlur={(event) => void updateAllocation(productId, allocated.stock_total ?? null, event.target.value === '' ? null : Number(event.target.value))} className="mt-1 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-bold" />
+                          </label>
+                        </div>
+                        <button type="button" disabled={saving} onClick={() => void toggleProduct(productId, false)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 text-xs font-black text-gray-600 hover:border-red-200 hover:text-red-700 disabled:opacity-50"><X size={15} />{t('campaignRemoveProduct')}</button>
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        {!product.is_unlimited && summary.available === 0 && <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-amber-800">{t('campaignNoUnallocatedStock')}</p>}
+                        <button type="button" disabled={saving} onClick={() => void toggleProduct(productId, true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-pink-600 text-xs font-black text-white hover:bg-pink-700 disabled:opacity-50"><Plus size={15} />{t('campaignAddProduct')}</button>
+                      </div>
                     )}
                   </div>
-                </div>
+                </article>
               );
             })}
+            </div>
           </section>
         )}
 

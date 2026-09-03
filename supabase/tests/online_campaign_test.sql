@@ -1,6 +1,6 @@
 begin;
 
-select plan(30);
+select plan(31);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -92,6 +92,27 @@ begin
     null, null, null, null
   );
 end $$;
+
+insert into public.events (id, artist_id, event_name, start_date, end_date, status)
+values (
+  '33333333-3333-4333-8333-333333333333'::uuid,
+  (select artist_id from _campaign_ids),
+  'Competing stock event', now(), now() + interval '1 day', 'Confirmed'
+);
+
+select throws_ok(
+  $$ insert into public.event_products (
+       event_id, product_id, artist_id, stock_total, stock_reserved,
+       stock_sold, is_unlimited, is_enabled
+     ) values (
+       '33333333-3333-4333-8333-333333333333'::uuid,
+       (select product_id from _campaign_ids),
+       (select artist_id from _campaign_ids),
+       1, 0, 0, false, true
+     ) $$,
+  'event_stock_exceeds_catalog_stock',
+  'event allocation includes stock already allocated to an online campaign'
+);
 
 create or replace function set_campaign_jwt(p_email text) returns void as $$
 declare

@@ -903,3 +903,207 @@ test.describe('RLS and mutation security regressions', () => {
     expect(missingTicket.error?.message || '').toContain('ticket_not_found');
   });
 });
+
+test.describe('online campaign RLS and role boundaries', () => {
+  const campaignIds = {
+    owner: '',
+    seller: '',
+    other: '',
+    artist: '',
+    product: randomUUID(),
+    campaign: randomUUID(),
+    order: '',
+    orderCode: '',
+  };
+  const suffix = randomUUID().slice(0, 8);
+  const ownerEmail = `campaign-owner-${suffix}@example.com`;
+  const sellerEmail = `campaign-seller-${suffix}@example.com`;
+  const otherEmail = `campaign-other-${suffix}@example.com`;
+  const password = 'LocalOnlyCampaignSecurity123!';
+  const artistSlug = `campaign-rls-${suffix}`;
+  let ownerClient: SupabaseClient;
+  let sellerClient: SupabaseClient;
+  let otherClient: SupabaseClient;
+
+  test.beforeAll(async () => {
+    test.skip(!SERVICE_KEY || !ANON_KEY, 'Supabase service and anon keys are required for RLS regression tests');
+    campaignIds.owner = await createConfirmedUser(ownerEmail, password);
+    campaignIds.seller = await createConfirmedUser(sellerEmail, password);
+    campaignIds.other = await createConfirmedUser(otherEmail, password);
+    campaignIds.artist = campaignIds.owner;
+
+    const now = Date.now();
+    const artist = await service.from('artists').insert({
+      id: campaignIds.artist,
+      email: ownerEmail,
+      slug: artistSlug,
+      display_name: 'Campaign RLS Artist',
+      is_public: true,
+      is_verified: true,
+      published_at: new Date().toISOString(),
+    });
+    if (artist.error) throw artist.error;
+    const member = await service.from('artist_members').insert({
+      artist_id: campaignIds.artist,
+      member_email: sellerEmail,
+      role: 'seller',
+      status: 'active',
+    });
+    if (member.error) throw member.error;
+
+    const product = await service.from('products').insert({
+      id: campaignIds.product,
+      artist_id: campaignIds.artist,
+      name: 'Campaign RLS Product',
+      price: 100,
+      currency: 'THB',
+      status: 'enable',
+      stock_total: 4,
+      stock_reserved: 0,
+      stock_sold: 0,
+      is_unlimited: false,
+    });
+    if (product.error) throw product.error;
+
+    const campaign = await service.from('online_campaigns').insert({
+      id: campaignIds.campaign,
+      artist_id: campaignIds.artist,
+      name: 'Campaign RLS Sale',
+      slug: 'secure-sale',
+      opens_at: new Date(now - 60_000).toISOString(),
+      closes_at: new Date(now + 86_400_000).toISOString(),
+      currency: 'THB',
+      shipping_enabled: true,
+      flat_shipping_fee: 40,
+      pickup_enabled: false,
+      publication_status: 'published',
+    });
+    if (campaign.error) throw campaign.error;
+
+    const setup = await Promise.all([
+      service.from('online_campaign_products').insert({
+        campaign_id: campaignIds.campaign,
+        product_id: campaignIds.product,
+        artist_id: campaignIds.artist,
+        stock_total: 4,
+        is_unlimited: false,
+        is_enabled: true,
+      }),
+      service.from('campaign_payment_methods').insert({
+        campaign_id: campaignIds.campaign,
+        artist_id: campaignIds.artist,
+        method_type: 'promptpay',
+        display_name: 'PromptPay',
+        promptpay_id: '0812345678',
+      }),
+    ]);
+    for (const result of setup) if (result.error) throw result.error;
+
+    const order = await anon.rpc('create_online_campaign_order', {
+      p_campaign_id: campaignIds.campaign,
+      p_items: [{ product_id: campaignIds.product, quantity: 1 }],
+      p_fulfillment_method: 'shipping',
+      p_pickup_point_id: null,
+      p_customer_name: 'Private Buyer',
+      p_customer_email: 'private-buyer@example.com',
+      p_customer_phone: '0899999999',
+      p_shipping_address: 'Private Bangkok address',
+      p_customer_note: '',
+      p_client_request_id: randomUUID(),
+    });
+    if (order.error) throw order.error;
+    campaignIds.order = order.data[0].order_id;
+    campaignIds.orderCode = order.data[0].order_code;
+
+    const evidence = await anon.rpc('submit_online_payment_evidence', {
+      p_artist_slug: artistSlug,
+      p_order_code: campaignIds.orderCode,
+      p_slip_url: 'campaign/security/slip.png',
+      p_client_request_id: randomUUID(),
+    });
+    if (evidence.error) throw evidence.error;
+
+    [ownerClient, sellerClient, otherClient] = await Promise.all([
+      signInClient(ownerEmail, password),
+      signInClient(sellerEmail, password),
+      signInClient(otherEmail, password),
+    ]);
+  });
+
+  test.afterAll(async () => {
+    if (!SERVICE_KEY) return;
+    if (campaignIds.order) {
+      await service.from('payment_review_events').delete().eq('order_id', campaignIds.order);
+      await service.from('order_payments').delete().eq('order_id', campaignIds.order);
+      await service.from('order_items').delete().eq('order_id', campaignIds.order);
+      await service.from('orders').delete().eq('id', campaignIds.order);
+    }
+    await service.from('campaign_payment_methods').delete().eq('campaign_id', campaignIds.campaign);
+    await service.from('campaign_pickup_points').delete().eq('campaign_id', campaignIds.campaign);
+    await service.from('online_campaign_products').delete().eq('campaign_id', campaignIds.campaign);
+    await service.from('online_campaigns').delete().eq('id', campaignIds.campaign);
+    await service.from('products').delete().eq('id', campaignIds.product);
+    await service.from('artist_members').delete().eq('artist_id', campaignIds.artist);
+    await service.from('artists').delete().eq('id', campaignIds.artist);
+    await Promise.all([campaignIds.owner, campaignIds.seller, campaignIds.other].filter(Boolean).map((id) => service.auth.admin.deleteUser(id)));
+  });
+
+  test('anonymous and unrelated users cannot access campaign tables directly', async () => {
+    const anonymousWrite = await anon.from('online_campaigns').insert({
+      artist_id: campaignIds.artist,
+      name: 'Anonymous write',
+      slug: 'anonymous-write',
+      opens_at: new Date().toISOString(),
+      closes_at: new Date(Date.now() + 60_000).toISOString(),
+      shipping_enabled: true,
+    });
+    expect(anonymousWrite.error?.message || '').toMatch(/permission denied|row-level security/i);
+
+    for (const table of ['online_campaigns', 'online_campaign_products', 'campaign_payment_methods', 'orders', 'order_payments']) {
+      const column = table === 'orders' || table === 'online_campaigns' ? 'id' : table === 'order_payments' ? 'order_id' : 'campaign_id';
+      const target = table === 'orders' || table === 'order_payments' ? campaignIds.order : campaignIds.campaign;
+      const read = await otherClient.from(table).select('*').eq(column, target);
+      if (read.error) expect(read.error.message).toMatch(/permission denied|row-level security/i);
+      else expect(read.data).toEqual([]);
+    }
+
+    const workspace = await otherClient.rpc('get_online_campaign_workspace', { p_campaign_id: campaignIds.campaign });
+    expect(workspace.error?.message).toContain('forbidden');
+  });
+
+  test('seller can read fulfillment work but cannot configure or review payment', async () => {
+    const campaigns = await sellerClient.rpc('list_my_online_campaigns');
+    expect(campaigns.error).toBeNull();
+    expect(campaigns.data.some((campaign: { id: string }) => campaign.id === campaignIds.campaign)).toBe(true);
+
+    const workspace = await sellerClient.rpc('get_online_campaign_workspace', { p_campaign_id: campaignIds.campaign });
+    expect(workspace.error).toBeNull();
+    expect(workspace.data.orders[0].customer_name).toBe('Private Buyer');
+    expect(workspace.data.orders[0].slip_url).toBeNull();
+    expect(workspace.data.payment_methods).toEqual([]);
+    expect(workspace.data.catalog).toEqual([]);
+
+    const update = await sellerClient.from('online_campaigns').update({ name: 'Seller changed it' }).eq('id', campaignIds.campaign).select('id');
+    expect(update.error || update.data?.length === 0).toBeTruthy();
+
+    const review = await sellerClient.rpc('confirm_online_payment', { p_order_id: campaignIds.order, p_note: '' });
+    expect(review.error?.message).toContain('forbidden');
+
+    const unchanged = await service.from('online_campaigns').select('name').eq('id', campaignIds.campaign).single();
+    expect(unchanged.data?.name).toBe('Campaign RLS Sale');
+  });
+
+  test('public order lookup masks customer contacts', async () => {
+    const lookup = await anon.rpc('get_public_online_order_by_code', {
+      p_artist_slug: artistSlug,
+      p_order_code: campaignIds.orderCode,
+    });
+    expect(lookup.error).toBeNull();
+    expect(lookup.data.customer_email_masked).toBe('pr***@example.com');
+    expect(lookup.data).not.toHaveProperty('customer_email');
+    expect(lookup.data).not.toHaveProperty('customer_phone');
+
+    const ownerReview = await ownerClient.rpc('confirm_online_payment', { p_order_id: campaignIds.order, p_note: 'checked' });
+    expect(ownerReview.error).toBeNull();
+  });
+});

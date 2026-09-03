@@ -306,7 +306,7 @@ test.describe('online campaign', () => {
       await expect(campaignCard.getByText(/Total stock|สต็อกทั้งหมด/)).toBeVisible();
       await expect(campaignCard.getByText(/Ready to allocate|พร้อมจัดสรร/)).toBeVisible();
       await expect(campaignCard.getByText(/This campaign|แคมเปญนี้/)).toBeVisible();
-      await expect(campaignCard.getByText(/8 units are in other sales|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
+      await expect(campaignCard.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
     } finally {
       await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', legacyProductId);
       await fixture.service.from('event_products').delete().eq('event_id', activeEventId);

@@ -290,7 +290,7 @@ const translations = {
     campaignAvailableStock: 'Ready to allocate',
     campaignOnHandStock: 'Total stock',
     campaignCurrentStock: 'This campaign',
-    campaignStockElsewhere: '{count} units are in other sales or reservations.',
+    campaignStockElsewhere: 'In other sales or reservations: {count}',
     campaignIncluded: 'Included',
     campaignAddProduct: 'Add to campaign',
     campaignRemoveProduct: 'Remove from campaign',

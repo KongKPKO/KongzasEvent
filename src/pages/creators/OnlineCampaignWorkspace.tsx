@@ -23,6 +23,13 @@ import { getOptimizedImageUrl } from '../../utils/imageUtils';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
 
+const getProductImageUrl = (dbValue: string) => {
+  let path = dbValue;
+  if (dbValue.includes('http') && dbValue.includes('Menu/')) path = dbValue.split('Menu/')[1] || dbValue;
+  const { data } = supabase.storage.from('Menu').getPublicUrl(path);
+  return getOptimizedImageUrl(data.publicUrl, 520);
+};
+
 export default function OnlineCampaignWorkspace() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const { t, dateLocale } = useI18n();
@@ -348,7 +355,7 @@ export default function OnlineCampaignWorkspace() {
                 <article key={productId} className={'group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ' + (isIncluded ? 'border-pink-300 ring-2 ring-pink-100' : 'border-gray-200')}>
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     {product.image_url ? (
-                      <img src={getOptimizedImageUrl(product.image_url, 520)} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                      <img src={getProductImageUrl(product.image_url)} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
                     ) : (
                       <div className="grid h-full place-items-center text-gray-300"><div className="text-center"><ImageOff className="mx-auto" size={28} /><span className="mt-1 block text-[10px] font-black uppercase tracking-widest">{t('catalogImage')}</span></div></div>
                     )}

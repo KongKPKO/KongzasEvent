@@ -50,6 +50,13 @@ export class OnlineCampaignError extends Error {
   }
 }
 
+export type CampaignNotificationEvent =
+  | 'created'
+  | 'ready_for_pickup'
+  | 'shipped'
+  | 'payment_rejected'
+  | 'refund_required';
+
 const throwRpcError = (error: { message?: string; code?: string } | null) => {
   if (!error) return;
   const text = rpcErrorText(error);
@@ -225,3 +232,15 @@ export async function markCampaignOrderPickedUp(orderId: string) {
   throwRpcError(error);
   return data;
 }
+
+export const notifyOnlineCampaignOrder = (input: {
+  orderId: string;
+  orderCode?: string;
+  event: CampaignNotificationEvent;
+}) => supabase.functions.invoke('notify-online-campaign-order', {
+  body: {
+    order_id: input.orderId,
+    order_code: input.orderCode || null,
+    event: input.event,
+  },
+});

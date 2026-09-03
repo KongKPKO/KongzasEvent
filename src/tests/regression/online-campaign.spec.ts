@@ -140,6 +140,14 @@ test.describe('online campaign', () => {
     await expect(page).toHaveURL(new RegExp(`/${ARTIST_SLUG}/order/`), { timeout: 15_000 });
     await expect(page.getByText(/Awaiting payment|รอชำระเงิน/)).toBeVisible();
     await expect(page.getByText(/^1[34]:\d{2}$/)).toBeVisible();
+    const orderCode = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || '');
+    await expect.poll(async () => {
+      const order = await fixture.service.from('orders').select('id').eq('pickup_code', orderCode).single();
+      if (!order.data) return null;
+      const delivery = await fixture.service.from('preorder_notification_deliveries')
+        .select('status').eq('order_id', order.data.id).eq('delivery_key', 'campaign:created').maybeSingle();
+      return delivery.data?.status || null;
+    }, { timeout: 15_000 }).toBe('delivered');
   });
 
   test('closed campaign stays readable and rejects cart actions', async ({ page }) => {
@@ -213,6 +221,100 @@ test.describe('online campaign', () => {
     await expect(page.getByText(/Order expired and stock was released|ออเดอร์หมดเวลา/)).toBeVisible();
     await expect(page.getByRole('heading', { name: /Transferred already|โอนเงินไปแล้ว/ })).toBeVisible();
     await expect(page.getByText('0812345678')).toHaveCount(0);
+  });
+
+  test('merchant previews payment evidence without leaving the workspace', async ({ page }) => {
+    const created = await fixture.service.rpc('create_online_campaign_order', {
+      p_campaign_id: campaignId,
+      p_items: [{ product_id: productId, quantity: 1 }],
+      p_fulfillment_method: 'shipping',
+      p_pickup_point_id: null,
+      p_customer_name: 'Evidence Buyer',
+      p_customer_email: 'evidence@example.com',
+      p_customer_phone: '0800000003',
+      p_shipping_address: 'Bangkok',
+      p_customer_note: '',
+      p_client_request_id: randomUUID(),
+    });
+    if (created.error) throw created.error;
+    const order = created.data[0];
+    const slipPath = `campaign/${campaignId}/${order.order_id}/evidence.png`;
+    const upload = await fixture.service.storage.from('PaymentEvidence').upload(
+      slipPath,
+      Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+      { contentType: 'image/png', upsert: true },
+    );
+    if (upload.error) throw upload.error;
+    const payment = await fixture.service.from('order_payments').update({
+      payment_status: 'payment_submitted',
+      slip_url: slipPath,
+      submitted_at: new Date().toISOString(),
+    }).eq('order_id', order.order_id);
+    if (payment.error) throw payment.error;
+
+    try {
+      await login(page);
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ }).click();
+      const orderCard = page.locator('article').filter({ hasText: order.order_code });
+      await orderCard.getByRole('button', { name: /View payment evidence|ดูหลักฐานการชำระเงิน/ }).click();
+      const preview = page.getByRole('dialog', { name: /Payment evidence|หลักฐานการชำระเงิน/ });
+      await expect(preview).toBeVisible();
+      await expect(preview).toContainText(order.order_code);
+      await expect(preview.locator('img')).toBeVisible();
+      await preview.getByRole('button', { name: /Close payment evidence|ปิดหลักฐานการชำระเงิน/ }).click();
+      await expect(preview).toHaveCount(0);
+    } finally {
+      await fixture.service.storage.from('PaymentEvidence').remove([slipPath]);
+    }
+  });
+
+  test('customer order status labels carrier and tracking number', async ({ page }) => {
+    const created = await fixture.service.rpc('create_online_campaign_order', {
+      p_campaign_id: campaignId,
+      p_items: [{ product_id: productId, quantity: 1 }],
+      p_fulfillment_method: 'shipping',
+      p_pickup_point_id: null,
+      p_customer_name: 'Tracking Buyer',
+      p_customer_email: 'tracking@example.com',
+      p_customer_phone: '0800000004',
+      p_shipping_address: 'Bangkok',
+      p_customer_note: '',
+      p_client_request_id: randomUUID(),
+    });
+    if (created.error) throw created.error;
+    const order = created.data[0];
+    const payment = await fixture.service.from('order_payments').update({
+      payment_status: 'payment_confirmed',
+      confirmed_at: new Date().toISOString(),
+    }).eq('order_id', order.order_id);
+    if (payment.error) throw payment.error;
+    const shipped = await fixture.service.from('orders').update({
+      status: 'completed',
+      pickup_status: 'shipped',
+      shipping_carrier: 'Thailand Post',
+      tracking_number: 'TH1234567890',
+      shipped_at: new Date().toISOString(),
+    }).eq('id', order.order_id);
+    if (shipped.error) throw shipped.error;
+
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          writeText: async (value: string) => localStorage.setItem('copied-tracking', value),
+          readText: async () => localStorage.getItem('copied-tracking') || '',
+        },
+      });
+    });
+    await page.goto(`/${ARTIST_SLUG}/order/${order.order_code}`);
+    await expect(page.getByText(/Carrier|บริษัทขนส่ง/)).toBeVisible();
+    await expect(page.getByText('Thailand Post')).toBeVisible();
+    await expect(page.getByText(/Tracking number|หมายเลขติดตามพัสดุ/)).toBeVisible();
+    await expect(page.getByText('TH1234567890')).toBeVisible();
+    const copyButton = page.getByRole('button', { name: /Copy tracking number|คัดลอกหมายเลขติดตาม/ });
+    await copyButton.click();
+    await expect(copyButton).toContainText(/Copied|คัดลอกแล้ว/);
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('TH1234567890');
   });
 
   test('merchant sees campaign workspace and can add a generated-SKU product to it', async ({ page }) => {
@@ -300,13 +402,16 @@ test.describe('online campaign', () => {
 
       await page.goto(`/manage-online-sales/${campaignId}`);
       await page.getByRole('button', { name: /Products|สินค้า/ }).click();
-      const campaignCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
-      await expect(campaignCard).toBeVisible();
-      await expect(campaignCard.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
-      await expect(campaignCard.getByText(/Total stock|สต็อกทั้งหมด/)).toBeVisible();
-      await expect(campaignCard.getByText(/Ready to allocate|พร้อมจัดสรร/)).toBeVisible();
-      await expect(campaignCard.getByText(/This campaign|แคมเปญนี้/)).toBeVisible();
-      await expect(campaignCard.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
+      await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill(productName);
+      const campaignRow = page.getByRole('row').filter({ hasText: productName });
+      await expect(campaignRow).toBeVisible();
+      await expect(campaignRow.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: /Ready to allocate|พร้อมจัดสรร/ })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: /This campaign|แคมเปญนี้/ })).toBeVisible();
+      await expect(campaignRow.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
+      await page.getByLabel(/Campaign membership|สถานะในแคมเปญ/).selectOption('not_added');
+      await expect(campaignRow).toHaveCount(0);
     } finally {
       await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', legacyProductId);
       await fixture.service.from('event_products').delete().eq('event_id', activeEventId);
@@ -319,6 +424,16 @@ test.describe('online campaign', () => {
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);
     await page.getByRole('button', { name: /Settings|ตั้งค่า/ }).click();
+
+    const campaignName = page.getByLabel(/Campaign name|ชื่อแคมเปญ/);
+    await campaignName.fill('Cheki Online E2E edited');
+    const beforeSave = await fixture.service.from('online_campaigns').select('name').eq('id', campaignId).single();
+    expect(beforeSave.data?.name).toBe('Cheki Online E2E');
+    await page.getByRole('button', { name: /Save changes|บันทึกการเปลี่ยนแปลง/ }).click();
+    await expect.poll(async () => {
+      const saved = await fixture.service.from('online_campaigns').select('name').eq('id', campaignId).single();
+      return saved.data?.name;
+    }).toBe('Cheki Online E2E edited');
 
     await expect(page.getByText('Siam pickup')).toBeVisible();
     await expect(page.getByText(/•••• 5678/)).toBeVisible();

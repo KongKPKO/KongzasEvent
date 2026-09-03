@@ -392,6 +392,11 @@ verify_jwt = false
 [functions.notify-preorder-payment]
 verify_jwt = false
 
+# Creation emails verify the public order code; seller-triggered events verify
+# the caller and artist role inside the function.
+[functions.notify-online-campaign-order]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

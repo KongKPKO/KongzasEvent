@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CheckCircle, Clock, Loader2, PackageCheck, Truck, Upload, XCircle } from 'lucide-react';
+import { Check, CheckCircle, Clock, Copy, Loader2, PackageCheck, Truck, Upload, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import {
   beginCampaignPaymentUpload,
@@ -20,6 +20,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [trackingCopied, setTrackingCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -79,6 +80,17 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
       await load();
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const copyTracking = async () => {
+    if (!order.tracking_number) return;
+    try {
+      await navigator.clipboard.writeText(order.tracking_number);
+      setTrackingCopied(true);
+      window.setTimeout(() => setTrackingCopied(false), 2000);
+    } catch {
+      // Keep the tracking number visible for manual copying.
     }
   };
 
@@ -145,7 +157,18 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
           <div className="flex items-center gap-2 font-black">{order.fulfillment_method === 'shipping' ? <Truck size={18} /> : <PackageCheck size={18} />}{order.fulfillment_method === 'shipping' ? t('campaignShipping') : t('campaignPickup')}</div>
           {order.shipping_address && <p className="mt-2 whitespace-pre-line text-sm font-semibold text-gray-700">{order.shipping_address}</p>}
           {order.pickup_point && <div className="mt-2 text-sm font-semibold text-gray-700"><div className="font-black">{order.pickup_point.name}</div><div>{order.pickup_point.address}</div><div>{new Date(order.pickup_point.starts_at).toLocaleString(dateLocale)}</div></div>}
-          {order.tracking_number && <div className="mt-2 rounded-xl bg-blue-50 px-3 py-2 font-mono text-sm font-black text-blue-900">{order.shipping_carrier} · {order.tracking_number}</div>}
+          {order.tracking_number && (
+            <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
+              {order.shipping_carrier && <div className="text-xs font-bold text-blue-700"><span className="font-black">{t('campaignShippingCarrier')}:</span> {order.shipping_carrier}</div>}
+              <div className="mt-2 text-xs font-black text-blue-700">{t('campaignTrackingNumber')}</div>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="min-w-0 flex-1 break-all rounded-lg bg-white px-3 py-2 font-mono text-sm font-black text-blue-950">{order.tracking_number}</code>
+                <button type="button" onClick={() => void copyTracking()} aria-label={t('campaignCopyTracking')} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 text-xs font-black text-blue-700">
+                  {trackingCopied ? <Check size={15} /> : <Copy size={15} />}{trackingCopied ? t('campaignCopied') : t('campaignCopy')}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         <Link to={'/' + slug + '/campaign/' + order.campaign_slug} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-pink-200 bg-white text-sm font-black text-pink-700">{t('campaignBackToCampaign')}</Link>

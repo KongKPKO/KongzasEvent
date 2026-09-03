@@ -68,6 +68,20 @@ code="$(request_code -X POST "${API_URL}/functions/v1/notify-preorder-payment" \
   -d '{"order_id":"not-a-uuid","event":"submitted"}')"
 assert_status_and_body "${code}" "400" '"error":"order_id must be a valid UUID"' "Notification rejects malformed UUID"
 
+code="$(request_code -X POST "${API_URL}/functions/v1/notify-online-campaign-order" \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Authorization: Bearer ${ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"00000000-0000-4000-8000-000000000001","order_code":"OC-MISSING","event":"created"}')"
+assert_status_and_body "${code}" "404" '"error":"Order not found"' "Campaign notification accepts canonical UUID"
+
+code="$(request_code -X POST "${API_URL}/functions/v1/notify-online-campaign-order" \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Authorization: Bearer ${ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":"not-a-uuid","order_code":"OC-MISSING","event":"created"}')"
+assert_status_and_body "${code}" "400" '"error":"order_id must be a valid UUID"' "Campaign notification rejects malformed UUID"
+
 code="$(request_code -H "apikey: ${SERVICE_ROLE_KEY}" -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" "${API_URL}/storage/v1/bucket")"
 assert_2xx "${code}" "Storage bucket list"
 

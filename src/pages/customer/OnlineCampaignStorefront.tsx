@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
 import { useI18n } from '../../i18n';
-import { createCampaignOrder, getPublicOnlineCampaign } from '../../lib/onlineCampaigns';
+import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder } from '../../lib/onlineCampaigns';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
 import { formatPrice } from '../../utils/currency';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -84,6 +84,7 @@ export default function OnlineCampaignStorefront() {
         clientRequestId: crypto.randomUUID(),
       });
       if (!result) throw new Error('campaign_request_failed');
+      void notifyOnlineCampaignOrder({ orderId: result.order_id, orderCode: result.order_code, event: 'created' }).catch(() => undefined);
       navigate('/' + slug + '/order/' + result.order_code);
     } catch (checkoutError) {
       console.error(checkoutError);

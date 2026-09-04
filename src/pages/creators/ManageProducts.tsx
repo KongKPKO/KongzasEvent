@@ -286,6 +286,9 @@ const getEventCatalogSaveErrorMessage = (error: unknown) => {
    return message || 'Event catalog could not be saved.';
 };
 
+const isDuplicateSkuError = (error: { code?: string; message?: string }) =>
+   error.code === '23505' && String(error.message || '').includes('products_artist_sku_unique');
+
 const getCsvValue = (row: Record<string, unknown>, aliases: string[]) => {
    for (const alias of aliases) {
       const value = row[alias];
@@ -497,7 +500,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       return summary.available > 0 && summary.available <= 5;
    }).length;
    const catalogInactive = products.filter((product) => getEffectiveStatus(product) !== 'enable').length;
-   const catalogVariantGroups = new Set(products.map((product) => product.variant_group_name || '').filter(Boolean)).size;
 
    const renderCatalogStockFlow = (product: Product, compact = false) => {
       if (product.is_unlimited) {
@@ -1467,7 +1469,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       } catch (error: any) {
          console.error(error);
-         showToast({ tone: 'error', title: 'Error adding product', detail: error.message });
+         showToast(isDuplicateSkuError(error)
+            ? { tone: 'error', title: t('catalogDuplicateSku'), detail: t('catalogDuplicateSkuDetail') }
+            : { tone: 'error', title: 'Error adding product', detail: error.message });
       } finally {
          setUploading(false);
       }
@@ -1701,7 +1705,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       } catch (error: any) {
          console.error(error);
-         showToast({ tone: 'error', title: 'Error updating product', detail: error.message });
+         showToast(isDuplicateSkuError(error)
+            ? { tone: 'error', title: t('catalogDuplicateSku'), detail: t('catalogDuplicateSkuDetail') }
+            : { tone: 'error', title: 'Error updating product', detail: error.message });
       } finally {
          setUploading(false);
       }
@@ -2399,10 +2405,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          )}
 
          {/* Page Title Wrapper */}
-         <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 mb-2">
-            <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
-            <p className="text-sm text-pink-600 font-bold">{pageSubtitle}</p>
-         </div>
+         {(isEventScopedWorkspace || activeWorkspaceTab === 'promotions') && (
+            <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 mb-2">
+               <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
+               <p className="text-sm text-pink-600 font-bold">{pageSubtitle}</p>
+            </div>
+         )}
 
          <main className="max-w-6xl mx-auto px-4 md:px-6 pb-12">
             {isEventScopedWorkspace && selectedEventId && (
@@ -2416,15 +2424,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <section className="mb-5 rounded-xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
-                     <p className="text-xs font-black uppercase tracking-wide text-pink-600">Catalog Library</p>
-                     <h2 className="mt-1 text-lg font-black text-gray-900">Shared products used across every event</h2>
-                     <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">Create products once, duplicate variants quickly, then choose which items go into each event catalog.</p>
+                     <p className="text-xs font-black uppercase tracking-wide text-pink-600">{t('catalogTitle')}</p>
+                     <h2 className="mt-1 text-lg font-black text-gray-900">{t('catalogTitle')}</h2>
+                     <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">{t('catalogSubtitle')}</p>
                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
                         {([
-                           { label: 'Products', value: products.length, focus: 'all' as const },
-                           { label: 'Missing images', value: catalogMissingImages, focus: 'missing-images' as const },
-                           { label: 'Low stock', value: catalogLowStock, focus: 'low-stock' as const },
-                           { label: 'Inactive', value: catalogInactive, focus: 'inactive' as const },
+                           { label: t('catalogProducts'), value: products.length, focus: 'all' as const },
+                           { label: t('catalogMissingImages'), value: catalogMissingImages, focus: 'missing-images' as const },
+                           { label: t('catalogLowStock'), value: catalogLowStock, focus: 'low-stock' as const },
+                           { label: t('catalogDisabled'), value: catalogInactive, focus: 'inactive' as const },
                         ]).map((item) => (
                            <button
                               key={item.label}
@@ -2443,26 +2451,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                     <div className="grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:flex">
-                        {([
-                           ['catalog', 'Catalog'],
-                           ['import', 'Import'],
-                        ] as const).map(([tab, label]) => (
-                           <button
-                              key={tab}
-                              type="button"
-                              onClick={() => setActiveWorkspaceTab(tab)}
-                              className={`min-h-10 rounded-lg px-3 py-2 text-xs font-black transition-colors ${
-                                 activeWorkspaceTab === tab
-                                    ? 'bg-white text-pink-700 shadow-sm ring-1 ring-pink-100'
-                                    : 'text-gray-500 hover:bg-white/70 hover:text-gray-800'
-                              }`}
-                              aria-pressed={activeWorkspaceTab === tab}
-                           >
-                              {label}
-                           </button>
-                        ))}
-                     </div>
                      {activeWorkspaceTab === 'catalog' && (
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                            <button
@@ -2471,7 +2459,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                            >
                               <Plus size={16} aria-hidden="true" />
-                              Add Product
+                              {t('catalogAddProduct')}
                            </button>
                            <button
                               type="button"
@@ -2479,7 +2467,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               className="workspace-action inline-flex items-center justify-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50"
                            >
                               <Upload size={16} aria-hidden="true" />
-                              Import CSV
+                              {t('catalogImportCsv')}
                            </button>
                         </div>
                      )}
@@ -2631,8 +2619,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </select>
                      </div>
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">SKU</label>
-                        <input value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700" />
+                        <label htmlFor="add-product-sku" className="block text-xs font-bold uppercase tracking-wider text-gray-500">SKU</label>
+                        <input id="add-product-sku" value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700" />
                      </div>
                   </div>
 
@@ -3659,19 +3647,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <PackageSearch className="text-pink-500" size={18} />
-                        Find products in the library
+                        {t('catalogFindProducts')}
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">
-                        {catalogVariantGroups > 0
-                           ? `${catalogVariantGroups} variant group${catalogVariantGroups === 1 ? '' : 's'} in this catalog.`
-                           : 'Search, filter, and sort before editing products or creating variants.'}
+                        {t('catalogFindProductsHint')}
                      </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                      <div className="inline-grid grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-1">
                         {([
-                           ['visual', LayoutGrid, 'Visual'],
-                           ['operations', List, 'Operations'],
+                           ['visual', LayoutGrid, t('catalogProductCards')],
+                           ['operations', List, t('catalogTable')],
                         ] as const).map(([mode, Icon, label]) => (
                            <button
                               key={mode}
@@ -3691,7 +3677,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600">
                         <Filter size={12} />
-                        {filteredProducts.length} of {products.length} items
+                        {t('catalogResultCount', { shown: filteredProducts.length, total: products.length })}
                      </div>
                      {hasActiveFilters && (
                         <button
@@ -3850,7 +3836,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            const effectiveStatus = getEffectiveStatus(product);
                            const hasImage = Boolean(product.image_url);
                            return (
-                              <article key={product.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
+                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
                                  <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                                     {hasImage ? (
                                        <img
@@ -4065,7 +4051,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            {filteredProducts.map(product => {
                               const effectiveStatus = getEffectiveStatus(product);
                               return (
-                              <tr key={product.id} className="hover:bg-gray-50/50 transition-colors group">
+                              <tr key={product.id} data-testid={`catalog-row-${product.id}`} className="hover:bg-gray-50/50 transition-colors group">
                                  <td className="px-6 py-4">
                                     <div className="flex items-center gap-4">
                                        <div className="w-12 h-12 rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
@@ -4264,8 +4250,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label className="mb-2 block text-sm font-medium text-gray-700">SKU</label>
-                           <input value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded-lg border border-gray-200 px-4 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                           <label htmlFor="edit-product-sku" className="mb-2 block text-sm font-medium text-gray-700">SKU</label>
+                           <input id="edit-product-sku" value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded-lg border border-gray-200 px-4 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-pink-500" />
                         </div>
 
                         <div>

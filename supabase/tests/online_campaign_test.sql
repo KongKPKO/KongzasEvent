@@ -1,6 +1,6 @@
 begin;
 
-select plan(42);
+select plan(52);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -15,6 +15,12 @@ select has_function('public', 'get_public_online_order_by_code', array['text', '
 select has_function('public', 'confirm_online_payment', array['uuid', 'text']);
 select has_function('public', 'accept_late_online_payment', array['uuid', 'text']);
 select has_function('private', 'expire_online_campaign_holds', array[]::text[]);
+select has_column(
+  'public',
+  'products',
+  'sku_is_generated',
+  'products record whether an SKU is automatic'
+);
 
 do $$
 declare
@@ -95,12 +101,14 @@ begin
 end $$;
 
 insert into public.products (
-  artist_id, name, category, price, currency, stock_total,
+  artist_id, name, category, variant_name, sku, price, currency, stock_total,
   stock_reserved, stock_sold, is_unlimited, status
 ) values
-  ((select artist_id from _campaign_ids), 'Cheki HSR SW999', 'Cheki', 350, 'THB', 1, 0, 0, false, 'enable'),
-  ((select artist_id from _campaign_ids), 'Hairclip Keito', 'Hairclip', 200, 'THB', 1, 0, 0, false, 'enable'),
-  ((select artist_id from _campaign_ids), 'Manual SKU Product', 'Other', 100, 'THB', 1, 0, 0, false, 'enable');
+  ((select artist_id from _campaign_ids), 'Cheki HSR SW999', 'Cheki', null, null, 350, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Cheki HSR Yaoguang Normal', 'Cheki', 'Normal', null, 350, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Cheki HSR Yaoguang SP', 'Cheki', 'SP', null, 400, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Hairclip Keito', 'Hairclip', null, null, 200, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Manual SKU Product', 'Other', null, 'first-manual', 100, 'THB', 1, 0, 0, false, 'enable');
 
 update public.products
 set sku = 'my-own-7'
@@ -108,19 +116,113 @@ where artist_id = (select artist_id from _campaign_ids)
   and name = 'Manual SKU Product';
 
 select ok(
-  (select sku like 'CHE-SW999-%' from public.products where name = 'Cheki HSR SW999'),
-  'blank Cheki SKU becomes readable'
+  (select sku ~ '^CHE-SW999-[0-9]{3}$' from public.products where name = 'Cheki HSR SW999'),
+  'SW999 keeps meaningful digits in a compact automatic SKU'
 );
 
 select ok(
-  (select sku like 'HCL-KEITO-%' from public.products where name = 'Hairclip Keito'),
-  'blank Hairclip SKU becomes readable'
+  (select sku ~ '^CHE-YAOG-N-[0-9]{3}$' from public.products where name = 'Cheki HSR Yaoguang Normal'),
+  'Normal becomes the compact N option code'
+);
+
+select ok(
+  (select sku ~ '^CHE-YAOG-SP-[0-9]{3}$' from public.products where name = 'Cheki HSR Yaoguang SP'),
+  'SP remains an explicit compact option code'
+);
+
+select ok(
+  (select sku ~ '^HCL-KEIT-[0-9]{3}$' from public.products where name = 'Hairclip Keito'),
+  'alphabetic item names use four readable characters'
 );
 
 select is(
   (select sku from public.products where name = 'Manual SKU Product'),
   'MY-OWN-7',
   'manual SKU remains unchanged apart from normalization'
+);
+
+select ok(
+  (select sku_is_generated from public.products where name = 'Cheki HSR SW999'),
+  'blank SKU is marked generated'
+);
+
+select isnt(
+  (select sku_is_generated from public.products where name = 'Manual SKU Product'),
+  true,
+  'seller-provided SKU is marked manual'
+);
+
+create temp table _automatic_sku_before as
+select sku
+from public.products
+where name = 'Cheki HSR SW999';
+
+update public.products
+set name = 'Cheki HSR SW999 Renamed'
+where artist_id = (select artist_id from _campaign_ids)
+  and name = 'Cheki HSR SW999';
+
+select is(
+  (select sku from public.products where name = 'Cheki HSR SW999 Renamed'),
+  (select sku from _automatic_sku_before),
+  'renaming a product does not regenerate its automatic SKU'
+);
+
+update public.products
+set sku = sku
+where artist_id = (select artist_id from _campaign_ids)
+  and name = 'Manual SKU Product';
+
+select isnt(
+  (select sku_is_generated from public.products where name = 'Manual SKU Product'),
+  true,
+  'submitting the unchanged manual SKU preserves manual ownership'
+);
+
+update public.products
+set sku = null
+where artist_id = (select artist_id from _campaign_ids)
+  and name = 'Manual SKU Product';
+
+select ok(
+  (select sku_is_generated and sku ~ '^OTH-MANU-[0-9]{3}$'
+   from public.products where name = 'Manual SKU Product'),
+  'clearing an SKU regenerates it and restores automatic ownership'
+);
+
+insert into public.products (
+  artist_id, name, category, price, currency, stock_total,
+  stock_reserved, stock_sold, is_unlimited, status
+) values
+  ((select artist_id from _campaign_ids), 'Hairclip Batch', 'Hairclip', 100, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Hairclip Batch', 'Hairclip', 100, 'THB', 1, 0, 0, false, 'enable');
+
+select is(
+  (select count(distinct sku) from public.products
+   where artist_id = (select artist_id from _campaign_ids)
+     and name = 'Hairclip Batch'),
+  2::bigint,
+  'a multi-row blank-SKU insert remains unique within one artist'
+);
+
+update public.products
+set sku = 'CAT-DUP-001'
+where artist_id = (select artist_id from _campaign_ids)
+  and name = 'Manual SKU Product';
+
+insert into public.artists (id, slug, display_name, is_public)
+values ('44444444-4444-4444-8444-444444444444'::uuid, 'second-sku-artist', 'Second SKU Artist', false);
+
+select lives_ok(
+  $$ insert into public.products (
+       artist_id, name, category, sku, price, currency, stock_total,
+       stock_reserved, stock_sold, is_unlimited, status
+     ) values (
+       '44444444-4444-4444-8444-444444444444'::uuid,
+       'Other shop product', 'Other', 'CAT-DUP-001', 100, 'THB', 1,
+       0, 0, false, 'enable'
+     ) $$,
+  'different artists may use the same SKU'
 );
 
 insert into public.events (id, artist_id, event_name, start_date, end_date, status)

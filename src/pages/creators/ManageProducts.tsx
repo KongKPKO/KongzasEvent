@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Trash2, Upload, Plus, FileText, Edit2, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy, LayoutGrid, List } from 'lucide-react';
+import { Loader, Upload, Plus, FileText, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import Papa from 'papaparse';
 import { getOptimizedImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
@@ -358,6 +358,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [sortOption, setSortOption] = useState('name_asc');
    const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
    const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
+   const [catalogActionMenuKey, setCatalogActionMenuKey] = useState<string | null>(null);
+   const catalogActionMenuRef = useRef<HTMLDivElement | null>(null);
+   const catalogActionTriggerRef = useRef<HTMLButtonElement | null>(null);
    const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>(initialTab);
    const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
    const [eventOptions, setEventOptions] = useState<EventOption[]>([]);
@@ -462,6 +465,29 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    }, [initialTab, routeEventId, searchParams]);
 
+   useEffect(() => {
+      if (!catalogActionMenuKey) return;
+
+      const handlePointerDown = (event: PointerEvent) => {
+         if (!catalogActionMenuRef.current?.contains(event.target as Node)) {
+            setCatalogActionMenuKey(null);
+         }
+      };
+      const handleKeyDown = (event: KeyboardEvent) => {
+         if (event.key !== 'Escape') return;
+         const trigger = catalogActionTriggerRef.current;
+         setCatalogActionMenuKey(null);
+         requestAnimationFrame(() => trigger?.focus());
+      };
+
+      document.addEventListener('pointerdown', handlePointerDown);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+         document.removeEventListener('pointerdown', handlePointerDown);
+         document.removeEventListener('keydown', handleKeyDown);
+      };
+   }, [catalogActionMenuKey]);
+
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
    
@@ -501,57 +527,51 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    }).length;
    const catalogInactive = products.filter((product) => getEffectiveStatus(product) !== 'enable').length;
 
+   const getCatalogStockValues = (product: Product) => {
+      const summary = getProductStockSummary(product);
+      const total = Math.max(summary.on_hand || 0, 0);
+      const available = Math.max(summary.available || 0, 0);
+      const allocated = Math.max(summary.allocated || 0, 0);
+      return {
+         total,
+         available,
+         allocated,
+         reserved: Math.max(total - available - allocated, 0),
+      };
+   };
+
    const renderCatalogStockFlow = (product: Product, compact = false) => {
       if (product.is_unlimited) {
          return (
             <div className={compact ? 'mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600' : 'inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600'}>
-               Unlimited
+               {t('catalogUnlimited')}
             </div>
          );
       }
 
-      const summary = getProductStockSummary(product);
-      const onHand = Math.max(summary.on_hand || 0, 0);
-      const allocated = Math.max(summary.allocated || 0, 0);
-      const available = Math.max(summary.available || 0, 0);
-      const held = Math.max(onHand - allocated - available, 0);
-      const denominator = Math.max(onHand, allocated + available + held, 1);
-      const availablePct = Math.max(0, Math.min(100, (available / denominator) * 100));
-      const allocatedPct = Math.max(0, Math.min(100, (allocated / denominator) * 100));
-      const heldPct = Math.max(0, Math.min(100, (held / denominator) * 100));
+      const { total, available, allocated, reserved } = getCatalogStockValues(product);
 
       return (
-         <div className={compact ? 'mt-1 max-w-[210px]' : 'min-w-[210px]'}>
+         <div className={compact ? 'mt-1' : ''}>
             <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
                <div>
-                  <div className="font-black text-gray-900">{onHand}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">On hand</div>
+                  <div className="font-black text-gray-900">{total}</div>
+                  <div className="font-bold text-gray-400">{t('catalogTotalStock')}</div>
                </div>
                <div>
                   <div className="font-black text-emerald-700">{available}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">Available</div>
+                  <div className="font-bold text-gray-400">{t('catalogReadyToAllocate')}</div>
                </div>
                <div>
                   <div className="font-black text-pink-700">{allocated}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">Event</div>
+                  <div className="font-bold text-gray-400">{t('catalogInSalesChannels')}</div>
                </div>
             </div>
-            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
-               <div className="bg-emerald-400" style={{ width: `${availablePct}%` }} />
-               <div className="bg-pink-400" style={{ width: `${allocatedPct}%` }} />
-               {held > 0 && <div className="bg-amber-400" style={{ width: `${heldPct}%` }} />}
-            </div>
-            <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-400'}>
-               <span className="text-emerald-600">Available</span>
-               <span> / </span>
-               <span className="text-pink-600">Allocated</span>
-               {held > 0 && (
-                  <>
-                     <span> / </span>
-                     <span className="text-amber-600">Held {held}</span>
-                  </>
-               )}
-            </div>
+            {reserved > 0 && (
+               <div className={compact ? 'mt-1 text-[10px] font-bold text-amber-700' : 'mt-1 text-[11px] font-bold text-amber-700'}>
+                  {t('catalogReserved')} {reserved}
+               </div>
+            )}
          </div>
       );
    };
@@ -2120,6 +2140,93 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    };
 
+   const renderCatalogActions = (product: Product, surface: 'card' | 'mobile' | 'table') => {
+      const menuKey = `${surface}:${product.id}`;
+      const menuOpen = catalogActionMenuKey === menuKey;
+      const compact = surface !== 'card';
+      const secondaryButtonClass = compact
+         ? 'min-h-8 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[10px] font-black leading-tight text-pink-700 hover:bg-pink-50'
+         : 'min-h-10 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50';
+      const primaryButtonClass = compact
+         ? 'min-h-8 rounded-lg border border-pink-600 bg-pink-600 px-2 py-1 text-[10px] font-black leading-tight text-white hover:bg-pink-700'
+         : 'min-h-10 rounded-xl bg-pink-600 px-3 text-xs font-black text-white hover:bg-pink-700';
+
+      return (
+         <div className={`flex items-center gap-1.5 ${surface === 'table' ? 'justify-end' : ''}`}>
+            <div className={surface === 'table' ? 'grid gap-1' : 'contents'}>
+               <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); void openAddToSale(product); }}
+                  className={primaryButtonClass}
+               >
+                  {t('catalogChooseSalesChannel')}
+               </button>
+               {!product.is_unlimited && (
+                  <button
+                     type="button"
+                     onClick={(event) => { event.stopPropagation(); openStockAction({ scope: 'catalog', kind: 'add', product }); }}
+                     className={secondaryButtonClass}
+                  >
+                     {t('catalogAdjustStock')}
+                  </button>
+               )}
+            </div>
+            <div
+               className="relative shrink-0"
+               ref={menuOpen ? catalogActionMenuRef : undefined}
+            >
+               <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  aria-controls={menuOpen ? `catalog-actions-${surface}-${product.id}` : undefined}
+                  aria-label={t('catalogMoreActions', { name: product.name })}
+                  onClick={(event) => {
+                     event.stopPropagation();
+                     catalogActionTriggerRef.current = event.currentTarget;
+                     setCatalogActionMenuKey((current) => current === menuKey ? null : menuKey);
+                  }}
+                  className="icon-touch inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:border-pink-200 hover:text-pink-700"
+               >
+                  <MoreHorizontal size={18} aria-hidden="true" />
+               </button>
+               {menuOpen && (
+                  <div
+                     id={`catalog-actions-${surface}-${product.id}`}
+                     role="menu"
+                     className={`absolute right-0 z-30 w-52 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl ${surface === 'card' ? 'bottom-11' : 'top-10'}`}
+                  >
+                     <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); openDuplicateVariants(product); }}
+                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-pink-700"
+                     >
+                        {t('catalogAddProductOption')}
+                     </button>
+                     <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); handleEditClick(product); }}
+                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50"
+                     >
+                        {t('catalogEditProduct')}
+                     </button>
+                     <button
+                        type="button"
+                        role="menuitem"
+                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); requestDeleteProduct(product); }}
+                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-red-600 hover:bg-red-50"
+                     >
+                        {t('catalogDeleteProduct')}
+                     </button>
+                  </div>
+               )}
+            </div>
+         </div>
+      );
+   };
+
    const selectedEventName = selectedEventOption?.event_name || 'Event';
    const pageTitle = isEventScopedWorkspace
       ? activeWorkspaceTab === 'promotions' ? 'Event Promotion' : 'Event Catalog'
@@ -2165,12 +2272,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          )}
          {stockAction && (
             <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-               <section className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+               <section
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="catalog-stock-dialog-title"
+                  className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+               >
                   <div className="flex items-start justify-between gap-4">
                      <div>
-                        <h2 className="text-lg font-black text-gray-900">
+                        <h2 id="catalog-stock-dialog-title" className="text-lg font-black text-gray-900">
                            {stockAction.scope === 'catalog'
-                              ? stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'
+                              ? t('catalogAdjustStock')
                               : stockAction.kind === 'add' ? 'Add to event' : 'Remove from event'}
                         </h2>
                         <p className="mt-1 text-sm font-semibold text-gray-500">{stockAction.product.name}</p>
@@ -2179,7 +2291,26 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         <X size={20} />
                      </button>
                   </div>
-                     <div className="mt-5 space-y-4">
+                  <div className="mt-5 space-y-4">
+                     {stockAction.scope === 'catalog' && (
+                        <div className="grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+                           {(['add', 'remove'] as const).map((kind) => (
+                              <button
+                                 key={kind}
+                                 type="button"
+                                 aria-pressed={stockAction.kind === kind}
+                                 onClick={() => {
+                                    setStockAction((current) => current?.scope === 'catalog' ? { ...current, kind } : current);
+                                    setStockActionError('');
+                                    if (kind === 'add') setStockActionReason('');
+                                 }}
+                                 className={`min-h-10 rounded-lg px-3 text-sm font-black transition-colors ${stockAction.kind === kind ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                              >
+                                 {kind === 'add' ? t('catalogIncreaseStock') : t('catalogDecreaseStock')}
+                              </button>
+                           ))}
+                        </div>
+                     )}
                      <div>
                         <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Quantity</label>
                         <input
@@ -3843,8 +3974,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            const effectiveStatus = getEffectiveStatus(product);
                            const hasImage = Boolean(product.image_url);
                            return (
-                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
-                                 <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group relative rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
+                                 <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-gray-100">
                                     {hasImage ? (
                                        <img
                                           src={getProductImageUrl(product.image_url, 600)}
@@ -3872,24 +4003,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        )}
                                     </div>
 
-                                    <div className="absolute right-3 top-3 flex gap-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                                       <button
-                                          onClick={(e) => { e.stopPropagation(); handleEditClick(product); }}
-                                          className="icon-touch inline-flex items-center justify-center rounded-full border border-white/70 bg-white/95 text-gray-600 shadow-sm hover:text-blue-700"
-                                          aria-label={`Edit ${product.name}`}
-                                          title="Edit"
-                                       >
-                                          <Edit2 size={15} />
-                                       </button>
-                                       <button
-                                          onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }}
-                                          className="icon-touch inline-flex items-center justify-center rounded-full border border-white/70 bg-white/95 text-gray-600 shadow-sm hover:text-red-700"
-                                          aria-label={`Delete ${product.name}`}
-                                          title="Delete"
-                                       >
-                                          <Trash2 size={15} />
-                                       </button>
-                                    </div>
                                  </div>
 
                                  <div className="space-y-3 p-4">
@@ -3928,28 +4041,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        {renderCatalogStockFlow(product, true)}
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-2">
-                                       <button onClick={() => void openAddToSale(product)} className="min-h-10 rounded-xl bg-pink-600 px-2 text-xs font-black text-white">{t('catalogAddToSale')}</button>
-                                       {!product.is_unlimited ? (
-                                          <button
-                                             onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
-                                             className="min-h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100"
-                                          >
-                                             Add stock
-                                          </button>
-                                       ) : (
-                                          <div className="min-h-10 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-center text-xs font-black text-gray-400">
-                                             Unlimited
-                                          </div>
-                                       )}
-                                       <button
-                                          onClick={() => openDuplicateVariants(product)}
-                                          className="min-h-10 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700 hover:bg-pink-100"
-                                          aria-label={`Create variants from ${product.name}`}
-                                       >
-                                          Variants
-                                       </button>
-                                    </div>
+                                    {renderCatalogActions(product, 'card')}
                                  </div>
                               </article>
                            );
@@ -3963,9 +4055,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            const effectiveStatus = getEffectiveStatus(product);
                            const hasImage = Boolean(product.image_url);
                            return (
-                           <div key={product.id} className="bg-white/70 backdrop-blur-md border border-white/40 shadow-sm rounded-xl overflow-hidden flex flex-row min-h-36 group relative">
+                           <div key={product.id} data-testid={`catalog-list-${product.id}`} className="relative flex min-h-36 flex-row overflow-visible rounded-xl border border-white/40 bg-white/70 shadow-sm backdrop-blur-md">
                               {/* Image */}
-                              <div className="w-[100px] bg-gray-100 relative overflow-hidden shrink-0">
+                              <div className="relative w-[100px] shrink-0 overflow-hidden rounded-l-xl bg-gray-100">
                                  {hasImage ? (
                                     <img
                                        src={getProductImageUrl(product.image_url, 400)}
@@ -4029,12 +4121,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     {renderCatalogStockFlow(product, true)}
                                  </div>
 
-                                 {/* Mobile Actions (Always Visible) */}
-                                 <div className="absolute bottom-2 right-2 flex gap-2">
-                                     <button onClick={(e) => { e.stopPropagation(); void openAddToSale(product); }} className="min-h-8 rounded-full bg-pink-600 px-2 text-[10px] font-black text-white shadow-sm" aria-label={`${t('catalogAddToSale')} ${product.name}`}>{t('catalogAddToSale')}</button>
-                                     <button onClick={(e) => { e.stopPropagation(); openDuplicateVariants(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-pink-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Create variants from ${product.name}`}><Copy size={14}/></button>
-                                     <button onClick={(e) => { e.stopPropagation(); handleEditClick(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-blue-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Edit ${product.name}`}><Edit2 size={14}/></button>
-                                     <button onClick={(e) => { e.stopPropagation(); requestDeleteProduct(product); }} className="icon-touch inline-flex items-center justify-center text-gray-400 hover:text-red-600 bg-white/80 rounded-full shadow-sm border border-gray-100" aria-label={`Delete ${product.name}`}><Trash2 size={14}/></button>
+                                 <div className="mt-3 flex justify-end">
+                                    {renderCatalogActions(product, 'mobile')}
                                  </div>
                               </div>
                            </div>
@@ -4042,37 +4130,47 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
 
                      {/* DESKTOP VIEW: Table (>=768px) */}
-                     <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
-                     <table className="w-full text-left border-collapse">
+                     <div className="hidden rounded-xl border border-gray-200 bg-white shadow-sm md:block animate-fade-in">
+                     <table className="w-full table-fixed border-collapse text-left">
                         <thead>
-                           <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-                              <th className="px-6 py-4 font-bold w-[40%]">Product</th>
-                              <th className="px-6 py-4 font-bold">Category</th>
-                              <th className="px-6 py-4 font-bold">Price</th>
-                              <th className="px-6 py-4 font-bold">Stock Flow</th>
-                              <th className="px-6 py-4 font-bold">Status</th>
-                              <th className="px-6 py-4 font-bold text-right">Actions</th>
+                           <tr className="border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
+                              <th className="w-[29%] rounded-tl-xl px-3 py-3 font-bold">{t('catalogProducts')}</th>
+                              <th className="w-[9%] px-3 py-3 font-bold">{t('catalogCategory')}</th>
+                              <th className="w-[8%] px-3 py-3 font-bold">{t('catalogPriceCurrency')}</th>
+                              <th className="w-[9%] px-3 py-3 text-center font-bold">{t('catalogTotalStock')}</th>
+                              <th className="w-[10%] px-3 py-3 text-center font-bold">{t('catalogReadyToAllocate')}</th>
+                              <th className="w-[11%] px-3 py-3 text-center font-bold">{t('catalogInSalesChannels')}</th>
+                              <th className="w-[8%] px-3 py-3 font-bold">{t('catalogStatus')}</th>
+                              <th className="w-[16%] rounded-tr-xl px-3 py-3 text-right font-bold">{t('catalogActions')}</th>
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                            {filteredProducts.map(product => {
                               const effectiveStatus = getEffectiveStatus(product);
+                              const stock = getCatalogStockValues(product);
+                              const hasImage = Boolean(product.image_url);
                               return (
                               <tr key={product.id} data-testid={`catalog-row-${product.id}`} className="hover:bg-gray-50/50 transition-colors group">
-                                 <td className="px-6 py-4">
-                                    <div className="flex items-center gap-4">
+                                 <td className="px-3 py-3 align-top">
+                                    <div className="flex min-w-0 items-start gap-3">
                                        <div className="w-12 h-12 rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
-                                          <img 
-                                             src={getProductImageUrl(product.image_url, 100)} 
-                                             alt={product.name}
-                                             className="w-full h-full object-cover"
-                                             loading="lazy"
-                                             decoding="async"
-                                          />
+                                          {hasImage ? (
+                                             <img
+                                                src={getProductImageUrl(product.image_url, 100)}
+                                                alt={product.name}
+                                                className="h-full w-full object-cover"
+                                                loading="lazy"
+                                                decoding="async"
+                                             />
+                                          ) : (
+                                             <div className="flex h-full w-full items-center justify-center text-gray-300">
+                                                <PackageSearch size={18} aria-hidden="true" />
+                                             </div>
+                                          )}
                                           {effectiveStatus === 'soldout' && <div className="absolute inset-0 bg-black/50" />}
                                        </div>
-                                       <div>
-                                          <h4 className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</h4>
+                                       <div className="min-w-0">
+                                          <h4 className="break-words text-sm font-bold leading-snug text-gray-800">{product.name}</h4>
                                           {product.sku && <div className="font-mono text-[10px] font-bold text-gray-400">{product.sku}</div>}
                                           {product.variant_group_name && (
                                              <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -4084,9 +4182,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                 </span>
                                              </div>
                                           )}
-                                          {product.description && <p className="text-xs text-gray-400 line-clamp-1 max-w-[240px]">{product.description}</p>}
                                           {!!product.tags?.length && (
-                                             <div className="mt-1 flex flex-wrap gap-1 max-w-[260px]">
+                                             <div className="mt-1 flex max-w-[260px] flex-wrap gap-1">
                                                 {product.tags.slice(0, 3).map((tag) => (
                                                    <span key={`${product.id}-${tag}`} className="px-1.5 py-0.5 rounded bg-pink-50 text-pink-600 text-[10px] font-bold">
                                                       #{tag}
@@ -4097,66 +4194,33 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        </div>
                                     </div>
                                  </td>
-                                 <td className="px-6 py-4">
-                                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600">
+                                 <td className="px-3 py-3 align-top">
+                                    <span className="inline-flex max-w-full break-words rounded-lg bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">
                                        {product.category || 'Other'}
                                     </span>
                                  </td>
-                                 <td className="px-6 py-4">
-                                    <span className="font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
+                                 <td className="px-3 py-3 align-top">
+                                    <span className="text-sm font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
                                  </td>
-                                 <td className="px-6 py-4">
-                                    {renderCatalogStockFlow(product)}
+                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-gray-900">
+                                    {product.is_unlimited ? t('catalogUnlimited') : stock.total}
                                  </td>
-                                 <td className="px-6 py-4">
-                                    {effectiveStatus === 'enable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Active</span>}
-                                    {effectiveStatus === 'disable' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Disabled</span>}
-                                    {effectiveStatus === 'soldout' && <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">Sold Out</span>}
+                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-emerald-700">
+                                    {product.is_unlimited ? t('catalogUnlimited') : stock.available}
                                  </td>
-                                 <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 transition-opacity">
-                                       <button onClick={() => void openAddToSale(product)} className="min-h-8 rounded-md bg-pink-600 px-2 py-1 text-[11px] font-black text-white">{t('catalogAddToSale')}</button>
-                                       {!product.is_unlimited && (
-                                          <>
-                                             <button
-                                                onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product })}
-                                                className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-50"
-                                             >
-                                                Add stock
-                                             </button>
-                                             <button
-                                                onClick={() => openStockAction({ scope: 'catalog', kind: 'remove', product })}
-                                                className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                                             >
-                                                Remove
-                                             </button>
-                                          </>
-                                       )}
-                                       <button
-                                          onClick={() => openDuplicateVariants(product)}
-                                          className="min-h-8 rounded-md px-2 py-1 text-[11px] font-black text-pink-700 hover:bg-pink-50"
-                                          title="Create variants"
-                                          aria-label={`Create variants from ${product.name}`}
-                                       >
-                                          Variants
-                                       </button>
-                                       <button
-                                          onClick={() => handleEditClick(product)}
-                                          className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-blue-700 hover:bg-gray-50 rounded-lg transition-colors"
-                                          title="Edit"
-                                          aria-label={`Edit ${product.name}`}
-                                       >
-                                          <Edit2 size={18} />
-                                       </button>
-                                       <button
-                                          onClick={() => requestDeleteProduct(product)}
-                                          className="icon-touch inline-flex items-center justify-center text-slate-600 hover:text-red-700 hover:bg-gray-50 rounded-lg transition-colors"
-                                          title="Delete"
-                                          aria-label={`Delete ${product.name}`}
-                                       >
-                                          <Trash2 size={18} />
-                                       </button>
-                                    </div>
+                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-pink-700">
+                                    <div>{product.is_unlimited ? t('catalogUnlimited') : stock.allocated}</div>
+                                    {!product.is_unlimited && stock.reserved > 0 && (
+                                       <div className="mt-1 text-[10px] font-bold text-amber-700">{t('catalogReserved')} {stock.reserved}</div>
+                                    )}
+                                 </td>
+                                 <td className="px-3 py-3 align-top">
+                                    {effectiveStatus === 'enable' && <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-700">{t('catalogActive')}</span>}
+                                    {effectiveStatus === 'disable' && <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-500">{t('catalogDisabled')}</span>}
+                                    {effectiveStatus === 'soldout' && <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-600">{t('catalogSoldOut')}</span>}
+                                 </td>
+                                 <td className="px-3 py-3 text-right align-top">
+                                    {renderCatalogActions(product, 'table')}
                                  </td>
                               </tr>
                            )})}

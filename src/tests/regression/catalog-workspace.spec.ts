@@ -4,9 +4,12 @@ import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
 const EMAIL = 'catalog-workspace-e2e@nireq.local';
 const PASSWORD = 'LocalOnlyCatalogWorkspace123!';
 const SLUG = 'catalog-workspace-e2e';
+const LONG_PRODUCT_NAME = 'Cheki HSR Yaoguang Normal Convention Exclusive Signed Edition';
 
 let fixture: Awaited<ReturnType<typeof ensureOwnerArtistFixture>>;
 let productId = '';
+let reservedProductId = '';
+let unlimitedProductId = '';
 
 async function login(page: Page) {
   await page.goto('/manage-login');
@@ -28,7 +31,7 @@ test.describe('catalog workspace', () => {
 
     const product = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
-      name: 'Cheki HSR Yaoguang Normal',
+      name: LONG_PRODUCT_NAME,
       category: 'Cheki',
       variant_name: 'Normal',
       tags: ['HSR'],
@@ -42,6 +45,36 @@ test.describe('catalog workspace', () => {
     }).select('id').single();
     if (product.error) throw product.error;
     productId = product.data.id;
+
+    const reservedProduct = await fixture.service.from('products').insert({
+      artist_id: fixture.userId,
+      name: 'Reserved stock product',
+      category: 'Other',
+      price: 120,
+      currency: 'THB',
+      stock_total: 7,
+      stock_reserved: 2,
+      stock_sold: 0,
+      is_unlimited: false,
+      status: 'enable',
+    }).select('id').single();
+    if (reservedProduct.error) throw reservedProduct.error;
+    reservedProductId = reservedProduct.data.id;
+
+    const unlimitedProduct = await fixture.service.from('products').insert({
+      artist_id: fixture.userId,
+      name: 'Unlimited stock product',
+      category: 'Other',
+      price: 150,
+      currency: 'THB',
+      stock_total: null,
+      stock_reserved: 0,
+      stock_sold: 0,
+      is_unlimited: true,
+      status: 'enable',
+    }).select('id').single();
+    if (unlimitedProduct.error) throw unlimitedProduct.error;
+    unlimitedProductId = unlimitedProduct.data.id;
 
     const manualSkuProduct = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
@@ -86,7 +119,7 @@ test.describe('catalog workspace', () => {
 
     await expect(search).toHaveValue('Yaoguang');
     await expect(table).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId(`catalog-row-${productId}`)).toContainText('Cheki HSR Yaoguang Normal');
+    await expect(page.getByTestId(`catalog-row-${productId}`)).toContainText(LONG_PRODUCT_NAME);
   });
 
   test('keeps a duplicate manual SKU in the form and shows a friendly error', async ({ page }) => {
@@ -101,5 +134,82 @@ test.describe('catalog workspace', () => {
 
     await expect(page.getByText(/SKU already exists|SKU นี้มีสินค้าใช้อยู่แล้ว/)).toBeVisible();
     await expect(page.locator('#add-product-sku')).toHaveValue('CAT-DUP-001');
+  });
+
+  test('shows explicit focused-table stock columns and complete product data', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-chromium');
+    await login(page);
+    await page.goto('/manage-products');
+    await page.getByRole('button', { name: /^Table$|^ตาราง$/ }).click();
+
+    const row = page.getByTestId(`catalog-row-${productId}`);
+    const fullName = row.getByText(LONG_PRODUCT_NAME, { exact: true });
+    await expect(fullName).toBeVisible();
+    const nameIsUnclipped = await fullName.evaluate((element) => element.scrollHeight <= element.clientHeight);
+    expect(nameIsUnclipped).toBe(true);
+    await expect(row).toContainText(/CHE-YAOG-N-[0-9]{3,}/);
+    await expect(row).toContainText('Cheki');
+    await expect(row).toContainText('12');
+    await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: /Ready to allocate|พร้อมจัดสรร/ })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: /In sales channels|อยู่ในช่องทางขาย/ })).toBeVisible();
+    await expect(row.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ })).toBeVisible();
+    await expect(row.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ })).toBeVisible();
+
+    const tableBox = await page.getByRole('table').boundingBox();
+    expect(tableBox).not.toBeNull();
+    for (const button of await row.getByRole('button').all()) {
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox).not.toBeNull();
+      expect((buttonBox?.x || 0) + (buttonBox?.width || 0)).toBeLessThanOrEqual((tableBox?.x || 0) + (tableBox?.width || 0) + 1);
+    }
+
+    await expect(page.getByTestId(`catalog-row-${reservedProductId}`)).toContainText(/Reserved 2|ถูกจอง 2/);
+    await expect(page.getByTestId(`catalog-row-${unlimitedProductId}`)).toContainText(/Unlimited|ไม่จำกัด/);
+    await testInfo.attach('focused-catalog-table', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+  });
+
+  test('chooses increase or decrease inside the existing stock dialog', async ({ page }) => {
+    await login(page);
+    await page.goto('/manage-products');
+    await page.getByRole('button', { name: /^Table$|^ตาราง$/ }).click();
+    const surface = (page.viewportSize()?.width || 1280) < 768
+      ? page.getByTestId(`catalog-list-${productId}`)
+      : page.getByTestId(`catalog-row-${productId}`);
+
+    await surface.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Adjust stock|ปรับสต็อก/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Increase|เพิ่ม/ })).toHaveAttribute('aria-pressed', 'true');
+    await dialog.getByRole('button', { name: /Decrease|ลด/ }).click();
+    await expect(dialog.getByText(/Reason|เหตุผล/)).toBeVisible();
+  });
+
+  test('secondary actions use one keyboard-safe menu', async ({ page }) => {
+    await login(page);
+    await page.goto('/manage-products');
+    await page.getByRole('button', { name: /^Table$|^ตาราง$/ }).click();
+    const surface = (page.viewportSize()?.width || 1280) < 768
+      ? page.getByTestId(`catalog-list-${productId}`)
+      : page.getByTestId(`catalog-row-${productId}`);
+    const trigger = surface.getByRole('button', { name: /More actions|การทำงานเพิ่มเติม/ });
+
+    await trigger.focus();
+    await trigger.press('Enter');
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitem', { name: /Add product option|เพิ่มตัวเลือกสินค้า/ })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /Delete product|ลบสินค้า/ })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await page.getByRole('heading', { name: /Product catalog|คลังสินค้า/ }).click();
+    await expect(page.getByRole('menu')).toHaveCount(0);
   });
 });

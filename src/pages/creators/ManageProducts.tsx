@@ -2424,8 +2424,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <section className="mb-5 rounded-xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
-                     <p className="text-xs font-black uppercase tracking-wide text-pink-600">{t('catalogTitle')}</p>
-                     <h2 className="mt-1 text-lg font-black text-gray-900">{t('catalogTitle')}</h2>
+                     <h2 className="text-lg font-black text-gray-900">{t('catalogTitle')}</h2>
                      <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">{t('catalogSubtitle')}</p>
                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
                         {([

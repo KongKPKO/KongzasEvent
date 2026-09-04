@@ -992,7 +992,7 @@ const translations = {
     campaignNoUnallocatedStock: 'สต็อกทั้งหมดถูกจัดให้ช่องทางขายอื่นที่ยังเปิดอยู่ เพิ่มสินค้านี้ด้วยสต็อก 0 ได้ แล้วค่อยเพิ่มสต็อกกลางหรือลดสต็อกจากช่องทางอื่นก่อนเปิดขายออนไลน์',
     campaignStockExceeded: 'สต็อกกลางที่ยังไม่จัดสรรไม่พอ กรุณาเพิ่มสต็อกกลางหรือลดจำนวนจากช่องทางขายอื่น',
     campaignPriceOverride: 'ราคาในแคมเปญ',
-    campaignMaxPerOrder: 'สูงสุดต่อออเดอร์',
+    campaignMaxPerOrder: 'จำกัดสูงสุด/ออเดอร์',
     campaignMaxPerOrderPlaceholder: 'ไม่จำกัด',
     campaignInvalidOrderLimit: 'กรอกจำนวนเต็มมากกว่า 0 หรือเว้นว่างหากไม่จำกัด',
     campaignPaymentIssues: 'ปัญหาการชำระเงิน',

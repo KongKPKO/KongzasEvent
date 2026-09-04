@@ -184,7 +184,7 @@ test.describe('online campaign', () => {
       await page.getByRole('button', { name: /Products|สินค้า/ }).click();
       await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
       const campaignRow = page.getByRole('row').filter({ hasText: 'E2E Cheki' });
-      const limitInput = campaignRow.getByLabel(/Maximum per order|สูงสุดต่อออเดอร์/);
+      const limitInput = campaignRow.getByLabel(/Maximum per order|จำกัดสูงสุด\/ออเดอร์/);
       await limitInput.fill('2');
       await limitInput.blur();
 

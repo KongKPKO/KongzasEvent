@@ -3006,6 +3006,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">Import many items at once. Duplicate rows are skipped automatically.</p>
                   </div>
+                  <button
+                     type="button"
+                     onClick={() => setActiveWorkspaceTab('catalog')}
+                     className="workspace-action inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50"
+                  >
+                     <span aria-hidden="true">←</span>
+                     {t('catalogBackToCatalog')}
+                  </button>
                </div>
 
                   <div className="border-t border-gray-100 p-4 animate-fade-in">

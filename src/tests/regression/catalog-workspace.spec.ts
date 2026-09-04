@@ -73,6 +73,13 @@ test.describe('catalog workspace', () => {
     await expect(cards).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId(`catalog-card-${productId}`)).toBeVisible();
 
+    await page.getByRole('button', { name: /^Import CSV$|^นำเข้า CSV$/ }).click();
+    await expect(page.getByRole('heading', { name: 'Import CSV' })).toBeVisible();
+    await page.getByRole('button', { name: /^Back to catalog$|^กลับไปคลังสินค้า$/ }).click();
+    await expect(page.getByRole('heading', { name: /Product catalog|คลังสินค้า/ })).toBeVisible();
+    await expect(cards).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId(`catalog-card-${productId}`)).toBeVisible();
+
     const search = page.getByPlaceholder(/Search products|ค้นหาสินค้า/);
     await search.fill('Yaoguang');
     await table.click();

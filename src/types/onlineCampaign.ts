@@ -40,6 +40,7 @@ export interface CampaignProduct {
   stock_total?: number | null;
   stock_reserved?: number;
   stock_sold?: number;
+  max_quantity_per_order?: number | null;
   available_quantity?: number | null;
 }
 

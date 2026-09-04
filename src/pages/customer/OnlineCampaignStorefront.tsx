@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
 import { useI18n } from '../../i18n';
-import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder } from '../../lib/onlineCampaigns';
+import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
 import { formatPrice } from '../../utils/currency';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -88,7 +88,9 @@ export default function OnlineCampaignStorefront() {
       navigate('/' + slug + '/order/' + result.order_code);
     } catch (checkoutError) {
       console.error(checkoutError);
-      setError(t('campaignCheckoutFailed'));
+      setError(checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded'
+        ? t('campaignProductOrderLimitExceeded')
+        : t('campaignCheckoutFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -128,6 +130,13 @@ export default function OnlineCampaignStorefront() {
             const available = product.available_quantity ?? null;
             const soldOut = available !== null && available <= 0;
             const quantity = cart[product.product_id] || 0;
+            const orderLimit = product.max_quantity_per_order ?? null;
+            const quantityLimit = orderLimit === null
+              ? available
+              : available === null
+                ? orderLimit
+                : Math.min(available, orderLimit);
+            const limitReached = quantityLimit !== null && quantity >= quantityLimit;
             return (
               <article key={product.product_id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                 <CampaignProductImage name={product.name} imageUrl={product.image_url} />
@@ -138,11 +147,12 @@ export default function OnlineCampaignStorefront() {
                   <div className="mt-1 text-xs font-semibold text-gray-500">
                     {product.is_unlimited ? t('campaignUnlimited') : t('campaignRemaining', { count: Math.max(available || 0, 0) })}
                   </div>
+                  {orderLimit !== null && <div className="mt-1 text-xs font-bold text-pink-700">{t('campaignProductOrderLimit', { count: orderLimit })}</div>}
                   {saleOpen && !soldOut && (
                     <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-50 p-1">
-                      <button type="button" onClick={() => changeQuantity(product.product_id, -1, available)} aria-label={t('campaignDecrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
+                      <button type="button" onClick={() => changeQuantity(product.product_id, -1, quantityLimit)} aria-label={t('campaignDecrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
                       <span className="font-black">{quantity}</span>
-                      <button type="button" onClick={() => changeQuantity(product.product_id, 1, available)} aria-label={t('campaignIncrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white"><Plus size={16} /></button>
+                      <button type="button" disabled={limitReached} onClick={() => changeQuantity(product.product_id, 1, quantityLimit)} aria-label={t('campaignIncrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={16} /></button>
                     </div>
                   )}
                   {soldOut && <div className="mt-3 rounded-xl bg-gray-100 px-3 py-2 text-center text-sm font-black text-gray-500">{t('campaignSoldOut')}</div>}

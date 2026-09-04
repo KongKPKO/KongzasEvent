@@ -24,9 +24,9 @@ If checkout is rejected because the submitted quantity exceeds the limit, the cu
 
 ## Data and enforcement
 
-`online_campaign_products.max_quantity_per_order` is a nullable positive integer. Public storefront and merchant workspace RPC responses include it. `save_online_campaign_products` validates and persists it.
+`online_campaign_products.max_quantity_per_order` is a nullable positive integer. Public storefront and merchant workspace RPC responses include it. The merchant updates it through the existing owner/manager RLS policy, while a database constraint rejects zero and negative values.
 
-`create_online_campaign_order` enforces the limit inside the same transaction and locked campaign-product row used for stock reservation. A request above the limit raises `campaign_product_order_limit_exceeded` before stock is reserved, so direct RPC callers cannot bypass the storefront.
+`create_online_campaign_order` enforces the limit inside the same transaction used for stock reservation. A request above the limit raises `campaign_product_order_limit_exceeded` and rolls the transaction back without reserved stock, so direct RPC callers cannot bypass the storefront.
 
 ## Compatibility and scope
 

@@ -1,9 +1,10 @@
 begin;
 
-select plan(37);
+select plan(42);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
+select has_column('public', 'online_campaign_products', 'max_quantity_per_order', 'campaign products can limit quantity per order');
 select has_table('public', 'campaign_pickup_points', 'campaign pickup points are selectable');
 select has_table('public', 'campaign_payment_methods', 'campaign payment instructions are separate');
 select has_function('public', 'get_public_online_campaign', array['text', 'text']);
@@ -57,10 +58,10 @@ begin
 
   insert into public.online_campaign_products (
     id, campaign_id, product_id, artist_id, stock_total,
-    stock_reserved, stock_sold, is_unlimited, is_enabled
+    stock_reserved, stock_sold, is_unlimited, is_enabled, max_quantity_per_order
   ) values (
     v_campaign_product, v_campaign, v_product, v_artist,
-    5, 0, 0, false, true
+    5, 0, 0, false, true, 2
   );
 
   insert into public.campaign_pickup_points (
@@ -165,6 +166,13 @@ select is(
   'campaign workspace includes the catalog product category'
 );
 
+select is(
+  public.get_online_campaign_workspace((select campaign_id from _campaign_ids))
+    #>> '{products,0,max_quantity_per_order}',
+  '2',
+  'campaign workspace includes the product order limit'
+);
+
 select results_eq(
   $$ select allocated, available
      from public.list_product_stock_summaries((select artist_id from _campaign_ids))
@@ -179,6 +187,13 @@ select is(
   public.get_public_online_campaign('campaign-test-artist', 'cheki-online') ->> 'state',
   'open',
   'published campaign in its window is open'
+);
+
+select is(
+  public.get_public_online_campaign('campaign-test-artist', 'cheki-online')
+    #>> '{products,0,max_quantity_per_order}',
+  '2',
+  'public campaign includes the product order limit'
 );
 
 create temp table _shipping_order as
@@ -209,6 +224,30 @@ select is(
   2,
   'checkout reserves campaign stock'
 );
+
+select throws_ok(
+  $$ select * from public.create_online_campaign_order(
+    (select campaign_id from _campaign_ids),
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _campaign_ids), 'quantity', 3
+    )),
+    'shipping', null, 'Limited Buyer', 'limited@example.com',
+    '0800000098', 'Bangkok', '', gen_random_uuid()
+  ) $$,
+  'campaign_product_order_limit_exceeded',
+  'checkout rejects a quantity above the campaign product order limit'
+);
+
+select is(
+  (select stock_reserved from public.online_campaign_products
+   where id = (select campaign_product_id from _campaign_ids)),
+  2,
+  'rejected quantity does not reserve campaign stock'
+);
+
+update public.online_campaign_products
+set max_quantity_per_order = null
+where id = (select campaign_product_id from _campaign_ids);
 
 select ok(
   (select stock_hold_expires_at between now() + interval '14 minutes'

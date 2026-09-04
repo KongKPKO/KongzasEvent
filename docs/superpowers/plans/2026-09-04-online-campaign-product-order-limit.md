@@ -49,22 +49,15 @@ Expected: FAIL because `max_quantity_per_order` does not exist.
 
 - [ ] **Step 3: Create the append-only migration**
 
-Add the nullable constrained column, expose it from both campaign read RPCs, parse and persist it in `save_online_campaign_products`, and select/check it in `create_online_campaign_order`:
+Add the nullable constrained column, expose it from both campaign read RPCs, persist merchant edits through the existing owner/manager RLS policy, and enforce it with an `order_items` trigger used by checkout:
 
 ```sql
 alter table public.online_campaign_products
   add column max_quantity_per_order integer
   check (max_quantity_per_order is null or max_quantity_per_order > 0);
 
--- In save_online_campaign_products:
-v_max_quantity_per_order := nullif(v_item ->> 'max_quantity_per_order', '')::integer;
-if v_max_quantity_per_order is not null and v_max_quantity_per_order <= 0 then
-  raise exception 'invalid_campaign_product_order_limit';
-end if;
-
--- In create_online_campaign_order after the campaign product row is locked:
-if v_product.max_quantity_per_order is not null
-   and v_qty > v_product.max_quantity_per_order then
+-- In the order_items trigger before stock reservation completes:
+if v_limit is not null and new.quantity > v_limit then
   raise exception 'campaign_product_order_limit_exceeded';
 end if;
 ```
@@ -116,7 +109,7 @@ Expected: FAIL because the field and public limit do not exist.
 
 - [ ] **Step 3: Implement the minimal UI and data plumbing**
 
-Add `max_quantity_per_order?: number | null` to `CampaignProduct`, include it in the existing save payload, render one nullable number input in the merchant table, and cap the storefront with:
+Add `max_quantity_per_order?: number | null` to `CampaignProduct`, update it on the RLS-protected campaign-product row, render one nullable number input in the merchant table, and cap the storefront with:
 
 ```ts
 const quantityLimit = product.max_quantity_per_order == null

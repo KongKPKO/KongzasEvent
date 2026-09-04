@@ -26,6 +26,7 @@ const knownCodes = new Set([
   'campaign_stock_below_used_stock',
   'campaign_stock_exceeds_catalog_stock',
   'invalid_price_override',
+  'campaign_product_order_limit_exceeded',
   'customer_name_required',
   'customer_email_required',
   'customer_email_invalid',

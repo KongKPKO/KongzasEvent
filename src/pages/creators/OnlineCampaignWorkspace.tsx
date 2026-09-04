@@ -232,6 +232,40 @@ export default function OnlineCampaignWorkspace() {
     }
   };
 
+  const updateOrderLimit = async (productId: string, maxQuantityPerOrder: number | null) => {
+    if (!campaignId) return;
+    setSaving(true);
+    setFeedback('');
+    const { error } = await supabase
+      .from('online_campaign_products')
+      .update({ max_quantity_per_order: maxQuantityPerOrder })
+      .eq('campaign_id', campaignId)
+      .eq('product_id', productId);
+    if (error) {
+      console.error(error);
+      setFeedback(t('campaignSaveFailed'));
+    } else {
+      await load();
+      setFeedback(t('campaignSaved'));
+    }
+    setSaving(false);
+  };
+
+  const handleOrderLimitBlur = (
+    event: React.FocusEvent<HTMLInputElement>,
+    productId: string,
+    currentLimit: number | null,
+  ) => {
+    const rawValue = event.currentTarget.value.trim();
+    const nextLimit = rawValue === '' ? null : Number(rawValue);
+    if (nextLimit !== null && (!Number.isInteger(nextLimit) || nextLimit <= 0)) {
+      event.currentTarget.value = currentLimit === null ? '' : String(currentLimit);
+      setFeedback(t('campaignInvalidOrderLimit'));
+      return;
+    }
+    if (nextLimit !== currentLimit) void updateOrderLimit(productId, nextLimit);
+  };
+
   const updateCampaign = async (patch: Record<string, unknown>) => {
     if (!campaignId) return;
     setSaving(true);
@@ -581,7 +615,7 @@ export default function OnlineCampaignWorkspace() {
 
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] border-collapse text-left">
+                <table className="w-full min-w-[1160px] border-collapse text-left">
                   <thead className="bg-gray-50 text-[10px] font-black uppercase tracking-wide text-gray-500">
                     <tr>
                       <th className="px-3 py-3">{t('campaignProduct')}</th>
@@ -590,6 +624,7 @@ export default function OnlineCampaignWorkspace() {
                       <th className="px-3 py-3 text-center">{t('campaignAvailableStock')}</th>
                       <th className="px-3 py-3 text-center">{t('campaignCurrentStock')}</th>
                       <th className="px-3 py-3">{t('campaignPriceOverride')}</th>
+                      <th className="px-3 py-3">{t('campaignMaxPerOrder')}</th>
                       <th className="px-3 py-3 text-right">{t('campaignAction')}</th>
                     </tr>
                   </thead>
@@ -637,6 +672,21 @@ export default function OnlineCampaignWorkspace() {
                             {allocated && isIncluded ? (
                               <input key={`price-${allocated.price_override}`} aria-label={`${t('campaignPriceOverride')} ${product.name}`} type="number" min="0" placeholder={String(product.price)} defaultValue={allocated.price_override ?? ''} onBlur={(event) => void updateAllocation(productId, allocated.stock_total ?? null, event.target.value === '' ? null : Number(event.target.value))} className="h-11 w-28 rounded-xl border border-gray-200 px-3 text-sm font-bold" />
                             ) : <span className="text-sm font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {allocated && isIncluded ? (
+                              <input
+                                key={`limit-${allocated.max_quantity_per_order ?? 'unlimited'}`}
+                                aria-label={`${t('campaignMaxPerOrder')} ${product.name}`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                placeholder={t('campaignMaxPerOrderPlaceholder')}
+                                defaultValue={allocated.max_quantity_per_order ?? ''}
+                                onBlur={(event) => handleOrderLimitBlur(event, productId, allocated.max_quantity_per_order ?? null)}
+                                className="h-11 w-28 rounded-xl border border-gray-200 px-3 text-sm font-bold"
+                              />
+                            ) : <span className="text-xs font-bold text-gray-400">—</span>}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {isIncluded ? (

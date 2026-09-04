@@ -177,6 +177,40 @@ test.describe('online campaign', () => {
     await expect(page.getByTestId('campaign-product-image-fallback').first()).toBeVisible();
   });
 
+  test('merchant limits a campaign product quantity per order', async ({ page }) => {
+    try {
+      await login(page);
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Products|สินค้า/ }).click();
+      await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
+      const campaignRow = page.getByRole('row').filter({ hasText: 'E2E Cheki' });
+      const limitInput = campaignRow.getByLabel(/Maximum per order|สูงสุดต่อออเดอร์/);
+      await limitInput.fill('2');
+      await limitInput.blur();
+
+      await expect.poll(async () => {
+        const row = await fixture.service.from('online_campaign_products')
+          .select('max_quantity_per_order')
+          .eq('campaign_id', campaignId)
+          .eq('product_id', productId)
+          .single();
+        return row.data?.max_quantity_per_order;
+      }).toBe(2);
+
+      await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+      await expect(page.getByText(/Maximum 2 per order|สูงสุด 2 ชิ้นต่อออเดอร์/)).toBeVisible();
+      const increase = page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ });
+      await increase.click();
+      await increase.click();
+      await expect(increase).toBeDisabled();
+    } finally {
+      await fixture.service.from('online_campaign_products')
+        .update({ max_quantity_per_order: null })
+        .eq('campaign_id', campaignId)
+        .eq('product_id', productId);
+    }
+  });
+
   test('pickup checkout has no shipping fee', async ({ page }) => {
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
     await page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ }).click();

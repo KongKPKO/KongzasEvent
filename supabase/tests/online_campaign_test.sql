@@ -1,6 +1,6 @@
 begin;
 
-select plan(55);
+select plan(56);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -221,6 +221,21 @@ select is(
      and name = 'Hairclip Batch'),
   2::bigint,
   'a multi-row blank-SKU insert remains unique within one artist'
+);
+
+insert into public.products (
+  artist_id, name, category, sku, price, currency, stock_total,
+  stock_reserved, stock_sold, is_unlimited, status
+) values
+  ((select artist_id from _campaign_ids), 'Sequence seed', 'Other', 'SEQUENCE-SEED-999', 100, 'THB', 1, 0, 0, false, 'enable'),
+  ((select artist_id from _campaign_ids), 'Hairclip Overflow', 'Hairclip', null, 100, 'THB', 1, 0, 0, false, 'enable');
+
+select is(
+  (select sku from public.products
+   where artist_id = (select artist_id from _campaign_ids)
+     and name = 'Hairclip Overflow'),
+  'HCL-OVER-1000',
+  'automatic SKU sequence grows beyond three digits without truncation'
 );
 
 update public.products

@@ -47,7 +47,11 @@ begin
         and p.sku ~ '-[0-9]{1,9}$';
     end if;
 
-    v_candidate := v_product.sku_base || '-' || lpad(v_sequence::text, 3, '0');
+    v_candidate := v_product.sku_base || '-' || lpad(
+      v_sequence::text,
+      greatest(3, length(v_sequence::text)),
+      '0'
+    );
     while exists (
       select 1
       from public.products p
@@ -69,7 +73,11 @@ begin
       where p.artist_id = v_product.artist_id
         and p.deleted_at is null
         and p.sku ~ '-[0-9]{1,9}$';
-      v_candidate := v_product.sku_base || '-' || lpad(v_sequence::text, 3, '0');
+      v_candidate := v_product.sku_base || '-' || lpad(
+        v_sequence::text,
+        greatest(3, length(v_sequence::text)),
+        '0'
+      );
     end loop;
 
     update public.products

@@ -47,8 +47,8 @@ alter table public.products disable trigger trg_products_generate_sku;
 update public.products
 set sku = case id
     when '66666666-6666-4666-8666-666666666651'::uuid then 'CHE-ITEM-N-050'
-    when '66666666-6666-4666-8666-666666666652'::uuid then 'CHE-YAOGUANG-NORMAL-060'
-    when '66666666-6666-4666-8666-666666666653'::uuid then 'CHE-YAOGUANG-VARIANT-060'
+    when '66666666-6666-4666-8666-666666666652'::uuid then 'CHE-YAOGUANG-NORMAL-999'
+    when '66666666-6666-4666-8666-666666666653'::uuid then 'CHE-YAOGUANG-VARIANT-999'
   end,
   sku_is_generated = true
 where id in (
@@ -101,14 +101,14 @@ select ok(
 
 select is(
   (select sku from public.products where id = '66666666-6666-4666-8666-666666666652'::uuid),
-  'CHE-YAOG-N-060',
+  'CHE-YAOG-N-999',
   'the oldest compact collision keeps its suffix'
 );
 
 select is(
   (select sku from public.products where id = '66666666-6666-4666-8666-666666666653'::uuid),
-  'CHE-YAOG-N-061',
-  'the later compact collision receives the next unused suffix'
+  'CHE-YAOG-N-1000',
+  'the later compact collision grows beyond three digits without truncation'
 );
 
 select ok(

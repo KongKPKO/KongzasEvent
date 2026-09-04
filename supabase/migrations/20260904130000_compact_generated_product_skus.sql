@@ -97,7 +97,11 @@ begin
         and p.sku ~ '-[0-9]+$';
     end if;
 
-    v_candidate := v_product.sku_base || '-' || lpad(v_sequence::text, 3, '0');
+    v_candidate := v_product.sku_base || '-' || lpad(
+      v_sequence::text,
+      greatest(3, length(v_sequence::text)),
+      '0'
+    );
     while exists (
       select 1 from public.products p
       where p.artist_id = v_product.artist_id
@@ -117,7 +121,11 @@ begin
       from public.products p
       where p.artist_id = v_product.artist_id
         and p.deleted_at is null;
-      v_candidate := v_product.sku_base || '-' || lpad(v_sequence::text, 3, '0');
+      v_candidate := v_product.sku_base || '-' || lpad(
+        v_sequence::text,
+        greatest(3, length(v_sequence::text)),
+        '0'
+      );
     end loop;
 
     update public.products
@@ -158,7 +166,11 @@ begin
 
   new.sku := public.product_sku_type_code(new.category, new.name)
     || '-' || public.product_sku_item_code(new.name, new.variant_name)
-    || '-' || lpad(v_sequence::text, 3, '0');
+    || '-' || lpad(
+      v_sequence::text,
+      greatest(3, length(v_sequence::text)),
+      '0'
+    );
   new.sku_is_generated := true;
   return new;
 end;

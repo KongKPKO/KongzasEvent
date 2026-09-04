@@ -1,6 +1,6 @@
 begin;
 
-select plan(36);
+select plan(37);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -39,10 +39,10 @@ begin
   values (v_artist, 'campaign.owner@nireq.local', 'owner', 'active');
 
   insert into public.products (
-    id, artist_id, name, price, currency, stock_total,
+    id, artist_id, name, category, price, currency, stock_total,
     stock_reserved, stock_sold, is_unlimited, status
   ) values (
-    v_product, v_artist, 'Campaign Cheki', 100, 'THB', 5,
+    v_product, v_artist, 'Campaign Cheki', 'Cheki', 100, 'THB', 5,
     0, 0, false, 'enable'
   );
 
@@ -157,6 +157,13 @@ end;
 $$ language plpgsql;
 
 select set_campaign_jwt('campaign.owner@nireq.local');
+
+select is(
+  public.get_online_campaign_workspace((select campaign_id from _campaign_ids))
+    #>> '{catalog,0,category}',
+  'Cheki',
+  'campaign workspace includes the catalog product category'
+);
 
 select results_eq(
   $$ select allocated, available

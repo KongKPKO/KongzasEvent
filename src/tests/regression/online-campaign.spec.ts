@@ -55,6 +55,7 @@ test.describe('online campaign', () => {
     const product = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
       name: 'E2E Cheki',
+      category: 'Cheki',
       image_url: 'public/e2e-cheki.webp',
       price: 100,
       currency: 'THB',
@@ -322,6 +323,10 @@ test.describe('online campaign', () => {
     await page.goto(`/manage-online-sales/${campaignId}`);
     await expect(page.getByRole('heading', { name: 'Cheki Online E2E' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ })).toBeVisible();
+    await page.getByRole('button', { name: /Products|สินค้า/ }).click();
+    await expect(page.getByLabel(/Product category|หมวดหมู่สินค้า/)).toContainText('Cheki');
+    await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
+    await expect(page.getByRole('row').filter({ hasText: 'E2E Cheki' })).toContainText('Cheki');
 
     await page.goto('/manage-products');
     await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/ }).first().click();

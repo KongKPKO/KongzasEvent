@@ -361,6 +361,17 @@ test.describe('online campaign', () => {
     await expect(page.getByLabel(/Product category|หมวดหมู่สินค้า/)).toContainText('Cheki');
     await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
     await expect(page.getByRole('row').filter({ hasText: 'E2E Cheki' })).toContainText('Cheki');
+    const campaignTable = page.getByRole('table');
+    const tableViewportWidth = await campaignTable.evaluate((table) => table.parentElement?.clientWidth || 0);
+    if (tableViewportWidth >= 1080) {
+      await expect.poll(() => campaignTable.evaluate((table) => {
+        const scroller = table.parentElement;
+        return Boolean(scroller && scroller.scrollWidth <= scroller.clientWidth + 1);
+      })).toBe(true);
+    }
+    const campaignRow = page.getByRole('row').filter({ hasText: 'E2E Cheki' });
+    const productCellWidth = await campaignRow.locator('td').first().evaluate((cell) => cell.getBoundingClientRect().width);
+    expect(productCellWidth).toBeGreaterThanOrEqual(250);
 
     await page.goto('/manage-products');
     await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/ }).first().click();

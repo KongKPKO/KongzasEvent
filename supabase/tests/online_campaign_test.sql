@@ -1,6 +1,6 @@
 begin;
 
-select plan(52);
+select plan(55);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -110,6 +110,12 @@ insert into public.products (
   ((select artist_id from _campaign_ids), 'Hairclip Keito', 'Hairclip', null, null, 200, 'THB', 1, 0, 0, false, 'enable'),
   ((select artist_id from _campaign_ids), 'Manual SKU Product', 'Other', null, 'first-manual', 100, 'THB', 1, 0, 0, false, 'enable');
 
+select isnt(
+  (select sku_is_generated from public.products where name = 'Manual SKU Product'),
+  true,
+  'seller-provided SKU is marked manual on insert'
+);
+
 update public.products
 set sku = 'my-own-7'
 where artist_id = (select artist_id from _campaign_ids)
@@ -123,6 +129,12 @@ select ok(
 select ok(
   (select sku ~ '^CHE-YAOG-N-[0-9]{3}$' from public.products where name = 'Cheki HSR Yaoguang Normal'),
   'Normal becomes the compact N option code'
+);
+
+select is(
+  public.product_sku_item_code('Cheki HSR', 'Yaoguang Normal'),
+  'YAOG-N',
+  'a meaningful structured variant supplies the item and option code'
 );
 
 select ok(
@@ -139,6 +151,12 @@ select is(
   (select sku from public.products where name = 'Manual SKU Product'),
   'MY-OWN-7',
   'manual SKU remains unchanged apart from normalization'
+);
+
+select isnt(
+  (select sku_is_generated from public.products where name = 'Manual SKU Product'),
+  true,
+  'editing an SKU marks the normalized replacement as manual'
 );
 
 select ok(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -468,6 +468,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    useEffect(() => {
       if (!catalogActionMenuKey) return;
 
+      requestAnimationFrame(() => {
+         catalogActionMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+      });
+
       const handlePointerDown = (event: PointerEvent) => {
          if (!catalogActionMenuRef.current?.contains(event.target as Node)) {
             setCatalogActionMenuKey(null);
@@ -487,6 +491,26 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          document.removeEventListener('keydown', handleKeyDown);
       };
    }, [catalogActionMenuKey]);
+
+   const handleCatalogActionMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+      if (!items.length) return;
+
+      event.preventDefault();
+      const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.key === 'Home') {
+         items[0].focus();
+         return;
+      }
+      if (event.key === 'End') {
+         items[items.length - 1].focus();
+         return;
+      }
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex = (Math.max(currentIndex, 0) + direction + items.length) % items.length;
+      items[nextIndex].focus();
+   };
 
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
@@ -2145,11 +2169,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       const menuOpen = catalogActionMenuKey === menuKey;
       const compact = surface !== 'card';
       const secondaryButtonClass = compact
-         ? 'min-h-8 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[10px] font-black leading-tight text-pink-700 hover:bg-pink-50'
-         : 'min-h-10 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50';
+         ? 'min-h-11 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[10px] font-black leading-tight text-pink-700 hover:bg-pink-50'
+         : 'min-h-11 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50';
       const primaryButtonClass = compact
-         ? 'min-h-8 rounded-lg border border-pink-600 bg-pink-600 px-2 py-1 text-[10px] font-black leading-tight text-white hover:bg-pink-700'
-         : 'min-h-10 rounded-xl bg-pink-600 px-3 text-xs font-black text-white hover:bg-pink-700';
+         ? 'min-h-11 rounded-lg border border-pink-600 bg-pink-600 px-2 py-1 text-[10px] font-black leading-tight text-white hover:bg-pink-700'
+         : 'min-h-11 rounded-xl bg-pink-600 px-3 text-xs font-black text-white hover:bg-pink-700';
 
       return (
          <div className={`flex items-center gap-1.5 ${surface === 'table' ? 'justify-end' : ''}`}>
@@ -2186,7 +2210,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      catalogActionTriggerRef.current = event.currentTarget;
                      setCatalogActionMenuKey((current) => current === menuKey ? null : menuKey);
                   }}
-                  className="icon-touch inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:border-pink-200 hover:text-pink-700"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:border-pink-200 hover:text-pink-700"
                >
                   <MoreHorizontal size={18} aria-hidden="true" />
                </button>
@@ -2194,13 +2218,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div
                      id={`catalog-actions-${surface}-${product.id}`}
                      role="menu"
-                     className={`absolute right-0 z-30 w-52 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl ${surface === 'card' ? 'bottom-11' : 'top-10'}`}
+                     onKeyDown={handleCatalogActionMenuKeyDown}
+                     className={`absolute right-0 z-30 w-52 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl ${surface === 'card' ? 'bottom-12' : 'top-12'}`}
                   >
                      <button
                         type="button"
                         role="menuitem"
                         onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); openDuplicateVariants(product); }}
-                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-pink-700"
+                        className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-pink-700"
                      >
                         {t('catalogAddProductOption')}
                      </button>
@@ -2208,7 +2233,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         type="button"
                         role="menuitem"
                         onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); handleEditClick(product); }}
-                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50"
+                        className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50"
                      >
                         {t('catalogEditProduct')}
                      </button>
@@ -2216,7 +2241,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         type="button"
                         role="menuitem"
                         onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); requestDeleteProduct(product); }}
-                        className="block min-h-10 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-red-600 hover:bg-red-50"
+                        className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-red-600 hover:bg-red-50"
                      >
                         {t('catalogDeleteProduct')}
                      </button>
@@ -2283,11 +2308,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         <h2 id="catalog-stock-dialog-title" className="text-lg font-black text-gray-900">
                            {stockAction.scope === 'catalog'
                               ? t('catalogAdjustStock')
-                              : stockAction.kind === 'add' ? 'Add to event' : 'Remove from event'}
+                              : stockAction.kind === 'add' ? t('catalogStockAddToEvent') : t('catalogStockRemoveFromEvent')}
                         </h2>
                         <p className="mt-1 text-sm font-semibold text-gray-500">{stockAction.product.name}</p>
                      </div>
-                     <button type="button" onClick={closeStockAction} className="text-gray-400 hover:text-gray-700" aria-label="Close stock action">
+                     <button type="button" onClick={closeStockAction} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-700" aria-label={t('catalogStockDialogClose')}>
                         <X size={20} />
                      </button>
                   </div>
@@ -2304,7 +2329,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     setStockActionError('');
                                     if (kind === 'add') setStockActionReason('');
                                  }}
-                                 className={`min-h-10 rounded-lg px-3 text-sm font-black transition-colors ${stockAction.kind === kind ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                                 className={`min-h-11 rounded-lg px-3 text-sm font-black transition-colors ${stockAction.kind === kind ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
                               >
                                  {kind === 'add' ? t('catalogIncreaseStock') : t('catalogDecreaseStock')}
                               </button>
@@ -2312,7 +2337,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
                      )}
                      <div>
-                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Quantity</label>
+                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockQuantity')}</label>
                         <input
                            type="number"
                            min="1"
@@ -2327,17 +2352,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      {stockAction.scope === 'catalog' && stockAction.kind === 'remove' && (
                         <div>
-                           <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">Reason</label>
+                           <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockReason')}</label>
                            <select
                               value={stockActionReason}
                               onChange={(event) => setStockActionReason(event.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
                            >
-                              <option value="">Select reason</option>
-                              <option value="damaged">Damaged</option>
-                              <option value="lost">Lost</option>
-                              <option value="count_correction">Count correction</option>
-                              <option value="other">Other</option>
+                              <option value="">{t('catalogStockSelectReason')}</option>
+                              <option value="damaged">{t('catalogStockReasonDamaged')}</option>
+                              <option value="lost">{t('catalogStockReasonLost')}</option>
+                              <option value="count_correction">{t('catalogStockReasonCorrection')}</option>
+                              <option value="other">{t('catalogStockReasonOther')}</option>
                            </select>
                         </div>
                      )}
@@ -2348,11 +2373,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               const quantity = Number(stockActionQuantity || 0);
                               return (
                                  <>
-                                    <div>On hand: {summary.on_hand}</div>
-                                    <div>Allocated: {summary.allocated}</div>
-                                    <div>Available: {summary.available}</div>
+                                    <div>{t('catalogStockOnHand')}: {summary.on_hand}</div>
+                                    <div>{t('catalogStockAllocated')}: {summary.allocated}</div>
+                                    <div>{t('catalogStockAvailable')}: {summary.available}</div>
                                     <div className="mt-2 font-black text-gray-900">
-                                       After {stockAction.kind === 'add' ? 'add' : 'remove'}: {stockAction.kind === 'add' ? summary.on_hand + quantity : summary.on_hand - quantity}
+                                       {stockAction.kind === 'add' ? t('catalogStockAfterIncrease') : t('catalogStockAfterDecrease')}: {stockAction.kind === 'add' ? summary.on_hand + quantity : summary.on_hand - quantity}
                                     </div>
                                  </>
                               );
@@ -2367,12 +2392,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               const summary = getProductStockSummary(stockAction.product);
                               return (
                                  <>
-                                    {stockAction.kind === 'add' && <div>Central available: {summary.available}</div>}
-                                    <div>Allocated to event: {allocated}</div>
-                                    <div>Reserved: {reserved}</div>
-                                    <div>Sold: {sold}</div>
-                                    <div>Available at event: {removable}</div>
-                                    {stockAction.kind === 'remove' && <div className="mt-2 font-black text-gray-900">Returned to catalog after remove: {Number(stockActionQuantity || 0)}</div>}
+                                    {stockAction.kind === 'add' && <div>{t('catalogStockCentralAvailable')}: {summary.available}</div>}
+                                    <div>{t('catalogStockAllocatedToEvent')}: {allocated}</div>
+                                    <div>{t('catalogReserved')}: {reserved}</div>
+                                    <div>{t('catalogStockSold')}: {sold}</div>
+                                    <div>{t('catalogStockAvailableAtEvent')}: {removable}</div>
+                                    {stockAction.kind === 'remove' && <div className="mt-2 font-black text-gray-900">{t('catalogStockReturnedToCatalog')}: {Number(stockActionQuantity || 0)}</div>}
                                  </>
                               );
                            })()
@@ -2385,20 +2410,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      )}
                   </div>
                   <div className="mt-5 flex justify-end gap-2">
-                     <Button type="button" onClick={closeStockAction} className="rounded-lg border border-gray-200 bg-white px-4 py-2 font-bold text-gray-700 hover:bg-gray-50">
-                        Cancel
+                     <Button type="button" onClick={closeStockAction} className="min-h-11 rounded-lg border border-gray-200 bg-white px-4 py-2 font-bold text-gray-700 hover:bg-gray-50">
+                        {t('commonCancel')}
                      </Button>
                      <Button
                         type="button"
                         onClick={() => void handleStockAction()}
                         disabled={stockActionSaving}
-                        className="rounded-lg bg-pink-600 px-4 py-2 font-bold text-white hover:bg-pink-700 disabled:bg-pink-300"
+                        className="min-h-11 rounded-lg bg-pink-600 px-4 py-2 font-bold text-white hover:bg-pink-700 disabled:bg-pink-300"
                      >
                         {stockActionSaving
-                           ? 'Saving...'
+                           ? t('catalogStockSaving')
                            : stockAction.scope === 'catalog'
-                             ? stockAction.kind === 'add' ? 'Add stock' : 'Remove stock'
-                             : stockAction.kind === 'add' ? 'Add to event' : 'Remove from event'}
+                             ? stockAction.kind === 'add' ? t('catalogStockSaveIncrease') : t('catalogStockSaveDecrease')
+                             : stockAction.kind === 'add' ? t('catalogStockAddToEvent') : t('catalogStockRemoveFromEvent')}
                      </Button>
                   </div>
                </section>
@@ -3987,7 +4012,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     ) : (
                                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400">
                                           <PackageSearch size={28} aria-hidden="true" />
-                                          <span className="text-xs font-black uppercase tracking-wide">Need image</span>
+                                          <span className="text-xs font-black uppercase tracking-wide">{t('catalogMissingImage')}</span>
                                        </div>
                                     )}
 
@@ -3996,10 +4021,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                           {product.category || 'Other'}
                                        </span>
                                        {effectiveStatus === 'disable' && (
-                                          <span className="rounded-full bg-gray-900/85 px-2 py-1 text-[10px] font-black text-white shadow-sm">Disabled</span>
+                                          <span className="rounded-full bg-gray-900/85 px-2 py-1 text-[10px] font-black text-white shadow-sm">{t('catalogDisabled')}</span>
                                        )}
                                        {effectiveStatus === 'soldout' && (
-                                          <span className="rounded-full bg-red-600/90 px-2 py-1 text-[10px] font-black text-white shadow-sm">Sold out</span>
+                                          <span className="rounded-full bg-red-600/90 px-2 py-1 text-[10px] font-black text-white shadow-sm">{t('catalogSoldOut')}</span>
                                        )}
                                     </div>
 
@@ -4069,7 +4094,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  ) : (
                                     <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400">
                                        <PackageSearch size={20} aria-hidden="true" />
-                                       <span className="text-[10px] font-black">Image</span>
+                                       <span className="text-[10px] font-black">{t('catalogMissingImage')}</span>
                                     </div>
                                  )}
                                  {(effectiveStatus === 'disable' || effectiveStatus === 'soldout') && (
@@ -4077,7 +4102,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
                                           effectiveStatus === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
                                        }`}>
-                                          {effectiveStatus === 'soldout' ? 'SOLD OUT' : 'DISABLED'}
+                                          {effectiveStatus === 'soldout' ? t('catalogSoldOut') : t('catalogDisabled')}
                                        </span>
                                     </div>
                                  )}

@@ -11,6 +11,7 @@ let productId = '';
 let reservedProductId = '';
 let soldProductId = '';
 let unlimitedProductId = '';
+let inactiveProductId = '';
 
 async function login(page: Page) {
   await page.goto('/manage-login');
@@ -92,6 +93,21 @@ test.describe('catalog workspace', () => {
     if (unlimitedProduct.error) throw unlimitedProduct.error;
     unlimitedProductId = unlimitedProduct.data.id;
 
+    const inactiveProduct = await fixture.service.from('products').insert({
+      artist_id: fixture.userId,
+      name: 'Inactive image-less product',
+      category: 'Other',
+      price: 160,
+      currency: 'THB',
+      stock_total: 4,
+      stock_reserved: 0,
+      stock_sold: 0,
+      is_unlimited: false,
+      status: 'disable',
+    }).select('id').single();
+    if (inactiveProduct.error) throw inactiveProduct.error;
+    inactiveProductId = inactiveProduct.data.id;
+
     const manualSkuProduct = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
       name: 'Manual SKU fixture',
@@ -120,7 +136,13 @@ test.describe('catalog workspace', () => {
     const cards = page.getByRole('button', { name: /Product cards|การ์ดสินค้า/ });
     const table = page.getByRole('button', { name: /^Table$|^ตาราง$/ });
     await expect(cards).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId(`catalog-card-${productId}`)).toBeVisible();
+    const productCard = page.getByTestId(`catalog-card-${productId}`);
+    await expect(productCard).toBeVisible();
+    for (const action of await productCard.getByRole('button').all()) {
+      const actionBox = await action.boundingBox();
+      expect(actionBox).not.toBeNull();
+      expect(actionBox?.height || 0).toBeGreaterThanOrEqual(44);
+    }
 
     await page.getByRole('button', { name: /^Import CSV$|^นำเข้า CSV$/ }).click();
     await expect(page.getByRole('heading', { name: 'Import CSV' })).toBeVisible();
@@ -202,11 +224,26 @@ test.describe('catalog workspace', () => {
       ? page.getByTestId(`catalog-list-${productId}`)
       : page.getByTestId(`catalog-row-${productId}`);
 
-    await surface.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ }).click();
+    const chooseSalesChannel = surface.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ });
+    const adjustStock = surface.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ });
+    for (const action of [chooseSalesChannel, adjustStock]) {
+      const actionBox = await action.boundingBox();
+      expect(actionBox).not.toBeNull();
+      expect(actionBox?.height || 0).toBeGreaterThanOrEqual(44);
+    }
+
+    await adjustStock.click();
     const dialog = page.getByRole('dialog', { name: /Adjust stock|ปรับสต็อก/ });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /Increase|เพิ่ม/ })).toHaveAttribute('aria-pressed', 'true');
-    await dialog.getByRole('button', { name: /Decrease|ลด/ }).click();
+    const increase = dialog.getByRole('button', { name: /Increase|เพิ่ม/ });
+    const decrease = dialog.getByRole('button', { name: /Decrease|ลด/ });
+    await expect(increase).toHaveAttribute('aria-pressed', 'true');
+    for (const chooser of [increase, decrease]) {
+      const chooserBox = await chooser.boundingBox();
+      expect(chooserBox).not.toBeNull();
+      expect(chooserBox?.height || 0).toBeGreaterThanOrEqual(44);
+    }
+    await decrease.click();
     await expect(dialog.getByText(/Reason|เหตุผล/)).toBeVisible();
   });
 
@@ -222,9 +259,32 @@ test.describe('catalog workspace', () => {
     await trigger.focus();
     await trigger.press('Enter');
     const menu = page.getByRole('menu');
-    await expect(menu.getByRole('menuitem', { name: /Add product option|เพิ่มตัวเลือกสินค้า/ })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Delete product|ลบสินค้า/ })).toBeVisible();
+    const addOption = menu.getByRole('menuitem', { name: /Add product option|เพิ่มตัวเลือกสินค้า/ });
+    const edit = menu.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ });
+    const remove = menu.getByRole('menuitem', { name: /Delete product|ลบสินค้า/ });
+    await expect(addOption).toBeFocused();
+    for (const item of [addOption, edit, remove]) {
+      const itemBox = await item.boundingBox();
+      expect(itemBox).not.toBeNull();
+      expect(itemBox?.height || 0).toBeGreaterThanOrEqual(44);
+    }
+    const triggerBox = await trigger.boundingBox();
+    expect(triggerBox).not.toBeNull();
+    expect(triggerBox?.width || 0).toBeGreaterThanOrEqual(44);
+    expect(triggerBox?.height || 0).toBeGreaterThanOrEqual(44);
+
+    await page.keyboard.press('ArrowDown');
+    await expect(edit).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(remove).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(addOption).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(remove).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(addOption).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(remove).toBeFocused();
 
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
@@ -233,5 +293,31 @@ test.describe('catalog workspace', () => {
     await trigger.click();
     await page.getByRole('heading', { name: /Product catalog|คลังสินค้า/ }).click();
     await expect(page.getByRole('menu')).toHaveCount(0);
+  });
+
+  test('translates the focused Catalog controls and stock dialog into Thai', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-chromium');
+    await login(page);
+    await page.goto('/manage-products');
+    await page.getByRole('button', { name: 'Switch language' }).click();
+
+    const inactiveCard = page.getByTestId(`catalog-card-${inactiveProductId}`);
+    await expect(inactiveCard.getByText('ไม่มีรูป', { exact: true })).toBeVisible();
+    await expect(inactiveCard.getByText('ปิดใช้งาน', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'ตาราง', exact: true }).click();
+    const row = page.getByTestId(`catalog-row-${productId}`);
+    await row.getByRole('button', { name: 'ปรับสต็อก' }).click();
+    const dialog = page.getByRole('dialog', { name: 'ปรับสต็อก' });
+    await expect(dialog.getByText('จำนวน', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'ลด', exact: true }).click();
+    await expect(dialog.getByText('เหตุผล', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('option', { name: 'เลือกเหตุผล' })).toBeAttached();
+    await expect(dialog).toContainText('สต็อกทั้งหมด: 12');
+    await expect(dialog).toContainText('อยู่ในช่องทางขาย: 0');
+    await expect(dialog).toContainText('พร้อมจัดสรร: 12');
+    await expect(dialog).toContainText('หลังลด: 12');
+    await expect(dialog.getByRole('button', { name: 'ยกเลิก' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'ลดสต็อก' })).toBeVisible();
   });
 });

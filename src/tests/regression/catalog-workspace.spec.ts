@@ -258,7 +258,7 @@ test.describe('catalog workspace', () => {
 
     await trigger.focus();
     await trigger.press('Enter');
-    const menu = page.getByRole('menu');
+    const menu = page.getByRole('menu', { name: new RegExp(`More actions for ${LONG_PRODUCT_NAME}|การทำงานเพิ่มเติมสำหรับ ${LONG_PRODUCT_NAME}`) });
     const addOption = menu.getByRole('menuitem', { name: /Add product option|เพิ่มตัวเลือกสินค้า/ });
     const edit = menu.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ });
     const remove = menu.getByRole('menuitem', { name: /Delete product|ลบสินค้า/ });
@@ -318,6 +318,11 @@ test.describe('catalog workspace', () => {
     await expect(dialog).toContainText('พร้อมจัดสรร: 12');
     await expect(dialog).toContainText('หลังลด: 12');
     await expect(dialog.getByRole('button', { name: 'ยกเลิก' })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'ลดสต็อก' })).toBeVisible();
+    const removeStock = dialog.getByRole('button', { name: 'ลดสต็อก' });
+    await removeStock.click();
+    await expect(dialog.getByText('กรอกจำนวนเต็มที่มากกว่าศูนย์')).toBeVisible();
+    await dialog.getByLabel('จำนวน').fill('1');
+    await removeStock.click();
+    await expect(dialog.getByText('เลือกเหตุผลก่อนลดสต็อก')).toBeVisible();
   });
 });

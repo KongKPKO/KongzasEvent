@@ -322,7 +322,7 @@ const buildProductDuplicateKey = (input: {
 };
 
 const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
-   const { t } = useI18n();
+   const { language, t } = useI18n();
    const navigate = useNavigate();
    const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
@@ -1154,21 +1154,41 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setStockActionReason('');
       setStockActionError('');
    };
+   const getLocalizedStockAdjustmentErrorMessage = (error: unknown) => {
+      const message = getStockAdjustmentErrorMessage(error);
+      if (message === 'Not enough central stock available. Add stock to the catalog first, then add it to this event.') {
+         return t('catalogStockErrorInsufficientCentral');
+      }
+      if (message === 'You can only remove stock that is not reserved or sold.') {
+         return t('catalogStockErrorBelowReservedOrSold');
+      }
+      if (message === 'Choose a reason before removing stock.') {
+         return t('catalogStockErrorReasonRequired');
+      }
+      if (message === 'Enter a whole number greater than zero.') {
+         return t('catalogStockErrorInvalidQuantity');
+      }
+      if (message === 'Unlimited products do not use finite stock adjustments.') {
+         return t('catalogStockErrorUnlimited');
+      }
+      if (language === 'en' && message !== 'Stock adjustment failed.') return message;
+      return t('catalogStockErrorGeneric');
+   };
    const handleStockAction = async () => {
       if (!stockAction) return;
       const quantity = Number(stockActionQuantity);
       if (!Number.isInteger(quantity) || quantity <= 0) {
-         setStockActionError('Enter a whole number greater than zero.');
+         setStockActionError(t('catalogStockErrorInvalidQuantity'));
          return;
       }
       if (stockAction.scope === 'catalog' && stockAction.kind === 'remove' && !stockActionReason.trim()) {
-         setStockActionError('Choose a reason before removing stock.');
+         setStockActionError(t('catalogStockErrorReasonRequired'));
          return;
       }
       if (stockAction.scope === 'event' && stockAction.kind === 'add') {
          const summary = getProductStockSummary(stockAction.product);
          if (quantity > summary.available) {
-            setStockActionError('Not enough central stock available. Add stock to the catalog first, then add it to this event.');
+            setStockActionError(t('catalogStockErrorInsufficientCentral'));
             return;
          }
       }
@@ -1190,10 +1210,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             await fetchProducts();
             await fetchEventCatalog(selectedEventId);
          }
-         showToast({ tone: 'success', title: 'Stock updated' });
+         showToast({ tone: 'success', title: t('catalogStockUpdated') });
          closeStockAction();
       } catch (error) {
-         setStockActionError(getStockAdjustmentErrorMessage(error));
+         setStockActionError(getLocalizedStockAdjustmentErrorMessage(error));
       } finally {
          setStockActionSaving(false);
       }
@@ -2218,6 +2238,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div
                      id={`catalog-actions-${surface}-${product.id}`}
                      role="menu"
+                     aria-label={t('catalogMoreActions', { name: product.name })}
                      onKeyDown={handleCatalogActionMenuKeyDown}
                      className={`absolute right-0 z-30 w-52 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl ${surface === 'card' ? 'bottom-12' : 'top-12'}`}
                   >
@@ -2337,8 +2358,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
                      )}
                      <div>
-                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockQuantity')}</label>
+                        <label htmlFor="catalog-stock-quantity" className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockQuantity')}</label>
                         <input
+                           id="catalog-stock-quantity"
                            type="number"
                            min="1"
                            step="1"
@@ -2352,8 +2374,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      {stockAction.scope === 'catalog' && stockAction.kind === 'remove' && (
                         <div>
-                           <label className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockReason')}</label>
+                           <label htmlFor="catalog-stock-reason" className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockReason')}</label>
                            <select
+                              id="catalog-stock-reason"
                               value={stockActionReason}
                               onChange={(event) => setStockActionReason(event.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"

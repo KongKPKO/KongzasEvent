@@ -1,6 +1,6 @@
 begin;
 
-select plan(38);
+select plan(45);
 
 select has_table('public', 'promotion_assignments', 'promotion assignments exist');
 select has_table('public', 'promotion_tiers', 'promotion tiers exist');
@@ -595,6 +595,156 @@ select is(
      and product_id = (select product_id from _promotion_ids)),
   5,
   'Post-order holds purchased and reward stock together'
+);
+
+select has_function(
+  'public',
+  'create_walkin_order_with_stock',
+  array['uuid', 'jsonb', 'text', 'uuid', 'jsonb', 'jsonb', 'text', 'boolean'],
+  'walk-in checkout accepts authoritative promotion inputs'
+);
+
+select has_function(
+  'public',
+  'complete_order_with_stock',
+  array['uuid', 'text', 'uuid', 'jsonb', 'jsonb', 'text', 'boolean'],
+  'queue completion accepts authoritative promotion inputs'
+);
+
+update public.order_payments
+set stock_hold_expires_at = now() - interval '1 second'
+where order_id = (select order_id from _promotion_postorder);
+
+select * from private.expire_preorder_stock_hold(
+  (select order_id from _promotion_postorder)
+);
+
+do $$
+declare
+  v_order_id uuid;
+  v_event_id uuid := (select event_id from _promotion_ids);
+  v_product_id uuid := (select product_id from _promotion_ids);
+  v_owner_id uuid := (select owner_id from _promotion_ids);
+begin
+  update public.events
+  set status = 'Confirmed',
+      start_date = now() - interval '1 hour',
+      end_date = now() + interval '1 day',
+      postorder_enabled = false,
+      is_booth_open = true
+  where id = (select event_id from _promotion_ids);
+
+  update public.promotion_assignments
+  set is_paused = true
+  where event_id = (select event_id from _promotion_ids)
+    and event_phase = 'live';
+
+  insert into public.promotion_assignments (
+    promotion_id, artist_id, event_id, event_phase, combination_policy
+  ) values (
+    (select promotion_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    (select event_id from _promotion_ids),
+    'live', 'combine'
+  );
+
+  perform set_config(
+      'request.jwt.claims',
+      jsonb_build_object(
+      'sub', v_owner_id,
+      'role', 'authenticated',
+      'email', 'promotion.owner@nireq.local'
+    )::text,
+    true
+  );
+  set local role authenticated;
+
+  v_order_id := public.create_walkin_order_with_stock(
+    v_event_id,
+    jsonb_build_array(jsonb_build_object(
+      'product_id', v_product_id,
+      'quantity', 4
+    )),
+    'cash', gen_random_uuid(), '[]'::jsonb, '[]'::jsonb, null, false
+  );
+
+  reset role;
+  create temp table _promotion_walkin (order_id uuid) on commit drop;
+  insert into _promotion_walkin values (v_order_id);
+end $$;
+
+select is(
+  (select sum(quantity) from public.order_items
+   where order_id = (select order_id from _promotion_walkin)
+     and line_type = 'promotion_reward'),
+  1::bigint,
+  'walk-in checkout records the earned reward'
+);
+
+select is(
+  (select stock_sold from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  5,
+  'walk-in checkout sells purchased and reward stock atomically'
+);
+
+select is(
+  (select stock_reserved from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  0,
+  'walk-in checkout does not create a stock hold'
+);
+
+do $$
+declare
+  v_order_id uuid := gen_random_uuid();
+begin
+  update public.event_products
+  set stock_reserved = 4, stock_sold = 0
+  where event_id = (select event_id from _promotion_ids)
+    and product_id = (select product_id from _promotion_ids);
+
+  insert into public.orders (
+    id, event_id, status, total_price, subtotal_price, currency,
+    order_type, pickup_status
+  ) values (
+    v_order_id, (select event_id from _promotion_ids), 'confirmed',
+    800, 800, 'THB', 'live_queue', 'not_required'
+  );
+
+  insert into public.order_items (
+    order_id, product_id, event_product_id, quantity, price_per_unit, currency
+  ) select
+    v_order_id,
+    ep.product_id,
+    ep.id,
+    4,
+    200,
+    'THB'
+  from public.event_products ep
+  where ep.event_id = (select event_id from _promotion_ids)
+    and ep.product_id = (select product_id from _promotion_ids);
+
+  create temp table _promotion_queue_order (order_id uuid) on commit drop;
+  insert into _promotion_queue_order values (v_order_id);
+end $$;
+
+select ok(
+  public.complete_order_with_stock(
+    (select order_id from _promotion_queue_order),
+    'cash', gen_random_uuid(), '[]'::jsonb, '[]'::jsonb, null, false
+  ),
+  'queue completion applies and sells the promotion in one transaction'
+);
+
+select is(
+  (select stock_sold from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  5,
+  'queue completion converts purchased and reward stock to sold'
 );
 
 select * from finish();

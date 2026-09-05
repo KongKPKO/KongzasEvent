@@ -96,7 +96,7 @@ select is(
 with authenticated_rpc(signature) as (
   values
     ('public.approve_creator_application(uuid,text)'),
-    ('public.complete_order_with_stock(uuid,text,uuid)'),
+    ('public.complete_order_with_stock(uuid,text,uuid,jsonb,jsonb,text,boolean)'),
     ('public.confirm_preorder_payment(uuid,text)'),
     ('public.get_actor_context()'),
     ('public.mark_order_shipped(uuid,text,text)'),

@@ -598,17 +598,6 @@ export default function POSPanel({
         notes: item.notes || '',
     }));
 
-    const applyPricingToOrder = async (orderId: string, pricingSnapshot: PricingSnapshot) => {
-        const { error } = await supabase.rpc('apply_order_pricing', {
-            p_order_id: orderId,
-            p_subtotal_price: pricingSnapshot.subtotal,
-            p_discount_total: pricingSnapshot.discountTotal,
-            p_total_price: pricingSnapshot.total,
-            p_pricing_breakdown: pricingSnapshot.appliedPromotions,
-        });
-        if (error) throw error;
-    };
-
     // Translates known RPC error strings to staff-readable messages.
     // The backend raises these as exception message text, which Supabase JS surfaces
     // on err.message.  Unknown errors get a generic fallback that warns about
@@ -691,8 +680,6 @@ export default function POSPanel({
                 });
                 if (syncError) throw syncError;
 
-                await applyPricingToOrder(orderIdAtPaymentStart, pricingSnapshot);
-
                 const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
                     p_order_id: orderIdAtPaymentStart,
                     p_payment_method: method,
@@ -708,7 +695,6 @@ export default function POSPanel({
                 if (createError) throw createError;
 
                 const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
-                await applyPricingToOrder(orderId, pricingSnapshot);
                 const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
                     p_order_id: orderId,
                     p_payment_method: method,
@@ -716,15 +702,13 @@ export default function POSPanel({
                 });
                 if (completeError) throw completeError;
             } else {
-                const { data: walkinOrderId, error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
+                const { error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
                     p_event_id: eventId,
                     p_items: payloadItems,
                     p_payment_method: method,
                     p_payment_idempotency_key: paymentAttemptId,
                 });
                 if (walkinError) throw walkinError;
-                const orderId = Array.isArray(walkinOrderId) ? walkinOrderId[0] : walkinOrderId;
-                await applyPricingToOrder(orderId, pricingSnapshot);
             }
 
             // Confirmed success: clear state and notify parent.

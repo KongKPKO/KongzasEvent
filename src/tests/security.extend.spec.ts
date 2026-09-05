@@ -116,15 +116,16 @@ test.describe('Extended Security Behaviors', () => {
     await expect(page).toHaveURL(/\/manage-events/);
 
     await page.goto(`${BASE_URL}/manage-products`);
-    await expect(page.getByPlaceholder('Search products...')).toBeVisible({ timeout: 20000 });
+    const search = page.getByPlaceholder(/Search products|ค้นหาสินค้า/);
+    await expect(search).toBeVisible({ timeout: 20000 });
 
     const patterns = ["' OR '1'='1 --", '"; DROP TABLE products; --', '%_[]^', '\\0'];
     for (const pattern of patterns) {
-      await page.getByPlaceholder('Search products...').fill(pattern);
+      await search.fill(pattern);
       await page.waitForTimeout(500);
       // Catalog workspace should stay rendered after hostile-looking input.
-      await expect(page.getByRole('heading', { name: 'Find products in the library' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: /Catalog items \(\d+\)/ })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Product catalog|คลังสินค้า/ })).toBeVisible();
+      await expect(page.getByText(/\d+ of \d+ products|\d+ จาก \d+ รายการ/)).toBeVisible();
     }
   });
 

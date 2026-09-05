@@ -141,28 +141,16 @@ async function robustLogin(page: Page) {
 
 // --- HELPER 6: Find product edit button on ManageProducts (desktop + mobile) ---
 async function findProductEditButton(page: Page, productName: string) {
-    // Desktop: table layout
-    const tableVisible = await page.locator('table').first().isVisible().catch(() => false);
-    if (tableVisible) {
-        const row = page.locator('tr', { has: page.getByText(productName, { exact: true }) }).first();
-        await expect(row).toBeVisible({ timeout: 20000 });
-        await row.scrollIntoViewIfNeeded().catch(() => {});
-        // Last cell contains Actions: [Edit, Delete]
-        return row.locator('td').last().locator('button').first();
+    const row = page.getByRole('row').filter({ hasText: productName }).first();
+    if (await row.isVisible().catch(() => false)) {
+        await row.getByRole('button', { name: /More actions|การทำงานเพิ่มเติม/ }).click();
+        return page.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ });
     }
 
-    // Mobile: card layout (no table)
-    // Each mobile card contains an h3 title and actions at absolute bottom-right
-    const card = page.locator('div').filter({ has: page.locator('h3', { hasText: productName }) }).first();
+    const card = page.locator('[data-testid^="catalog-card-"]').filter({ hasText: productName }).first();
     await expect(card).toBeVisible({ timeout: 20000 });
-    await card.scrollIntoViewIfNeeded().catch(() => {});
-    const actions = card.locator('div.absolute.bottom-2.right-2 button');
-    if (await actions.count() > 0) {
-        return actions.first(); // Edit is first, Delete is second
-    }
-    // Fallback by accessible name if present
-    const namedEdit = card.getByRole('button', { name: /Edit|แก้ไข/i }).first();
-    return namedEdit;
+    await card.getByRole('button', { name: /More actions|การทำงานเพิ่มเติม/ }).click();
+    return page.getByRole('menuitem', { name: /Edit product|แก้ไขสินค้า/ });
 }
 
 const getEditStatusSelect = (page: Page) =>
@@ -441,7 +429,9 @@ test.describe('Regression Suite @regression', () => {
          await page.goto('/manage-products');
          await page.waitForLoadState('domcontentloaded');
 
-         const searchInput = page.getByPlaceholder('Search products...');
+         await page.getByRole('button', { name: /^Table$|^ตาราง$/ }).click();
+
+         const searchInput = page.getByPlaceholder(/Search products|ค้นหาสินค้า/);
          await expect(searchInput).toBeVisible({ timeout: 30000 });
 
          if(await searchInput.isVisible()) {
@@ -467,7 +457,7 @@ test.describe('Regression Suite @regression', () => {
             productContainer = page.locator('div').filter({ has: page.locator('h3', { hasText: TEST_PROD }) }).first();
          }
          await expect(productContainer).toBeVisible({ timeout: 20000 });
-         await expect(productContainer.getByText(/Disabled|DISABLED/).first()).toBeVisible({ timeout: 20000 });
+         await expect(productContainer.getByText(/Inactive|ปิดใช้งาน/).first()).toBeVisible({ timeout: 20000 });
 
          // Re-open edit with the helper again
          editButton = await findProductEditButton(page, TEST_PROD);
@@ -481,7 +471,7 @@ test.describe('Regression Suite @regression', () => {
             productContainer2 = page.locator('div').filter({ has: page.locator('h3', { hasText: TEST_PROD }) }).first();
          }
          await expect(productContainer2).toBeVisible({ timeout: 20000 });
-         await expect(productContainer2.locator('span:has-text("Sold Out"), span:has-text("SOLD OUT")').first()).toBeVisible({ timeout: 20000 });
+         await expect(productContainer2.getByText(/Sold out|สต็อกหมด/).first()).toBeVisible({ timeout: 20000 });
          
          await adminContext.close();
     });

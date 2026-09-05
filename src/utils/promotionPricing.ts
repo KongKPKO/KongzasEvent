@@ -1,3 +1,5 @@
+import type { PromotionQuote, PromotionSummary } from '../types/promotion';
+
 export type PromotionTargetType = 'category' | 'tag' | 'category_tag' | 'product';
 export type PromotionRuleType = 'discount' | 'free_items';
 export type PromotionStatus = 'active' | 'inactive';
@@ -71,6 +73,17 @@ export interface PricingResult {
   insights: PromotionProgressInsight[];
   lineBreakdowns: Record<string, ProductPromotionBreakdown[]>;
 }
+
+export const summarizePromotionQuote = (quote: PromotionQuote): PromotionSummary[] =>
+  quote.applied_promotions.map((promotion) => ({
+    id: promotion.id,
+    name: promotion.name,
+    detail: promotion.bundle_count > 0
+      ? `${promotion.rule_text} × ${promotion.bundle_count}`
+      : promotion.rule_text,
+    discountAmount: promotion.discount_amount,
+    rewardQuantity: promotion.rewards.reduce((sum, reward) => sum + reward.quantity, 0),
+  }));
 
 const normalize = (value?: string | null) => (value || '').trim().toLowerCase();
 

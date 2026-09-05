@@ -1,6 +1,6 @@
 begin;
 
-select plan(19);
+select plan(24);
 
 select has_table('public', 'promotion_assignments', 'promotion assignments exist');
 select has_table('public', 'promotion_tiers', 'promotion tiers exist');
@@ -197,6 +197,123 @@ select throws_ok(
   '23514',
   null,
   'zero-value spend tiers are rejected'
+);
+
+select has_function(
+  'public',
+  'quote_sale_promotions',
+  array['uuid', 'text', 'uuid', 'jsonb', 'jsonb', 'jsonb'],
+  'public promotion quotes are available'
+);
+
+select has_function(
+  'public',
+  'promotion_assignment_conflicts',
+  array['uuid'],
+  'merchant conflict inspection is available'
+);
+
+do $$
+declare
+  v_discount uuid := gen_random_uuid();
+  v_competing uuid := gen_random_uuid();
+  v_assignment uuid := gen_random_uuid();
+begin
+  update public.promotion_assignments
+  set is_paused = true
+  where promotion_id = (select promotion_id from _promotion_ids);
+
+  insert into public.event_products (
+    event_id, product_id, artist_id, is_enabled, price_override,
+    stock_total, stock_reserved, stock_sold, is_unlimited
+  ) values (
+    (select event_id from _promotion_ids),
+    (select product_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    true, 200, 10, 0, 0, false
+  );
+
+  insert into public.artist_promotions (
+    id, artist_id, name, target_type, rule_type, promotion_type,
+    buy_quantity, reward_value, lifecycle_status
+  ) values
+    (v_discount, (select artist_id from _promotion_ids), 'Every 3 save 50',
+      'all', 'discount', 'quantity_discount', 3, 50, 'ready'),
+    (v_competing, (select artist_id from _promotion_ids), 'Every 3 save 30',
+      'all', 'discount', 'quantity_discount', 3, 30, 'ready');
+
+  insert into public.promotion_assignments (
+    id, promotion_id, artist_id, event_id, event_phase, combination_policy
+  ) values (
+    v_assignment, v_discount, (select artist_id from _promotion_ids),
+    (select event_id from _promotion_ids), 'live', 'exclusive'
+  );
+
+  create temp table _pricing_ids (
+    promotion_id uuid,
+    competing_promotion_id uuid,
+    assignment_id uuid
+  ) on commit drop;
+
+  insert into _pricing_ids values (v_discount, v_competing, v_assignment);
+end $$;
+
+select is(
+  (public.quote_sale_promotions(
+    (select event_id from _promotion_ids),
+    'live',
+    null,
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _promotion_ids),
+      'quantity', 6
+    )),
+    '[]'::jsonb,
+    '[]'::jsonb
+  ) ->> 'discount_total')::numeric,
+  100::numeric,
+  'every three save fifty repeats for six items'
+);
+
+update public.promotion_assignments
+set is_paused = true
+where id = (select assignment_id from _pricing_ids);
+
+select is(
+  (public.quote_sale_promotions(
+    (select event_id from _promotion_ids),
+    'live',
+    null,
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _promotion_ids),
+      'quantity', 6
+    )),
+    '[]'::jsonb,
+    '[]'::jsonb
+  ) ->> 'discount_total')::numeric,
+  0::numeric,
+  'paused assignments do not affect a quote'
+);
+
+update public.promotion_assignments
+set is_paused = false
+where id = (select assignment_id from _pricing_ids);
+
+insert into public.promotion_assignments (
+  promotion_id, artist_id, event_id, event_phase, combination_policy
+) values (
+  (select competing_promotion_id from _pricing_ids),
+  (select artist_id from _promotion_ids),
+  (select event_id from _promotion_ids),
+  'live',
+  'exclusive'
+);
+
+select is(
+  public.promotion_assignment_conflicts(
+    (select assignment_id from _pricing_ids)
+  ) ->> 'has_conflict',
+  'true',
+  'overlapping assignment targets are reported'
 );
 
 select * from finish();

@@ -9,6 +9,7 @@ const LONG_PRODUCT_NAME = 'Cheki HSR Yaoguang Normal Convention Exclusive Signed
 let fixture: Awaited<ReturnType<typeof ensureOwnerArtistFixture>>;
 let productId = '';
 let reservedProductId = '';
+let soldProductId = '';
 let unlimitedProductId = '';
 
 async function login(page: Page) {
@@ -60,6 +61,21 @@ test.describe('catalog workspace', () => {
     }).select('id').single();
     if (reservedProduct.error) throw reservedProduct.error;
     reservedProductId = reservedProduct.data.id;
+
+    const soldProduct = await fixture.service.from('products').insert({
+      artist_id: fixture.userId,
+      name: 'Sold stock product',
+      category: 'Other',
+      price: 130,
+      currency: 'THB',
+      stock_total: 7,
+      stock_reserved: 0,
+      stock_sold: 2,
+      is_unlimited: false,
+      status: 'enable',
+    }).select('id').single();
+    if (soldProduct.error) throw soldProduct.error;
+    soldProductId = soldProduct.data.id;
 
     const unlimitedProduct = await fixture.service.from('products').insert({
       artist_id: fixture.userId,
@@ -165,6 +181,12 @@ test.describe('catalog workspace', () => {
     }
 
     await expect(page.getByTestId(`catalog-row-${reservedProductId}`)).toContainText(/Reserved 2|ถูกจอง 2/);
+    const soldRow = page.getByTestId(`catalog-row-${soldProductId}`);
+    const soldCells = soldRow.getByRole('cell');
+    await expect(soldCells.nth(3)).toHaveText('7');
+    await expect(soldCells.nth(4)).toHaveText('5');
+    await expect(soldCells.nth(5)).toHaveText('0');
+    await expect(soldRow).not.toContainText(/Reserved|ถูกจอง/);
     await expect(page.getByTestId(`catalog-row-${unlimitedProductId}`)).toContainText(/Unlimited|ไม่จำกัด/);
     await testInfo.attach('focused-catalog-table', {
       body: await page.screenshot({ fullPage: false }),

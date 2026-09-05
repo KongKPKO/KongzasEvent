@@ -536,7 +536,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          total,
          available,
          allocated,
-         reserved: Math.max(total - available - allocated, 0),
+         reserved: Math.max(product.stock_reserved || 0, 0),
       };
    };
 

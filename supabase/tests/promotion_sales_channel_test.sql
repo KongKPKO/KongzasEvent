@@ -1,6 +1,6 @@
 begin;
 
-select plan(24);
+select plan(38);
 
 select has_table('public', 'promotion_assignments', 'promotion assignments exist');
 select has_table('public', 'promotion_tiers', 'promotion tiers exist');
@@ -213,6 +213,26 @@ select has_function(
   'merchant conflict inspection is available'
 );
 
+select has_function(
+  'public',
+  'create_online_campaign_order',
+  array[
+    'uuid', 'jsonb', 'text', 'uuid', 'text', 'text', 'text', 'text',
+    'text', 'uuid', 'jsonb', 'jsonb', 'text', 'boolean'
+  ],
+  'campaign checkout accepts an authoritative promotion quote'
+);
+
+select has_function(
+  'public',
+  'create_preorder_with_stock',
+  array[
+    'uuid', 'jsonb', 'text', 'text', 'text', 'uuid', 'text', 'text',
+    'text', 'text', 'jsonb', 'jsonb', 'text', 'boolean'
+  ],
+  'event held checkout accepts an authoritative promotion quote'
+);
+
 do $$
 declare
   v_discount uuid := gen_random_uuid();
@@ -314,6 +334,267 @@ select is(
   ) ->> 'has_conflict',
   'true',
   'overlapping assignment targets are reported'
+);
+
+do $$
+declare
+  v_order_id uuid;
+begin
+  update public.online_campaigns
+  set shipping_enabled = true
+  where id = (select campaign_id from _promotion_ids);
+
+  update public.products
+  set stock_total = 20
+  where id = (select product_id from _promotion_ids);
+
+  update public.promotion_assignments
+  set is_paused = false
+  where campaign_id = (select campaign_id from _promotion_ids);
+
+  insert into public.online_campaign_products (
+    campaign_id, product_id, artist_id, price_override,
+    stock_total, stock_reserved, stock_sold, is_unlimited
+  ) values (
+    (select campaign_id from _promotion_ids),
+    (select product_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    100, 10, 0, 0, false
+  );
+
+  insert into public.campaign_payment_methods (
+    campaign_id, artist_id, method_type, display_name
+  ) values (
+    (select campaign_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    'promptpay', 'PromptPay'
+  );
+
+  select result.order_id into v_order_id
+  from public.create_online_campaign_order(
+    (select campaign_id from _promotion_ids),
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _promotion_ids),
+      'quantity', 4
+    )),
+    'shipping', null, 'Campaign Buyer', 'buyer@nireq.local',
+    '0800000000', 'Bangkok', '', gen_random_uuid(),
+    '[]'::jsonb, '[]'::jsonb, null, false
+  ) result;
+
+  create temp table _promotion_checkout (order_id uuid) on commit drop;
+  insert into _promotion_checkout values (v_order_id);
+end $$;
+
+select is(
+  (select total_price from public.orders where id = (select order_id from _promotion_checkout)),
+  400::numeric,
+  'a gift promotion does not add to the campaign order total'
+);
+
+select is(
+  (select sum(quantity) from public.order_items
+   where order_id = (select order_id from _promotion_checkout)
+     and line_type = 'promotion_reward'),
+  1::bigint,
+  'campaign checkout snapshots the earned reward as a zero-price order line'
+);
+
+select is(
+  (select stock_reserved from public.online_campaign_products
+   where campaign_id = (select campaign_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  5,
+  'campaign checkout holds purchased and reward stock together'
+);
+
+update public.order_payments
+set stock_hold_expires_at = now() - interval '1 second'
+where order_id = (select order_id from _promotion_checkout);
+
+select lives_ok(
+  format(
+    'select * from private.expire_online_campaign_hold(%L)',
+    (select order_id from _promotion_checkout)
+  ),
+  'an expired campaign checkout releases its complete stock hold'
+);
+
+select is(
+  (select stock_reserved from public.online_campaign_products
+   where campaign_id = (select campaign_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  0,
+  'expiration returns purchased and reward stock'
+);
+
+create temp table _stale_promotion_quote on commit drop as
+select public.quote_sale_promotions(
+  null,
+  null,
+  (select campaign_id from _promotion_ids),
+  jsonb_build_array(jsonb_build_object(
+    'product_id', (select product_id from _promotion_ids),
+    'quantity', 4
+  ))
+) ->> 'pricing_hash' as pricing_hash;
+
+update public.artist_promotions
+set reward_quantity = 2
+where id = (select promotion_id from _promotion_ids);
+
+select throws_ok(
+  $$ select * from public.create_online_campaign_order(
+       (select campaign_id from _promotion_ids),
+       jsonb_build_array(jsonb_build_object(
+         'product_id', (select product_id from _promotion_ids),
+         'quantity', 4
+       )),
+       'shipping', null, 'Stale Quote Buyer', 'stale@nireq.local',
+       '0800000000', 'Bangkok', '', gen_random_uuid(),
+       '[]'::jsonb, '[]'::jsonb,
+       (select pricing_hash from _stale_promotion_quote), false
+     ) $$,
+  'P0001',
+  'promotion_changed',
+  'checkout rejects a stale client pricing fingerprint'
+);
+
+update public.artist_promotions
+set reward_quantity = 1
+where id = (select promotion_id from _promotion_ids);
+
+do $$
+declare
+  v_order_id uuid;
+begin
+  update public.events
+  set status = 'Confirmed',
+      start_date = now() + interval '1 day',
+      end_date = now() + interval '2 days',
+      preorder_enabled = true,
+      preorder_opens_at = now() - interval '1 hour',
+      preorder_closes_at = now() + interval '12 hours'
+  where id = (select event_id from _promotion_ids);
+
+  update public.promotion_assignments
+  set is_paused = false
+  where event_id = (select event_id from _promotion_ids)
+    and event_phase = 'preorder';
+
+  insert into public.event_payment_methods (
+    event_id, artist_id, method_type, display_name,
+    payment_deadline_at
+  ) values (
+    (select event_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    'promptpay', 'PromptPay', now() + interval '1 day'
+  );
+
+  select result.order_id into v_order_id
+  from public.create_preorder_with_stock(
+    (select event_id from _promotion_ids),
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _promotion_ids),
+      'quantity', 4
+    )),
+    'Preorder Buyer', '0800000000', '', gen_random_uuid(),
+    '0800000000', '', 'preorder@nireq.local', '',
+    '[]'::jsonb, '[]'::jsonb, null, false
+  ) result;
+
+  create temp table _promotion_preorder (order_id uuid) on commit drop;
+  insert into _promotion_preorder values (v_order_id);
+end $$;
+
+select is(
+  (select sum(quantity) from public.order_items
+   where order_id = (select order_id from _promotion_preorder)
+     and line_type = 'promotion_reward'),
+  1::bigint,
+  'Pre-order checkout snapshots the earned reward'
+);
+
+select is(
+  (select stock_reserved from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  5,
+  'Pre-order holds purchased and reward stock together'
+);
+
+update public.order_payments
+set stock_hold_expires_at = now() - interval '1 second'
+where order_id = (select order_id from _promotion_preorder);
+
+select lives_ok(
+  format(
+    'select * from private.expire_preorder_stock_hold(%L)',
+    (select order_id from _promotion_preorder)
+  ),
+  'an expired Pre-order releases its complete stock hold'
+);
+
+select is(
+  (select stock_reserved from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  0,
+  'Pre-order expiration returns purchased and reward stock'
+);
+
+do $$
+declare
+  v_order_id uuid;
+begin
+  update public.events
+  set status = 'Ended',
+      start_date = now() - interval '2 days',
+      end_date = now() - interval '1 day',
+      preorder_enabled = false,
+      postorder_enabled = true,
+      postorder_opens_at = now() - interval '1 hour',
+      postorder_closes_at = now() + interval '1 day'
+  where id = (select event_id from _promotion_ids);
+
+  insert into public.promotion_assignments (
+    promotion_id, artist_id, event_id, event_phase
+  ) values (
+    (select promotion_id from _promotion_ids),
+    (select artist_id from _promotion_ids),
+    (select event_id from _promotion_ids),
+    'postorder'
+  );
+
+  select result.order_id into v_order_id
+  from public.create_preorder_with_stock(
+    (select event_id from _promotion_ids),
+    jsonb_build_array(jsonb_build_object(
+      'product_id', (select product_id from _promotion_ids),
+      'quantity', 4
+    )),
+    'Postorder Buyer', '0800000000', '', gen_random_uuid(),
+    '0800000000', '', 'postorder@nireq.local', 'Bangkok',
+    '[]'::jsonb, '[]'::jsonb, null, false
+  ) result;
+
+  create temp table _promotion_postorder (order_id uuid) on commit drop;
+  insert into _promotion_postorder values (v_order_id);
+end $$;
+
+select isnt(
+  (select stock_hold_expires_at from public.order_payments
+   where order_id = (select order_id from _promotion_postorder)),
+  null::timestamptz,
+  'Post-order receives the same 15-minute stock hold'
+);
+
+select is(
+  (select stock_reserved from public.event_products
+   where event_id = (select event_id from _promotion_ids)
+     and product_id = (select product_id from _promotion_ids)),
+  5,
+  'Post-order holds purchased and reward stock together'
 );
 
 select * from finish();

@@ -100,6 +100,10 @@ export async function createCampaignOrder(input: CreateCampaignOrderInput) {
     p_shipping_address: input.shippingAddress || '',
     p_customer_note: input.customerNote || '',
     p_client_request_id: input.clientRequestId,
+    p_reward_choices: input.rewardChoices || [],
+    p_promotion_choices: input.promotionChoices || [],
+    p_expected_pricing_hash: input.expectedPricingHash || null,
+    p_accept_exhausted_rewards: input.acceptExhaustedRewards || false,
   });
   throwRpcError(error);
   return (data?.[0] || null) as CreatedCampaignOrder | null;

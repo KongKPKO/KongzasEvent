@@ -19,8 +19,8 @@ with public_rpc(signature) as (
     ('public.cancel_customer_order_with_stock_release(uuid)'),
     ('public.cancel_public_preorder_before_payment(uuid,text)'),
     ('public.create_customer_order_with_stock(uuid,jsonb,uuid)'),
-    ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid)'),
-    ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text)'),
+    ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid,jsonb,jsonb,text,boolean)'),
+    ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),
     ('public.estimate_queue_eta(uuid,integer)'),
     ('public.get_customer_order_status(uuid,uuid)'),
@@ -34,6 +34,7 @@ with public_rpc(signature) as (
     ('public.is_platform_admin()'),
     ('public.leave_queue_ticket(uuid,text)'),
     ('public.list_event_products(uuid)'),
+    ('public.quote_sale_promotions(uuid,text,uuid,jsonb,jsonb,jsonb)'),
     ('public.begin_online_payment_upload(text,text)'),
     ('public.submit_online_payment_evidence(text,text,text,uuid)'),
     ('public.submit_preorder_payment_evidence(uuid,text,text,uuid)')
@@ -45,7 +46,7 @@ select is(
     where to_regprocedure(r.signature) is not null
       and has_function_privilege('anon', to_regprocedure(r.signature), 'execute')
   ),
-  21::bigint,
+  22::bigint,
   'anon retains every intentional public RPC and RLS helper'
 );
 
@@ -54,8 +55,8 @@ with public_rpc(signature) as (
     ('public.cancel_customer_order_with_stock_release(uuid)'),
     ('public.cancel_public_preorder_before_payment(uuid,text)'),
     ('public.create_customer_order_with_stock(uuid,jsonb,uuid)'),
-    ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid)'),
-    ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text)'),
+    ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid,jsonb,jsonb,text,boolean)'),
+    ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),
     ('public.estimate_queue_eta(uuid,integer)'),
     ('public.get_customer_order_status(uuid,uuid)'),
@@ -69,6 +70,7 @@ with public_rpc(signature) as (
     ('public.is_platform_admin()'),
     ('public.leave_queue_ticket(uuid,text)'),
     ('public.list_event_products(uuid)'),
+    ('public.quote_sale_promotions(uuid,text,uuid,jsonb,jsonb,jsonb)'),
     ('public.begin_online_payment_upload(text,text)'),
     ('public.submit_online_payment_evidence(text,text,text,uuid)'),
     ('public.submit_preorder_payment_evidence(uuid,text,text,uuid)')

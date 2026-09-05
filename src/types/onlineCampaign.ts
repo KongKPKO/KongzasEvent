@@ -1,3 +1,5 @@
+import type { PromotionChoice } from './promotion';
+
 export type CampaignPublicationStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type CampaignState = CampaignPublicationStatus | 'scheduled' | 'open' | 'sold_out' | 'closed';
 export type CampaignPaymentStatus =
@@ -164,6 +166,10 @@ export interface CreateCampaignOrderInput {
   shippingAddress?: string;
   customerNote?: string;
   clientRequestId: string;
+  rewardChoices?: PromotionChoice[];
+  promotionChoices?: PromotionChoice[];
+  expectedPricingHash?: string | null;
+  acceptExhaustedRewards?: boolean;
 }
 
 export interface CreatedCampaignOrder {

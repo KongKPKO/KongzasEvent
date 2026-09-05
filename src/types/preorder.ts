@@ -1,3 +1,5 @@
+import type { PromotionChoice } from './promotion';
+
 export type EventSellingMode = 'preorder' | 'live' | 'post_event' | 'closed';
 
 export type EventSalesPhase = 'preorder' | 'live' | 'post_event' | 'closed';
@@ -38,6 +40,10 @@ export interface CreatePreorderInput {
   shippingAddress?: string;
   customerNote: string;
   clientRequestId?: string | null;
+  rewardChoices?: PromotionChoice[];
+  promotionChoices?: PromotionChoice[];
+  expectedPricingHash?: string | null;
+  acceptExhaustedRewards?: boolean;
 }
 
 export interface PreorderPaymentMethod {

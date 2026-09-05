@@ -81,6 +81,10 @@ export const createPreorder = async (input: CreatePreorderInput) => {
     p_customer_social: input.customerSocial || '',
     p_customer_email: input.customerEmail || '',
     p_shipping_address: input.shippingAddress || '',
+    p_reward_choices: input.rewardChoices || [],
+    p_promotion_choices: input.promotionChoices || [],
+    p_expected_pricing_hash: input.expectedPricingHash || null,
+    p_accept_exhausted_rewards: input.acceptExhaustedRewards || false,
   });
 
   return firstRow<CreatePreorderResult>(

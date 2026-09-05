@@ -8,7 +8,11 @@ select has_column('public', 'online_campaign_products', 'max_quantity_per_order'
 select has_table('public', 'campaign_pickup_points', 'campaign pickup points are selectable');
 select has_table('public', 'campaign_payment_methods', 'campaign payment instructions are separate');
 select has_function('public', 'get_public_online_campaign', array['text', 'text']);
-select has_function('public', 'create_online_campaign_order', array['uuid', 'jsonb', 'text', 'uuid', 'text', 'text', 'text', 'text', 'text', 'uuid']);
+select has_function(
+  'public',
+  'create_online_campaign_order',
+  array['uuid', 'jsonb', 'text', 'uuid', 'text', 'text', 'text', 'text', 'text', 'uuid', 'jsonb', 'jsonb', 'text', 'boolean']
+);
 select has_function('public', 'begin_online_payment_upload', array['text', 'text']);
 select has_function('public', 'submit_online_payment_evidence', array['text', 'text', 'text', 'uuid']);
 select has_function('public', 'get_public_online_order_by_code', array['text', 'text']);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ChevronDown, Edit2, Gift, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
+import { Archive, Edit2, Gift, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import { archivePromotionDefinition, getPromotionAssignmentConflicts, listPromotionDefinitions, savePromotionDefinition } from '../../lib/promotions';
@@ -64,10 +64,7 @@ function ProductPicker({ products, selected, onChange, label }: { products: Prod
 function SearchableDatalist({ id, label, value, suggestions, onChange, placeholder, helper }: { id: string; label: string; value: string; suggestions: string[]; onChange: (value: string) => void; placeholder: string; helper: string }) {
   return <label>
     <span className={labelClass}>{label}</span>
-    <span className="relative block">
-      <input list={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={`${fieldClass} pr-10`} />
-      <ChevronDown aria-hidden="true" size={17} className="pointer-events-none absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-pink-600" />
-    </span>
+    <input list={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={fieldClass} />
     <datalist id={id}>{suggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
     <span className="mt-1 block text-xs font-semibold text-gray-500">{helper}</span>
   </label>;

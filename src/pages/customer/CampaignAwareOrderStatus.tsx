@@ -144,10 +144,11 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
         <section className="rounded-2xl border border-gray-200 bg-white p-4">
           <h2 className="font-black">{t('campaignOrderItems')}</h2>
           <div className="mt-2 divide-y divide-gray-100">
-            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
+            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-700">ของแถม</span>}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
           </div>
           <div className="mt-2 space-y-1 border-t border-gray-200 pt-2 text-sm">
             <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(order.subtotal_price, order.currency)}</strong></div>
+            {order.discount_total > 0 && <div className="flex justify-between text-emerald-700"><span>ส่วนลดโปรโมชั่น</span><strong>−{formatPrice(order.discount_total, order.currency)}</strong></div>}
             <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(order.shipping_fee, order.currency)}</strong></div>
             <div className="flex justify-between text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(order.total_price, order.currency)}</strong></div>
           </div>

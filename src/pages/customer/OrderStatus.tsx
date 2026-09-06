@@ -589,7 +589,7 @@ const OrderStatus: React.FC = () => {
                   <li key={item.product_id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-gray-900">{item.name}</div>
-                      <div className="text-xs font-medium text-gray-500">x {item.quantity}</div>
+                      <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">ของแถม</span>}</div>
                     </div>
                     <div className="shrink-0 text-sm font-black text-gray-900">
                       {formatPrice(item.price_per_unit * item.quantity, item.currency)}
@@ -597,9 +597,12 @@ const OrderStatus: React.FC = () => {
                   </li>
                 ))}
               </ul>
-              <div className="mt-2 flex items-center justify-between border-t border-gray-200 pt-2">
+              <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
+                {(detail.discount_total || 0) > 0 && <><div className="flex items-center justify-between text-sm"><span className="font-bold text-gray-700">ยอดสินค้า</span><span className="font-black">{formatPrice(detail.subtotal_price || 0, detail.currency)}</span></div><div className="flex items-center justify-between text-sm text-emerald-700"><span className="font-bold">ส่วนลดโปรโมชั่น</span><span className="font-black">−{formatPrice(detail.discount_total || 0, detail.currency)}</span></div></>}
+                <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-700">{t('orderTotalLabel')}</span>
                 <span className="text-lg font-black text-gray-950">{formatPrice(detail.total_price, detail.currency)}</span>
+                </div>
               </div>
               {isPostOrder && detail.shipping_address && (
                 <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">

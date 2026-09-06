@@ -135,6 +135,8 @@ export interface PublicPreorderItem {
   quantity: number;
   price_per_unit: number;
   currency: string;
+  line_type?: 'purchase' | 'promotion_reward';
+  promotion_name?: string | null;
 }
 
 export interface PublicPreorderDetail {
@@ -154,6 +156,9 @@ export interface PublicPreorderDetail {
   customer_name: string;
   customer_email_masked: string;
   total_price: number;
+  subtotal_price?: number;
+  discount_total?: number;
+  pricing_breakdown?: Array<{ promotion_name?: string; discount_amount?: number }>;
   currency: string;
   pickup_instructions: string;
   payment_status: PaymentStatus;

@@ -11,6 +11,7 @@ import { formatPrice } from '../../utils/currency';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { useI18n } from '../../i18n';
+import { quotePromotions } from '../../lib/promotions';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
   createPreorder,
@@ -27,6 +28,7 @@ import {
 } from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { PaymentStatus, PreorderPaymentMethod } from '../../types/preorder';
+import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 
 interface Product {
   id: string;
@@ -86,7 +88,7 @@ const createClientRequestId = () => {
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 const MenuView = () => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const {
     artist: contextArtist,
     isConnected,
@@ -155,6 +157,11 @@ const MenuView = () => {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
+  const [promotionQuote, setPromotionQuote] = useState<PromotionQuote | null>(null);
+  const [promotionQuoteLoading, setPromotionQuoteLoading] = useState(false);
+  const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
+  const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
+  const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
   const clearCart = () => {
     setCart({});
     setCartItemNames({});
@@ -269,6 +276,32 @@ const MenuView = () => {
   const hasValidPreorderEmail = isValidEmail(preorderCustomer.email);
   const postOrderPhoneMissing = isPostOrderMode && preorderCustomer.phone.trim().length === 0;
   const postOrderAddressMissing = isPostOrderMode && preorderCustomer.shippingAddress.trim().length === 0;
+  const requiredPromotionChoices = promotionQuote?.required_choices.filter((choice) => !choice.exhausted) || [];
+  const exhaustedPromotionChoices = promotionQuote?.required_choices.filter((choice) => choice.exhausted) || [];
+  const displayedSubtotal = isAdvanceOrderFlow && promotionQuote ? promotionQuote.subtotal : pricing.subtotal;
+  const displayedDiscount = isAdvanceOrderFlow && promotionQuote ? promotionQuote.discount_total : pricing.discountTotal;
+  const displayedTotal = isAdvanceOrderFlow && promotionQuote ? promotionQuote.total : pricing.total;
+
+  useEffect(() => {
+    if (!isAdvanceOrderFlow || !selectedEvent?.id || cartItems.length === 0) {
+      setPromotionQuote(null);
+      return;
+    }
+    let active = true;
+    setPromotionQuoteLoading(true);
+    const timer = window.setTimeout(() => {
+      void quotePromotions({
+        eventId: selectedEvent.id,
+        eventPhase: isPostOrderMode ? 'postorder' : 'preorder',
+        items: cartItems.map((item) => ({ product_id: item.product.id, quantity: item.quantity })),
+        rewardChoices,
+        promotionChoices,
+      }).then((nextQuote) => { if (active) setPromotionQuote(nextQuote); })
+        .catch((error) => { console.error(error); if (active) setToast({ tone: 'error', title: language === 'th' ? 'คำนวณโปรโมชั่นไม่สำเร็จ' : 'Could not calculate promotions' }); })
+        .finally(() => { if (active) setPromotionQuoteLoading(false); });
+    }, 150);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [cartItems, isAdvanceOrderFlow, isPostOrderMode, language, promotionChoices, rewardChoices, selectedEvent?.id]);
 
   const fetchPromotions = async (artistId: string, eventId?: string | null) => {
     const { data, error } = await supabase.rpc('list_active_promotions', {
@@ -514,6 +547,7 @@ const MenuView = () => {
 
   const updateQuantity = (productId: string, delta: number, productName?: string) => {
     if (isOrderSent) return;
+    setAcceptExhaustedRewards(false);
     setCart(prev => {
       const current = prev[productId] || 0;
       const product = productById.get(productId);
@@ -780,6 +814,10 @@ const MenuView = () => {
         shippingAddress: preorderCustomer.shippingAddress.trim(),
         customerNote: preorderCustomer.note.trim(),
         clientRequestId: createClientRequestId(),
+        rewardChoices,
+        promotionChoices,
+        expectedPricingHash: promotionQuote?.pricing_hash,
+        acceptExhaustedRewards,
       });
 
       const receipt: PreorderReceiptState = {
@@ -945,7 +983,9 @@ const MenuView = () => {
     : userQueueNumber
       ? t('menuQueueGuidanceWaiting')
       : t('menuQueueGuidanceNeedTicket');
-  const canSubmitSelection = isAdvanceOrderFlow ? preorderWindowOpen : canConfirmOrder;
+  const canSubmitSelection = isAdvanceOrderFlow
+    ? preorderWindowOpen && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards)
+    : canConfirmOrder;
   const orderGuidance = isAdvanceOrderFlow ? preorderGuidance : queueGuidance;
   const orderStatusReadyLabel = isAdvanceOrderFlow ? t('menuPreorderReady') : t('menuReadyConfirm');
   const orderStatusWaitingLabel = isAdvanceOrderFlow ? t('menuPreorderClosed') : t('menuSelectionOnly');
@@ -990,7 +1030,7 @@ const MenuView = () => {
       <ConfirmDialog
         open={confirmAction === 'submit_order'}
         title={isAdvanceOrderFlow ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')}
-        detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(pricing.total, cartCurrency)}`}
+        detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(displayedTotal, cartCurrency)}`}
         confirmLabel={isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}
         loading={submitting}
         onConfirm={submitConfirmedOrder}
@@ -1315,7 +1355,7 @@ const MenuView = () => {
                                 })}
                             </div>
 
-                            {pricing.appliedPromotions.length > 0 && (
+                            {!isAdvanceOrderFlow && pricing.appliedPromotions.length > 0 && (
                                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
                                     <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2">
                                         <Sparkles size={12} /> {t('menuAppliedPromotions')}
@@ -1334,20 +1374,54 @@ const MenuView = () => {
                                 </div>
                             )}
 
+                            {isAdvanceOrderFlow && promotionQuote && promotionQuote.applied_promotions.length > 0 && (
+                                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+                                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2"><Sparkles size={12} /> {t('menuAppliedPromotions')}</div>
+                                    <div className="space-y-1.5">
+                                      {promotionQuote.applied_promotions.map((promotion) => <div key={promotion.id} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px]"><div className="flex justify-between gap-2"><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <strong className="text-emerald-700">- {formatPrice(promotion.discount_amount, cartCurrency)}</strong>}</div></div>)}
+                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</div>)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {isAdvanceOrderFlow && requiredPromotionChoices.map((choice) => (
+                              <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="mt-3 rounded-lg border border-pink-200 bg-pink-50 p-2.5">
+                                <div className="text-[11px] font-black text-gray-900">{choice.kind === 'reward' ? (language === 'th' ? `เลือกของแถม ${choice.earned_quantity || 1} ชิ้น` : `Choose ${choice.earned_quantity || 1} gift(s)`) : (language === 'th' ? 'เลือกโปรโมชั่นที่ต้องการใช้' : 'Choose a promotion')}</div>
+                                <div className="mt-2 grid gap-1.5">
+                                  {choice.options.map((option) => {
+                                    const optionId = option.product_id || option.id;
+                                    return <button key={optionId} type="button" onClick={() => {
+                                      setAcceptExhaustedRewards(false);
+                                      if (choice.kind === 'reward') {
+                                        const selected = { promotion_id: choice.promotion_id, tier_id: choice.tier_id, product_ids: Array(choice.earned_quantity || 1).fill(optionId) };
+                                        setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), selected]);
+                                      } else {
+                                        setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]);
+                                      }
+                                    }} className="min-h-10 rounded-lg border border-pink-200 bg-white px-2 text-left text-xs font-bold text-gray-800">{option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}</button>;
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+
+                            {isAdvanceOrderFlow && exhaustedPromotionChoices.length > 0 && (
+                              <label className="mt-3 flex cursor-pointer gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-0.5" /><span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion before continuing.'}</span></label>
+                            )}
+
                             <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-1.5">
                                 <div className="flex items-center justify-between text-[11px] text-gray-600">
                                     <span>{t('menuSubtotal')}</span>
-                                    <span className="font-bold text-gray-800">{formatPrice(pricing.subtotal, cartCurrency)}</span>
+                                    <span className="font-bold text-gray-800">{formatPrice(displayedSubtotal, cartCurrency)}</span>
                                 </div>
-                                {pricing.discountTotal > 0 && (
+                                {displayedDiscount > 0 && (
                                     <div className="flex items-center justify-between text-[11px] text-emerald-700">
                                         <span>{t('menuDiscount')}</span>
-                                        <span className="font-black">- {formatPrice(pricing.discountTotal, cartCurrency)}</span>
+                                        <span className="font-black">- {formatPrice(displayedDiscount, cartCurrency)}</span>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between pt-1 border-t border-gray-200">
                                     <span className="text-xs font-bold text-gray-700">{t('menuTotal')}</span>
-                                    <span className="text-sm font-black text-gray-900">{formatPrice(pricing.total, cartCurrency)}</span>
+                                    <span className="text-sm font-black text-gray-900">{formatPrice(displayedTotal, cartCurrency)}</span>
                                 </div>
                             </div>
 
@@ -1519,9 +1593,9 @@ const MenuView = () => {
                             <>
                                 <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left lg:cursor-default">
                                     <div className="flex items-center gap-1 text-gray-600 text-[11px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span><span className="lg:hidden">{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="cart-chevron-nudge"/>}</span></div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(pricing.total, cartCurrency)}</span><span className="text-[11px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
-                                    {pricing.discountTotal > 0 && (
-                                        <div className="text-[11px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(pricing.discountTotal, cartCurrency)}</div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(displayedTotal, cartCurrency)}</span><span className="text-[11px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
+                                    {displayedDiscount > 0 && (
+                                        <div className="text-[11px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(displayedDiscount, cartCurrency)}</div>
                                     )}
                                     <div className={`mt-0.5 text-[11px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
                                 </button>

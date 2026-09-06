@@ -37,6 +37,10 @@ const knownCodes = new Set([
   'stock_hold_expired',
   'payment_not_awaiting',
   'payment_submission_not_allowed',
+  'promotion_changed',
+  'promotion_choice_required',
+  'promotion_reward_unavailable',
+  'promotion_rewards_exhausted',
   'order_not_found',
   'forbidden',
 ]);

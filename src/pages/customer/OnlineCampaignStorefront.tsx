@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
+import { PromotionError, quotePromotions } from '../../lib/promotions';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
+import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 
@@ -18,7 +20,7 @@ function CampaignProductImage({ name, imageUrl }: { name: string; imageUrl?: str
 export default function OnlineCampaignStorefront() {
   const { slug, campaignSlug } = useParams<{ slug: string; campaignSlug: string }>();
   const navigate = useNavigate();
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, language } = useI18n();
   const [campaign, setCampaign] = useState<PublicOnlineCampaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -27,6 +29,11 @@ export default function OnlineCampaignStorefront() {
   const [pickupPointId, setPickupPointId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [quote, setQuote] = useState<PromotionQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
+  const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
+  const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
 
   useEffect(() => {
     if (!slug || !campaignSlug) return;
@@ -55,9 +62,41 @@ export default function OnlineCampaignStorefront() {
 
   const subtotal = cartItems.reduce((sum, item) => sum + Number(item.product.price) * item.quantity, 0);
   const estimatedShipping = fulfillment === 'shipping' ? Number(campaign?.flat_shipping_fee || 0) : 0;
-  const total = subtotal + estimatedShipping;
+  const merchandiseTotal = quote?.merchandise_total ?? subtotal;
+  const total = merchandiseTotal + estimatedShipping;
+  const exhaustedRewards = quote?.required_choices.filter((choice) => choice.exhausted) || [];
+  const unresolvedChoices = quote?.required_choices.filter((choice) => !choice.exhausted) || [];
+
+  useEffect(() => {
+    if (!campaign || cartItems.length === 0) {
+      setQuote(null);
+      return;
+    }
+    let active = true;
+    setQuoteLoading(true);
+    const timer = window.setTimeout(() => {
+      void quotePromotions({
+        campaignId: campaign.id,
+        items: cartItems.map((item) => ({ product_id: item.product.product_id, quantity: item.quantity })),
+        rewardChoices,
+        promotionChoices,
+      }).then((nextQuote) => {
+        if (active) setQuote(nextQuote);
+      }).catch((quoteError) => {
+        console.error(quoteError);
+        if (active) setError(language === 'th' ? 'คำนวณโปรโมชั่นไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not calculate promotions. Please try again.');
+      }).finally(() => {
+        if (active) setQuoteLoading(false);
+      });
+    }, 150);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [campaign, cartItems, language, promotionChoices, rewardChoices]);
 
   const changeQuantity = (productId: string, delta: number, max: number | null) => {
+    setAcceptExhaustedRewards(false);
     setCart((current) => {
       const next = Math.max(0, (current[productId] || 0) + delta);
       return { ...current, [productId]: max === null ? next : Math.min(next, max) };
@@ -82,15 +121,24 @@ export default function OnlineCampaignStorefront() {
         shippingAddress: fulfillment === 'shipping' ? String(form.get('shipping_address') || '') : '',
         customerNote: String(form.get('customer_note') || ''),
         clientRequestId: crypto.randomUUID(),
+        rewardChoices,
+        promotionChoices,
+        expectedPricingHash: quote?.pricing_hash,
+        acceptExhaustedRewards,
       });
       if (!result) throw new Error('campaign_request_failed');
       void notifyOnlineCampaignOrder({ orderId: result.order_id, orderCode: result.order_code, event: 'created' }).catch(() => undefined);
       navigate('/' + slug + '/order/' + result.order_code);
     } catch (checkoutError) {
       console.error(checkoutError);
-      setError(checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded'
-        ? t('campaignProductOrderLimitExceeded')
-        : t('campaignCheckoutFailed'));
+      if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded') {
+        setError(t('campaignProductOrderLimitExceeded'));
+      } else if ((checkoutError instanceof OnlineCampaignError || checkoutError instanceof PromotionError) && checkoutError.code === 'promotion_changed') {
+        setAcceptExhaustedRewards(false);
+        setError(language === 'th' ? 'โปรโมชั่นหรือสต็อกมีการเปลี่ยนแปลง กรุณาตรวจสอบยอดใหม่' : 'A promotion or stock level changed. Please review the new total.');
+      } else {
+        setError(t('campaignCheckoutFailed'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -193,13 +241,68 @@ export default function OnlineCampaignStorefront() {
               )}
               <textarea name="customer_note" placeholder={t('campaignCustomerNote')} className="min-h-20 w-full rounded-xl border border-gray-200 p-3" />
             </div>
+            {quote?.applied_promotions.length ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                <div className="font-black text-emerald-900">{language === 'th' ? 'โปรโมชั่นที่ได้รับ' : 'Applied promotions'}</div>
+                {quote.applied_promotions.map((promotion) => (
+                  <div key={promotion.id} className="mt-1 flex justify-between gap-3 text-emerald-800">
+                    <span>{promotion.name}</span>
+                    {promotion.discount_amount > 0 && <strong>-{formatPrice(promotion.discount_amount, campaign.currency)}</strong>}
+                  </div>
+                ))}
+                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</div>)}
+              </div>
+            ) : null}
+            {unresolvedChoices.map((choice) => (
+              <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="mt-4 rounded-xl border border-pink-200 bg-pink-50 p-3">
+                <div className="text-sm font-black text-gray-900">
+                  {choice.kind === 'reward'
+                    ? (language === 'th' ? `เลือกของแถม ${choice.earned_quantity || 1} ชิ้น` : `Choose ${choice.earned_quantity || 1} free gift(s)`)
+                    : (language === 'th' ? 'เลือกโปรโมชั่นที่ต้องการใช้' : 'Choose a promotion')}
+                </div>
+                <div className="mt-2 grid gap-2">
+                  {choice.options.map((option) => {
+                    const optionId = option.product_id || option.id;
+                    return (
+                      <button
+                        key={optionId}
+                        type="button"
+                        onClick={() => {
+                          setAcceptExhaustedRewards(false);
+                          if (choice.kind === 'reward') {
+                            const nextChoice: PromotionChoice = {
+                              promotion_id: choice.promotion_id,
+                              tier_id: choice.tier_id,
+                              product_ids: Array(choice.earned_quantity || 1).fill(optionId),
+                            };
+                            setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), nextChoice]);
+                          } else {
+                            setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]);
+                          }
+                        }}
+                        className="min-h-11 rounded-xl border border-pink-200 bg-white px-3 text-left text-sm font-bold text-gray-800"
+                      >
+                        {option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {exhaustedRewards.length > 0 && (
+              <label className="mt-4 flex cursor-pointer gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-1 h-4 w-4" />
+                <span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรโมชั่นนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion, then confirm to continue.'}</span>
+              </label>
+            )}
             <div className="mt-4 space-y-1 rounded-xl bg-gray-50 p-3 text-sm">
               <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(subtotal, campaign.currency)}</strong></div>
+              {(quote?.discount_total || 0) > 0 && <div className="flex justify-between text-emerald-700"><span>{language === 'th' ? 'ส่วนลด' : 'Discount'}</span><strong>-{formatPrice(quote?.discount_total || 0, campaign.currency)}</strong></div>}
               <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(estimatedShipping, campaign.currency)}</strong></div>
               <div className="flex justify-between border-t border-gray-200 pt-2 text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(total, campaign.currency)}</strong></div>
             </div>
             {error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div>}
-            <button disabled={submitting} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">
+            <button disabled={submitting || quoteLoading || !quote || unresolvedChoices.length > 0 || (exhaustedRewards.length > 0 && !acceptExhaustedRewards)} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">
               {submitting && <Loader2 className="animate-spin" size={16} />}{submitting ? t('campaignCreatingOrder') : t('campaignConfirmOrder')}
             </button>
           </form>

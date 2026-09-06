@@ -1,6 +1,6 @@
 begin;
 
-select plan(45);
+select plan(48);
 
 select has_table('public', 'promotion_assignments', 'promotion assignments exist');
 select has_table('public', 'promotion_tiers', 'promotion tiers exist');
@@ -212,6 +212,55 @@ select has_function(
   array['uuid'],
   'merchant conflict inspection is available'
 );
+
+select has_function(
+  'public',
+  'save_promotion_definition',
+  array['jsonb'],
+  'merchant promotion definitions can be saved atomically'
+);
+
+select has_function(
+  'public',
+  'archive_promotion_definition',
+  array['uuid'],
+  'merchant promotions can be archived without deleting order history'
+);
+
+do $$ begin
+  perform set_config(
+    'request.jwt.claims',
+    jsonb_build_object(
+      'sub', (select owner_id from _promotion_ids),
+      'role', 'authenticated',
+      'email', 'promotion.owner@nireq.local'
+    )::text,
+    true
+  );
+end $$;
+grant select on _promotion_ids to authenticated;
+set local role authenticated;
+
+select isnt(
+  public.save_promotion_definition(jsonb_build_object(
+    'artist_id', (select artist_id from _promotion_ids),
+    'name', 'Every 2 save 20',
+    'promotion_type', 'quantity_discount',
+    'target_type', 'all',
+    'buy_quantity', 2,
+    'reward_value', 20,
+    'assignments', jsonb_build_array(jsonb_build_object(
+      'event_id', (select event_id from _promotion_ids),
+      'event_phase', 'postorder',
+      'combination_policy', 'combine',
+      'is_paused', true
+    ))
+  )),
+  null::uuid,
+  'an owner can save a complete promotion and assignment in one transaction'
+);
+
+reset role;
 
 select has_function(
   'public',

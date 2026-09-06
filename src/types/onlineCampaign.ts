@@ -104,6 +104,8 @@ export interface CampaignOrderItem {
   quantity: number;
   price_per_unit: number;
   currency?: string;
+  line_type?: 'purchase' | 'promotion_reward';
+  promotion_name?: string | null;
 }
 
 export interface CampaignOrder {
@@ -144,6 +146,7 @@ export interface CampaignOrder {
   picked_up_at?: string | null;
   refunded_at?: string | null;
   items: CampaignOrderItem[];
+  pricing_breakdown?: Array<{ promotion_name?: string; discount_amount?: number }>;
 }
 
 export interface CampaignWorkspace {

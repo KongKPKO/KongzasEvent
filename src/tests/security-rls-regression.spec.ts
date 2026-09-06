@@ -559,6 +559,7 @@ test.describe('RLS and mutation security regressions', () => {
         id: ids.promotion,
         artist_id: ids.artist,
         name: 'Global Bualoi Promo',
+        promotion_type: 'quantity_discount',
         target_type: 'product',
         rule_type: 'discount',
         match_product_id: null,
@@ -576,6 +577,7 @@ test.describe('RLS and mutation security regressions', () => {
         id: ids.excludedPromotion,
         artist_id: ids.artist,
         name: 'Excluded Event Promo',
+        promotion_type: 'quantity_discount',
         target_type: 'product',
         rule_type: 'discount',
         match_product_id: null,
@@ -593,6 +595,7 @@ test.describe('RLS and mutation security regressions', () => {
         id: ids.selectedPromotion,
         artist_id: ids.artist,
         name: 'Selected Second Event Promo',
+        promotion_type: 'quantity_discount',
         target_type: 'product',
         rule_type: 'discount',
         match_product_id: null,
@@ -704,14 +707,9 @@ test.describe('RLS and mutation security regressions', () => {
     });
     expect(walkinOrder.error).toBeNull();
 
-    const pricing = await owner.rpc('apply_order_pricing', {
-      p_order_id: walkinOrder.data as string,
-      p_subtotal_price: 150,
-      p_discount_total: 0,
-      p_total_price: 150,
-      p_pricing_breakdown: [],
-    });
-    expect(pricing.error).toBeNull();
+    const pricedOrder = await service.from('orders').select('subtotal_price, total_price').eq('id', walkinOrder.data as string).single();
+    expect(pricedOrder.error).toBeNull();
+    expect(pricedOrder.data).toMatchObject({ subtotal_price: 150, total_price: 150 });
 
     const eventStock = await service
       .from('event_products')

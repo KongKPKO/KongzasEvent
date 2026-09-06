@@ -8,6 +8,8 @@ import type { ActorContext } from '../../types/access';
 import { getAvailableUnits, isLowStock } from '../../utils/posCatalog';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
+import { quotePromotions } from '../../lib/promotions';
+import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
 // "status unknown."  Each individual fetch already has a 15 s per-request
@@ -161,6 +163,11 @@ export default function POSPanel({
     const [products, setProducts] = useState<Product[]>([]);
     const [promotions, setPromotions] = useState<PromotionRule[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
+    const [promotionQuote, setPromotionQuote] = useState<PromotionQuote | null>(null);
+    const [promotionQuoteLoading, setPromotionQuoteLoading] = useState(false);
+    const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
+    const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
+    const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
@@ -521,7 +528,6 @@ export default function POSPanel({
         selectedTag !== 'All' ||
         selectedQuickFilter !== 'all' ||
         sortBy !== 'name';
-    const canChargeOrder = cart.length > 0 && !loading && !fetchError && !!activeEvent && overdraftProductIds.size === 0;
 
     const renderImageFallback = (name: string, compact = false) => (
         <div className={`w-full h-full flex ${compact ? 'items-center justify-center' : 'flex-col items-center justify-center gap-1'} bg-gray-100 text-gray-400`}>
@@ -578,6 +584,32 @@ export default function POSPanel({
     };
 
     const pricing = useMemo(() => calculatePromotionPricing(cart, promotions), [cart, promotions]);
+    const requiredPromotionChoices = promotionQuote?.required_choices.filter((choice) => !choice.exhausted) || [];
+    const exhaustedPromotionChoices = promotionQuote?.required_choices.filter((choice) => choice.exhausted) || [];
+    const displayedSubtotal = promotionQuote?.subtotal ?? pricing.subtotal;
+    const displayedDiscount = promotionQuote?.discount_total ?? pricing.discountTotal;
+    const displayedTotal = promotionQuote?.total ?? pricing.total;
+    const canChargeOrder = cart.length > 0 && !loading && !fetchError && !!activeEvent && overdraftProductIds.size === 0 && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards);
+
+    useEffect(() => { setAcceptExhaustedRewards(false); }, [cart]);
+
+    useEffect(() => {
+        if (!activeEvent?.id || cart.length === 0) { setPromotionQuote(null); return; }
+        let active = true;
+        setPromotionQuoteLoading(true);
+        const timer = window.setTimeout(() => {
+            void quotePromotions({
+                eventId: activeEvent.id,
+                eventPhase: 'live',
+                items: cart.map((item) => ({ product_id: item.product.id, quantity: item.quantity })),
+                rewardChoices,
+                promotionChoices,
+            }).then((quote) => { if (active) setPromotionQuote(quote); })
+              .catch((error) => { console.error(error); if (active) setToast({ tone: 'error', title: 'Could not calculate promotions' }); })
+              .finally(() => { if (active) setPromotionQuoteLoading(false); });
+        }, 100);
+        return () => { active = false; window.clearTimeout(timer); };
+    }, [activeEvent?.id, cart, promotionChoices, rewardChoices]);
     const promoInsights = pricing.insights;
     const highlightedCounts = useMemo(() => ({
         promo: products.filter((product) => getPromotionBadgesForProduct(product, promotions).length > 0).length,
@@ -651,10 +683,10 @@ export default function POSPanel({
         const orderIdAtPaymentStart = currentOrderId;
         const queueIdAtPaymentStart = selectedQueueId;
         const pricingSnapshot: PricingSnapshot = {
-            subtotal: pricing.subtotal,
-            discountTotal: pricing.discountTotal,
-            total: pricing.total,
-            appliedPromotions: pricing.appliedPromotions,
+            subtotal: displayedSubtotal,
+            discountTotal: displayedDiscount,
+            total: displayedTotal,
+            appliedPromotions: promotionQuote?.applied_promotions || [],
         };
         const paymentAttemptContext = JSON.stringify({
             artist_id: actorContext.artist_id,
@@ -684,6 +716,10 @@ export default function POSPanel({
                     p_order_id: orderIdAtPaymentStart,
                     p_payment_method: method,
                     p_payment_idempotency_key: paymentAttemptId,
+                    p_reward_choices: rewardChoices,
+                    p_promotion_choices: promotionChoices,
+                    p_expected_pricing_hash: promotionQuote?.pricing_hash || null,
+                    p_accept_exhausted_rewards: acceptExhaustedRewards,
                 });
                 if (completeError) throw completeError;
             } else if (queueIdAtPaymentStart) {
@@ -699,6 +735,10 @@ export default function POSPanel({
                     p_order_id: orderId,
                     p_payment_method: method,
                     p_payment_idempotency_key: paymentAttemptId,
+                    p_reward_choices: rewardChoices,
+                    p_promotion_choices: promotionChoices,
+                    p_expected_pricing_hash: promotionQuote?.pricing_hash || null,
+                    p_accept_exhausted_rewards: acceptExhaustedRewards,
                 });
                 if (completeError) throw completeError;
             } else {
@@ -707,6 +747,10 @@ export default function POSPanel({
                     p_items: payloadItems,
                     p_payment_method: method,
                     p_payment_idempotency_key: paymentAttemptId,
+                    p_reward_choices: rewardChoices,
+                    p_promotion_choices: promotionChoices,
+                    p_expected_pricing_hash: promotionQuote?.pricing_hash || null,
+                    p_accept_exhausted_rewards: acceptExhaustedRewards,
                 });
                 if (walkinError) throw walkinError;
             }
@@ -812,7 +856,7 @@ export default function POSPanel({
     };
 
     const renderAppliedPromotions = () => {
-        if (pricing.appliedPromotions.length === 0) return null;
+        if (!promotionQuote || promotionQuote.applied_promotions.length === 0) return null;
 
         return (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
@@ -821,19 +865,25 @@ export default function POSPanel({
                     Applied promotions
                 </div>
                 <div className="space-y-2">
-                    {pricing.appliedPromotions.map((promotion) => (
-                        <div key={promotion.ruleId} className="rounded-lg bg-white/90 border border-emerald-100 px-2.5 py-2 flex items-start justify-between gap-2">
+                    {promotionQuote.applied_promotions.map((promotion) => (
+                        <div key={promotion.id} className="rounded-lg bg-white/90 border border-emerald-100 px-2.5 py-2 flex items-start justify-between gap-2">
                             <div>
-                                <div className="text-[11px] font-bold text-gray-800">{promotion.label}</div>
-                                <div className="text-[10px] text-gray-600">{promotion.message}</div>
+                                <div className="text-[11px] font-bold text-gray-800">{promotion.name}</div>
+                                <div className="text-[10px] text-gray-600">{promotion.rule_text}</div>
                             </div>
-                            <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discountAmount, cart[0]?.product.currency)}</div>
+                            {promotion.discount_amount > 0 && <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discount_amount, cart[0]?.product.currency)}</div>}
                         </div>
                     ))}
+                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">Free gift: {reward.name} × {reward.quantity}</div>)}
                 </div>
             </div>
         );
     };
+
+    const renderPromotionChoices = () => <>
+        {requiredPromotionChoices.map((choice) => <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="rounded-xl border border-pink-200 bg-pink-50 p-3"><div className="text-xs font-black text-gray-900">{choice.kind === 'reward' ? `Choose ${choice.earned_quantity || 1} free gift(s)` : 'Choose a promotion'}</div><div className="mt-2 grid gap-1.5">{choice.options.map((option) => { const optionId = option.product_id || option.id; return <button type="button" key={optionId} onClick={() => { if (choice.kind === 'reward') { const selected = { promotion_id: choice.promotion_id, tier_id: choice.tier_id, product_ids: Array(choice.earned_quantity || 1).fill(optionId) }; setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), selected]); } else { setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]); } }} className="min-h-10 rounded-lg border border-pink-200 bg-white px-2 text-left text-xs font-bold">{option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}</button>; })}</div></div>)}
+        {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">All gifts for this promotion are out of stock.</strong>Review the new total without this promotion before charging.</span></label>}
+    </>;
 
     const renderCartItems = () => {
         // We ALWAYS render the cart structure if items exist.
@@ -869,6 +919,7 @@ export default function POSPanel({
                 )}
                 {renderPromoHelper()}
                 {renderAppliedPromotions()}
+                {renderPromotionChoices()}
 
                 {cart.map((item) => {
                     const promoBadges = getPromotionBadgesForProduct(item.product, promotions);
@@ -955,17 +1006,17 @@ export default function POSPanel({
             <div className="space-y-1.5 mb-2">
                 <div className="flex justify-between items-baseline">
                     <span className="text-gray-500 font-medium text-sm">Subtotal</span>
-                    <span className="text-sm font-bold text-gray-700">{formatPrice(pricing.subtotal, cart[0]?.product.currency)}</span>
+                    <span className="text-sm font-bold text-gray-700">{formatPrice(displayedSubtotal, cart[0]?.product.currency)}</span>
                 </div>
-                {pricing.discountTotal > 0 && (
+                {displayedDiscount > 0 && (
                     <div className="flex justify-between items-baseline">
                         <span className="text-emerald-700 font-medium text-sm">Discount</span>
-                        <span className="text-sm font-black text-emerald-700">- {formatPrice(pricing.discountTotal, cart[0]?.product.currency)}</span>
+                        <span className="text-sm font-black text-emerald-700">- {formatPrice(displayedDiscount, cart[0]?.product.currency)}</span>
                     </div>
                 )}
                 <div className="flex justify-between items-baseline pt-1 border-t border-gray-100">
                     <span className="text-gray-500 font-medium text-sm">Total</span>
-                    <span className={`${mobile ? 'text-xl' : 'text-2xl'} font-extrabold text-gray-900`}>{formatPrice(pricing.total, cart[0]?.product.currency)}</span>
+                    <span className={`${mobile ? 'text-xl' : 'text-2xl'} font-extrabold text-gray-900`}>{formatPrice(displayedTotal, cart[0]?.product.currency)}</span>
                 </div>
             </div>
 
@@ -1033,7 +1084,7 @@ export default function POSPanel({
                     ? 'Cart has unavailable items'
                     : cart.length === 0
                     ? 'Charge ' + formatPrice(0, cart[0]?.product.currency)
-                    : 'Charge ' + formatPrice(pricing.total, cart[0]?.product.currency)}
+                    : 'Charge ' + formatPrice(displayedTotal, cart[0]?.product.currency)}
             </button>
         </>
     );
@@ -1113,9 +1164,9 @@ export default function POSPanel({
                                     {cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU
                                 </div>
                             </div>
-                            {pricing.discountTotal > 0 && (
+                            {displayedDiscount > 0 && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 border border-emerald-100">
-                                    Save {formatPrice(pricing.discountTotal, cart[0]?.product.currency)}
+                                    Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}
                                 </span>
                             )}
                         </div>
@@ -1433,10 +1484,10 @@ export default function POSPanel({
                             </div>
                         </div>
                         <div className="text-right shrink-0">
-                            {pricing.discountTotal > 0 && (
-                                <div className="text-[11px] font-bold text-emerald-600">Save {formatPrice(pricing.discountTotal, cart[0]?.product.currency)}</div>
+                            {displayedDiscount > 0 && (
+                                <div className="text-[11px] font-bold text-emerald-600">Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
                             )}
-                            <div className="text-lg font-extrabold text-gray-900">{formatPrice(pricing.total, cart[0]?.product.currency)}</div>
+                            <div className="text-lg font-extrabold text-gray-900">{formatPrice(displayedTotal, cart[0]?.product.currency)}</div>
                             <div className="text-[11px] font-bold text-pink-600">{cart.length === 0 ? 'Select items' : 'View cart'}</div>
                         </div>
                     </div>
@@ -1485,7 +1536,7 @@ export default function POSPanel({
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
                         <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Record payment</h3>
-                        <p className="text-gray-500 text-center mb-6">Confirm what you received directly from the customer. Nireq does not check your bank account.<br />Amount: <span className="text-pink-600 font-bold">{formatPrice(pricing.total, cart[0]?.product.currency)}</span></p>
+                        <p className="text-gray-500 text-center mb-6">Confirm what you received directly from the customer. Nireq does not check your bank account.<br />Amount: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}

@@ -41,8 +41,55 @@ export interface PromotionRewardProduct {
   sort_order: number;
 }
 
+export interface PromotionDefinition {
+  id: string;
+  artist_id: string;
+  name: string | null;
+  promotion_type: PromotionType;
+  target_type: PromotionTargetType;
+  match_category: string | null;
+  match_tag: string | null;
+  match_product_ids: string[] | null;
+  buy_quantity: number | null;
+  reward_value: number | null;
+  reward_quantity: number | null;
+  reward_selection_mode: PromotionRewardSelectionMode | null;
+  tier_grant_mode: PromotionTierGrantMode | null;
+  lifecycle_status: PromotionLifecycleStatus;
+  revision: number;
+  assignments: PromotionAssignment[];
+  tiers: Array<PromotionTier & { reward_product_ids: string[] }>;
+  reward_product_ids: string[];
+}
+
+export interface SavePromotionDefinitionInput {
+  id?: string | null;
+  artist_id: string;
+  name: string;
+  promotion_type: Exclude<PromotionType, 'legacy_free_eligible_items'>;
+  target_type: PromotionTargetType;
+  match_category?: string | null;
+  match_tag?: string | null;
+  match_product_ids?: string[];
+  buy_quantity?: number | null;
+  reward_value?: number | null;
+  reward_quantity?: number | null;
+  reward_selection_mode?: PromotionRewardSelectionMode | null;
+  tier_grant_mode?: PromotionTierGrantMode | null;
+  assignments: Array<Omit<PromotionAssignment, 'id' | 'promotion_id' | 'artist_id'>>;
+  tiers?: Array<{
+    threshold_amount: number;
+    reward_quantity: number;
+    reward_selection_mode: PromotionRewardSelectionMode;
+    sort_order: number;
+    reward_product_ids: string[];
+  }>;
+  reward_product_ids?: string[];
+}
+
 export interface PromotionChoice {
   promotion_id: string;
+  tier_id?: string | null;
   selected_promotion_id?: string;
   product_ids?: string[];
 }
@@ -78,9 +125,12 @@ export interface PromotionRewardLine {
 export interface PromotionRequiredChoice {
   kind: 'reward' | 'exclusive_promotion';
   promotion_id: string;
+  tier_id?: string | null;
   earned_quantity?: number;
+  exhausted?: boolean;
   options: Array<{
     id: string;
+    product_id?: string;
     name: string;
     sku?: string | null;
     available?: number | null;

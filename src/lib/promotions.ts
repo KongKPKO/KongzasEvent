@@ -35,6 +35,11 @@ export const toPromotionError = (error: unknown) => {
   return new PromotionError(code || 'promotion_request_failed');
 };
 
+export const requiresPromotionReview = (error: unknown) => [
+  'promotion_changed', 'promotion_choice_required',
+  'promotion_reward_unavailable', 'promotion_rewards_exhausted',
+].includes(toPromotionError(error).code);
+
 export const quotePromotions = async (input: PromotionQuoteInput): Promise<PromotionQuote> => {
   const { data, error } = await supabase.rpc('quote_sale_promotions', {
     p_event_id: input.eventId || null,
@@ -99,9 +104,19 @@ export const listPromotionDefinitions = async (artistId: string): Promise<Promot
 
 export const savePromotionDefinition = async (definition: SavePromotionDefinitionInput) => {
   const { data, error } = await supabase.rpc('save_promotion_definition', { p_definition: definition });
+  if (error?.message.includes('promotion_conflict_confirmation_required')) {
+    const detail = JSON.parse(error.details);
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+  }
   if (error) throw toPromotionError(error);
   return data as string;
 };
+
+export class PromotionSaveConflict extends Error {
+  constructor(public token: string, public promotionNames: string[]) {
+    super('promotion_conflict_confirmation_required');
+  }
+}
 
 export const archivePromotionDefinition = async (promotionId: string) => {
   const { data, error } = await supabase.rpc('archive_promotion_definition', { p_promotion_id: promotionId });

@@ -63,6 +63,8 @@ export interface PromotionDefinition {
 }
 
 export interface SavePromotionDefinitionInput {
+  expected_revision?: number;
+  confirmation_token?: string;
   id?: string | null;
   artist_id: string;
   name: string;
@@ -88,6 +90,8 @@ export interface SavePromotionDefinitionInput {
 }
 
 export interface PromotionChoice {
+  accepted_quantity?: number;
+  accepted_earned_quantity?: number;
   promotion_id: string;
   tier_id?: string | null;
   selected_promotion_id?: string;
@@ -123,6 +127,8 @@ export interface PromotionRewardLine {
 }
 
 export interface PromotionRequiredChoice {
+  available_quantity?: number;
+  partial?: boolean;
   kind: 'reward' | 'exclusive_promotion';
   promotion_id: string;
   tier_id?: string | null;

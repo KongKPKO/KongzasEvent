@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
+import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { Link, useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
@@ -11,7 +12,7 @@ import { formatPrice } from '../../utils/currency';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { useI18n } from '../../i18n';
-import { quotePromotions } from '../../lib/promotions';
+import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
   createPreorder,
@@ -847,6 +848,10 @@ const MenuView = () => {
       clearCart();
       navigate(`/${displayArtist?.slug || slug}/order/${result.pickup_code}`);
     } catch (err) {
+      if (requiresPromotionReview(err)) {
+        setRewardChoices([]);
+        setAcceptExhaustedRewards(false);
+      }
       setToast({ tone: 'error', title: t('menuPreorderFailed'), detail: getPreorderErrorMessage(err) });
       console.error(err);
     } finally {
@@ -1384,25 +1389,13 @@ const MenuView = () => {
                                 </div>
                             )}
 
-                            {isAdvanceOrderFlow && requiredPromotionChoices.map((choice) => (
-                              <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="mt-3 rounded-lg border border-pink-200 bg-pink-50 p-2.5">
-                                <div className="text-[11px] font-black text-gray-900">{choice.kind === 'reward' ? (language === 'th' ? `เลือกของแถม ${choice.earned_quantity || 1} ชิ้น` : `Choose ${choice.earned_quantity || 1} gift(s)`) : (language === 'th' ? 'เลือกโปรโมชั่นที่ต้องการใช้' : 'Choose a promotion')}</div>
-                                <div className="mt-2 grid gap-1.5">
-                                  {choice.options.map((option) => {
-                                    const optionId = option.product_id || option.id;
-                                    return <button key={optionId} type="button" onClick={() => {
-                                      setAcceptExhaustedRewards(false);
-                                      if (choice.kind === 'reward') {
-                                        const selected = { promotion_id: choice.promotion_id, tier_id: choice.tier_id, product_ids: Array(choice.earned_quantity || 1).fill(optionId) };
-                                        setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), selected]);
-                                      } else {
-                                        setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]);
-                                      }
-                                    }} className="min-h-10 rounded-lg border border-pink-200 bg-white px-2 text-left text-xs font-bold text-gray-800">{option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}</button>;
-                                  })}
-                                </div>
-                              </div>
-                            ))}
+            {isAdvanceOrderFlow && requiredPromotionChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
+              <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
+                setAcceptExhaustedRewards(false);
+                const setChoices = choice.kind === 'reward' ? setRewardChoices : setPromotionChoices;
+                setChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || (item.tier_id || null) !== (choice.tier_id || null)), selection]);
+              }} />
+            </div>)}
 
                             {isAdvanceOrderFlow && exhaustedPromotionChoices.length > 0 && (
                               <label className="mt-3 flex cursor-pointer gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-0.5" /><span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion before continuing.'}</span></label>

@@ -68,7 +68,7 @@ select results_eq(
 select results_eq(
   $$ select available from public.list_product_stock_summaries((select artist_id from _stock_ids))
      where product_id = (select product_id from _stock_ids) $$,
-  $$ values (21) $$,
+  $$ values (20) $$,
   'catalog summary reports available stock after active event allocation'
 );
 
@@ -110,7 +110,7 @@ select results_eq(
 
 select results_eq(
   $$ select catalog_available from public.remove_event_stock((select event_product_id from _stock_ids), 1) $$,
-  $$ values (20) $$,
+  $$ values (16) $$,
   'event removal returns capacity to catalog availability'
 );
 

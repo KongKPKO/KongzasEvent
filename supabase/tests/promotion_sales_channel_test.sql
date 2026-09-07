@@ -1,6 +1,6 @@
 begin;
 
-select plan(48);
+select plan(56);
 
 select has_table('public', 'promotion_assignments', 'promotion assignments exist');
 select has_table('public', 'promotion_tiers', 'promotion tiers exist');
@@ -795,6 +795,58 @@ select is(
   5,
   'queue completion converts purchased and reward stock to sold'
 );
+
+-- Mixed gifts exercise the same real campaign hold/expiry transaction.
+reset role;
+create temp table _mixed_gifts as select gen_random_uuid() a, gen_random_uuid() b;
+insert into public.products (id, artist_id, name, price, stock_total, status)
+select gift, artist_id, 'Mixed gift', 0, 1, 'enable'
+from _promotion_ids cross join lateral (select a gift from _mixed_gifts union all select b from _mixed_gifts) g;
+insert into public.online_campaign_products (campaign_id, artist_id, product_id, stock_total, is_unlimited, is_sellable)
+select campaign_id, artist_id, gift, 1, false, false
+from _promotion_ids cross join lateral (select a gift from _mixed_gifts union all select b from _mixed_gifts) g;
+update public.promotion_assignments set is_paused = (promotion_id <> (select promotion_id from _promotion_ids))
+where campaign_id = (select campaign_id from _promotion_ids);
+update public.artist_promotions set buy_quantity=1, reward_quantity=2, reward_selection_mode='customer_choice'
+where id=(select promotion_id from _promotion_ids);
+delete from public.promotion_reward_products where promotion_id=(select promotion_id from _promotion_ids);
+insert into public.promotion_reward_products (promotion_id,product_id)
+select promotion_id,gift from _promotion_ids cross join lateral (select a gift from _mixed_gifts union all select b from _mixed_gifts) g;
+create temp table _mixed_quote as select public.quote_sale_promotions(null,null,campaign_id,
+  jsonb_build_array(jsonb_build_object('product_id',product_id,'quantity',1)),'[]','[]') q from _promotion_ids;
+select is(jsonb_array_length((select q#>'{required_choices,0,options}' from _mixed_quote)),2,
+  'quote offers A1 and B1 for a two-gift entitlement');
+create temp table _mixed_order as select result.order_id from _promotion_ids, _mixed_gifts,
+lateral public.create_online_campaign_order(campaign_id,
+  jsonb_build_array(jsonb_build_object('product_id',product_id,'quantity',1)),
+  'shipping',null,'Mixed buyer','mixed@nireq.local','0800000000','Bangkok','',gen_random_uuid(),
+  jsonb_build_array(jsonb_build_object('promotion_id',promotion_id,'product_ids',jsonb_build_array(a,b))),
+  '[]',null,false) result;
+select is((select count(*) from public.order_items where order_id=(select order_id from _mixed_order)
+  and line_type='promotion_reward'),2::bigint,'mixed checkout snapshots two separate gift SKUs');
+select is((select sum(stock_reserved) from public.online_campaign_products where campaign_id=(select campaign_id from _promotion_ids)),
+  3::bigint,'mixed checkout holds one paid item plus two gifts');
+update public.order_payments set stock_hold_expires_at=now()-interval '1 second' where order_id=(select order_id from _mixed_order);
+select private.expire_online_campaign_hold((select order_id from _mixed_order));
+select is((select sum(stock_reserved) from public.online_campaign_products where campaign_id=(select campaign_id from _promotion_ids)),
+  0::bigint,'expiry releases both gift SKUs and the purchase');
+update public.online_campaign_products set stock_total=0 where product_id=(select b from _mixed_gifts);
+create temp table _partial_order as select result.order_id from _promotion_ids, _mixed_gifts,
+lateral public.create_online_campaign_order(campaign_id,
+  jsonb_build_array(jsonb_build_object('product_id',product_id,'quantity',1)),
+  'shipping',null,'Partial buyer','partial@nireq.local','0800000000','Bangkok','',gen_random_uuid(),
+  jsonb_build_array(jsonb_build_object('promotion_id',promotion_id,'product_ids',jsonb_build_array(a),
+    'accepted_quantity',1,'accepted_earned_quantity',2)), '[]',null,false) result;
+select is((select sum(quantity) from public.order_items where order_id=(select order_id from _partial_order)
+  and line_type='promotion_reward'),1::bigint,'accepted partial checkout holds just the remaining gift');
+select ok((select pricing_breakdown::text like '%"partial": true%' from public.orders where id=(select order_id from _partial_order)),
+  'order preserves explicit partial acceptance in its pricing snapshot');
+
+select is((select count(*) from public.list_event_products((select event_id from _promotion_ids))),
+  1::bigint, 'event menu includes its sellable product');
+update public.event_products set is_sellable=false where event_id=(select event_id from _promotion_ids);
+select is((select count(*) from public.list_event_products((select event_id from _promotion_ids))),
+  0::bigint, 'event menu excludes reward-only products');
 
 select * from finish();
 rollback;

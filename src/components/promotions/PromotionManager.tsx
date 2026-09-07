@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Archive, Edit2, Gift, Loader2, Plus, Search, Sparkles, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
-import { archivePromotionDefinition, getPromotionAssignmentConflicts, listPromotionDefinitions, savePromotionDefinition } from '../../lib/promotions';
+import { archivePromotionDefinition, listPromotionDefinitions, PromotionSaveConflict, savePromotionDefinition } from '../../lib/promotions';
+import { promotionLocalDateTime } from '../../lib/promotionDateTime';
 import type { PromotionCombinationPolicy, PromotionDefinition, PromotionEventPhase, PromotionRewardSelectionMode, PromotionTierGrantMode, PromotionType, SavePromotionDefinitionInput } from '../../types/promotion';
 
 interface ProductLite {
@@ -104,6 +105,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
   const effectiveTargetIds = targetType === 'product_line' ? lineProductIds : targetProductIds;
 
   const refresh = async () => {
+    if (!artistId) return;
     setLoading(true);
     try {
       const [nextDefinitions, nextCampaigns] = await Promise.all([listPromotionDefinitions(artistId), listMyOnlineCampaigns()]);
@@ -127,13 +129,14 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
     setTiers(definition.tiers.length ? definition.tiers.map((tier) => ({ key: tier.id, threshold: String(tier.threshold_amount), quantity: String(tier.reward_quantity), selectionMode: tier.reward_selection_mode, rewardProductIds: tier.reward_product_ids })) : [newTier()]);
     setAssignmentKeys(definition.assignments.filter((assignment) => !assignment.is_paused).map((assignment) => assignment.campaign_id ? `campaign:${assignment.campaign_id}` : `event:${assignment.event_id}:${assignment.event_phase}`));
     const first = definition.assignments[0];
-    setStartsAt(first?.starts_at ? new Date(first.starts_at).toISOString().slice(0, 16) : ''); setEndsAt(first?.ends_at ? new Date(first.ends_at).toISOString().slice(0, 16) : ''); setCombinationPolicy(first?.combination_policy || 'exclusive'); setMessage('');
+    setStartsAt(promotionLocalDateTime(first?.starts_at)); setEndsAt(promotionLocalDateTime(first?.ends_at)); setCombinationPolicy(first?.combination_policy || 'exclusive'); setMessage('');
     document.getElementById('promotion-editor')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const toggleAssignment = (key: string) => setAssignmentKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   const toIso = (value: string) => value ? new Date(value).toISOString() : null;
   const buildPayload = (paused: boolean, id = editingId): SavePromotionDefinitionInput => ({
+    expected_revision: definitions.find((definition) => definition.id === id)?.revision,
     id, artist_id: artistId, name: name.trim(), promotion_type: promotionType,
     target_type: targetType === 'product_line' ? 'product' : targetType,
     match_category: targetType === 'category' || targetType === 'category_tag' ? category.trim() : null,
@@ -142,7 +145,17 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
     buy_quantity: promotionType === 'spend_tier_gift' ? null : Number(buyQuantity), reward_value: promotionType === 'quantity_discount' ? Number(rewardValue) : null, reward_quantity: promotionType === 'quantity_gift' ? Number(rewardQuantity) : null, reward_selection_mode: promotionType === 'quantity_gift' ? rewardSelectionMode : null, tier_grant_mode: promotionType === 'spend_tier_gift' ? tierGrantMode : null,
     reward_product_ids: promotionType === 'quantity_gift' ? rewardProductIds : [],
     tiers: promotionType === 'spend_tier_gift' ? tiers.map((tier, index) => ({ threshold_amount: Number(tier.threshold), reward_quantity: Number(tier.quantity), reward_selection_mode: tier.selectionMode, sort_order: index, reward_product_ids: tier.rewardProductIds })) : [],
-    assignments: assignmentKeys.map((key) => { const [kind, assignmentId, phase] = key.split(':'); return { event_id: kind === 'event' ? assignmentId : null, event_phase: kind === 'event' ? phase as PromotionEventPhase : null, campaign_id: kind === 'campaign' ? assignmentId : null, starts_at: toIso(startsAt), ends_at: toIso(endsAt), is_paused: paused, combination_policy: combinationPolicy }; }),
+    assignments: assignmentKeys.map((key) => {
+      const [kind, assignmentId, phase] = key.split(':');
+      const previous = definitions.find((definition) => definition.id === id)?.assignments;
+      const original = previous?.find((assignment) => kind === 'campaign' ? assignment.campaign_id === assignmentId : assignment.event_id === assignmentId && assignment.event_phase === phase);
+      return {
+        event_id: kind === 'event' ? assignmentId : null, event_phase: kind === 'event' ? phase as PromotionEventPhase : null, campaign_id: kind === 'campaign' ? assignmentId : null,
+        starts_at: original && startsAt === promotionLocalDateTime(previous?.[0]?.starts_at) ? original.starts_at : toIso(startsAt),
+        ends_at: original && endsAt === promotionLocalDateTime(previous?.[0]?.ends_at) ? original.ends_at : toIso(endsAt),
+        is_paused: paused, combination_policy: combinationPolicy,
+      };
+    }),
   });
 
   const validate = () => {
@@ -165,14 +178,18 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
     const validationError = validate(); if (validationError) { setMessage(validationError); return; }
     setSaving(true); setMessage('');
     try {
-      const id = await savePromotionDefinition(buildPayload(true));
-      const saved = (await listPromotionDefinitions(artistId)).find((definition) => definition.id === id);
-      const results = await Promise.all((saved?.assignments || []).filter((assignment) => assignmentKeys.includes(assignment.campaign_id ? `campaign:${assignment.campaign_id}` : `event:${assignment.event_id}:${assignment.event_phase}`)).map((assignment) => getPromotionAssignmentConflicts(assignment.id)));
-      const names = Array.from(new Set(results.flatMap((result) => result.conflicts.map((conflict) => conflict.promotion_name))));
-      if (names.length && !window.confirm(th ? `โปรนี้ชนกับ ${names.join(', ')}\nใช้กติกาที่เลือกไว้และเปิดใช้เลยหรือไม่?` : `This overlaps ${names.join(', ')}. Activate using the selected combination rule?`)) {
-        setEditingId(id); setMessage(th ? 'บันทึกแล้ว แต่ยังพักการใช้งานอยู่' : 'Saved, but assignments remain paused.'); await refresh(); return;
+      const payload = buildPayload(false);
+      try {
+        await savePromotionDefinition(payload);
+      } catch (error) {
+        if (!(error instanceof PromotionSaveConflict)) throw error;
+        const names = Array.from(new Set(error.promotionNames));
+        if (!window.confirm(th ? `โปรนี้ชนกับ ${names.join(', ')}\nใช้กติกาที่เลือกไว้และเปิดใช้เลยหรือไม่?` : `This overlaps ${names.join(', ')}. Activate using the selected combination rule?`)) {
+          setMessage(th ? 'ยังไม่ได้บันทึก โปรเดิมยังทำงานตามเดิม' : 'Not saved. The existing promotion is unchanged.'); return;
+        }
+        await savePromotionDefinition({ ...payload, confirmation_token: error.token });
       }
-      await savePromotionDefinition(buildPayload(false, id)); reset(); setMessage(th ? 'บันทึกและเปิดใช้โปรโมชั่นแล้ว' : 'Promotion saved and activated.'); await refresh();
+      reset(); setMessage(th ? 'บันทึกและเปิดใช้โปรโมชั่นแล้ว' : 'Promotion saved and activated.'); await refresh();
     } catch (error) { console.error(error); setMessage(th ? 'บันทึกโปรโมชั่นไม่สำเร็จ กรุณาตรวจข้อมูลอีกครั้ง' : 'Could not save promotion. Check the form and try again.'); }
     finally { setSaving(false); }
   };

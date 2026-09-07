@@ -106,6 +106,12 @@ const mockSupabase = async (page: Page) => {
       return json(route, []);
     }
 
+    if (path.includes('/rest/v1/rpc/quote_sale_promotions')) {
+      const items = parseBody(route).p_items || [];
+      const subtotal = items.reduce((sum: number, item: { quantity: number }) => sum + item.quantity * 120, 0);
+      return json(route, { subtotal, total: subtotal, shipping_fee: 0, merchandise_total: subtotal, discount_total: 0, applied_promotions: [], reward_lines: [], required_choices: [], pricing_hash: 'preorder-fixture' });
+    }
+
     if (path.includes('/rest/v1/rpc/list_event_products')) {
       return json(route, [
         {

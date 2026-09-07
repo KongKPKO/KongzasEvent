@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import PromotionChoicePicker from '../promotions/PromotionChoicePicker';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
@@ -8,7 +9,7 @@ import type { ActorContext } from '../../types/access';
 import { getAvailableUnits, isLowStock } from '../../utils/posCatalog';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
-import { quotePromotions } from '../../lib/promotions';
+import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
@@ -813,6 +814,11 @@ export default function POSPanel({
                 // retry after fixing the underlying issue.
                 clearPaymentAttemptId(paymentAttemptStorageKey);
                 setPaymentUnknownEventId(null);
+                if (requiresPromotionReview(err)) {
+                    setRewardChoices([]);
+                    setAcceptExhaustedRewards(false);
+                    setIsPaymentModalOpen(false);
+                }
                 setToast({ tone: 'error', title: 'Payment failed', detail: toPaymentErrorMessage(err) });
             }
         } finally {
@@ -881,7 +887,13 @@ export default function POSPanel({
     };
 
     const renderPromotionChoices = () => <>
-        {requiredPromotionChoices.map((choice) => <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="rounded-xl border border-pink-200 bg-pink-50 p-3"><div className="text-xs font-black text-gray-900">{choice.kind === 'reward' ? `Choose ${choice.earned_quantity || 1} free gift(s)` : 'Choose a promotion'}</div><div className="mt-2 grid gap-1.5">{choice.options.map((option) => { const optionId = option.product_id || option.id; return <button type="button" key={optionId} onClick={() => { if (choice.kind === 'reward') { const selected = { promotion_id: choice.promotion_id, tier_id: choice.tier_id, product_ids: Array(choice.earned_quantity || 1).fill(optionId) }; setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), selected]); } else { setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]); } }} className="min-h-10 rounded-lg border border-pink-200 bg-white px-2 text-left text-xs font-bold">{option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}</button>; })}</div></div>)}
+            {requiredPromotionChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
+              <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
+                setAcceptExhaustedRewards(false);
+                const setChoices = choice.kind === 'reward' ? setRewardChoices : setPromotionChoices;
+                setChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || (item.tier_id || null) !== (choice.tier_id || null)), selection]);
+              }} />
+            </div>)}
         {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">All gifts for this promotion are out of stock.</strong>Review the new total without this promotion before charging.</span></label>}
     </>;
 

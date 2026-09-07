@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
-import { PromotionError, quotePromotions } from '../../lib/promotions';
+import { requiresPromotionReview, quotePromotions } from '../../lib/promotions';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
@@ -133,7 +134,8 @@ export default function OnlineCampaignStorefront() {
       console.error(checkoutError);
       if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded') {
         setError(t('campaignProductOrderLimitExceeded'));
-      } else if ((checkoutError instanceof OnlineCampaignError || checkoutError instanceof PromotionError) && checkoutError.code === 'promotion_changed') {
+      } else if (requiresPromotionReview(checkoutError)) {
+        setRewardChoices([]);
         setAcceptExhaustedRewards(false);
         setError(language === 'th' ? 'โปรโมชั่นหรือสต็อกมีการเปลี่ยนแปลง กรุณาตรวจสอบยอดใหม่' : 'A promotion or stock level changed. Please review the new total.');
       } else {
@@ -253,42 +255,13 @@ export default function OnlineCampaignStorefront() {
                 {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</div>)}
               </div>
             ) : null}
-            {unresolvedChoices.map((choice) => (
-              <div key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`} className="mt-4 rounded-xl border border-pink-200 bg-pink-50 p-3">
-                <div className="text-sm font-black text-gray-900">
-                  {choice.kind === 'reward'
-                    ? (language === 'th' ? `เลือกของแถม ${choice.earned_quantity || 1} ชิ้น` : `Choose ${choice.earned_quantity || 1} free gift(s)`)
-                    : (language === 'th' ? 'เลือกโปรโมชั่นที่ต้องการใช้' : 'Choose a promotion')}
-                </div>
-                <div className="mt-2 grid gap-2">
-                  {choice.options.map((option) => {
-                    const optionId = option.product_id || option.id;
-                    return (
-                      <button
-                        key={optionId}
-                        type="button"
-                        onClick={() => {
-                          setAcceptExhaustedRewards(false);
-                          if (choice.kind === 'reward') {
-                            const nextChoice: PromotionChoice = {
-                              promotion_id: choice.promotion_id,
-                              tier_id: choice.tier_id,
-                              product_ids: Array(choice.earned_quantity || 1).fill(optionId),
-                            };
-                            setRewardChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || item.tier_id !== choice.tier_id), nextChoice]);
-                          } else {
-                            setPromotionChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id), { promotion_id: choice.promotion_id, selected_promotion_id: optionId }]);
-                          }
-                        }}
-                        className="min-h-11 rounded-xl border border-pink-200 bg-white px-3 text-left text-sm font-bold text-gray-800"
-                      >
-                        {option.name}{option.benefit_text ? ` · ${option.benefit_text}` : ''}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            {unresolvedChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
+              <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
+                setAcceptExhaustedRewards(false);
+                const setChoices = choice.kind === 'reward' ? setRewardChoices : setPromotionChoices;
+                setChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || (item.tier_id || null) !== (choice.tier_id || null)), selection]);
+              }} />
+            </div>)}
             {exhaustedRewards.length > 0 && (
               <label className="mt-4 flex cursor-pointer gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-1 h-4 w-4" />

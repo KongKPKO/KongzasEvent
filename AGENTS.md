@@ -4,6 +4,7 @@
 
 - Work inside this repository unless the user explicitly expands the scope.
 - Read `PRODUCT.md` before product or UI decisions.
+- Treat `PRODUCT.md` → Commerce Rules as the canonical business-rule summary; follow its linked specs and regression anchors for money, stock, Campaign and Promotion work. Flag contradictions rather than inventing new behavior.
 - Preserve unrelated changes and untracked files.
 - Reuse existing code and dependencies; do not add infrastructure for speculative needs.
 

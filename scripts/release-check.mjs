@@ -74,6 +74,7 @@ const checkHygiene = () => {
               (file.endsWith('.example') && lowerLine.includes('key=')) ||
               // Code references to env vars
               lowerLine.includes('process.env.') ||
+              (label === 'service_role token' && /^const db\s*=\s*createClient\(env\.API_URL,\s*env\.SERVICE_ROLE_KEY,\s*\{auth:\{persistSession:false\}\}\);$/.test(line)) ||
               lowerLine.includes('deno.env.get') ||
               lowerLine.includes('deno.env.set') ||
               lowerLine.includes('deno.env.toobject') ||

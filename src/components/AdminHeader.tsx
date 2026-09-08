@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import type { ActorRole } from '../types/access';
@@ -41,7 +41,7 @@ const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
 };
 
 export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner', userEmail: contextEmail = null }: AdminHeaderProps) {
-    const { t } = useI18n();
+    const { t, language } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -158,6 +158,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 )}
                 
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
+                {isPlatformAdmin && <Link to="/admin/support" className="min-h-11 inline-flex items-center px-3 text-xs font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
                 <LanguageToggle className="workspace-action px-2 py-2" />
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
 
@@ -260,6 +261,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                             {t('workspaceNavApplications')}
                         </button>
                     )}
+                    {isPlatformAdmin && <Link to="/admin/support" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
                     <div className="h-px bg-gray-100 my-1"></div>
                     <div className="px-4 py-2">
                         <LanguageToggle />

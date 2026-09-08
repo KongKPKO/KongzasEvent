@@ -72,8 +72,8 @@ const ManageLogin = () => {
         supabase.rpc('list_my_pending_invitations'),
       ]);
 
-      if (redirectTo === '/admin/applications' && isAdmin) {
-        navigate('/admin/applications');
+      if (['/admin/applications', '/admin/support'].includes(redirectTo || '') && isAdmin) {
+        navigate(redirectTo!);
       } else if (canAccessManagementPages(ctx?.role)) {
         navigate('/manage-events');
       } else if (canAccessQueuePages(ctx?.role)) {

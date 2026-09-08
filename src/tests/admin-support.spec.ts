@@ -1,0 +1,98 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
+import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
+
+test('admin support reads a foreign store/order without changing commerce data', async ({ page }) => {
+  test.setTimeout(90000);
+  const env = resolveSupabaseTestEnv();
+  expect(new URL(env.url).hostname).toMatch(/^(127\.0\.0\.1|localhost)$/);
+  const email = 'support-ui@test.local', password = 'LocalSupport123!';
+  const { userId, service } = await ensureOwnerArtistFixture({email,password,slug:'support-ui',displayName:'Support UI Admin'});
+  const store = randomUUID(), event = randomUUID(), order = randomUUID(), product = randomUUID();
+  const must = (result: {error: unknown}) => {if(result.error) throw result.error;};
+  const errors: string[] = [];
+  page.on('pageerror',error=>errors.push(error.message));
+  try {
+    must(await service.from('platform_admins').upsert({admin_email:email,auth_user_id:userId},{onConflict:'admin_email'}));
+    must(await service.from('artists').insert({id:store,slug:`support-${store.slice(0,8)}`,display_name:`Support Shop ${store}`,email:'shop@test.local'}));
+    must(await service.from('events').insert({id:event,artist_id:store,event_name:'Support Event',start_date:new Date().toISOString(),end_date:new Date(Date.now()+86400000).toISOString()}));
+    must(await service.from('products').insert({id:product,artist_id:store,name:'Current renamed product',price:999,stock_total:10,is_unlimited:false}));
+    must(await service.from('orders').insert({id:order,event_id:event,order_type:'preorder',pickup_code:'SUP123',customer_name:'Support Buyer',customer_email:'private@example.test',customer_phone:'0812345678',shipping_address:'SECRET ADDRESS',currency:'THB',total_price:100,subtotal_price:100}));
+    must(await service.from('order_items').insert({order_id:order,product_id:product,quantity:1,price_per_unit:100,product_name_snapshot:'Saved Cheki',currency:'THB'}));
+    must(await service.from('order_payments').insert({order_id:order,event_id:event,artist_id:store,amount_expected:100,payment_status:'awaiting_payment',stock_hold_expires_at:new Date(Date.now()-3600000).toISOString(),slip_url:'SECRET SLIP'}));
+    const before = (await service.from('orders').select('*').eq('id',order).single()).data;
+    await page.goto('/manage-login?redirect=/admin/support');
+    await page.getByRole('textbox',{name:'Email',exact:true}).fill(email);
+    await page.getByRole('textbox',{name:'Password',exact:true}).fill(password);
+    await page.getByRole('button',{name:'Login to Dashboard',exact:true}).click();
+    await expect(page).toHaveURL(/\/admin\/support$/);
+    await expect(page.getByRole('heading',{name:'Store support',exact:true})).toBeVisible();
+    const query = page.getByLabel('Store name / slug / email',{exact:true});
+    await query.fill(store);
+    await page.getByRole('button',{name:'Search',exact:true}).click();
+    await expect(page.getByRole('button',{name:'View details',exact:true})).toBeDisabled();
+    await page.getByLabel('Reason for detail access (5–500 characters)',{exact:true}).fill('Merchant reported stuck order');
+    await page.getByRole('button',{name:'View details',exact:true}).click();
+    await expect(page.getByRole('region',{name:'Details',exact:true})).toContainText('Support Event');
+    await page.getByRole('button',{name:'Search this store’s orders',exact:true}).click();
+    const orderQuery=page.getByLabel('Exact order code / pickup code / UUID',{exact:true});
+    await orderQuery.fill(order);
+    await page.getByRole('button',{name:'Search',exact:true}).click();
+    await page.getByRole('button',{name:'View details',exact:true}).click();
+    const detail=page.getByRole('region',{name:'Details',exact:true});
+    await expect(detail).toContainText('***@example.test');
+    await expect(detail).toContainText('Saved Cheki');
+    await expect(detail).not.toContainText('Current renamed product');
+    await expect(detail).toContainText('does not prove stock was released');
+    await expect(detail).not.toContainText('SECRET');
+    await expect(detail.getByRole('button')).toHaveCount(0);
+    await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:`/tmp/admin-support-${test.info().project.name}.png`,fullPage:true});
+    await page.getByRole('button',{name:'Switch language',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'ช่วยเหลือร้าน',exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'รายละเอียด',exact:true})).toContainText('ไม่ใช่หลักฐานว่าคืนสต็อกแล้ว');
+    expect((await service.from('orders').select('*').eq('id',order).single()).data).toEqual(before);
+    expect((await service.from('order_payments').select('payment_status').eq('order_id',order).single()).data?.payment_status).toBe('awaiting_payment');
+    // Read audit evidence through local postgres only; no API grants to audit data.
+    const audit=execFileSync('docker',['exec','supabase_db_EventWebQueue','psql','-U','postgres','-d','postgres','-At','-c',`select count(*) from private.admin_support_access where actor_id='${userId}' and order_id='${order}';`],{encoding:'utf8'});
+    expect(Number(audit.trim())).toBe(1);
+    await page.getByLabel('เลขออเดอร์เต็ม / รหัสรับสินค้า / UUID',{exact:true}).fill('MISSING');
+    await expect(page.getByRole('region',{name:'รายละเอียด',exact:true})).toHaveCount(0);
+    await page.route('**/rest/v1/rpc/admin_support',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Test unavailable'})}));
+    await page.getByRole('button',{name:'ค้นหา',exact:true}).click();
+    await expect(page.getByRole('alert')).toContainText('โหลดไม่สำเร็จ');
+    await page.unroute('**/rest/v1/rpc/admin_support');
+    await page.getByRole('button',{name:'ค้นหา',exact:true}).click();
+    await expect(page.getByText('ไม่พบรายการที่ตรงกัน',{exact:true})).toBeVisible();
+    // A search response arriving after the input changes must never be rendered.
+    let release!: () => void;
+    let arrived!: () => void;
+    const waiting=new Promise<void>(resolve=>{arrived=resolve;});
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    await page.route('**/rest/v1/rpc/admin_support',async route=>{arrived(); await gate; await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:[{id:order,code:'STALE RESULT'}],limited:false})});});
+    await page.getByRole('button',{name:'ค้นหา',exact:true}).click();
+    await waiting;
+    await page.getByLabel('เลขออเดอร์เต็ม / รหัสรับสินค้า / UUID',{exact:true}).fill('NEW QUERY');
+    const response=page.waitForResponse('**/rest/v1/rpc/admin_support');
+    release();
+    await response;
+    await expect(page.getByText('STALE RESULT',{exact:true})).toHaveCount(0);
+    await page.unroute('**/rest/v1/rpc/admin_support');
+    // Removing admin privileges also denies a formerly authorized session.
+    must(await service.from('platform_admins').delete().eq('admin_email',email));
+    await page.reload();
+    await expect(page.getByText('เฉพาะ Platform Admin',{exact:true})).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    await service.from('platform_admins').delete().eq('admin_email',email);
+    await service.from('order_payments').delete().eq('order_id',order);
+    await service.from('order_items').delete().eq('order_id',order);
+    await service.from('orders').delete().eq('id',order);
+    await service.from('events').delete().eq('id',event);
+    await service.from('products').delete().eq('id',product);
+    await service.from('artists').delete().eq('id',store);
+  }
+});

@@ -265,6 +265,9 @@ export default function AdminApplications() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Link to="/admin/support" className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-pink-700">
+              {dateLocale.startsWith('th') ? 'ช่วยเหลือร้าน' : 'Store support'}
+            </Link>
             {(['all', 'auto_approved', 'pending', 'approved', 'rejected'] as const).map((status) => (
               <button
                 key={status}

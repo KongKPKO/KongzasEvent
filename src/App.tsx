@@ -32,6 +32,7 @@ import AdminApplications from './pages/AdminApplications';
 import LegalPage from './pages/LegalPage';
 
 const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
+const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
@@ -188,7 +189,7 @@ function App() {
   const isCustomerRoute = typeof window !== 'undefined'
     ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(window.location.pathname)
     : false;
-  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
@@ -235,6 +236,7 @@ function App() {
               path="/admin/applications"
               element={session ? <AdminApplications /> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}
             />
+            <Route path="/admin/support" element={session ? <AdminSupport /> : <Navigate to="/manage-login?redirect=/admin/support" replace />} />
             <Route
               path="/invitations"
               element={session ? <InvitationsPage /> : <Navigate to="/manage-login?redirect=/invitations" replace />}

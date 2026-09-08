@@ -397,6 +397,10 @@ verify_jwt = false
 [functions.notify-online-campaign-order]
 verify_jwt = false
 
+# Validates user token and current platform-admin membership inside the handler.
+[functions.admin-resend-order-link]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

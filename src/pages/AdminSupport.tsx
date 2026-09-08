@@ -5,6 +5,7 @@ import { LanguageToggle, useI18n } from '../i18n';
 import { supabase } from '../supabaseClient';
 import { openSupport, searchSupport, type SupportDetail, type SupportSearch } from '../lib/adminSupport';
 import { formatPrice } from '../utils/currency';
+import AdminOrderHistory from '../components/AdminOrderHistory';
 
 export default function AdminSupport() {
   const { language, dateLocale } = useI18n();
@@ -80,7 +81,7 @@ export default function AdminSupport() {
   const input = 'min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 focus-visible:outline-pink-600';
   return <div className="min-h-screen bg-gray-50 px-4 py-6 text-gray-900"><div className="mx-auto max-w-6xl space-y-5">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wider text-pink-600">Platform Admin</p><h1 className="mt-1 text-2xl font-black">{tr('ช่วยเหลือร้าน','Store support')}</h1></div><nav className="flex flex-wrap items-center gap-2"><Link className={button} to="/admin/applications">{tr('ใบสมัคร','Applications')}</Link><Link className={button} to="/manage-login">{tr('กลับ','Back')}</Link><LanguageToggle /></nav></header>
-    <p className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><ShieldCheck size={20} className="shrink-0" />{tr('อ่านอย่างเดียว — การค้นหาและเปิดรายละเอียดจะถูกบันทึก ไม่แก้เงินหรือสต็อก','Read-only — searches and detail access are logged. Money and stock are not changed.')}</p>
+    <p className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><ShieldCheck size={20} className="shrink-0" />{tr('การค้นหา เปิดรายละเอียด และส่งอีเมลซ้ำจะถูกบันทึก ไม่แก้เงินหรือสต็อก','Searches, detail access and email resends are logged. Money and stock are not changed.')}</p>
     {access === 'loading' ? <p role="status">{tr('กำลังตรวจสิทธิ์…','Checking access…')}</p> : access !== 'allowed' ? <section className="rounded-2xl border bg-white p-6"><h2 className="font-bold">{access === 'error' ? tr('ตรวจสิทธิ์ไม่สำเร็จ','Could not check access') : tr('เฉพาะ Platform Admin','Platform Admin access required')}</h2><p className="mt-2">{tr('กรุณาเข้าสู่ระบบด้วยบัญชี Admin หรือโหลดหน้าใหม่เพื่อลองอีกครั้ง','Sign in with an Admin account or reload to try again.')}</p><Link className="mt-4 inline-block text-pink-700 underline" to="/manage-login?redirect=/admin/support">{tr('เข้าสู่ระบบ','Sign in')}</Link></section> : <>
       <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
         <form onSubmit={(event) => {event.preventDefault(); void run(() => searchSupport(kind,query,scope?.id),true);}} className="space-y-3">
@@ -108,6 +109,7 @@ export default function AdminSupport() {
           <div><h3 className="font-bold">{tr('สินค้าและของแถมในออเดอร์','Order purchases and gifts')}</h3><ul className="mt-2 divide-y">{detail.items.map(item => <li key={item.id} className="flex flex-wrap justify-between gap-2 py-3"><span className="min-w-0 break-words">{item.name || missing} × {item.quantity} <small className="block text-gray-500">{item.line_type === 'promotion_reward' ? tr('ของแถม','Free gift') : tr('สินค้า','Purchase')} · {item.sku || missing}</small></span><span>{money(item.price_per_unit,item.currency || detail.currency)} / {tr('ชิ้น','unit')}</span></li>)}</ul></div>
           <dl className="grid gap-4 rounded-xl bg-gray-50 p-4 sm:grid-cols-4">{field(tr('ยอดสินค้า','Subtotal'),money(detail.subtotal_price,detail.currency))}{field(tr('ส่วนลด','Discount'),money(detail.discount_total,detail.currency))}{field(tr('ค่าส่ง','Shipping fee'),money(detail.shipping_fee,detail.currency))}{field(tr('ยอดรวมที่บันทึกไว้','Saved total'),money(detail.total_price,detail.currency))}</dl>
           <dl className="grid gap-4 sm:grid-cols-3">{field(tr('การรับสินค้า','Fulfillment'),status(detail.fulfillment_method))}{field(tr('สถานะรับสินค้า','Fulfillment status'),status(detail.fulfillment_status))}{field(tr('ขนส่ง','Carrier'),detail.shipping_carrier)}{field(tr('เลขติดตาม','Tracking number'),detail.tracking_number)}{field(tr('ส่งเมื่อ','Shipped'),date(detail.shipped_at))}{field(tr('รับสินค้าเมื่อ','Picked up'),date(detail.picked_up_at))}{field(tr('จุดรับสินค้า','Pickup point'),detail.pickup_name)}{field(tr('เริ่มรับสินค้า','Pickup starts'),date(detail.pickup_starts_at))}{field(tr('สิ้นสุดรับสินค้า','Pickup ends'),date(detail.pickup_ends_at))}</dl>
+          <AdminOrderHistory key={detail.id} orderId={detail.id} reason={reason} onForbidden={()=>{clear();setAccess('denied');setReason('');setScope(null);}} />
         </>}
       </section>}
     </>}

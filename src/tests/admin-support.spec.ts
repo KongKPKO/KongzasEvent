@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 import { execFileSync } from 'node:child_process';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
@@ -19,7 +20,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     must(await service.from('artists').insert({id:store,slug:`support-${store.slice(0,8)}`,display_name:`Support Shop ${store}`,email:'shop@test.local'}));
     must(await service.from('events').insert({id:event,artist_id:store,event_name:'Support Event',start_date:new Date().toISOString(),end_date:new Date(Date.now()+86400000).toISOString()}));
     must(await service.from('products').insert({id:product,artist_id:store,name:'Current renamed product',price:999,stock_total:10,is_unlimited:false}));
-    must(await service.from('orders').insert({id:order,event_id:event,order_type:'preorder',pickup_code:'SUP123',customer_name:'Support Buyer',customer_email:'private@example.test',customer_phone:'0812345678',shipping_address:'SECRET ADDRESS',currency:'THB',total_price:100,subtotal_price:100}));
+    must(await service.from('orders').insert({id:order,event_id:event,order_type:'preorder',pickup_code:'SUP123',customer_name:'Support Buyer',customer_email:`private+${order}@example.test`,customer_phone:'0812345678',shipping_address:'SECRET ADDRESS',currency:'THB',total_price:100,subtotal_price:100}));
     must(await service.from('order_items').insert({order_id:order,product_id:product,quantity:1,price_per_unit:100,product_name_snapshot:'Saved Cheki',currency:'THB'}));
     must(await service.from('order_payments').insert({order_id:order,event_id:event,artist_id:store,amount_expected:100,payment_status:'awaiting_payment',stock_hold_expires_at:new Date(Date.now()-3600000).toISOString(),slip_url:'SECRET SLIP'}));
     const before = (await service.from('orders').select('*').eq('id',order).single()).data;
@@ -47,7 +48,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     await expect(detail).not.toContainText('Current renamed product');
     await expect(detail).toContainText('does not prove stock was released');
     await expect(detail).not.toContainText('SECRET');
-    await expect(detail.getByRole('button')).toHaveCount(0);
+    await expect(detail.getByRole('button',{name:/confirm payment|refund|stock/i})).toHaveCount(0);
     await expect(page.locator('vite-error-overlay')).toHaveCount(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({path:`/tmp/admin-support-${test.info().project.name}.png`,fullPage:true});
@@ -59,6 +60,53 @@ test('admin support reads a foreign store/order without changing commerce data',
     // Read audit evidence through local postgres only; no API grants to audit data.
     const audit=execFileSync('docker',['exec','supabase_db_EventWebQueue','psql','-U','postgres','-d','postgres','-At','-c',`select count(*) from private.admin_support_access where actor_id='${userId}' and order_id='${order}';`],{encoding:'utf8'});
     expect(Number(audit.trim())).toBe(1);
+    const original={order_id:order,delivery_key:'submitted:original',notification_event:'submitted',status:'delivered',attempts:1,delivered_at:new Date().toISOString(),last_error:'SECRET PROVIDER DATA'};
+    must(await service.from('preorder_notification_deliveries').insert(original));
+    await page.getByRole('button',{name:'ดู / รีเฟรชประวัติและอีเมล',exact:true}).click();
+    const history=page.getByRole('region',{name:'ประวัติและอีเมล',exact:true});
+    await expect(history).toContainText('ระบบบันทึกว่าส่งสำเร็จ');
+    await expect(history).not.toContainText('SECRET');
+    await history.getByLabel('เหตุผลที่ส่งอีเมลซ้ำ',{exact:true}).fill('Customer requested another link');
+    page.once('dialog',dialog=>dialog.dismiss());
+    await history.getByRole('button',{name:'ส่งลิงก์สถานะออเดอร์อีกครั้ง',exact:true}).click();
+    expect((await service.from('admin_order_email_resends').select('id').eq('order_id',order)).data).toHaveLength(0);
+    page.once('dialog',dialog=>dialog.accept());
+    await history.getByRole('button',{name:'ส่งลิงก์สถานะออเดอร์อีกครั้ง',exact:true}).click();
+    await expect(history.getByRole('status')).toHaveText('ผู้ให้บริการรับคำขอส่งแล้ว');
+    const first=(await service.from('admin_order_email_resends').select('*').eq('order_id',order).single()).data;
+    expect(first.status).toBe('accepted');
+    expect(first.actor_id).toBe(userId);
+    const api=createClient(env.url,env.anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
+    await api.auth.signInWithPassword({email,password});
+    const body={order_id:order,request_id:first.id,reason:first.reason};
+    const duplicate=await api.functions.invoke('admin-resend-order-link',{body});
+    expect(duplicate.data).toMatchObject({duplicate:true,status:'accepted'});
+    const cooldown=await api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}});
+    expect(cooldown.error).toBeTruthy();
+    // Test the cooldown without waiting: this is a local fixture-only timestamp adjustment.
+    must(await service.from('admin_order_email_resends').update({created_at:new Date(Date.now()-120000).toISOString()}).eq('id',first.id));
+    const simultaneous=await Promise.all([1,2].map(()=>api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})));
+    expect(simultaneous.filter(r=>r.data?.status==='accepted')).toHaveLength(1);
+    expect(simultaneous.filter(r=>r.error)).toHaveLength(1);
+    const mails=await fetch(`http://localhost:54324/api/v1/search?query=${encodeURIComponent(`to:private+${order}@example.test`)}`).then(r=>r.json());
+    expect(mails.messages).toHaveLength(2);
+    const message=await fetch(`http://localhost:54324/api/v1/message/${mails.messages[0].ID}`).then(r=>r.json());
+    expect(message.Text).toContain(`/support-${store.slice(0,8)}/order/SUP123`);
+    expect(message.Text).not.toContain('SECRET');
+    expect((await service.from('preorder_notification_deliveries').select('status,attempts,last_error').eq('order_id',order).single()).data).toEqual({status:'delivered',attempts:1,last_error:'SECRET PROVIDER DATA'});
+    expect((await service.from('orders').select('*').eq('id',order).single()).data).toEqual(before);
+    await history.getByRole('button',{name:'ดู / รีเฟรชประวัติและอีเมล',exact:true}).click();
+    await page.route('**/functions/v1/admin-resend-order-link',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable"}'}));
+    page.once('dialog',dialog=>dialog.accept());
+    await history.getByRole('button',{name:'ส่งลิงก์สถานะออเดอร์อีกครั้ง',exact:true}).click();
+    await expect(history.getByRole('button',{name:'ตรวจคำขอเดิม',exact:true})).toBeVisible();
+    await page.unroute('**/functions/v1/admin-resend-order-link');
+    await history.getByRole('button',{name:'ตรวจคำขอเดิม',exact:true}).click();
+    await expect(history.getByRole('status')).toContainText('อย่างน้อย 1 นาที');
+    expect((await service.from('admin_order_email_resends').select('id').eq('order_id',order)).data).toHaveLength(2);
+    const anonymous=await fetch(`${env.url}/functions/v1/admin-resend-order-link`,{method:'POST',headers:{apikey:env.anonKey,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    expect(anonymous.status).toBe(401);
+    await page.screenshot({path:`/tmp/admin-email-${test.info().project.name}.png`,fullPage:true});
     await page.getByLabel('เลขออเดอร์เต็ม / รหัสรับสินค้า / UUID',{exact:true}).fill('MISSING');
     await expect(page.getByRole('region',{name:'รายละเอียด',exact:true})).toHaveCount(0);
     await page.route('**/rest/v1/rpc/admin_support',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Test unavailable'})}));
@@ -83,6 +131,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     await page.unroute('**/rest/v1/rpc/admin_support');
     // Removing admin privileges also denies a formerly authorized session.
     must(await service.from('platform_admins').delete().eq('admin_email',email));
+    expect((await api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})).error).toBeTruthy();
     await page.reload();
     await expect(page.getByText('เฉพาะ Platform Admin',{exact:true})).toBeVisible();
     expect(errors).toEqual([]);

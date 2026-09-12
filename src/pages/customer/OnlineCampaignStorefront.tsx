@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
@@ -134,6 +135,8 @@ export default function OnlineCampaignStorefront() {
       console.error(checkoutError);
       if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded') {
         setError(t('campaignProductOrderLimitExceeded'));
+      } else if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'store_suspended') {
+        setError(language === 'th' ? 'ร้านนี้ถูกระงับการรับออเดอร์ใหม่ ออเดอร์เดิมยังดูสถานะได้' : 'This store is not accepting new orders. Existing orders remain accessible.');
       } else if (requiresPromotionReview(checkoutError)) {
         setRewardChoices([]);
         setAcceptExhaustedRewards(false);
@@ -164,6 +167,7 @@ export default function OnlineCampaignStorefront() {
       </header>
 
       <div className="mx-auto max-w-5xl px-4 py-5">
+        <StoreSuspensionNotice artistId={campaign.artist_id} />
         <section className="rounded-2xl border border-pink-100 bg-white p-5">
           <p className="whitespace-pre-line text-sm font-medium leading-6 text-gray-700">{campaign.description}</p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">

@@ -36,6 +36,7 @@ const getErrorMessage = (error: unknown) => {
 
 export const getPreorderErrorMessage = (error: unknown) => {
   const message = getErrorMessage(error);
+  if (message.includes('store_suspended')) return 'ร้านนี้ถูกระงับการรับออเดอร์ใหม่ / This store is not accepting new orders.';
   if (message.includes('customer_name_required')) return 'Please enter a pickup name.';
   if (message.includes('customer_email_required')) return 'Please enter an email address for pre-order updates.';
   if (message.includes('customer_email_invalid')) return 'Please enter a valid email address.';

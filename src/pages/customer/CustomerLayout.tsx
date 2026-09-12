@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
 import { CalendarDays, ChevronDown, Compass, Home, MapPin, Search, ShoppingBag, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -210,6 +211,7 @@ const CustomerLayout = () => {
                </div>
             )}
 
+            {displayArtist && <StoreSuspensionNotice artistId={displayArtist.id} />}
             <AnimatePresence mode="wait">
                <motion.div
                   key={location.pathname}

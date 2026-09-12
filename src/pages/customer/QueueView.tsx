@@ -446,7 +446,10 @@ const QueueView = () => {
 
         } catch (err) {
             console.error("handleGetTicket Exception:", err);
-            setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: t('queueTryAgain') });
+            const suspended = String((err as { message?: string })?.message || '').includes('store_suspended');
+            setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: suspended
+                ? (language === 'th' ? 'ร้านนี้ถูกระงับการรับคิวใหม่' : 'This store is not accepting new queue tickets.')
+                : t('queueTryAgain') });
         } finally {
             setLoading(false);
             getTicketInFlightRef.current = false;

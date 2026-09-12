@@ -10,6 +10,7 @@ import type {
 } from '../types/onlineCampaign';
 
 const knownCodes = new Set([
+  'store_suspended',
   'campaign_not_found',
   'campaign_not_open',
   'artist_not_public',

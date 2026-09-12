@@ -6,6 +6,7 @@ import { supabase } from '../supabaseClient';
 import { openSupport, searchSupport, type SupportDetail, type SupportSearch } from '../lib/adminSupport';
 import { formatPrice } from '../utils/currency';
 import AdminOrderHistory from '../components/AdminOrderHistory';
+import AdminStoreSuspension from '../components/AdminStoreSuspension';
 
 export default function AdminSupport() {
   const { language, dateLocale } = useI18n();
@@ -102,6 +103,7 @@ export default function AdminSupport() {
       </section>}
       {detail && <section aria-label={tr('รายละเอียด','Details')} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
         {detail.kind === 'store' ? <><h2 className="text-xl font-black">{detail.name}</h2><dl className="grid gap-3 sm:grid-cols-3">{field('URL',`/${detail.slug}`)}{field(tr('เผยแพร่','Public'),detail.is_public ? tr('ใช่','Yes') : tr('ไม่','No'))}{field(tr('ตรวจสอบแล้ว','Verified'),detail.is_verified ? tr('ใช่','Yes') : tr('ไม่','No'))}</dl><button className={button} onClick={() => {setScope({id:detail.id,name:detail.name}); setKind('orders'); setQuery(''); clear();}}>{tr('ค้นหาออเดอร์ของร้านนี้','Search this store’s orders')}</button>
+          <AdminStoreSuspension key={detail.id} artistId={detail.id} onForbidden={() => {clear();setAccess('denied');setReason('');setScope(null);}} />
           {(['events','campaigns'] as const).map(key => <div key={key}><h3 className="font-bold">{key === 'events' ? tr('อีเวนต์ล่าสุด (สูงสุด 25)','Recent Events (up to 25)') : tr('แคมเปญล่าสุด (สูงสุด 25)','Recent Campaigns (up to 25)')}</h3><ul className="mt-2 divide-y">{detail[key].map(channel => <li key={channel.id} className="py-3"><p className="font-semibold">{channel.name} · {status(channel.status)}</p><p className="text-sm text-gray-500">{date(channel.starts_at)} — {date(channel.ends_at)}</p></li>)}</ul>{!detail[key].length && <p className="text-gray-500">{tr('ไม่มีรายการ','No records')}</p>}</div>)}</> : <>
           <h2 className="break-all text-xl font-black">{detail.code || detail.id}</h2><p>{detail.store_name} · {detail.channel_name} · {status(detail.order_type)}</p>
           <dl className="grid gap-4 sm:grid-cols-3">{field(tr('สถานะออเดอร์','Order status'),status(detail.status))}{field(tr('สร้างเมื่อ','Created'),date(detail.created_at))}{field(tr('ลูกค้า','Customer'),detail.customer_name)}{field(tr('อีเมล (ปกปิด)','Email (masked)'),detail.customer_email_masked)}{field(tr('โทรศัพท์ (ปกปิด)','Phone (masked)'),detail.customer_phone_masked)}{field(tr('สถานะชำระเงิน','Payment status'),status(detail.payment_status))}{field(tr('ส่งหลักฐานเมื่อ','Evidence submitted'),date(detail.submitted_at))}</dl>

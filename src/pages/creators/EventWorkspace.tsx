@@ -1,3 +1,6 @@
+import { useI18n } from '../../i18n';
+import { eventCopy } from '../../lib/eventCopy';
+import './sales-readiness.css';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -239,11 +242,11 @@ const formatMoney = (amount: number, currency: string) =>
     maximumFractionDigits: currency === 'THB' ? 0 : 2,
   }).format(amount || 0);
 
-const formatEventDate = (event: WorkspaceEvent) => {
+const formatEventDate = (event: WorkspaceEvent, locale: string) => {
   const date = new Date(event.start_date);
   if (Number.isNaN(date.getTime())) return '-';
 
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: event.event_timezone || getBrowserTimeZone(),
     day: 'numeric',
     month: 'short',
@@ -655,6 +658,9 @@ const buildSetupGroups = (
 };
 
 export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   const { eventId } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState<WorkspaceEvent | null>(null);
@@ -948,7 +954,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     return (
       <div className="min-h-screen bg-gray-50 text-slate-800">
         <AdminHeader activePage="events" actorRole={actorContext.role} userEmail={actorContext.member_email} />
-        <main className="mx-auto max-w-6xl px-4 py-12 text-center text-sm font-bold text-gray-600">Loading event workspace...</main>
+        <main className="mx-auto max-w-6xl px-4 py-12 text-center text-sm font-bold text-gray-600">{copy("Loading event workspace...")}</main>
       </div>
     );
   }
@@ -960,11 +966,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         <main className="mx-auto max-w-3xl px-4 py-12">
           <button onClick={goToAllEvents} className="workspace-action mb-5 inline-flex items-center gap-2 border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50">
             <ArrowLeft size={16} aria-hidden="true" />
-            ดู event ทั้งหมด
+            {language === 'th' ? 'ดูอีเวนต์ทั้งหมด' : 'All events'}
           </button>
           <div className="workspace-card p-8 text-center">
-            <h1 className="text-xl font-black text-gray-900">Event workspace unavailable</h1>
-            <p className="mt-2 text-sm font-semibold text-gray-500">{error || 'Event not found.'}</p>
+            <h1 className="text-xl font-black text-gray-900">{copy("Event workspace unavailable")}</h1>
+            <p className="mt-2 text-sm font-semibold text-gray-500">{error || copy("Event not found.")}</p>
           </div>
         </main>
       </div>
@@ -1000,38 +1006,33 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         <section className="mb-5 border-b border-gray-200 pb-5">
           <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
             <ArrowLeft size={15} aria-hidden="true" />
-            ดู event ทั้งหมด
+            {language === 'th' ? 'ดูอีเวนต์ทั้งหมด' : 'All events'}
           </button>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${contextBadgeClass}`}>
-                  {contextLabel}
+                  {copy(contextLabel)}
                 </span>
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black text-gray-600">
-                  {salesPhaseLabel[salesPhase]}
+                  {copy(salesPhaseLabel[salesPhase])}
                 </span>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${boothBadgeClass}`}>
-                  {event.is_booth_open ? 'Booth open' : 'Booth closed'}
-                </span>
+                {!['Booth open', 'Booth closed'].includes(contextLabel) && <span className={`rounded-full px-2.5 py-1 text-xs font-black ${boothBadgeClass}`}>
+                  {event.is_booth_open ? copy("Booth open") : copy("Booth closed")}
+                </span>}
               </div>
               <h1 className="mt-3 truncate text-2xl font-black tracking-tight text-gray-900 md:text-3xl">{event.event_name}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-gray-600">
-                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event)}</span>
+                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event, language === 'th' ? 'th-TH' : 'en-GB')}</span>
                 {event.location && <span className="inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" />{event.location}</span>}
-                {event.booth_detail && <span>Booth {event.booth_detail}</span>}
+                {event.booth_detail && <span>{copy("Booth")}{event.booth_detail}</span>}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-4 lg:min-w-[520px]">
-              <MetricTile label="Selling" value={`${metrics.sellingProductCount}/${metrics.productCount}`} />
-              <MetricTile label="Queue" value={String(metrics.queueWaiting)} />
-              <MetricTile label="Orders" value={String(metrics.completedOrders)} />
-              <MetricTile label="Revenue" value={formatMoney(metrics.revenue, metrics.currency)} />
-            </div>
+
           </div>
         </section>
 
-        {setupReadiness && !setupReadiness.complete && (
+        {setupReadiness && (
           <GuidedSetupPanel
             readiness={setupReadiness}
             eventId={event.id}
@@ -1040,7 +1041,14 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           />
         )}
 
-        {primaryAction ? (
+            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MetricTile label={copy("Selling")} value={`${metrics.sellingProductCount}/${metrics.productCount}`} />
+              <MetricTile label={copy("Queue")} value={String(metrics.queueWaiting)} />
+              <MetricTile label={copy("Orders")} value={String(metrics.completedOrders)} />
+              <MetricTile label={copy("Revenue")} value={formatMoney(metrics.revenue, metrics.currency)} />
+            </div>
+
+        {primaryAction && !(setupReadiness && primaryAction.action === 'edit-event') ? (
           <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label="Current event status">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 gap-3">
@@ -1048,9 +1056,9 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   <primaryAction.icon size={22} aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <p className={`text-xs font-black uppercase tracking-wide ${primaryActionClasses.text}`}>{primaryAction.eyebrow}</p>
-                  <h2 className="mt-1 text-xl font-black tracking-tight text-gray-950 md:text-2xl">{primaryAction.title}</h2>
-                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-gray-700">{primaryAction.detail}</p>
+                  <p className={`text-xs font-black uppercase tracking-wide ${primaryActionClasses.text}`}>{copy(primaryAction.eyebrow)}</p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-gray-950 md:text-2xl">{copy(primaryAction.title)}</h2>
+                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-gray-700">{copy(primaryAction.detail)}</p>
                 </div>
               </div>
               <button
@@ -1058,7 +1066,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 onClick={() => handleOverviewAction(primaryAction)}
                 className={`workspace-action inline-flex shrink-0 items-center justify-center gap-2 px-4 text-sm font-black ${primaryActionClasses.cta}`}
               >
-                {primaryAction.cta}
+                {copy(primaryAction.cta)}
                 <ArrowRight size={16} aria-hidden="true" />
               </button>
             </div>
@@ -1066,30 +1074,31 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         ) : (
           <section className="mb-5 rounded-xl border border-gray-200 bg-white p-5 text-center shadow-sm">
             <Clock className="mx-auto mb-3 text-gray-300" size={34} aria-hidden="true" />
-            <p className="text-sm font-bold text-gray-600">No workspace actions are available for your role.</p>
+            <p className="text-sm font-bold text-gray-600">{copy("No workspace actions are available for your role.")}</p>
           </section>
         )}
 
         {setupReadiness?.complete && setupGroups.length > 0 && (
-          <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event setup checklist">
-            <div className="mb-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Setup</p>
-              <h2 className="text-lg font-black text-gray-900">Before sales open</h2>
+          <details className="sales-readiness" aria-label="Event setup checklist">
+            <summary className="cursor-pointer font-bold">{language === 'th' ? 'ดูรายละเอียดความพร้อม' : 'Setup details'}</summary>
+            <div className="mb-4 mt-4">
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Setup")}</p>
+              <h2 className="text-lg font-black text-gray-900">{copy("Before sales open")}</h2>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
               {setupGroups.map((group) => (
                 <SetupGroupPanel key={group.id} group={group} onOpen={handleOverviewAction} />
               ))}
             </div>
-          </section>
+          </details>
         )}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.9fr)]">
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event timeline">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={copy("Event timeline")}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-gray-400">Event timeline</p>
-                <h2 className="text-lg font-black text-gray-900">Progress at a glance</h2>
+                <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Event timeline")}</p>
+                <h2 className="text-lg font-black text-gray-900">{copy("Progress at a glance")}</h2>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-5">
@@ -1101,8 +1110,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Attention items">
             <div className="mb-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Attention</p>
-              <h2 className="text-lg font-black text-gray-900">Needs action</h2>
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Attention")}</p>
+              <h2 className="text-lg font-black text-gray-900">{copy("Needs action")}</h2>
             </div>
             {attentionItems.length > 0 ? (
               <div className="space-y-3">
@@ -1115,8 +1124,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />
                   <div>
-                    <p className="text-sm font-black text-emerald-900">No urgent items</p>
-                    <p className="mt-1 text-sm font-semibold leading-5 text-emerald-800/80">Use the event tabs when you need deeper setup, sales, or order details.</p>
+                    <p className="text-sm font-black text-emerald-900">{copy("No urgent items")}</p>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-emerald-800/80">{copy("Use the event tabs when you need deeper setup, sales, or order details.")}</p>
                   </div>
                 </div>
               </div>
@@ -1134,7 +1143,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
           >
             <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
-              <h3 id="workspace-event-form-title" className="text-lg font-bold text-slate-800">Edit Event</h3>
+              <h3 id="workspace-event-form-title" className="text-lg font-bold text-slate-800">{copy("Edit Event")}</h3>
               <button
                 onClick={() => setIsEventModalOpen(false)}
                 className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-800"
@@ -1146,27 +1155,27 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
             <div className="space-y-4 overflow-y-auto p-6 text-sm">
               <div className="rounded-xl border border-pink-100 bg-pink-50 p-3">
-                <p className="text-xs font-black uppercase tracking-wide text-pink-700">Event timing</p>
-                <p className="mt-1 text-xs font-semibold text-pink-800/80">Queue days reset using this event timezone, so choose the timezone where the booth is actually running.</p>
+                <p className="text-xs font-black uppercase tracking-wide text-pink-700">{copy("Event timing")}</p>
+                <p className="mt-1 text-xs font-semibold text-pink-800/80">{copy("Queue days reset using this event timezone, so choose the timezone where the booth is actually running.")}</p>
               </div>
 
               <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                <label className="text-xs font-bold uppercase text-gray-600" htmlFor="workspace-event-status">Status</label>
+                <label className="text-xs font-bold uppercase text-gray-600" htmlFor="workspace-event-status">{copy("Status")}</label>
                 <select
                   id="workspace-event-status"
                   name="status"
-                  value={eventDraft.status || 'Confirmed'}
+                  value={eventDraft.status || copy("Confirmed")}
                   onChange={handleEventDraftChange}
                   className="mt-1 min-h-11 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-pink-500"
                 >
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Cancelled">Cancelled</option>
-                  <option value="Ended">Ended</option>
+                  <option value={copy("Confirmed")}>{copy("Confirmed")}</option>
+                  <option value={copy("Cancelled")}>{copy("Cancelled")}</option>
+                  <option value={copy("Ended")}>{copy("Ended")}</option>
                 </select>
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Event Name *</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Event Name *")}</span>
                 <input
                   name="event_name"
                   value={eventDraft.event_name || ''}
@@ -1177,7 +1186,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Time Zone *</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Time Zone *")}</span>
                 <select
                   name="event_timezone"
                   value={eventDraft.event_timezone || browserTimeZone}
@@ -1190,12 +1199,12 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                     </option>
                   ))}
                 </select>
-                <span className="block text-xs font-semibold text-gray-500">Used for end-of-day and daily queue reset.</span>
+                <span className="block text-xs font-semibold text-gray-500">{copy("Used for end-of-day and daily queue reset.")}</span>
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Start Date *</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{copy("Start Date *")}</span>
                   <input
                     type="datetime-local"
                     name="start_date"
@@ -1205,7 +1214,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">End Date *</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{copy("End Date *")}</span>
                   <input
                     type="datetime-local"
                     name="end_date"
@@ -1217,7 +1226,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Location</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Location")}</span>
                 <input
                   name="location"
                   value={eventDraft.location || ''}
@@ -1228,7 +1237,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Booth Detail</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Booth Detail")}</span>
                 <input
                   name="booth_detail"
                   value={eventDraft.booth_detail || ''}
@@ -1239,7 +1248,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Queueing Area</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Queueing Area")}</span>
                 <input
                   name="queueing_area"
                   value={eventDraft.queueing_area || ''}
@@ -1250,7 +1259,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Entrance Fee</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Entrance Fee")}</span>
                 <input
                   name="entrance_fee"
                   value={eventDraft.entrance_fee || ''}
@@ -1261,7 +1270,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Transit Info</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{copy("Transit Info")}</span>
                 <textarea
                   name="transit_info"
                   rows={3}
@@ -1278,14 +1287,13 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 onClick={() => setIsEventModalOpen(false)}
                 className="workspace-action inline-flex items-center justify-center px-4 text-sm font-black text-gray-700 hover:bg-gray-100"
               >
-                Cancel
-              </button>
+                {copy("Cancel")}</button>
               <button
                 onClick={handleEventSave}
                 disabled={eventSaving}
                 className="workspace-action inline-flex items-center justify-center bg-pink-600 px-6 text-sm font-black text-white shadow-md shadow-pink-200 hover:bg-pink-700 disabled:opacity-60"
               >
-                {eventSaving ? 'Saving...' : 'Save Event'}
+                {eventSaving ? copy("Saving...") : 'Save Event'}
               </button>
             </div>
           </div>
@@ -1296,15 +1304,21 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 }
 
 function MetricTile({ label, value }: { label: string; value: string }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-left shadow-sm">
-      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{copy(label)}</p>
       <p className="mt-1 truncate text-base font-black text-gray-900">{value}</p>
     </div>
   );
 }
 
 function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => void }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   const Icon = step.icon;
   const statusStyles: Record<TimelineStatus, { shell: string; dot: string; label: string; icon: typeof CheckCircle2 }> = {
     done: {
@@ -1341,12 +1355,12 @@ function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => 
           <StatusIcon size={15} aria-hidden="true" />
         </div>
         <span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-gray-600">
-          {styles.label}
+          {copy(styles.label)}
         </span>
       </div>
       <Icon size={18} className="mb-2 text-gray-500" aria-hidden="true" />
-      <h3 className="text-sm font-black text-gray-900">{step.title}</h3>
-      <p className="mt-1 min-h-[40px] text-xs font-semibold leading-5 text-gray-600">{step.detail}</p>
+      <h3 className="text-sm font-black text-gray-900">{copy(step.title)}</h3>
+      <p className="mt-1 min-h-[40px] text-xs font-semibold leading-5 text-gray-600">{copy(step.detail)}</p>
     </>
   );
 
@@ -1366,14 +1380,17 @@ function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => 
 }
 
 function SetupGroupPanel({ group, onOpen }: { group: SetupGroup; onOpen: (target?: { href?: string; action?: 'edit-event' }) => void }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
       <div className="mb-3">
-        <h3 className="text-sm font-black text-gray-900">{group.title}</h3>
-        <p className="mt-1 text-xs font-semibold text-gray-500">{group.detail}</p>
+        <h3 className="text-sm font-black text-gray-900">{copy(group.title)}</h3>
+        <p className="mt-1 text-xs font-semibold text-gray-500">{copy(group.detail)}</p>
       </div>
       <div className="space-y-2">
-        {group.items.map((item) => (
+        {[...group.items].sort((a, b) => Number(b.status === 'attention') - Number(a.status === 'attention')).map((item) => (
           <SetupItemRow key={item.id} item={item} onOpen={() => onOpen(item)} />
         ))}
       </div>
@@ -1382,6 +1399,9 @@ function SetupGroupPanel({ group, onOpen }: { group: SetupGroup; onOpen: (target
 }
 
 function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   const Icon = item.icon;
   const statusClasses: Record<TimelineStatus, { pill: string; label: string; icon: typeof CheckCircle2 }> = {
     done: {
@@ -1420,13 +1440,13 @@ function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void })
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-black text-gray-900">{item.title}</p>
+            <p className="text-sm font-black text-gray-900">{copy(item.title)}</p>
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${status.pill}`}>
               <StatusIcon size={11} aria-hidden="true" />
-              {status.label}
+              {copy(status.label)}
             </span>
           </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{item.detail}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{copy(item.detail)}</p>
         </div>
         <ArrowRight className="mt-2 shrink-0 text-gray-400" size={15} aria-hidden="true" />
       </div>
@@ -1435,6 +1455,9 @@ function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void })
 }
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: () => void }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   const classes = toneClasses[item.tone];
 
   return (
@@ -1446,8 +1469,8 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: () => voi
       <div className="flex items-start gap-3">
         <AlertCircle className={`mt-0.5 shrink-0 ${classes.text}`} size={18} aria-hidden="true" />
         <div className="min-w-0">
-          <p className="text-sm font-black text-gray-900">{item.title}</p>
-          <p className="mt-1 text-sm font-semibold leading-5 text-gray-700">{item.detail}</p>
+          <p className="text-sm font-black text-gray-900">{copy(item.title)}</p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-gray-700">{copy(item.detail)}</p>
         </div>
         <ArrowRight className="ml-auto mt-1 shrink-0 text-gray-400" size={15} aria-hidden="true" />
       </div>

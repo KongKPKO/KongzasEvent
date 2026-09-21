@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
-import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Lock, Mail, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { LanguageToggle, useI18n } from '../i18n';
+import PublicShell from '../components/PublicShell';
+import { useI18n } from '../i18n';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
@@ -57,7 +58,8 @@ const isExistingAccountResponse = (errorMessage: string | null | undefined) => {
 };
 
 export default function CreatorRegister() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const th = language === 'th';
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(initialForm);
   const [loading, setLoading] = useState(false);
@@ -278,7 +280,7 @@ export default function CreatorRegister() {
 
   if (submittedEmail) {
     return (
-      <div className="min-h-screen bg-[#f7f4ef] px-4 py-8 text-gray-900">
+      <PublicShell><main className="public-success public-width">
         <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center">
           <div className="w-full rounded-[2rem] border border-emerald-200 bg-white p-8 shadow-xl">
             <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
@@ -301,59 +303,30 @@ export default function CreatorRegister() {
                 {t('registerBackLogin')}
               </Link>
               <button type="button" onClick={handleResendConfirmation} disabled={resendLoading} className="min-h-11 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm font-black text-pink-700 hover:bg-pink-50 disabled:opacity-60">
-                {resendLoading ? 'กำลังส่ง…' : 'ส่งอีเมลยืนยันอีกครั้ง'}
+                {resendLoading ? (th ? 'กำลังส่ง…' : 'Sending…') : (th ? 'ส่งอีเมลยืนยันอีกครั้ง' : 'Resend confirmation')}
               </button>
             </div>
             <p className="mt-3 text-sm text-gray-600">{t('registerResetGuidance')}</p>
           </div>
         </div>
-      </div>
+      </main></PublicShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f4ef] text-gray-900">
-      <div className="mx-auto grid min-h-screen max-w-6xl grid-cols-1 lg:grid-cols-[0.95fr_1.05fr]">
-        <aside className="flex flex-col justify-between px-6 py-8 lg:px-10">
-          <Link to="/manage-login" className="inline-flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-gray-950">
-            <ArrowLeft size={16} />
-            {t('registerBack')}
-          </Link>
-          <div className="mt-4">
-            <LanguageToggle />
-          </div>
-
-          <div className="py-12">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-800">
-              <Sparkles size={14} />
-              {t('registerEyebrow')}
-            </div>
-            <h1 className="max-w-md text-5xl font-black leading-[0.95] tracking-tight md:text-6xl">
-              {t('registerHeroTitle')}
-            </h1>
-            <p className="mt-6 max-w-md text-base leading-7 text-gray-600">
-              {t('registerHeroBody')}
-            </p>
-          </div>
-
-          <div className="grid gap-3 text-sm">
-            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white/70 p-4">
-              <ShieldCheck className="mt-0.5 text-emerald-700" size={20} />
-              <p className="text-gray-600"><span className="font-bold text-gray-900">{t('registerManualTitle')}</span> {t('registerManualBody')}</p>
-            </div>
-            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white/70 p-4">
-              <ExternalLink className="mt-0.5 text-pink-700" size={20} />
-              <p className="text-gray-600"><span className="font-bold text-gray-900">{t('registerSocialTitle')}</span> {t('registerSocialBody')}</p>
-            </div>
-          </div>
+    <PublicShell>
+      <div className="public-auth-layout public-width public-register-layout">
+        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับครีเอเตอร์' : 'FOR CREATORS'}</p><h1>{th ? 'ให้ผลงานของคุณ' : 'Make room'}<span>{th ? 'ได้เจอคนที่รัก' : 'for your people.'}</span></h1><p>{th ? 'สร้างร้าน เตรียมสินค้าและคิวให้พร้อมสำหรับงานถัดไป เริ่มตั้งค่าก่อนได้ แล้วค่อยเผยแพร่เมื่อคุณพร้อม' : 'Create your shop and prepare products and queues for your next event. Set up first, publish when you are ready.'}</p>
+          <ol className="public-onboarding"><li><strong>{th ? 'สร้างบัญชี' : 'Create your account'}</strong><span>{th ? 'ใช้อีเมลหรือบัญชี Google ของคุณ' : 'Use your email or Google account'}</span></li><li><strong>{th ? 'แนะนำร้านของคุณ' : 'Introduce your shop'}</strong><span>{th ? 'ชื่อครีเอเตอร์และลิงก์ผลงานหลัก' : 'Your creator name and main social link'}</span></li><li><strong>{th ? 'ยืนยันอีเมล แล้วเริ่มตั้งค่า' : 'Confirm your email and set up'}</strong><span>{th ? 'คุณเป็นคนเลือกว่าจะเผยแพร่ร้านเมื่อไหร่' : 'You choose when your shop goes public'}</span></li></ol>
+          <Link to="/manage-login" className="public-text-link">{th ? 'มีบัญชีแล้ว? เข้าสู่ระบบ →' : 'Already registered? Log in →'}</Link>
         </aside>
-
-        <main className="px-4 py-6 lg:py-8">
+        <main className="public-auth-form">
           <form
+            onInvalidCapture={(event) => { const details = (event.target as HTMLElement).closest('details'); if (details) details.open = true; }}
             onSubmit={handleSubmit}
             aria-label={t('registerFormTitle')}
             data-testid="creator-register-form"
-            className="rounded-[2rem] border border-gray-200 bg-white p-5 shadow-xl md:p-8"
+            className="public-auth-panel"
           >
             <div className="mb-6 flex items-center justify-between gap-4 border-b border-gray-100 pb-5">
               <div>
@@ -366,14 +339,14 @@ export default function CreatorRegister() {
             </div>
 
             {errorMsg && (
-              <div className="mb-5 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+              <div role="alert" className="mb-5 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
                 <AlertCircle size={18} className="mt-0.5 shrink-0" />
                 {errorMsg}
               </div>
             )}
 
             {!authLoading && !authUser && (
-              <div className="mb-6 space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <div className="mb-6 space-y-3">
                 <button
                   type="button"
                   onClick={() => void handleGoogleSignup()}
@@ -390,7 +363,7 @@ export default function CreatorRegister() {
                   {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
                 </button>
                 <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>
-                <div className="flex items-center gap-3 text-xs font-bold text-gray-400">
+                <div className="flex items-center gap-3 text-xs font-bold text-gray-600">
                   <span className="h-px flex-1 bg-gray-200" />
                   {t('orUseEmail')}
                   <span className="h-px flex-1 bg-gray-200" />
@@ -398,7 +371,7 @@ export default function CreatorRegister() {
               </div>
             )}
 
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="public-register-fields"><h3 className="public-form-section">{th ? 'บัญชีของคุณ' : 'Your account'}</h3>
               {authUser ? (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 md:col-span-2">
                   <p className="text-xs font-black uppercase tracking-wide text-emerald-800">{t('registerSignedInAs')}</p>
@@ -417,6 +390,7 @@ export default function CreatorRegister() {
                   </Field>
                 </>
               )}
+              <h3 className="public-form-section">{th ? 'ข้อมูลครีเอเตอร์' : 'Creator details'}</h3>
               <Field label={t('registerContactName')} required>
                 <IconInput id="creator-contact-name" name="contactName" icon={<UserRound size={17} />} value={form.contactName} onChange={(value) => updateField('contactName', value)} placeholder={t('registerContactNamePlaceholder')} />
               </Field>
@@ -429,7 +403,7 @@ export default function CreatorRegister() {
               <Field label={t('registerPrimarySocial')} required hint={t('registerPrimarySocialHint')}>
                 <input id="creator-primary-social" name="primarySocialUrl" data-testid="creator-primary-social" className="input-surface" type="url" value={form.primarySocialUrl} onChange={(event) => updateField('primarySocialUrl', event.target.value)} placeholder={t('registerPrimarySocialPlaceholder')} required />
               </Field>
-              <Field label={t('registerWebsite')}>
+              <details className="public-extra-links"><summary>{th ? 'เพิ่มช่องทางอื่น (ไม่บังคับ)' : 'More social links (optional)'}</summary><div className="public-register-fields">              <Field label={t('registerWebsite')}>
                 <input id="creator-website" name="websiteUrl" className="input-surface" type="url" value={form.websiteUrl} onChange={(event) => updateField('websiteUrl', event.target.value)} placeholder="https://your-site.com" />
               </Field>
               <Field label={t('registerInstagram')}>
@@ -443,7 +417,7 @@ export default function CreatorRegister() {
               </Field>
               <Field label={t('registerTiktok')}>
                 <input id="creator-tiktok" name="tiktokUrl" className="input-surface" type="url" value={form.tiktokUrl} onChange={(event) => updateField('tiktokUrl', event.target.value)} placeholder="https://tiktok.com/@..." />
-              </Field>
+              </Field></div></details>
             </div>
 
             <Field label={t('registerUseTitle')} required hint={t('registerUseHint')}>
@@ -474,9 +448,9 @@ export default function CreatorRegister() {
               />
               <span>
                 {t('registerTruthful')}{' '}
-                <Link to="/terms" className="font-bold text-pink-700 underline underline-offset-2">ข้อกำหนด</Link>
-                {' '}และ{' '}
-                <Link to="/privacy" className="font-bold text-pink-700 underline underline-offset-2">นโยบายความเป็นส่วนตัว</Link>
+                <Link to="/terms" className="font-bold text-pink-700 underline underline-offset-2">{th ? 'ข้อกำหนด' : 'Terms'}</Link>
+                {' '}{th ? 'และ' : 'and'}{' '}
+                <Link to="/privacy" className="font-bold text-pink-700 underline underline-offset-2">{th ? 'นโยบายความเป็นส่วนตัว' : 'Privacy policy'}</Link>
               </span>
             </label>
 
@@ -484,7 +458,7 @@ export default function CreatorRegister() {
               type="submit"
               data-testid="creator-register-submit"
               disabled={!canSubmit || loading}
-              className="mt-6 w-full rounded-2xl bg-gray-900 px-5 py-4 text-sm font-black text-white shadow-lg shadow-gray-200 transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              className="public-button public-primary mt-6 w-full"
               title={!canSubmit && incompleteReasons.length > 0 ? incompleteReasons[0] : undefined}
             >
               {loading
@@ -502,7 +476,7 @@ export default function CreatorRegister() {
           </form>
         </main>
       </div>
-    </div>
+    </PublicShell>
   );
 }
 

@@ -1,5 +1,6 @@
-import { ArrowRight, Check, Circle, LockKeyhole } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import type { SetupReadiness, SetupStepId } from '../../lib/setupReadiness';
+import { useI18n } from '../../i18n';
 
 interface GuidedSetupPanelProps {
   readiness: SetupReadiness;
@@ -9,58 +10,43 @@ interface GuidedSetupPanelProps {
   onNavigate: (path: string) => void;
 }
 
-const destinationFor = (step: SetupStepId, eventId: string) => {
-  if (step === 'profile' || step === 'publish') return '/manage-events?focus=publish';
-  if (step === 'catalog') return `/manage-events/${eventId}/catalog`;
-  if (step === 'payment') return `/manage-events/${eventId}/preorder`;
-  return null;
-};
-
+// Hallmark · existing NireQ workflow · pre-emit critique: P4 H4 E4 S4 R5 V4
 export default function GuidedSetupPanel({ readiness, eventId, compact = false, onEditEvent, onNavigate }: GuidedSetupPanelProps) {
-  const next = readiness.nextStep;
-  const openStep = (stepId: SetupStepId) => {
-    if (stepId === 'event') {
-      onEditEvent();
-      return;
-    }
-    const destination = destinationFor(stepId, eventId);
-    if (destination) onNavigate(destination);
-  };
+  const { language } = useI18n();
+  const th = language === 'th';
+  const complete = (id: SetupStepId) => readiness.steps.find(step => step.id === id)?.complete;
+  const steps = [
+    { id: 'event', title: th ? 'รายละเอียดงาน' : 'Event details', detail: th ? 'ตรวจวัน เวลา สถานที่ และจุดตั้งบูธ' : 'Check dates, venue and booth location.', action: onEditEvent, done: complete('event') },
+    { id: 'catalog', title: th ? 'เลือกสินค้าและจัดสรรสต็อก' : 'Choose products & allocate stock', detail: th ? 'เพิ่มสินค้าจากคลังร้าน แล้วกำหนดจำนวนที่จะขายในงานนี้' : 'Add products from your shop and assign stock to this event.', action: () => onNavigate(`/manage-events/${eventId}/catalog`), done: false },
+    { id: 'schedule', title: th ? 'ช่วงขายและรับเงิน' : 'Schedule & payment', detail: th ? 'เลือกขายก่อนงาน / วันงาน / หลังงาน พร้อมวิธีโอนเงินและคำแนะนำรับสินค้า' : 'Set pre-order and post-order windows, payment and pickup instructions.', action: () => onNavigate(`/manage-events/${eventId}/preorder`), done: false },
+    { id: 'promotion', title: th ? 'โปรโมชัน (ไม่บังคับ)' : 'Promotions (optional)', detail: th ? 'เลือกเงื่อนไข ส่วนลดหรือของแถม และช่วงเวลาที่ใช้กับงานนี้' : 'Choose discounts or gifts and when they apply to this event.', action: () => onNavigate(`/manage-events/${eventId}/promotion`), done: false },
+  ];
 
   return (
-    <section className={`mb-5 overflow-hidden rounded-2xl border shadow-sm ${compact ? 'border-gray-200 bg-white' : 'border-pink-200 bg-[#fffafc]'}`} aria-label="Guided booth setup">
-      <div className="border-b border-pink-100 px-4 py-4 sm:px-5">
-        <p className="text-xs font-black uppercase tracking-[0.15em] text-pink-700">{compact ? 'Setup health' : 'First-run guide'}</p>
-        <h2 className="mt-1 text-xl font-black text-gray-950">{readiness.complete ? 'Booth setup is ready' : 'One clear step at a time'}</h2>
-        <p className="mt-1 text-sm font-semibold text-gray-600">Completion is calculated from your real booth and event data—there is no separate wizard state to maintain.</p>
+    <section className="sales-readiness mb-5" aria-label={th ? 'ขั้นตอนเตรียมขาย' : 'Event setup steps'}>
+      <div className="mb-4">
+        <p className="text-xs font-bold text-pink-700">{th ? 'เตรียมงานของคุณ' : 'Prepare your event'}</p>
+        <h2 className="mt-1 text-xl font-black text-gray-950">{th ? 'ตั้งค่าให้ครบ ก่อนเริ่มขาย' : 'Set up before you start selling'}</h2>
+        <p className="mt-2 text-sm text-gray-600">{th ? 'เริ่มจากสินค้าและสต็อก แล้วเลือกช่วงขายที่ต้องการ แต่ละข้อกลับมาแก้ไขได้เสมอ' : 'Start with products and stock, then choose your sales windows. You can revisit every step.'}</p>
       </div>
-
-      <ol className={`grid gap-px bg-gray-100 ${compact ? 'md:grid-cols-5' : 'md:grid-cols-5'}`}>
-        {readiness.steps.map((step, index) => (
-          <li key={step.id} className="bg-white p-4">
-            <div className="flex items-center gap-2">
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step.complete ? 'bg-emerald-100 text-emerald-700' : step.required ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500'}`}>
-                {step.complete ? <Check size={15} aria-hidden="true" /> : step.required ? <Circle size={13} aria-hidden="true" /> : <LockKeyhole size={13} aria-hidden="true" />}
-              </span>
-              <span className="text-xs font-black text-gray-400">{index + 1}/5</span>
+      <ol className="divide-y divide-gray-100">
+        {steps.map((step, index) => (
+          <li key={step.id} className="!flex flex-wrap items-center gap-3 py-4">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pink-50 font-bold text-pink-700">{step.done ? <Check size={16} aria-label={th ? 'ข้อมูลครบ' : 'Details complete'} /> : index + 1}</span>
+            <div className="min-w-0 flex-1 basis-48">
+              <h3 className="font-bold text-gray-900">{step.title}</h3>
+              {!compact && <p className="mt-1 text-sm text-gray-600">{step.detail}</p>}
             </div>
-            <h3 className="mt-3 text-sm font-black text-gray-900">{step.title}</h3>
-            <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{step.detail}</p>
+            <button type="button" onClick={step.action} aria-label={step.title} className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl border border-pink-200 px-4 text-sm font-bold text-pink-700 hover:bg-pink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pink-700">
+              {th ? 'ตั้งค่า' : 'Configure'} <ArrowRight size={16} aria-hidden="true" />
+            </button>
           </li>
         ))}
       </ol>
-
-      {!compact && next && (
-        <div className="flex flex-col gap-3 border-t border-pink-100 bg-pink-50/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-pink-700">Next action</p>
-            <p className="mt-1 text-sm font-bold text-gray-800">{next.title}: {next.detail}</p>
-          </div>
-          <button type="button" onClick={() => openStep(next.id)} className="workspace-action inline-flex items-center justify-center gap-2 bg-pink-700 px-4 text-sm font-black text-white hover:bg-pink-800">
-            Continue setup <ArrowRight size={16} aria-hidden="true" />
-          </button>
-        </div>
-      )}
+      {!compact && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+        <p className="text-sm text-gray-600">{th ? 'ก่อนแชร์ร้าน ตรวจสต็อก ช่วงขาย การรับเงิน และหน้าที่ลูกค้าจะเห็น' : 'Before sharing, review stock, schedule, payment and the customer view.'}</p>
+        <button type="button" onClick={() => onNavigate('/manage-events?focus=publish')} className="min-h-11 whitespace-nowrap rounded-xl border border-pink-200 px-4 text-sm font-bold text-pink-700 hover:bg-pink-50">{th ? 'ตรวจหน้าร้านก่อนเผยแพร่' : 'Review storefront'}</button>
+      </div>}
     </section>
   );
 }

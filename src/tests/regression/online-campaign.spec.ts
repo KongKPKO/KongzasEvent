@@ -130,6 +130,14 @@ test.describe('online campaign', () => {
   test('customer checks out with flat shipping and gets a 15-minute hold', async ({ page }) => {
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
     await expect(page.getByRole('heading', { name: 'Cheki Online E2E' })).toBeVisible();
+    const readiness = page.getByRole('region', { name: /Before sales open|ตรวจความพร้อมก่อนเปิดขาย/ });
+    await expect(readiness).toContainText('6/6');
+    for (const width of [320, 375, 414, 768]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+
     await page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ }).click();
     await page.getByRole('button', { name: /Checkout|สั่งซื้อ/ }).click();
     await page.getByPlaceholder(/Customer name|ชื่อลูกค้า/).fill('Shipping Buyer');
@@ -141,6 +149,14 @@ test.describe('online campaign', () => {
     await expect(page).toHaveURL(new RegExp(`/${ARTIST_SLUG}/order/`), { timeout: 15_000 });
     await expect(page.getByText(/Awaiting payment|รอชำระเงิน/)).toBeVisible();
     await expect(page.getByText(/^1[34]:\d{2}$/)).toBeVisible();
+    await expect(page.locator('.order-amount')).toContainText('140');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.route('**/rest/v1/rpc/get_public_online_order_by_code', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Unavailable"}' }));
+    await page.reload();
+    await expect(page.getByRole('alert')).toContainText(/Could not load your order|โหลดออเดอร์ไม่สำเร็จ/);
+    await page.unroute('**/rest/v1/rpc/get_public_online_order_by_code');
+    await page.getByRole('button', { name: /Try again|ลองอีกครั้ง/ }).click();
+    await expect(page.getByText(/Awaiting payment|รอชำระเงิน/)).toBeVisible();
     const orderCode = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || '');
     await expect.poll(async () => {
       const order = await fixture.service.from('orders').select('id').eq('pickup_code', orderCode).single();
@@ -149,6 +165,18 @@ test.describe('online campaign', () => {
         .select('status').eq('order_id', order.data.id).eq('delivery_key', 'campaign:created').maybeSingle();
       return delivery.data?.status || null;
     }, { timeout: 15_000 }).toBe('delivered');
+  });
+
+  test('storefront search preserves quantity and filters can be cleared', async ({ page }) => {
+    await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+    const product = page.getByRole('article', { name: 'E2E Cheki' });
+    await product.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ }).click();
+    await page.getByRole('searchbox').fill('No matching product');
+    await expect(page.getByRole('article')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Checkout|สั่งซื้อ/ })).toBeVisible();
+    await page.getByRole('button', { name: /Clear filters|ล้างตัวกรอง/ }).click();
+    await expect(product.getByRole('button', { name: /Decrease quantity|ลดจำนวน/ })).toBeEnabled();
+    await expect(product.locator('.shop-quantity')).toContainText('1');
   });
 
   test('closed campaign stays readable and rejects cart actions', async ({ page }) => {
@@ -167,14 +195,14 @@ test.describe('online campaign', () => {
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
     await expect(page.getByRole('img', { name: 'E2E Cheki' })).toHaveAttribute(
       'src',
-      /(?:storage\/v1\/object\/public\/Menu|ik\.imagekit\.io\/kongzas\/Menu)\/public\/e2e-cheki\.webp/,
+      /storage\/v1\/object\/public\/Menu\/public\/e2e-cheki\.webp/,
     );
   });
 
   test('broken campaign product image falls back cleanly', async ({ page }) => {
     await page.route(/e2e-cheki\.webp/, (route) => route.abort());
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
-    await expect(page.getByTestId('campaign-product-image-fallback').first()).toBeVisible();
+    await expect(page.getByRole('img', { name: /E2E Cheki: (Image unavailable|ไม่มีภาพสินค้า)/ })).toBeVisible();
   });
 
   test('merchant limits a campaign product quantity per order', async ({ page }) => {
@@ -209,6 +237,52 @@ test.describe('online campaign', () => {
         .eq('campaign_id', campaignId)
         .eq('product_id', productId);
     }
+  });
+
+  test('checkout can retry a failed price check without losing customer details', async ({ page }) => {
+    await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+    await page.route('**/rest/v1/rpc/quote_sale_promotions', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Unavailable"}' }));
+    await page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ }).click();
+    await page.getByRole('button', { name: /Checkout|สั่งซื้อ/ }).click();
+    const dialog = page.getByRole('dialog');
+    await page.getByPlaceholder(/Customer name|ชื่อลูกค้า/).fill('Retry Buyer');
+    await expect(dialog.getByRole('alert')).toContainText(/Could not check prices|ตรวจราคาไม่สำเร็จ/);
+    const confirm = dialog.getByRole('button', { name: /Confirm order and hold stock|ยืนยันออเดอร์/ });
+    await expect(confirm).toBeDisabled();
+    await page.unroute('**/rest/v1/rpc/quote_sale_promotions');
+    await dialog.getByRole('button', { name: /Retry price check|ตรวจราคาอีกครั้ง/ }).click();
+    await expect(confirm).toBeEnabled();
+    await expect(page.getByPlaceholder(/Customer name|ชื่อลูกค้า/)).toHaveValue('Retry Buyer');
+  });
+
+  test('checkout keeps details when editing items and switching fulfillment', async ({ page }, testInfo) => {
+    await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+    await page.getByRole('button', { name: /Increase quantity|เพิ่มจำนวน/ }).click();
+    const openCheckout = page.getByRole('button', { name: /Checkout|สั่งซื้อ/, exact: true });
+    await openCheckout.press('Enter');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('region', { name: /Order items|รายการสินค้า/ })).toContainText('E2E Cheki');
+    await page.getByPlaceholder(/Customer name|ชื่อลูกค้า/).fill('Checkout Review');
+    await page.getByPlaceholder(/Email|อีเมล/).fill('review@example.com');
+    await page.getByPlaceholder(/Shipping address|ที่อยู่จัดส่ง/).fill('Saved address');
+    await dialog.getByRole('button', { name: /^Pickup$|^รับเอง$/ }).click();
+    await expect(dialog.getByText('Siam Square')).toBeVisible();
+    await dialog.getByRole('button', { name: /^Shipping$|^จัดส่ง$/ }).click();
+    await expect(page.getByPlaceholder(/Shipping address|ที่อยู่จัดส่ง/)).toHaveValue('Saved address');
+    await dialog.getByRole('button', { name: /Edit your items|กลับไปแก้รายการสินค้า/ }).click();
+    await expect(dialog).not.toBeVisible();
+    await openCheckout.press('Enter');
+    await expect(page.getByPlaceholder(/Customer name|ชื่อลูกค้า/)).toHaveValue('Checkout Review');
+    await expect(page.getByPlaceholder(/Email|อีเมล/)).toHaveValue('review@example.com');
+    await expect(dialog.getByRole('button', { name: /Confirm order and hold stock|ยืนยันออเดอร์/ })).toBeEnabled();
+    await dialog.getByRole('button', { name: /Confirm order and hold stock|ยืนยันออเดอร์/ }).click();
+    await expect(dialog).toBeVisible(); // Native required phone validation prevents submission.
+    await expect(dialog.locator('input[name="customer_phone"]')).toBeFocused();
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('checkout.png'), fullPage: true });
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(openCheckout).toBeFocused();
   });
 
   test('pickup checkout has no shipping fee', async ({ page }) => {
@@ -258,7 +332,7 @@ test.describe('online campaign', () => {
     await expect(page.getByText('0812345678')).toHaveCount(0);
   });
 
-  test('merchant previews payment evidence without leaving the workspace', async ({ page }) => {
+  test('merchant previews payment evidence without leaving the workspace', async ({ page }, testInfo) => {
     const created = await fixture.service.rpc('create_online_campaign_order', {
       p_campaign_id: campaignId,
       p_items: [{ product_id: productId, quantity: 1 }],
@@ -273,19 +347,16 @@ test.describe('online campaign', () => {
     });
     if (created.error) throw created.error;
     const order = created.data[0];
-    const slipPath = `campaign/${campaignId}/${order.order_id}/evidence.png`;
-    const upload = await fixture.service.storage.from('PaymentEvidence').upload(
-      slipPath,
-      Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
-      { contentType: 'image/png', upsert: true },
-    );
-    if (upload.error) throw upload.error;
-    const payment = await fixture.service.from('order_payments').update({
-      payment_status: 'payment_submitted',
-      slip_url: slipPath,
-      submitted_at: new Date().toISOString(),
-    }).eq('order_id', order.order_id);
-    if (payment.error) throw payment.error;
+    await page.goto(`/${ARTIST_SLUG}/order/${order.order_code}`);
+    await page.locator('input[type=file]').first().setInputFiles({
+      name: 'evidence.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+    });
+    await page.getByRole('button', { name: /Submit payment evidence|ส่งหลักฐาน/ }).click();
+    await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status).toBe('payment_submitted');
+    const { data: payment } = await fixture.service.from('order_payments').select('slip_url').eq('order_id', order.order_id).single();
+    const slipPath = payment?.slip_url || '';
+    expect(slipPath).toMatch(/\.webp$/);
 
     try {
       await login(page);
@@ -297,11 +368,88 @@ test.describe('online campaign', () => {
       await expect(preview).toBeVisible();
       await expect(preview).toContainText(order.order_code);
       await expect(preview.locator('img')).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('evidence-review.png') });
+      await preview.getByRole('button', { name: /Zoom evidence|ขยายสลิป/ }).click();
+      await expect(preview.locator('img')).toHaveClass(/is-zoomed/);
+      await preview.getByRole('button', { name: /Fit image|ย่อรูป/ }).click();
+      await expect(preview.getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ })).toBeVisible();
+      const downloadPromise = page.waitForEvent('download');
+      await preview.getByRole('button', { name: /Download payment evidence|ดาวน์โหลดสลิป/ }).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe(`payment-${order.order_code}.webp`);
+      expect(await download.failure()).toBeNull();
       await preview.getByRole('button', { name: /Close payment evidence|ปิดหลักฐานการชำระเงิน/ }).click();
       await expect(preview).toHaveCount(0);
+      await page.locator('article').filter({ hasText: order.order_code }).getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
+      await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status).toBe('payment_confirmed');
+      const row = page.locator('article').filter({ hasText: order.order_code });
+      await row.getByRole('button', { name: /Add tracking & ship|ใส่เลขพัสดุและจัดส่ง/ }).click();
+      const shippingDialog = page.getByRole('dialog');
+      await expect(shippingDialog).toContainText(order.order_code);
+      await expect(shippingDialog.getByRole('button', { name: /Confirm this order|ยืนยันรายการนี้/ })).toBeDisabled();
+      await shippingDialog.getByLabel(/Carrier|ขนส่ง/).fill('Thailand Post');
+      await shippingDialog.getByLabel(/Tracking number|เลขพัสดุ/).fill('LOCAL-TRACK-001');
+      let shippingCalls = 0;
+      await page.route('**/rest/v1/rpc/mark_online_order_shipped', async route => {
+        shippingCalls++;
+        if (shippingCalls === 1) await route.abort(); else await route.continue();
+      });
+      await shippingDialog.getByRole('button', { name: /Confirm this order|ยืนยันรายการนี้/ }).click();
+      await expect(shippingDialog.getByRole('alert')).toBeVisible();
+      await expect(shippingDialog.getByLabel(/Tracking number|เลขพัสดุ/)).toHaveValue('LOCAL-TRACK-001');
+      await shippingDialog.getByRole('button', { name: /Confirm this order|ยืนยันรายการนี้/ }).click();
+      await expect(shippingDialog).toHaveCount(0);
+      await expect.poll(async () => (await fixture.service.from('orders').select('pickup_status').eq('id', order.order_id).single()).data?.pickup_status).toBe('shipped');
+      expect(shippingCalls).toBe(2);
+
     } finally {
       await fixture.service.storage.from('PaymentEvidence').remove([slipPath]);
     }
+  });
+
+  test('customer problem survives a lost response and remains private to management', async ({ page }) => {
+    const created = await fixture.service.rpc('create_online_campaign_order', {
+      p_campaign_id: campaignId, p_items: [{ product_id: productId, quantity: 1 }],
+      p_fulfillment_method: 'shipping', p_pickup_point_id: null,
+      p_customer_name: 'Problem Buyer', p_customer_email: 'problem@example.com',
+      p_customer_phone: '0800000003', p_shipping_address: 'Bangkok', p_customer_note: '',
+      p_client_request_id: randomUUID(),
+    });
+    if (created.error) throw created.error;
+    const order = created.data[0];
+    await page.goto(`/${ARTIST_SLUG}/order/${order.order_code}`);
+    const form = page.locator('details').filter({ hasText: /Report an order problem|แจ้งปัญหาออเดอร์/ });
+    await form.locator('summary').click();
+    await form.getByLabel('Description', { exact: true }).fill('Package is missing a sticker');
+    await form.getByLabel(/Contact details/).fill('problem@example.com');
+    await form.getByRole('checkbox').check();
+    let lost = false;
+    await page.route('**/rest/v1/rpc/submit_order_problem', async route => {
+      if (!lost) { lost = true; await route.fetch(); await route.abort(); } else await route.continue();
+    });
+    await form.getByRole('button', { name: 'Send report to shop' }).click();
+    await expect(form.getByRole('button', { name: 'Retry submission' })).toBeEnabled();
+    await form.getByRole('button', { name: 'Retry submission' }).click();
+    await expect(form.getByRole('status').first()).toContainText('Report saved');
+    await expect.poll(async () => (await fixture.service.from('order_problem_reports').select('notification_status').eq('order_id', order.order_id).single()).data?.notification_status).toBe('sent');
+    const reports = await fixture.service.from('order_problem_reports').select('id').eq('order_id', order.order_id);
+    expect(reports.data).toHaveLength(1);
+    const anonymous = await page.evaluate(async () => {
+      const path = '/src/supabaseClient.ts'; const { supabase } = await import(path);
+      const result = await supabase.from('order_problem_reports').select('contact');
+      return { error: Boolean(result.error), count: result.data?.length || 0 };
+    });
+    expect(anonymous.error || anonymous.count === 0).toBe(true);
+    await login(page);
+    await page.goto('/manage-order-problems');
+    const report = page.locator('article').filter({ hasText: 'Package is missing a sticker' });
+    await expect(report).toContainText('problem@example.com');
+    await report.getByLabel('Agreed resolution').fill('Replacement arranged with buyer');
+    await report.getByRole('button', { name: 'Mark resolved' }).click();
+    await expect(report).toHaveCount(0);
+    await page.getByLabel('Report status').selectOption('resolved');
+    await expect(page.getByText('Replacement arranged with buyer')).toBeVisible();
   });
 
   test('customer order status labels carrier and tracking number', async ({ page }) => {
@@ -346,6 +494,7 @@ test.describe('online campaign', () => {
     await expect(page.getByText('Thailand Post')).toBeVisible();
     await expect(page.getByText(/Tracking number|หมายเลขติดตามพัสดุ/)).toBeVisible();
     await expect(page.getByText('TH1234567890')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Order shipped|จัดส่งแล้ว|Shipped/i })).toBeVisible();
     const copyButton = page.getByRole('button', { name: /Copy tracking number|คัดลอกหมายเลขติดตาม/ });
     await copyButton.click();
     await expect(copyButton).toContainText(/Copied|คัดลอกแล้ว/);
@@ -374,7 +523,7 @@ test.describe('online campaign', () => {
     expect(productCellWidth).toBeGreaterThanOrEqual(250);
 
     await page.goto('/manage-products');
-    await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/ }).first().click();
+    await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/i }).first().click();
     const productName = `Quick Cheki ${randomUUID().slice(0, 6)}`;
     await page.getByLabel(/Product name|ชื่อสินค้า/i).fill(productName);
     await page.getByLabel(/Price & currency|ราคาและสกุลเงิน/i).fill('120');

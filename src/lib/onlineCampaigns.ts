@@ -1,3 +1,4 @@
+import { uploadImage } from './imageUploads';
 import { supabase } from '../supabaseClient';
 import type {
   CampaignOrder,
@@ -154,20 +155,12 @@ export async function getPublicCampaignOrder(artistSlug: string, orderCode: stri
 }
 
 export async function uploadCampaignPaymentEvidence(
-  campaignId: string,
+  _campaignId: string,
   orderId: string,
   orderCode: string,
   file: File,
 ) {
-  const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const nonce = crypto.randomUUID();
-  const path = `campaign/${campaignId}/${orderId}/${orderCode}-${nonce}.${extension}`;
-  const { error } = await supabase.storage.from('PaymentEvidence').upload(path, file, {
-    cacheControl: '3600',
-    upsert: false,
-  });
-  throwRpcError(error);
-  return path;
+  return uploadImage(file, 'evidence', { orderId, code: orderCode });
 }
 
 export async function saveCampaignProducts(

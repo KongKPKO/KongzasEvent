@@ -1,6 +1,9 @@
 // src/pages/InvitationsPage.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import PublicShell from '../components/PublicShell';
+import { useI18n } from '../i18n';
+import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import type { PendingInvite } from '../components/PendingInvitationBanner';
 
@@ -11,6 +14,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function InvitationsPage() {
+  const { language } = useI18n();
+  const th = language === 'th';
+  const tr = (thai: string, english: string) => th ? thai : english;
   const [invitations, setInvitations] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -23,10 +29,12 @@ export default function InvitationsPage() {
     try {
       const { data, error } = await supabase.rpc('list_my_pending_invitations');
       if (error) {
-        setFetchError('Failed to load invitations. Please refresh.');
+        setFetchError(tr('โหลดคำเชิญไม่ได้ กรุณาลองอีกครั้ง', 'Failed to load invitations. Please refresh.'));
       } else {
         setInvitations((data || []) as PendingInvite[]);
       }
+    } catch {
+      setFetchError(tr('โหลดคำเชิญไม่ได้ กรุณาลองอีกครั้ง', 'Failed to load invitations. Please refresh.'));
     } finally {
       setLoading(false);
     }
@@ -35,6 +43,7 @@ export default function InvitationsPage() {
   useEffect(() => { void fetchInvitations(); }, []);
 
   const handleAccept = async (inv: PendingInvite) => {
+    if (actionId) return;
     setActionId(inv.id);
     try {
       const { data, error } = await supabase.rpc('accept_team_invitation', {
@@ -54,6 +63,7 @@ export default function InvitationsPage() {
   };
 
   const handleDecline = async (inv: PendingInvite) => {
+    if (actionId) return;
     setActionId(inv.id);
     try {
       const { error } = await supabase.rpc('decline_team_invitation', {
@@ -70,20 +80,21 @@ export default function InvitationsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <PublicShell>
       <main className="max-w-2xl mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-6">
           <Bell size={18} className="text-gray-600" />
-          <h1 className="text-xl font-black text-gray-800">My Invitations</h1>
+          <h1 className="text-xl font-black text-gray-800">{tr('คำเชิญของฉัน', 'My Invitations')}</h1>
         </div>
 
         {loading ? (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <p className="text-sm text-gray-500">{tr('กำลังโหลด…', 'Loading…')}</p>
         ) : fetchError ? (
-          <p className="text-sm text-red-500">{fetchError}</p>
+          <div role="alert" className="text-sm text-red-700">{fetchError}<button className="public-button ml-3" onClick={() => void fetchInvitations()}>{tr('ลองใหม่', 'Retry')}</button></div>
         ) : invitations.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center text-sm text-gray-400">
-            No pending invitations.
+          <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center text-sm text-gray-600">
+            {tr('ไม่มีคำเชิญที่รอตอบรับ', 'No pending invitations.')}
+            <Link to="/manage-login" className="public-text-link mt-3 block">{tr('กลับเข้าสู่ระบบ', 'Back to sign in')}</Link>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -95,29 +106,31 @@ export default function InvitationsPage() {
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{inv.artist_name}</p>
                   <p className="text-xs text-gray-500">
-                    {ROLE_LABELS[inv.role] ?? inv.role} ·{' '}
-                    Invited {new Date(inv.invited_at).toLocaleDateString('en-GB')}
+                    {th ? ({ manager: 'ผู้จัดการ', seller: 'พนักงานขาย / POS', queue_staff: 'ทีมงานคิว' } as Record<string, string>)[inv.role] || inv.role : ROLE_LABELS[inv.role] ?? inv.role} ·{' '}
+                    {tr('เชิญเมื่อ', 'Invited')} {new Date(inv.invited_at).toLocaleDateString(th ? 'th-TH' : 'en-GB')}
                   </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{inv.role === 'manager' ? tr('ดูแลทุกอีเวนต์ สินค้า โปรโมชัน ขาย และคิวของร้าน', 'Manage all shop events, products, promotions, sales and queues') : inv.role === 'seller' ? tr('ขาย รับชำระเงิน และจัดการคิว เฉพาะอีเวนต์ที่ได้รับมอบหมาย', 'Sell, take payments and manage queues in assigned events') : tr('เรียกและจัดการคิว ไม่รับชำระเงิน', 'Call and manage queues; no checkout')}{inv.role !== 'manager' && <span className="block font-semibold">{tr('อีเวนต์ที่มอบหมาย', 'Assigned events')}: {inv.event_ids?.length || 0} · {tr('ดูรายละเอียดในพื้นที่ทำงานหลังตอบรับ', 'View details in your workspace after accepting')}</span>}</p>
+                  {inv.expires_at && <p className="mt-2 text-xs text-slate-600">{tr('ตอบรับภายใน', 'Accept before')} {new Date(inv.expires_at).toLocaleString(th ? 'th-TH' : 'en-GB')}</p>}
                   {messages[inv.id] && (
-                    <p className="text-xs text-red-500 mt-1">{messages[inv.id]}</p>
+                    <p role="alert" className="text-xs text-red-700 mt-1">{messages[inv.id]}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleAccept(inv)}
-                    disabled={actionId === inv.id}
-                    className="px-4 py-1.5 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                    disabled={!!actionId}
+                    className="public-button public-primary"
                   >
-                    {actionId === inv.id ? 'Processing…' : 'Accept'}
+                    {actionId === inv.id ? tr('กำลังดำเนินการ…', 'Processing…') : tr('ตอบรับคำเชิญ', 'Accept')}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDecline(inv)}
-                    disabled={actionId === inv.id}
-                    className="px-4 py-1.5 text-sm border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    disabled={!!actionId}
+                    className="public-button"
                   >
-                    Decline
+                    {tr('ปฏิเสธ', 'Decline')}
                   </button>
                 </div>
               </div>
@@ -125,6 +138,6 @@ export default function InvitationsPage() {
           </div>
         )}
       </main>
-    </div>
+    </PublicShell>
   );
 }

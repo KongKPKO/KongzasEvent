@@ -2,7 +2,7 @@ import { useEffect, Suspense, lazy, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { ShoppingBag, Users } from 'lucide-react';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
-import CustomerHeader from '../../components/CustomerHeader';
+import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
@@ -183,7 +183,7 @@ const Home = () => {
   if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
 
   return (
-    <div className="min-h-screen bg-white w-full max-w-md mx-auto flex flex-col pb-24 animate-fade-in shadow-2xl relative">
+    <div className="creator-home min-h-screen w-full max-w-6xl mx-auto flex flex-col pb-24 relative">
       
       {/* Offline Indicator */}
       {!isConnected && (
@@ -192,37 +192,25 @@ const Home = () => {
          </div>
       )}
 
-      <CustomerHeader 
-        artistId={displayArtist.id} 
-        title={displayArtist.display_name || 'Artist Name'}
-        avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
-        avatarDisplay="stacked"
-        compactStacked
-      >
-        {displayArtist.bio && (
-          <div className="text-gray-500 font-medium text-xs leading-relaxed max-w-[300px] mx-auto mb-2 line-clamp-2 whitespace-pre-line">
-            {displayArtist.bio}
-          </div>
-        )}
-
+      <StorefrontHeader name={displayArtist.display_name || 'Creator'} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)}>
         {/* Status Badge */}
         <div className="flex justify-center mb-1">
           {isBoothActive ? (
             <div className="inline-flex items-center px-2.5 py-0.5 bg-green-50 border border-green-100 rounded-full animate-fade-in">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-              <span className="text-green-700 text-[9px] font-bold uppercase tracking-wider">
+              <span className="text-green-700 text-xs font-bold uppercase tracking-wider">
                   {t('customerBoothOpen')}
               </span>
             </div>
           ) : (
             <div className="inline-flex items-center px-2.5 py-0.5 bg-red-50 border border-red-100 rounded-full animate-fade-in">
                <div className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
-               <span className="text-red-700 text-[9px] font-bold uppercase tracking-wider">{t('customerBoothClosed')}</span>
+               <span className="text-red-700 text-xs font-bold uppercase tracking-wider">{t('customerBoothClosed')}</span>
             </div>
           )}
         </div>
 
-        <div className="mx-auto mt-3 grid max-w-[320px] grid-cols-2 gap-2">
+        <div className="mt-3 grid w-full grid-cols-2 gap-3">
           <Link
             to={`/${displayArtist.slug}/menu`}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-100 transition active:scale-95"
@@ -238,7 +226,7 @@ const Home = () => {
             {t('customerNavQueue')}
           </Link>
         </div>
-      </CustomerHeader>
+      </StorefrontHeader>
 
 
       {/* Events Section - Lazy Loaded */}

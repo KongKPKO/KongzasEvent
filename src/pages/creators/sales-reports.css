@@ -1,0 +1,37 @@
+/* Hallmark · macrostructure: Workbench · tone: practical · anchor hue: NireQ pink
+ * Philosophy 4 · Hierarchy 4 · Execution 4 · Specificity 4 · Restraint 5 · Variety 3
+ * Existing NireQ tokens, typography and event navigation preserved. */
+.sales-reports { color: var(--color-catalog-ink); }
+.sales-reports :is(button, input, select) { min-height: 44px; }
+.sales-reports :is(button, input, select, summary):focus-visible { outline: 2px solid var(--color-catalog-accent); outline-offset: 3px; }
+.sales-reports .report-panel, .report-totals { background: var(--color-catalog-paper); border: 1px solid var(--color-catalog-rule); border-radius: var(--radius-catalog); padding: var(--space-catalog-lg); }
+.report-filters { display: flex; flex-wrap: wrap; gap: var(--space-catalog-md); }
+.report-filters label { min-width: 0; display: grid; gap: var(--space-catalog-sm); font-size: .875rem; font-weight: 600; }
+.report-filters input, .report-filters select { width: 100%; min-width: 0; border: 1px solid var(--color-catalog-rule); background: var(--color-catalog-paper); border-radius: .75rem; padding: var(--space-catalog-sm) var(--space-catalog-md); }
+.report-totals { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--space-catalog-lg); }
+.report-totals :is(span,strong,small) { display: block; }
+.report-totals strong { font-size: 1.75rem; font-variant-numeric: tabular-nums; margin: var(--space-catalog-sm) 0; }
+.report-totals span, .report-totals small { font-size: .875rem; color: var(--color-promotion-secondary); }
+.report-totals > div:first-child strong { color: var(--color-catalog-accent); }
+.report-button, .report-icon { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-catalog-rule); border-radius: .75rem; background: var(--color-catalog-paper); padding: var(--space-catalog-sm) var(--space-catalog-md); font-weight: 600; }
+.report-icon { padding: var(--space-catalog-sm); min-width: 44px; }
+.report-button:hover, .report-icon:hover, .report-order summary:hover { background: var(--color-catalog-muted); }
+.report-order { border: 1px solid var(--color-catalog-rule); border-radius: .75rem; }
+.report-order summary { cursor: pointer; display: flex; justify-content: space-between; gap: var(--space-catalog-md); padding: var(--space-catalog-md); }
+.report-order[open] summary { background: var(--color-promotion-soft); }
+.report-order-body { border-top: 1px solid var(--color-catalog-rule); padding: var(--space-catalog-md); overflow-wrap: anywhere; }
+.report-metrics > div { background: var(--color-catalog-paper); color: var(--color-catalog-ink); border-color: var(--color-catalog-rule); padding: var(--space-catalog-md); }
+.report-metrics > div:first-child { border-top: 3px solid var(--color-catalog-accent); }
+.report-metrics .text-3xl { font-size: 1.75rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .report-totals { grid-template-columns: 1fr 1fr; padding: var(--space-catalog-md); }
+  .report-totals > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--color-catalog-rule); padding-bottom: var(--space-catalog-md); }
+  .report-filters label { flex-basis: 100%; }
+  .sales-reports .report-panel { padding: var(--space-catalog-md); }
+}
+
+.sales-reports :is(h1, h2, h3) { min-width: 0; overflow-wrap: anywhere; }
+.sales-reports button:active { background: var(--color-promotion-soft); }
+.sales-reports button:disabled { opacity: .5; cursor: not-allowed; }
+.sales-reports summary { min-height: 44px; }
+.sales-reports .text-gray-400 { color: var(--color-promotion-secondary); }

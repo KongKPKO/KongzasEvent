@@ -71,6 +71,8 @@ Practical, energetic, trustworthy.
 
 The interface should feel like a calm booth command center: compact enough for repeated operational use, warm enough for creator culture, and precise enough for money, stock, and queue state.
 
+Customer-facing pages prioritize visual appeal using the selected Creator Festival reference: bright pink accents, dark navy type, artwork-led cards and restrained sticker/paper details. The NireQ platform logo belongs in platform navigation, never inside a creator’s merchandise banner where it could be mistaken for the shop name. Creator/staff screens prioritize fast, clear operational UX; they do not need the same decorative density.
+
 ## Anti-references
 
 - Do not clone BoothMate directly; Nireq's wedge is customer-facing event commerce around the booth, not only seller-side POS.

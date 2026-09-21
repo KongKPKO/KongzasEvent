@@ -419,3 +419,11 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# Auth and public order credentials are checked by reserve_image_upload.
+[functions.upload-image]
+verify_jwt = false
+static_files = ["./functions/upload-image/webp_dec.wasm"]
+
+[functions.operations-maintenance]
+verify_jwt = false

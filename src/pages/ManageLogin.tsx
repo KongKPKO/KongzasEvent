@@ -6,7 +6,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
 import type { ActorRole } from '../types/access';
-import { LanguageToggle, useI18n } from '../i18n';
+import PublicShell from '../components/PublicShell';
+import { useI18n } from '../i18n';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
 interface AccessibleEvent {
@@ -16,7 +17,9 @@ interface AccessibleEvent {
 type LoginMode = 'creator' | 'staff';
 
 const ManageLogin = () => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const th = language === 'th';
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect');
@@ -195,7 +198,7 @@ const ManageLogin = () => {
         return;
       }
 
-      setMagicMsg('Magic link sent. Open the email to return to your assigned event workspace.');
+      setMagicMsg(th ? 'ส่งลิงก์แล้ว เปิดอีเมลเพื่อเข้าสู่งานที่คุณได้รับมอบหมาย' : 'Magic link sent. Open the email to return to your assigned event workspace.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not send magic link.';
       setErrorMsg(message);
@@ -292,43 +295,37 @@ const ManageLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="mb-5 flex justify-end">
-          <LanguageToggle />
-        </div>
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-black tracking-normal text-gray-950 mb-2">Nire<span className="text-pink-600">q</span></h1>
-          <p className="text-gray-500 font-medium">{t('loginPortal')}</p>
-        </div>
-
-        <Card className="p-8 shadow-xl border-gray-100 bg-white">
-          <div role="tablist" aria-label="Login mode" className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+    <PublicShell auth>
+      <main className="public-auth-layout public-width">
+        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับครีเอเตอร์และทีมงาน' : 'FOR CREATORS & TEAMS'}</p><h1>{th ? 'กลับมาดูแลร้าน' : 'Back to your shop.'}<span>{th ? 'ที่คุณรัก' : 'Ready for your next event.'}</span></h1><p>{th ? 'สินค้า ออเดอร์ และคิวของคุณ พร้อมให้จัดการต่อในที่เดียว' : 'Your products, orders and queues. Pick up where you left off.'}</p><div className="public-auth-note"><strong>{th ? 'มาเลือกซื้อหรือเข้าคิว?' : 'Here to shop or join a queue?'}</strong><p>{th ? 'ค้นหาร้านครีเอเตอร์ได้เลย ไม่ต้องสมัครบัญชีครีเอเตอร์' : 'Explore creator shops directly. You do not need a creator account.'}</p><Link to="/discover" className="public-text-link">{th ? 'ค้นหาครีเอเตอร์ →' : 'Discover creators →'}</Link></div></aside>
+        <div className="public-auth-form">
+        <Card className="public-auth-panel">
+          <div role="tablist" aria-label="Login mode" className="public-auth-tabs">
             <button
               type="button"
               role="tab"
               aria-selected={loginMode === 'creator'}
               onClick={() => switchLoginMode('creator')}
-              className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
+              className={`public-auth-tab ${
                 loginMode === 'creator'
                   ? 'bg-white text-pink-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              Creator / Manager
+              {th ? 'ครีเอเตอร์ / ผู้จัดการ' : 'Creator / Manager'}
             </button>
             <button
               type="button"
               role="tab"
               aria-selected={loginMode === 'staff'}
               onClick={() => switchLoginMode('staff')}
-              className={`rounded-lg px-3 py-2 text-sm font-black transition-colors ${
+              className={`public-auth-tab ${
                 loginMode === 'staff'
                   ? 'bg-white text-pink-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              Staff
+              {th ? 'ทีมงาน' : 'Staff'}
             </button>
           </div>
 
@@ -338,8 +335,8 @@ const ManageLogin = () => {
           </h2>
 
           {errorMsg && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-2 text-sm font-medium border border-red-100 animate-fade-in">
-              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            <div role="alert" className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-2 text-sm font-medium border border-red-100 animate-fade-in">
+              <AlertCircle aria-hidden="true" size={18} className="mt-0.5 shrink-0" />
               {errorMsg}
             </div>
           )}
@@ -373,7 +370,7 @@ const ManageLogin = () => {
                   {googleLoading ? t('loginSubmitting') : t('continueWithGoogle')}
                 </Button>
                 <p className="text-xs leading-5 text-gray-500">{t('googleSameEmailHint')}</p>
-                <div className="flex items-center gap-3 text-xs font-bold text-gray-400">
+                <div className="flex items-center gap-3 text-xs font-bold text-gray-600">
                   <span className="h-px flex-1 bg-gray-200" />
                   {t('orUseEmail')}
                   <span className="h-px flex-1 bg-gray-200" />
@@ -392,7 +389,7 @@ const ManageLogin = () => {
                     spellCheck={false}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-colors"
                     placeholder={t('loginEmailPlaceholder')}
                     required
                   />
@@ -404,18 +401,18 @@ const ManageLogin = () => {
                 <div className="relative">
                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     id="login-password"
                     name="password"
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-colors"
                     placeholder={t('loginPasswordPlaceholder')}
                     required
                   />
                 </div>
-                <div className="mt-2 text-right">
+                <div className="public-password-tools"><label><input type="checkbox" checked={showPassword} onChange={event => setShowPassword(event.target.checked)} />{th ? 'แสดงรหัสผ่าน' : 'Show password'}</label>
                   <button
                     type="button"
                     ref={resetOpenerRef}
@@ -431,7 +428,7 @@ const ManageLogin = () => {
               <Button 
                 type="submit" 
                 data-testid="creator-login-submit"
-                className="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 mt-4"
+                className="public-button public-primary w-full mt-4"
                 disabled={loading}
               >
                 {loading ? t('loginSubmitting') : t('loginSubmit')}
@@ -441,10 +438,10 @@ const ManageLogin = () => {
           ) : (
             <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
               <p className="text-xs leading-5 text-gray-500">
-                Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.
+                {th ? 'พนักงานขายและผู้ดูแลคิว ใช้อีเมลที่รับคำเชิญ ระบบจะส่งลิงก์เข้าสู่ระบบให้โดยไม่ต้องใช้รหัสผ่าน' : 'Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.'}
               </p>
               <div>
-                <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">Staff email</label>
+                <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">{th ? 'อีเมลทีมงาน' : 'Staff email'}</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input
@@ -455,24 +452,24 @@ const ManageLogin = () => {
                     spellCheck={false}
                     value={staffEmail}
                     onChange={(e) => setStaffEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-colors"
                     placeholder="staff@example.com"
                     required
                   />
                 </div>
               </div>
               {magicMsg && (
-                <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                <p role="status" className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
                   {magicMsg}
                 </p>
               )}
               <Button
                 type="submit"
-                className="w-full border border-pink-700 bg-pink-700 py-3 font-bold text-white hover:bg-pink-800"
+                className="public-button public-primary w-full"
                 disabled={magicLoading || staffEmail.trim().length < 4}
               >
                 <Send size={16} />
-                {magicLoading ? 'Sending magic link…' : 'Send staff magic link'}
+                {magicLoading ? (th ? 'กำลังส่งลิงก์…' : 'Sending magic link…') : (th ? 'ส่งลิงก์เข้าสู่ระบบ' : 'Send staff magic link')}
               </Button>
             </form>
           )}
@@ -484,22 +481,18 @@ const ManageLogin = () => {
             {t('loginApplyAccess')}
           </Link>
         </div>
-        <nav aria-label="Legal" className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
-          <Link to="/privacy" className="hover:text-pink-700">Privacy</Link>
-          <Link to="/terms" className="hover:text-pink-700">Terms</Link>
-          <Link to="/cookies" className="hover:text-pink-700">Cookies</Link>
-        </nav>
-      </div>
+        </div>
+      </main>
 
       {isResetModalOpen && (
         <div ref={resetDialogRef} className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
           <form onSubmit={handleForgotPassword} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-            <h2 id="reset-password-title" className="text-lg font-black text-gray-900">Reset password</h2>
+            <h2 id="reset-password-title" className="text-lg font-black text-gray-900">{th ? 'ตั้งรหัสผ่านใหม่' : 'Reset password'}</h2>
             <p className="mt-2 text-sm font-medium text-gray-600">
-              Enter your creator or manager email and we'll send a reset link.
+              {th ? 'ระบุอีเมลครีเอเตอร์หรือผู้จัดการ เพื่อรับลิงก์ตั้งรหัสผ่านใหม่' : "Enter your creator or manager email and we'll send a reset link."}
             </p>
             <div className="mt-4">
-              <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">Reset email</label>
+              <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">{th ? 'อีเมลสำหรับตั้งรหัสผ่านใหม่' : 'Reset email'}</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
@@ -514,14 +507,14 @@ const ManageLogin = () => {
                     setResetEmail(e.target.value);
                     setResetErrorMsg(null);
                   }}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-colors"
                   placeholder={t('loginEmailPlaceholder')}
                 />
               </div>
             </div>
             {resetErrorMsg && (
               <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                <AlertCircle aria-hidden="true" size={18} className="mt-0.5 shrink-0" />
                 {resetErrorMsg}
               </div>
             )}
@@ -537,20 +530,20 @@ const ManageLogin = () => {
                 disabled={resetLoading}
                 className="min-h-11 rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
-                Cancel
+                {th ? 'ยกเลิก' : 'Cancel'}
               </button>
               <button
                 type="submit"
                 disabled={resetLoading}
                 className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-50"
               >
-                {resetLoading ? t('sendPasswordReset') : 'Send reset link'}
+                {resetLoading ? t('sendPasswordReset') : (th ? 'ส่งลิงก์' : 'Send reset link')}
               </button>
             </div>
           </form>
         </div>
       )}
-    </div>
+    </PublicShell>
   );
 };
 

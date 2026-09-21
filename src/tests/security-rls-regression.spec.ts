@@ -1013,10 +1013,19 @@ test.describe('online campaign RLS and role boundaries', () => {
     campaignIds.order = order.data[0].order_id;
     campaignIds.orderCode = order.data[0].order_code;
 
+    // Role-boundary fixture; actual decoding and Storage upload are covered by image-upload.spec.ts.
+    const slipPath = `validated/${campaignIds.order}/${randomUUID()}.webp`;
+    const upload = await service.from('image_uploads').insert({
+      id: randomUUID(), artist_id: campaignIds.artist, order_id: campaignIds.order,
+      purpose: 'evidence', bucket: 'PaymentEvidence', path: slipPath,
+      content_hash: '0'.repeat(64), uploaded_at: new Date().toISOString(),
+    });
+    if (upload.error) throw upload.error;
+
     const evidence = await anon.rpc('submit_online_payment_evidence', {
       p_artist_slug: artistSlug,
       p_order_code: campaignIds.orderCode,
-      p_slip_url: 'campaign/security/slip.png',
+      p_slip_url: slipPath,
       p_client_request_id: randomUUID(),
     });
     if (evidence.error) throw evidence.error;
@@ -1080,6 +1089,26 @@ test.describe('online campaign RLS and role boundaries', () => {
     expect(workspace.data.orders[0].slip_url).toBeNull();
     expect(workspace.data.payment_methods).toEqual([]);
     expect(workspace.data.catalog).toEqual([]);
+    expect(workspace.data.can_manage_shipping).toBe(false);
+    expect(workspace.data.orders[0].customer_email).toBeNull();
+    expect(workspace.data.orders[0].customer_phone).toBeNull();
+    expect(workspace.data.orders[0].shipping_address).toBeNull();
+    const contactRead = await sellerClient.from('orders').select('customer_email,customer_phone,customer_contact').eq('id', campaignIds.order);
+    expect(contactRead.error).not.toBeNull();
+    const selfGrant = await sellerClient.from('artist_members').update({ can_manage_shipping: true }).eq('artist_id', campaignIds.artist).select('id');
+    expect(selfGrant.error || selfGrant.data?.length === 0).toBeTruthy();
+    const deniedShip = await sellerClient.rpc('mark_online_order_shipped', { p_order_id: campaignIds.order, p_tracking_number: 'TEST123', p_carrier: 'Test' });
+    expect(deniedShip.error?.message).toContain('forbidden');
+    const grantShipping = await ownerClient.from('artist_members').update({ can_manage_shipping: true }).eq('artist_id', campaignIds.artist).eq('member_email', sellerEmail);
+    expect(grantShipping.error).toBeNull();
+    const assigned = await sellerClient.rpc('get_online_campaign_workspace', { p_campaign_id: campaignIds.campaign });
+    expect(assigned.error).toBeNull();
+    expect(assigned.data.can_manage_shipping).toBe(true);
+    expect(assigned.data.orders[0].customer_email).toBe('private-buyer@example.com');
+    expect(assigned.data.orders[0].slip_url).toBeNull();
+    const revokeShipping = await ownerClient.from('artist_members').update({ can_manage_shipping: false }).eq('artist_id', campaignIds.artist).eq('member_email', sellerEmail);
+    expect(revokeShipping.error).toBeNull();
+
 
     const update = await sellerClient.from('online_campaigns').update({ name: 'Seller changed it' }).eq('id', campaignIds.campaign).select('id');
     expect(update.error || update.data?.length === 0).toBeTruthy();

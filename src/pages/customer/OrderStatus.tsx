@@ -1,3 +1,5 @@
+import CustomerBrandHeader from '../../components/CustomerBrandHeader';
+import OrderProblemForm from '../../components/OrderProblemForm';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Check, CheckCircle, ChevronLeft, Clock, Copy, Truck, XCircle } from 'lucide-react';
@@ -153,7 +155,7 @@ const OrderStatus: React.FC = () => {
       setLinkCopied(true);
       window.setTimeout(() => setLinkCopied(false), 2000);
     } catch {
-      // Clipboard unavailable (http, older browser): ignore quietly.
+      setFeedback({ tone: 'warning', title: language === 'th' ? 'คัดลอกไม่สำเร็จ กรุณาคัดลอกลิงก์จากแถบที่อยู่' : 'Could not copy. Copy the link from your address bar.' });
     }
   };
 
@@ -164,7 +166,7 @@ const OrderStatus: React.FC = () => {
       setTrackingCopied(true);
       window.setTimeout(() => setTrackingCopied(false), 2000);
     } catch {
-      // Clipboard unavailable: keep the tracking number visible for manual copy.
+      setFeedback({ tone: 'warning', title: language === 'th' ? 'คัดลอกไม่สำเร็จ กรุณาเลือกหมายเลขเพื่อคัดลอก' : 'Could not copy. Select the tracking number to copy it manually.' });
     }
   };
 
@@ -303,20 +305,10 @@ const OrderStatus: React.FC = () => {
   })();
 
   return (
-    <main className="min-h-screen bg-pink-50/40">
-      <header className="sticky top-0 z-30 border-b border-pink-100 bg-white/90 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 w-full max-w-lg items-center justify-between gap-3 px-4">
-          <Link
-            to={`/${slug}/menu`}
-            className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-bold text-pink-700 hover:bg-pink-50"
-          >
-            <ChevronLeft size={18} /> {t('orderBackToMenu')}
-          </Link>
-          <div className="truncate text-sm font-black text-gray-900">{t('orderPageTitle')}</div>
-        </div>
-      </header>
+    <main className="order-page">
+      <CustomerBrandHeader><Link to={`/${slug}/menu`} className="inline-flex min-h-11 items-center text-sm font-bold text-pink-700"><ChevronLeft size={18} />{t('orderBackToMenu')}</Link></CustomerBrandHeader>
 
-      <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-5 pb-16">
+      <div className="order-layout">
         {loading ? (
           <div className="space-y-3" aria-busy="true" aria-label={t('orderLoading')}>
             <div className="h-20 animate-pulse rounded-2xl bg-pink-100/70" />
@@ -337,8 +329,9 @@ const OrderStatus: React.FC = () => {
           </div>
         ) : (
           <>
+            <header className="order-heading"><p className="text-sm font-bold text-pink-700">{detail.artist_name} · {detail.event_name}</p><h1>{t('orderPageTitle')}</h1><p className="order-caption">{t('orderTrustNote')}</p></header>
             {/* Step indicator */}
-            <nav aria-label={t('orderStepsLabel')} className="rounded-2xl border border-pink-100 bg-white p-4">
+            <nav aria-label={t('orderStepsLabel')} className="order-progress rounded-2xl border border-pink-100 bg-white p-4">
               <ol className="flex items-start">
                 {steps.map((label, index) => {
                   const done = !terminal && stepIndex > index;
@@ -374,11 +367,12 @@ const OrderStatus: React.FC = () => {
 
             {/* Status */}
             {statusCard && (
-              <section aria-live="polite" className={`rounded-2xl border p-4 ${statusCard.tone}`}>
+              <section aria-live="polite" className={`order-status border ${statusCard.tone}`}>
+                <div className="order-amount"><span>{t('orderTotalLabel')}</span><strong>{formatPrice(detail.total_price, detail.currency)}</strong></div>
                 <div className="flex items-start gap-3">
                   <div className="shrink-0">{statusCard.icon}</div>
                   <div className="min-w-0">
-                    <h1 className="text-base font-black">{statusCard.title}</h1>
+                    <h2 className="text-base font-black">{statusCard.title}</h2>
                     <p className="mt-1 text-sm font-medium leading-relaxed opacity-90">{statusCard.detail}</p>
                     {detail.payment_status === 'payment_rejected' && detail.review_note && (
                       <div className="mt-2 rounded-xl border border-red-200 bg-white/70 px-3 py-2">
@@ -434,7 +428,7 @@ const OrderStatus: React.FC = () => {
 
             {/* Pickup code */}
             {!terminal && (
-              <section className="rounded-2xl border border-pink-100 bg-white p-4 text-center">
+              <section className="order-code rounded-2xl border border-pink-100 bg-white p-4 text-center">
                 <div className="text-xs font-black uppercase tracking-wide text-gray-500">
                   {codeShowableAtBooth ? t('orderCodeLabel') : t('orderCodePendingLabel')}
                 </div>
@@ -456,7 +450,7 @@ const OrderStatus: React.FC = () => {
             {feedback && (
               <div
                 role="status"
-                className={`rounded-2xl border p-3 text-sm font-bold ${
+                className={`order-footer rounded-2xl border p-3 text-sm font-bold ${
                   feedback.tone === 'success' ? 'border-green-200 bg-green-50 text-green-900'
                     : feedback.tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-900'
                     : 'border-red-200 bg-red-50 text-red-900'
@@ -467,6 +461,7 @@ const OrderStatus: React.FC = () => {
               </div>
             )}
 
+            <div className="order-actions">
             {/* Payment instructions + slip upload */}
             {(awaitingPayment || canResubmit) && (
               <section className="rounded-2xl border border-pink-100 bg-white p-4">
@@ -509,7 +504,7 @@ const OrderStatus: React.FC = () => {
                             src={method.qr_image_url}
                             alt={`${method.display_name || method.method_type} QR`}
                             loading="lazy"
-                            className="mt-2 h-40 w-40 rounded-xl border border-gray-200 object-contain"
+                            className="order-payment-qr"
                           />
                         )}
                         {method.instructions && <div className="mt-1 text-sm font-medium text-gray-600">{method.instructions}</div>}
@@ -526,15 +521,15 @@ const OrderStatus: React.FC = () => {
                     ref={fileInputRef}
                     id="order-slip-input"
                     type="file"
-                    accept="image/*,.pdf"
-                    disabled={deadlinePassed}
+                    accept="image/*"
+                    disabled={deadlinePassed || submitting}
                     onChange={(event) => handleSlipChange(event.target.files?.[0] || null)}
                     className="sr-only"
                   />
                   {slipFile ? (
                     <div className="mt-2 flex items-center gap-3 rounded-xl border border-pink-200 bg-pink-50/60 p-3">
                       {slipPreviewUrl ? (
-                        <img src={slipPreviewUrl} alt="" className="h-16 w-16 rounded-lg border border-pink-100 object-cover" />
+                        <img src={slipPreviewUrl} alt="" className="h-24 w-20 rounded-lg border border-pink-100 object-contain" />
                       ) : (
                         <div className="grid h-16 w-16 place-items-center rounded-lg border border-pink-100 bg-white text-xs font-black text-pink-600">PDF</div>
                       )}
@@ -543,7 +538,7 @@ const OrderStatus: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          disabled={deadlinePassed}
+                          disabled={deadlinePassed || submitting}
                           className="mt-1 inline-flex min-h-11 items-center rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {t('orderUploadChange')}
@@ -554,7 +549,7 @@ const OrderStatus: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={deadlinePassed}
+                      disabled={deadlinePassed || submitting}
                       className="mt-2 flex min-h-14 w-full items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {t('orderUploadHint')}
@@ -581,15 +576,16 @@ const OrderStatus: React.FC = () => {
               </section>
             )}
 
+            </div>
             {/* Items */}
-            <section className="rounded-2xl border border-pink-100 bg-white p-4">
+            <section className="order-receipt rounded-2xl border border-pink-100 bg-white p-4">
               <h2 className="text-sm font-black text-gray-900">{t('orderItemsTitle')}</h2>
               <ul className="mt-2 divide-y divide-gray-100">
                 {detail.items.map((item) => (
                   <li key={item.product_id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-gray-900">{item.name}</div>
-                      <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">ของแถม</span>}</div>
+                      <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">{language === 'th' ? 'ของแถม' : 'Free gift'}</span>}</div>
                     </div>
                     <div className="shrink-0 text-sm font-black text-gray-900">
                       {formatPrice(item.price_per_unit * item.quantity, item.currency)}
@@ -598,7 +594,7 @@ const OrderStatus: React.FC = () => {
                 ))}
               </ul>
               <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
-                {(detail.discount_total || 0) > 0 && <><div className="flex items-center justify-between text-sm"><span className="font-bold text-gray-700">ยอดสินค้า</span><span className="font-black">{formatPrice(detail.subtotal_price || 0, detail.currency)}</span></div><div className="flex items-center justify-between text-sm text-emerald-700"><span className="font-bold">ส่วนลดโปรโมชั่น</span><span className="font-black">−{formatPrice(detail.discount_total || 0, detail.currency)}</span></div></>}
+                {(detail.discount_total || 0) > 0 && <><div className="flex items-center justify-between text-sm"><span className="font-bold text-gray-700">{t('campaignSubtotal')}</span><span className="font-black">{formatPrice(detail.subtotal_price || 0, detail.currency)}</span></div><div className="flex items-center justify-between text-sm text-emerald-700"><span className="font-bold">{language === 'th' ? 'ส่วนลดโปรโมชั่น' : 'Promotion discount'}</span><span className="font-black">−{formatPrice(detail.discount_total || 0, detail.currency)}</span></div></>}
                 <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-700">{t('orderTotalLabel')}</span>
                 <span className="text-lg font-black text-gray-950">{formatPrice(detail.total_price, detail.currency)}</span>
@@ -616,6 +612,7 @@ const OrderStatus: React.FC = () => {
               </div>
             </section>
 
+            <div className="order-footer"><OrderProblemForm orderId={detail.order_id} code={detail.pickup_code} /></div>
             <p className="px-1 text-center text-xs font-medium text-gray-500">{t('orderTrustNote')}</p>
           </>
         )}

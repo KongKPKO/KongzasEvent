@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n';
 import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
@@ -5,7 +6,7 @@ import {
   BarChart2, X, User, Ticket, ExternalLink, Copy, Users, ShoppingCart, PackageCheck, MoreHorizontal, Settings
 } from 'lucide-react';
 import { Button } from '../../components/ui';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
@@ -168,11 +169,14 @@ const formatMoney = (amount: number, currency: string) =>
   }).format(amount || 0);
 
 const ManageArtist = () => {
+  const { language } = useI18n();
+  const publicationHeadingRef = useRef<HTMLHeadingElement>(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const browserTimeZone = getBrowserTimeZone();
   const profilePanelRef = useRef<HTMLDivElement>(null);
   
+  const [profileFeedback, setProfileFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const [artist, setArtist] = useState<Artist | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
@@ -368,7 +372,8 @@ const ManageArtist = () => {
   };
 
   const handleProfileSave = async () => {
-    if (!artist) return;
+    if (!artist || isSaving) return;
+    setProfileFeedback(null);
     try {
       setIsSaving(true);
       const { error } = await supabase
@@ -386,10 +391,10 @@ const ManageArtist = () => {
         .eq('id', artist.id);
 
       if (error) throw error;
-      alert("Profile updated successfully!");
+      setProfileFeedback({ error: false, text: language === 'th' ? 'บันทึกข้อมูลร้านแล้ว' : 'Shop profile saved.' });
     } catch (error) {
       console.error("Error updating profile:", error);
-      alert("Failed to update profile.");
+      setProfileFeedback({ error: true, text: language === 'th' ? 'บันทึกไม่ได้ ข้อมูลที่กรอกยังอยู่ กรุณาลองอีกครั้ง' : 'Could not save. Your changes are still here; please retry.' });
     } finally {
       setIsSaving(false);
     }
@@ -450,6 +455,7 @@ const ManageArtist = () => {
 
     const forcedGrid =
       searchParams.get('view') === 'all' ||
+      searchParams.get('focus') === 'publish' ||
       searchParams.get('tab') === 'profile' ||
       searchParams.has('editEvent') ||
       (typeof window !== 'undefined' && window.sessionStorage.getItem('forceEventGrid') === 'true');
@@ -459,6 +465,12 @@ const ManageArtist = () => {
       navigate(`/manage-events/${activeEvents[0].id}/workspace`, { replace: true });
     }
   }, [events, isLoading, navigate, searchParams]);
+
+  useEffect(() => {
+    if (isLoading || searchParams.get('focus') !== 'publish') return;
+    publicationHeadingRef.current?.focus({ preventScroll: true });
+    publicationHeadingRef.current?.scrollIntoView({ block: 'start' });
+  }, [isLoading, searchParams]);
 
   useEffect(() => {
     const editEventId = searchParams.get('editEvent');
@@ -738,7 +750,7 @@ const ManageArtist = () => {
     const matchYear = filterYear === 'all' || eventDate.getFullYear() === filterYear;
     return matchMonth && matchYear;
   });
-  const showFullGrid = searchParams.get('view') === 'all' || activeEvents.length !== 1;
+  const showFullGrid = searchParams.get('view') === 'all' || searchParams.get('focus') === 'publish' || activeEvents.length !== 1;
 
   const setTab = (nextTab: 'active' | 'ended') => {
     setEventTab(nextTab);
@@ -765,7 +777,8 @@ const ManageArtist = () => {
         {/* Header */}
         <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <div>
-              <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
+              <h1 ref={publicationHeadingRef} tabIndex={-1} className="scroll-mt-20 text-xl font-black text-gray-800 tracking-tight">{searchParams.get('focus') === 'publish' ? (language === 'th' ? 'ตรวจการเผยแพร่หน้าร้าน' : 'Review storefront publication') : (language === 'th' ? 'ตั้งค่าร้านและโปรไฟล์' : 'Shop settings and profile')}</h1>
+              {searchParams.get('focus') === 'publish' && <p className="mt-2 max-w-xl text-sm text-gray-600">{language === 'th' ? (artist.is_public ? 'ร้านเผยแพร่แล้ว กดเปิดหน้าร้านลูกค้าเพื่อตรวจดูได้' : 'ตรวจข้อมูลร้านและอีเวนต์ด้านล่างให้ครบก่อนกดเผยแพร่ การเข้าหน้านี้ยังไม่เปิดร้านให้ลูกค้าเห็น') : (artist.is_public ? 'Your shop is published. Open the public catalog to review the customer view.' : 'Review your profile and event before publishing. Visiting this page does not publish your shop.')}</p>}
               <p className="text-sm md:text-base text-pink-700 font-bold">{artist.display_name}</p>
            </div>
            {artist.slug && (
@@ -779,7 +792,7 @@ const ManageArtist = () => {
                    title={getShareableEvent() ? `Publish /${artist.slug} for ${getShareableEvent()?.event_name}` : 'Add a confirmed, non-expired event first'}
                  >
                    <ExternalLink size={16} aria-hidden="true" />
-                   {isPublishingPublicLink ? 'Publishing…' : 'Publish booth'}
+                   {isPublishingPublicLink ? (language === 'th' ? 'กำลังเผยแพร่…' : 'Publishing…') : (language === 'th' ? 'เผยแพร่ร้าน' : 'Publish booth')}
                  </button>
                )}
                <button
@@ -790,7 +803,7 @@ const ManageArtist = () => {
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                >
                  <Copy size={16} aria-hidden="true" />
-                 {copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
+                 {copyFeedback === 'copied' ? (language === 'th' ? 'คัดลอกแล้ว' : 'Link copied') : copyFeedback === 'failed' ? (language === 'th' ? 'คัดลอกไม่ได้' : 'Copy failed') : (language === 'th' ? 'คัดลอกลิงก์ร้าน' : 'Copy public URL')}
                </button>
                <a
                  href={publicMenuUrl}
@@ -802,7 +815,7 @@ const ManageArtist = () => {
                  className={`workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black ${artist.is_public ? 'text-gray-700 hover:bg-gray-50' : 'cursor-not-allowed text-gray-400'}`}
                >
                  <ExternalLink size={16} aria-hidden="true" />
-                 Open public catalog
+                 {language === 'th' ? 'เปิดหน้าร้านลูกค้า' : 'Open public catalog'}
                </a>
              </div>
            )}
@@ -815,16 +828,22 @@ const ManageArtist = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <nav className="mb-5 flex flex-wrap gap-3 text-sm font-bold text-pink-800" aria-label={language === 'th' ? 'ตั้งค่าร้าน' : 'Shop settings'}>
+          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-events?tab=profile">{language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile'}</Link>
+          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-events?view=all">{language === 'th' ? 'จัดการอีเวนต์' : 'Manage events'}</Link>
+          <Link className="min-h-11 inline-flex items-center px-4" to="/help">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
+        </nav>
+        <div className={searchParams.get('tab') === 'profile' ? 'max-w-3xl mx-auto' : 'grid grid-cols-1 lg:grid-cols-3 gap-6'}>
           
           {/* --- LEFT COL: Profile Settings --- */}
           <div ref={profilePanelRef} className="workspace-card h-auto self-start scroll-mt-20">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
                <User className="text-pink-700" size={16} />
-               <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
+               <h2 className="font-bold text-sm text-slate-800">{language === 'th' ? 'ข้อมูลที่ลูกค้าเห็นบนหน้าร้าน' : 'Your public shop profile'}</h2>
             </div>
             
-            <div className="p-4 space-y-3">
+            <form onSubmit={(event) => { event.preventDefault(); void handleProfileSave(); }} className="p-5 space-y-5">
+               <p className="text-sm leading-6 text-slate-600">{language === 'th' ? 'ชื่อ คำแนะนำร้าน และช่องทางติดต่อจะแสดงบนหน้าร้านเมื่อเผยแพร่แล้ว รูปโปรไฟล์บันทึกทันที ส่วนข้อมูลอื่นกดบันทึกด้านล่าง' : 'Your name, description and contact links appear on your published shop. Profile photos save immediately; save other changes below.'}</p>
                {/* Avatar Upload */}
                <div className="flex justify-center mb-2">
                   <AvatarUpload 
@@ -836,10 +855,10 @@ const ManageArtist = () => {
 
                {/* Display Name */}
                <div className="space-y-1">
-                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Display Name</label>
+                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{language === 'th' ? 'ชื่อร้าน / ครีเอเตอร์' : 'Display Name'}</label>
                   <input 
                     id="artist-display-name"
-                    name="display_name"
+                    name="display_name" required pattern=".*\S.*"
                     value={artist.display_name || ''}
                     onChange={handleProfileChange}
                     className="w-full min-h-11 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-500 transition-all"
@@ -848,7 +867,7 @@ const ManageArtist = () => {
 
                {/* Bio */}
                <div className="space-y-1">
-                  <label htmlFor="artist-bio" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bio</label>
+                  <label htmlFor="artist-bio" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{language === 'th' ? 'แนะนำร้าน' : 'Bio'}</label>
                   <textarea 
                     id="artist-bio"
                     name="bio"
@@ -863,9 +882,9 @@ const ManageArtist = () => {
 
                {/* Socials */}
                <div className="space-y-1">
-                  <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">Social Links</h3>
+                  <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">{language === 'th' ? 'ช่องทางติดต่อสาธารณะ' : 'Public contact links'}</h3>
                   <div className="flex flex-col gap-1">
-                     {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
+                     {(['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'] as const).map((field) => (
                        <div key={field} className="relative group">
                           <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
                              <span className="text-[9px] font-bold text-gray-600 uppercase w-16 truncate">
@@ -875,9 +894,10 @@ const ManageArtist = () => {
                           <input 
                              id={`artist-${field}`}
                              name={field}
-                             value={(artist as any)[field] || ''}
+                             type={field === 'email' ? 'email' : 'url'}
+                             value={artist[field] || ''}
                              onChange={handleProfileChange}
-                             placeholder={field === 'email' ? 'contact@email.com' : '...'}
+                             placeholder={field === 'email' ? 'contact@email.com' : 'https://…'}
                              aria-label={field.replace('_url', '').replace('email', 'Email')}
                              className="w-full min-h-11 bg-white border border-gray-200 rounded-lg pl-16 pr-2 py-2 text-sm font-medium text-slate-600 focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition-all"
                           />
@@ -887,18 +907,19 @@ const ManageArtist = () => {
                </div>
 
                <Button 
-                 onClick={handleProfileSave} 
+                 type="submit"
                  disabled={isSaving}
                  className="w-full mt-1 bg-pink-600 hover:bg-pink-700 text-white font-bold h-11 text-sm rounded-xl shadow-md shadow-pink-200 active:scale-95 transition-all"
                >
-                 {isSaving ? 'Saving...' : 'Save Updates'}
+                 {isSaving ? (language === 'th' ? 'กำลังบันทึก…' : 'Saving...') : (language === 'th' ? 'บันทึกข้อมูลร้าน' : 'Save Updates')}
                </Button>
-            </div>
+               {profileFeedback && <p role={profileFeedback.error ? 'alert' : 'status'} className={profileFeedback.error ? 'text-sm text-red-700' : 'text-sm text-emerald-800'}>{profileFeedback.text}</p>}
+            </form>
           </div>
 
 
            {/* --- RIGHT COL: Event Workspaces --- */}
-          <div className="lg:col-span-2 space-y-5">
+          {searchParams.get('tab') !== 'profile' && <div className="lg:col-span-2 space-y-5">
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
@@ -1083,7 +1104,7 @@ const ManageArtist = () => {
                 })}
               </section>
             )}
-          </div>
+          </div>}
         </div>
         
       </main>

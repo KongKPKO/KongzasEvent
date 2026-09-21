@@ -1,9 +1,12 @@
+import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
+import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { Link, useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
-import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { resolveAvatarUrl } from '../../utils/avatarUrl';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 
@@ -104,6 +107,8 @@ const MenuView = () => {
   const [promotions, setPromotions] = useState<PromotionRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   
   // Cart State - Initialize from localStorage
   const readStoredCart = () => {
@@ -424,6 +429,7 @@ const MenuView = () => {
     const initData = async () => {
         setLoading(true);
         setProductsLoaded(false);
+        setCatalogError(false);
         
         // 2.1 ✅ ตรวจสอบคิวของลูกค้าจาก LocalStorage (FIX: Scoped to Artist)
         const localQueueId = getStoredTicketId(displayArtist.id);
@@ -464,6 +470,7 @@ const MenuView = () => {
 
         const { data, error } = await productRequest;
 
+        if (error) setCatalogError(true);
         if (!error && data) {
             setProducts(((data || []) as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
             setProductsLoaded(true);
@@ -500,7 +507,7 @@ const MenuView = () => {
          supabase.removeChannel(promotionChannel);
        };
     }
-  }, [displayArtist?.id, selectedEvent?.id]);
+  }, [displayArtist?.id, selectedEvent?.id, catalogRetry]);
 
   // ✅ NEW: Realtime Cart Cleanup - Remove sold out/disabled items automatically
   useEffect(() => {
@@ -535,16 +542,6 @@ const MenuView = () => {
   }, [cart, cartItemNames, loading, productById, productsLoaded]); // Run whenever products list updates (via realtime)
 
   // --- 3. Helpers ---
-  const getProductImageUrl = (dbValue: string, width: number = 400) => {
-    if (!dbValue) return '';
-    let path = dbValue;
-    if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-       const parts = dbValue.split('Menu/');
-       if (parts.length > 1) path = parts[1];
-    }
-    const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-    return getOptimizedImageUrl(data.publicUrl, width);
-  };
 
   const updateQuantity = (productId: string, delta: number, productName?: string) => {
     if (isOrderSent) return;
@@ -1027,20 +1024,32 @@ const MenuView = () => {
     ? preorderHistory
     : (preorderReceipt ? [{ orderId: preorderReceipt.orderId, pickupCode: preorderReceipt.pickupCode, createdAt: null }] : []);
 
+  if (catalogError && !loading) return <main className="shop-empty" role="alert"><h1 className="text-xl font-bold">{language === 'th' ? 'โหลดสินค้าไม่สำเร็จ' : 'Could not load products'}</h1><p>{language === 'th' ? 'ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง ตะกร้าของคุณยังอยู่' : 'Check your connection and try again. Your cart is still saved.'}</p><button className="shop-outline" onClick={() => setCatalogRetry(value => value + 1)}>{language === 'th' ? 'ลองอีกครั้ง' : 'Try again'}</button></main>;
   if (loading) return <main className="p-8 text-center text-gray-600">{t('menuLoading')}</main>;
 
   return (
-    <main className="relative mx-auto min-h-screen w-full max-w-md overflow-hidden border-x border-pink-50 bg-pink-50 shadow-2xl lg:max-w-none lg:overflow-visible lg:border-x-0 lg:shadow-none">
+    <main className="creator-store relative mx-auto min-h-screen w-full pb-48 lg:pb-8">
       <Toast message={toast} onClose={() => setToast(null)} />
-      <ConfirmDialog
-        open={confirmAction === 'submit_order'}
-        title={isAdvanceOrderFlow ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')}
-        detail={`${totalItems} ${t('menuItems')}\n${t('menuTotal')} ${formatPrice(displayedTotal, cartCurrency)}`}
-        confirmLabel={isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}
-        loading={submitting}
-        onConfirm={submitConfirmedOrder}
-        onCancel={() => setConfirmAction(null)}
-      />
+      {confirmAction === 'submit_order' && <CheckoutDialog open title={isAdvanceOrderFlow ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')} busy={submitting} onClose={() => setConfirmAction(null)}>
+        <div className="checkout-form">
+          <div className="checkout-fields">
+            <CheckoutItems currency={cartCurrency} items={Object.entries(cart).filter(([, quantity]) => quantity > 0).flatMap(([id, quantity]) => { const product = productById.get(id); return product ? [{ id, name: product.name, image: product.image_url, quantity, price: product.price }] : []; })} />
+            <button type="button" className="checkout-edit" disabled={submitting} onClick={() => { setConfirmAction(null); setIsCartOpen(true); }}>{language === 'th' ? 'กลับไปแก้รายการหรือข้อมูล' : 'Edit items or details'}</button>
+          </div>
+          <aside className="checkout-receipt">
+            <h3 className="text-lg font-bold">{selectedEvent?.event_name}</h3>
+            {isAdvanceOrderFlow ? <div className="checkout-customer-review"><h4>{isPostOrderMode ? t('campaignShipping') : t('campaignPickup')}</h4><p>{preorderCustomer.name}</p><p>{preorderCustomer.email}</p><p>{preorderCustomer.phone}</p>{isPostOrderMode && <p>{preorderCustomer.shippingAddress}</p>}{preorderCustomer.note && <p>{preorderCustomer.note}</p>}</div> : <p className="checkout-help">{t('menuQueueNumber')} #{userQueueNumber}</p>}
+            <div className="checkout-totals">
+              <div><span>{t('campaignSubtotal')}</span><strong>{formatPrice(displayedSubtotal, cartCurrency)}</strong></div>
+              {displayedDiscount > 0 && <div><span>{language === 'th' ? 'ส่วนลด' : 'Discount'}</span><strong>−{formatPrice(displayedDiscount, cartCurrency)}</strong></div>}
+              <div><span>{t('menuTotal')} · {totalItems} {t('menuItems')}</span><strong>{formatPrice(displayedTotal, cartCurrency)}</strong></div>
+            </div>
+            {isAdvanceOrderFlow && promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</p>)}
+            <p className="checkout-hold-note">{isAdvanceOrderFlow ? (language === 'th' ? 'หลังยืนยัน ระบบจะจองสต็อกให้ 15 นาทีเพื่อชำระเงิน' : 'After confirmation, stock is held for 15 minutes while you pay.') : orderGuidance}</p>
+            <button type="button" disabled={submitting} className="shop-add" onClick={submitConfirmedOrder}>{submitting ? t('commonWorking') : isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}</button>
+          </aside>
+        </div>
+      </CheckoutDialog>}
       <ConfirmDialog
         open={confirmAction === 'cancel_order'}
         title={t('menuCancelOrderTitle')}
@@ -1057,58 +1066,13 @@ const MenuView = () => {
          </div>
        )}
 
-      <div className="sticky top-0 z-40 w-full border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
-         <div className="mx-auto max-w-md px-4 pb-3 pt-3 lg:max-w-6xl lg:px-6">
-            <div className="space-y-2 lg:flex lg:items-center lg:justify-between lg:gap-4 lg:space-y-0">
-               <div className="flex min-w-0 items-center gap-3 lg:flex-1">
-                  {displayArtist?.image_url ? (
-                     <img
-                        src={displayArtist.image_url}
-                        alt={displayArtist?.display_name || 'Creator'}
-                        className="h-11 w-11 shrink-0 rounded-2xl border border-pink-100 bg-pink-50 object-cover shadow-sm"
-                     />
-                  ) : (
-                     <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-pink-100 text-base font-black text-pink-600">
-                        {(displayArtist?.display_name || 'M').charAt(0)}
-                     </div>
-                  )}
-                  <div className="min-w-0">
-                     <div className="text-[11px] font-black uppercase tracking-[0.18em] text-pink-700">{t('customerNavMerch')}</div>
-                     <h1 className="truncate text-lg font-black leading-6 text-gray-950">
-                        {displayArtist?.display_name || 'Menu'}
-                     </h1>
-                  </div>
-               </div>
-
-               <div className="flex items-center justify-between gap-2 pl-14 lg:pl-0">
-                  {isAdvanceOrderFlow ? (
-                     <div className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-3 text-[11px] font-black text-pink-700">
-                        <ShoppingBag size={14} aria-hidden="true" />
-                        <span>{isPostOrderMode ? t('menuPostOrderMode') : t('menuPreorderMode')}</span>
-                     </div>
-                  ) : (
-                     <button
-                        type="button"
-                        onClick={() => navigate(`/${displayArtist?.slug || slug}/queue`)}
-                        className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition active:scale-95 ${
-                           userQueueNumber
-                              ? 'border-pink-200 bg-pink-50 text-pink-700'
-                              : 'border-gray-200 bg-white text-gray-600'
-                        }`}
-                     >
-                        <Ticket size={14} aria-hidden="true" />
-                        <span>{userQueueNumber ? `Q #${userQueueNumber}` : t('menuQueueNumber')}</span>
-                     </button>
-                  )}
-                  <div className={`max-w-[180px] rounded-full border px-2.5 py-1 text-right text-[11px] font-black leading-tight lg:max-w-[280px] lg:px-3 lg:py-2 lg:text-left lg:text-[11px] ${
-                     canSubmitSelection
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border-amber-200 bg-amber-50 text-amber-700'
-                  }`}>
-                     {orderGuidance}
-                  </div>
-               </div>
-            </div>
+      <StorefrontHeader name={displayArtist?.display_name || t('customerNavMerch')} bio={displayArtist?.bio} avatar={resolveAvatarUrl(displayArtist?.image_url)} artworks={products.filter(product => product.status !== 'disable')}>
+        <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/home`}><ShoppingBag size={22} aria-hidden="true" /><span>{t('customerNavHome')}</span><span aria-hidden="true">→</span></Link>
+        <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/queue`}><Ticket size={22} aria-hidden="true" /><span>{userQueueNumber ? `${t('menuQueueNumber')} #${userQueueNumber}` : t('menuQueueNumber')}</span><span aria-hidden="true">→</span></Link>
+      </StorefrontHeader>
+      <div className="shop-filters relative z-30 w-full border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
+         <div className="mx-auto max-w-6xl px-4 pb-3 pt-3 lg:px-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-xl font-bold text-gray-950">{t('customerNavMerch')}</h2><p className="text-sm text-gray-600">{orderGuidance}</p></div>
 
             <div className="mt-3 flex gap-2 lg:grid lg:grid-cols-[minmax(260px,1fr)_170px_170px_150px]">
                <label className="relative min-w-0 flex-1">
@@ -1116,7 +1080,7 @@ const MenuView = () => {
                   <input
                      type="text"
                      inputMode="search"
-                     placeholder={t('menuSearchPlaceholder')}
+                     aria-label={t('menuSearchPlaceholder')} placeholder={t('menuSearchPlaceholder')}
                      value={searchQuery}
                      onChange={(e) => setSearchQuery(e.target.value)}
                      className="h-11 w-full rounded-2xl border border-pink-100 bg-pink-50 py-2 pl-10 pr-3 text-sm font-bold text-pink-950 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
@@ -1164,7 +1128,7 @@ const MenuView = () => {
                </label>
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="shop-filter-count mt-3 flex items-center justify-between gap-2">
                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-black text-gray-600">
                      {filteredProducts.length} {t('menuItems')}
@@ -1185,11 +1149,12 @@ const MenuView = () => {
                )}
             </div>
 
-            <div className="mt-2 flex items-center gap-2 lg:hidden">
+            <div className="shop-category-chips mt-2 flex items-center gap-2 lg:hidden">
                <div className="no-scrollbar flex flex-1 gap-2 overflow-x-auto">
                   {quickCategoryChips.map(cat => (
                      <button
                         key={cat}
+                        aria-pressed={selectedCategory === cat}
                         onClick={() => setSelectedCategory(cat)}
                         className={`min-h-11 min-w-11 shrink-0 rounded-full px-3 text-xs font-black transition active:scale-95 ${
                            selectedCategory === cat
@@ -1262,8 +1227,8 @@ const MenuView = () => {
          </div>
       </div>
 
-      <div className="mx-auto w-full max-w-md lg:max-w-6xl lg:px-6 lg:py-6">
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
             {/* --- MENU GRID (LAZY LOADED) --- */}
             <Suspense fallback={<ProductSkeleton />}>
@@ -1303,9 +1268,9 @@ const MenuView = () => {
           {(totalItems > 0 || isOrderSent || activePreorderEntries.length > 0) && (
             <>
                 {isCartOpen && !isOrderSent && (
-                    <div className="fixed inset-0 z-[80] mx-auto max-w-md animate-fade-in bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsCartOpen(false)} />
+                    <div className="fixed inset-0 z-[80] mx-auto animate-fade-in bg-black/60 backdrop-blur-sm lg:hidden" onClick={() => setIsCartOpen(false)} />
                 )}
-                <div className={`fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-md rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:flex lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:flex-col lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className={`shop-cart-panel fixed bottom-[80px] left-0 right-0 z-[90] mx-auto w-full max-w-none rounded-t-3xl border-t border-pink-100 shadow-[0_-12px_32px_rgba(131,24,67,0.14)] transition-all duration-300 lg:sticky lg:top-28 lg:z-30 lg:mx-0 lg:flex lg:max-h-[calc(100vh-8rem)] lg:max-w-none lg:flex-col lg:overflow-hidden lg:rounded-3xl lg:border lg:border-pink-100 lg:shadow-lg lg:shadow-pink-100/60 ${isOrderSent ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
                     {!isOrderSent && totalItems > 0 && (
                         <div className={`${isCartOpen ? 'block' : 'hidden'} max-h-[62vh] overflow-y-auto rounded-t-xl border-b border-gray-100 bg-white p-3 animate-slide-up lg:block lg:max-h-none lg:min-h-0 lg:flex-1 lg:rounded-t-3xl lg:p-4`}>
                             <div className="flex justify-between items-center mb-3 sticky top-0 bg-white z-10 pb-2 border-b border-gray-50">
@@ -1322,11 +1287,11 @@ const MenuView = () => {
                                     const lineTotal = Math.max(0, lineSubtotal - lineDiscount);
                                     return (
                                         <div key={id} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2 overflow-hidden min-w-0 flex-1">
-                                                    <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getProductImageUrl(product.image_url, 100)})`}}></div>
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 min-w-0 basis-full">
+                                                    <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getMenuImageUrl(product.image_url)})`}}></div>
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="font-bold text-xs text-gray-800 truncate">{product.name}</div>
+                                                        <div className="font-bold text-sm text-gray-800 break-words">{product.name}</div>
                                                         <div className="text-[11px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>
                                                         {lineDiscount > 0 && (
                                                             <div className="mt-0.5 text-[11px] font-bold text-emerald-700">{t('menuNow')} {formatPrice(lineTotal, product.currency)} {t('menuFrom')} {formatPrice(lineSubtotal, product.currency)}</div>
@@ -1435,25 +1400,27 @@ const MenuView = () => {
                                             <input
                                                 value={preorderCustomer.email}
                                                 onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, email: e.target.value }))}
-                                                placeholder={t('menuPreorderEmailPlaceholder')}
+                                                aria-label={t('menuPreorderEmailLabel')} autoComplete="email" type="email" placeholder={t('menuPreorderEmailPlaceholder')}
                                                 inputMode="email"
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
+                                            <span className="mt-2 text-xs font-bold text-gray-700">{t(isPostOrderMode ? 'menuPostOrderPhonePlaceholder' : 'menuPreorderPhonePlaceholder')}</span>
                                             <input
                                                 value={preorderCustomer.phone}
                                                 onChange={(e) => {
                                                     setPostOrderPhoneTouched(true);
                                                     setPreorderCustomer((prev) => ({ ...prev, phone: e.target.value }));
                                                 }}
-                                                placeholder={t(isPostOrderMode ? 'menuPostOrderPhonePlaceholder' : 'menuPreorderPhonePlaceholder')}
+                                                aria-label={t(isPostOrderMode ? 'menuPostOrderPhonePlaceholder' : 'menuPreorderPhonePlaceholder')} autoComplete="tel" placeholder={t(isPostOrderMode ? 'menuPostOrderPhonePlaceholder' : 'menuPreorderPhonePlaceholder')}
                                                 inputMode="tel"
                                                 required={isPostOrderMode}
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
+                                            <span className="mt-2 text-xs font-bold text-gray-700">{t('menuPreorderSocialPlaceholder')}</span>
                                             <input
                                                 value={preorderCustomer.social}
                                                 onChange={(e) => setPreorderCustomer((prev) => ({ ...prev, social: e.target.value }))}
-                                                placeholder={t('menuPreorderSocialPlaceholder')}
+                                                aria-label={t('menuPreorderSocialPlaceholder')} placeholder={t('menuPreorderSocialPlaceholder')}
                                                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
                                             />
                                         </div>

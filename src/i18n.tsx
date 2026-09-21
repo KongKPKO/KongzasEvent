@@ -201,6 +201,10 @@ const applyLegacyLocalization = (language: Language) => {
 
   for (const node of textNodes) {
     const currentText = node.textContent || '';
+    const saved = legacyTextNodes.get(node);
+    // React may reuse the node for a new state (loading → ready, open → closed).
+    // Do not restore the first label over the new state.
+    if (saved && currentText !== saved && currentText !== translateLegacyString(saved)) legacyTextNodes.delete(node);
     const original = legacyTextNodes.get(node) || currentText;
     const translatedText = translateLegacyString(original);
     if (!legacyTextNodes.has(node) && translatedText === null) continue;
@@ -216,6 +220,7 @@ const applyLegacyLocalization = (language: Language) => {
     for (const attr of attrNames) {
       const value = element.getAttribute(attr);
       if (!value) continue;
+      if (originals[attr] && value !== originals[attr] && value !== translateLegacyString(originals[attr])) delete originals[attr];
       const originalValue = originals[attr] || value;
       const translatedValue = translateLegacyString(originalValue);
       if (!originals[attr] && translatedValue === null) continue;
@@ -230,6 +235,40 @@ const applyLegacyLocalization = (language: Language) => {
 
 const translations = {
   en: {
+    discoveryEyebrow: "CREATORS · ARTWORK · EVENTS TO LOVE",
+    discoveryTitle: "Find creator booths",
+    discoveryTitleAccent: "Find your kind of happy.",
+    discoverySubtitle: "Discover artwork, check booth status and follow your queue. Make more time for the good parts of event day.",
+    discoveryFindBooth: "Find a booth today",
+    discoveryOwnBooth: "Your own booth? Try NireQ",
+    discoveryForCreators: "For creators",
+    discoveryBenefitQueue: "Real-time queue updates",
+    discoveryBenefitCreators: "Discover new creators",
+    discoveryBenefitPlan: "Plan your event day",
+    discoveryHeading: "Who will you discover today?",
+    discoverySearchHint: "Search a creator, event, location or booth.",
+    discoveryPlaceholder: "Creator, event or place — Sora, Example Event, B-12",
+    discoverySearch: "Search",
+    discoveryAll: "All events",
+    discoveryQueue: "Has queue",
+    discoveryProducts: "Has products",
+    discoveryQueueHint: "“Has queue” shows booths accepting queues. See the booth for current waiting numbers.",
+    discoveryExample: "Illustrative booth · example data",
+    discoveryNowServing: "Now serving",
+    discoveryWaiting: "People waiting",
+    discoveryPeople: "12 people",
+    discoveryServing: "Open for visitors",
+    discoveryPreview: "Little things to love",
+    discoveryCheckQueue: "Check booth queue",
+    discoveryNoQueue: "Meet this creator",
+    discoveryWorkSoon: "Explore their shop & artwork",
+    discoveryLike: "Like this creator on this page",
+    discoveryBottomEyebrow: "More than a place in line",
+    discoveryBottomTitle: "Every event. More of what you love.",
+    discoveryBottomBody: "NireQ — connecting creators with the people who love their work.",
+    discoveryBottomButton: "Start discovering creators",
+    discoveryProductError: "Artwork previews could not load; the product filter is temporarily unavailable. You can still visit each booth.",
+
     languageName: 'English',
     languageShort: 'EN',
     switchLanguage: 'Switch language',
@@ -799,7 +838,7 @@ const translations = {
     orderPayDeadlinePassed: 'This 15-minute hold expired. The items were released; place a new order to try again.',
     orderPayNoMethods: 'The seller has not added payment details yet. Contact the seller before transferring.',
     orderUploadLabel: 'Transfer slip',
-    orderUploadHint: 'Photo or PDF of your transfer slip',
+    orderUploadHint: 'Choose a photo of your transfer slip',
     orderUploadChange: 'Change file',
     orderSubmitSlip: 'Send slip to seller',
     orderSubmitting: 'Sending…',
@@ -966,6 +1005,40 @@ const translations = {
     resetFailed: 'Failed to update password.',
   },
   th: {
+    discoveryEyebrow: "ครีเอเตอร์ · ผลงาน · งานที่อยากไป",
+    discoveryTitle: "ค้นหาบูธครีเอเตอร์",
+    discoveryTitleAccent: "แล้วไปเจอสิ่งที่ชอบ",
+    discoverySubtitle: "ดูผลงาน เช็กสถานะบูธ และติดตามคิว ให้คุณมีเวลาเดินงานได้สนุกกว่าเดิม",
+    discoveryFindBooth: "ค้นหาบูธในงานวันนี้",
+    discoveryOwnBooth: "มีบูธของคุณเอง? ใช้ NireQ",
+    discoveryForCreators: "สำหรับครีเอเตอร์",
+    discoveryBenefitQueue: "อัปเดตคิวแบบเรียลไทม์",
+    discoveryBenefitCreators: "Discover ครีเอเตอร์ใหม่ๆ",
+    discoveryBenefitPlan: "วางแผนการเดินงานได้ง่ายขึ้น",
+    discoveryHeading: "วันนี้อยากเจอใคร?",
+    discoverySearchHint: "ค้นหาชื่อครีเอเตอร์ ชื่องาน สถานที่ หรือบูธ",
+    discoveryPlaceholder: "ค้นหา creator, event หรือสถานที่ เช่น Sora, Example Event, B-12",
+    discoverySearch: "ค้นหา",
+    discoveryAll: "งานทั้งหมด",
+    discoveryQueue: "มีคิว",
+    discoveryProducts: "มีสินค้า",
+    discoveryQueueHint: "“มีคิว” แสดงบูธที่เปิดรับคิว ดูจำนวนคนรอปัจจุบันได้ที่หน้าบูธ",
+    discoveryExample: "ตัวอย่างบูธ · ข้อมูลสาธิต",
+    discoveryNowServing: "คิวปัจจุบัน",
+    discoveryWaiting: "จำนวนคนรอ",
+    discoveryPeople: "12 คน",
+    discoveryServing: "กำลังเปิดให้บริการ",
+    discoveryPreview: "ผลงานที่น่ารัก",
+    discoveryCheckQueue: "ดูคิวที่หน้าบูธ",
+    discoveryNoQueue: "ทำความรู้จักร้าน",
+    discoveryWorkSoon: "แวะชมร้านและผลงาน",
+    discoveryLike: "ถูกใจครีเอเตอร์ในหน้านี้",
+    discoveryBottomEyebrow: "เป็นมากกว่าการต่อคิว",
+    discoveryBottomTitle: "ให้ทุกงานที่คุณไป ได้เจอสิ่งที่ชอบจริงๆ",
+    discoveryBottomBody: "NireQ — เชื่อมต่อครีเอเตอร์ กับคนที่รักผลงาน",
+    discoveryBottomButton: "เริ่มค้นหาครีเอเตอร์เลย",
+    discoveryProductError: "โหลดภาพผลงานไม่สำเร็จ จึงพักตัวกรองสินค้าไว้ ยังเปิดดูแต่ละบูธได้",
+
     languageName: 'ไทย',
     languageShort: 'TH',
     switchLanguage: 'เปลี่ยนภาษา',
@@ -1535,7 +1608,7 @@ const translations = {
     orderPayDeadlinePassed: 'เวลาจองสินค้า 15 นาทีหมดแล้ว สินค้าถูกคืนเข้าสต็อก กรุณาสั่งใหม่อีกครั้ง',
     orderPayNoMethods: 'ผู้ขายยังไม่ได้เพิ่มช่องทางชำระเงิน กรุณาติดต่อผู้ขายก่อนโอน',
     orderUploadLabel: 'สลิปโอนเงิน',
-    orderUploadHint: 'รูปถ่ายหรือ PDF ของสลิปโอนเงิน',
+    orderUploadHint: 'เลือกรูปสลิปโอนเงิน',
     orderUploadChange: 'เปลี่ยนไฟล์',
     orderSubmitSlip: 'ส่งสลิปให้ผู้ขาย',
     orderSubmitting: 'กำลังส่ง…',

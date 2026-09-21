@@ -28,22 +28,58 @@ export const fetchProductStockSummaries = async (artistId: string) => {
   return (data || []) as ProductStockSummary[];
 };
 
-export const addCatalogStock = async (productId: string, quantity: number, reason?: string) => {
-  const { data, error } = await supabase.rpc('add_catalog_stock', {
-    p_product_id: productId,
-    p_quantity: quantity,
-    p_reason: reason || null,
-  });
-  return single<ProductStockSummary>(data as ProductStockSummary[] | null, error);
+export type CatalogStockKind = 'receive' | 'increase' | 'decrease';
+export interface CatalogStockDraft {
+  requestId: string;
+  quantity: number;
+  kind: CatalogStockKind;
+  reason: string;
+}
+export interface CatalogStockMovement {
+  id: string;
+  actor_id: string | null;
+  created_at: string;
+  quantity_before: number | null;
+  quantity_after: number | null;
+  kind: string;
+  reason: string;
+}
+const draftKey = (productId: string) => `nireq-stock-pending-${productId}`;
+export const readCatalogStockDraft = (productId: string): CatalogStockDraft | null => {
+  const raw = localStorage.getItem(draftKey(productId));
+  if (!raw) return null;
+  const value: unknown = JSON.parse(raw);
+  if (!value || typeof value !== 'object' || !('requestId' in value) || typeof value.requestId !== 'string' ||
+      !('quantity' in value) || typeof value.quantity !== 'number' || !Number.isSafeInteger(value.quantity) || value.quantity <= 0 ||
+      !('kind' in value) || (value.kind !== 'receive' && value.kind !== 'increase' && value.kind !== 'decrease') ||
+      !('reason' in value) || typeof value.reason !== 'string') throw new Error('Invalid pending stock adjustment. Contact support before making another adjustment.');
+  return { requestId: value.requestId, quantity: value.quantity, kind: value.kind, reason: value.reason };
 };
-
-export const removeCatalogStock = async (productId: string, quantity: number, reason: string) => {
-  const { data, error } = await supabase.rpc('remove_catalog_stock', {
-    p_product_id: productId,
-    p_quantity: quantity,
-    p_reason: reason,
+export const adjustCatalogStock = async (productId: string, quantity: number, kind: CatalogStockKind, reason: string) => {
+  const pending = readCatalogStockDraft(productId);
+  if (pending && (pending.quantity !== quantity || pending.kind !== kind || pending.reason !== reason)) {
+    throw new Error('A stock adjustment is awaiting confirmation. Reopen this product’s stock dialog and retry it first.');
+  }
+  const draft: CatalogStockDraft = pending || { requestId: crypto.randomUUID(), quantity, kind, reason };
+  localStorage.setItem(draftKey(productId), JSON.stringify(draft));
+  const { data, error } = await supabase.rpc('adjust_catalog_stock', {
+    p_product_id: productId, p_quantity: quantity, p_kind: kind, p_reason: reason, p_request_id: draft.requestId,
   });
-  return single<ProductStockSummary>(data as ProductStockSummary[] | null, error);
+  if (error) {
+    // PostgreSQL validation/permission failures roll back; transport failures may have committed.
+    if (/^(22|23|42501|P0001)/.test(error.code || '')) localStorage.removeItem(draftKey(productId));
+    throw error;
+  }
+  const result = single<ProductStockSummary>(data as ProductStockSummary[] | null, error);
+  localStorage.removeItem(draftKey(productId));
+  return result;
+};
+export const fetchCatalogStockHistory = async (productId: string) => {
+  const { data, error } = await supabase.from('catalog_stock_movements')
+    .select('id, actor_id, created_at, quantity_before, quantity_after, kind, reason')
+    .eq('product_id', productId).order('created_at', { ascending: false }).limit(30);
+  if (error) throw error;
+  return (data || []) as CatalogStockMovement[];
 };
 
 export const addEventStock = async (eventProductId: string, quantity: number) => {

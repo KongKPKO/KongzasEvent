@@ -45,10 +45,10 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
   };
 
   return (
-    <div className="flex-1 px-4 mt-2">
-      <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2 px-1">{t('eventsNext')}</h3>
+    <div className="px-4 mt-2 lg:px-6">
+      <h2 className="font-bold text-gray-900 text-xl mb-4 flex items-center gap-2 px-1">{t('eventsNext')}</h2>
       <motion.div
-        className="space-y-3 mb-4"
+        className="grid gap-4 mb-6 md:grid-cols-2"
         initial="hidden"
         animate="visible"
         variants={{
@@ -57,7 +57,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
         }}
       >
         {events.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-sm font-medium">{t('eventsEmpty')}</div>
+          <div className="col-span-full text-center py-8 text-gray-600 text-sm font-medium">{t('eventsEmpty')}</div>
         ) : (
           events.map((event) => {
             const { month, day } = getBoxDate(event.start_date);
@@ -71,7 +71,6 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                   hidden: { opacity: 0, x: -20 },
                   visible: { opacity: 1, x: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
                 }}
-                whileHover={!isCancelled ? { scale: 1.02 } : {}}
               >
                 <Card
                   className={`border-none shadow-sm p-4 rounded-3xl relative overflow-hidden ring-1 ring-gray-100 transition-all duration-300
@@ -93,7 +92,7 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
 
                   {/* Next Up Badge */}
                   {isNextUp && !isCancelled && (
-                    <div className="absolute top-0 right-0 bg-[#d63384] text-white text-[10px] font-bold px-3 py-1 rounded-bl-2xl z-10">
+                    <div className="absolute top-0 right-0 bg-[#d63384] text-white text-xs font-bold px-3 py-1 rounded-bl-2xl z-10">
                       {t('eventsNextUp')}
                     </div>
                   )}
@@ -101,13 +100,13 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                   <div className={`flex items-start gap-4 ${isCancelled ? 'opacity-50' : ''}`}>
                     <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border shrink-0
                         ${!isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
-                      <span className={`text-[10px] font-bold uppercase ${!isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
+                      <span className={`text-xs font-bold uppercase ${!isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
                       <span className="text-2xl font-black text-gray-900 leading-none">{day}</span>
                     </div>
 
-                    <div className="flex-1 space-y-2 pt-0.5">
-                      <h4 className="font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h4>
-                      <div className="space-y-1.5 text-gray-500 text-xs font-medium">
+                    <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+                      <h3 className="break-words font-bold text-gray-900 text-lg leading-tight">{event.event_name}</h3>
+                      <div className="space-y-1.5 text-gray-600 text-sm font-medium">
                         {event.location && (
                           <div className="flex items-start gap-2">
                             <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />

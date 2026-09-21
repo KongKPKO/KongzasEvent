@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(20);
 
 do $$
 declare
@@ -133,6 +133,38 @@ select throws_ok(
   'forbidden',
   'non-owner cannot add event stock'
 );
+
+
+do $$ begin perform set_stock_jwt('stock.owner@nireq.local'); end $$;
+create temp table _before_receipt as select stock_total from public.products where id = (select product_id from _stock_ids);
+select lives_ok(
+  $$ select * from public.adjust_catalog_stock((select product_id from _stock_ids), 7, 'receive', '', 'ec4cf77c-ea33-48b5-b6a3-f2ae70e52288') $$,
+  'receive stock succeeds');
+select lives_ok(
+  $$ select * from public.adjust_catalog_stock((select product_id from _stock_ids), 7, 'receive', '', 'ec4cf77c-ea33-48b5-b6a3-f2ae70e52288') $$,
+  'lost-response retry succeeds');
+select results_eq(
+  $$ select stock_total from public.products where id = (select product_id from _stock_ids) $$,
+  $$ select stock_total + 7 from _before_receipt $$, 'receipt retry increments only once');
+select results_eq(
+  $$ select count(*) from public.catalog_stock_movements where request_id = 'ec4cf77c-ea33-48b5-b6a3-f2ae70e52288' $$,
+  $$ values (1::bigint) $$, 'one audit record per receipt');
+select ok(
+  exists (select 1 from public.catalog_stock_movements where request_id = 'ec4cf77c-ea33-48b5-b6a3-f2ae70e52288'
+    and actor_id = (select owner_id from _stock_ids) and kind = 'receive' and reason = 'received'
+    and quantity_after - quantity_before = 7), 'receipt audit records actor, reason and before/after');
+select throws_ok(
+  $$ select * from public.adjust_catalog_stock((select product_id from _stock_ids), 8, 'receive', '', 'ec4cf77c-ea33-48b5-b6a3-f2ae70e52288') $$,
+  'stock_request_conflict', 'retry cannot change payload');
+select throws_ok(
+  $$ select * from public.adjust_catalog_stock((select product_id from _stock_ids), 1, 'increase', '', gen_random_uuid()) $$,
+  'stock_removal_reason_required', 'positive correction also requires reason');
+insert into public.artist_members (artist_id, member_email, role, status)
+values ((select artist_id from _stock_ids), 'stock.other@nireq.local', 'seller', 'active');
+do $$ begin perform set_stock_jwt('stock.other@nireq.local'); end $$;
+select throws_ok(
+  $$ select * from public.adjust_catalog_stock((select product_id from _stock_ids), 1, 'receive', '', gen_random_uuid()) $$,
+  'forbidden', 'seller cannot receive stock by RPC');
 
 select * from finish();
 rollback;

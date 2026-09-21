@@ -1,23 +1,19 @@
+import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
+import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import { useEffect, useMemo, useState } from 'react';
 import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Minus, Plus, ShoppingCart, Store } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Loader2, Minus, Plus, ShoppingCart } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
 import { requiresPromotionReview, quotePromotions } from '../../lib/promotions';
 import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
-import { getMenuImageUrl } from '../../utils/imageUtils';
+import StorefrontHeader, { ShopImage } from '../../components/menu/StorefrontHeader';
+import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
-function CampaignProductImage({ name, imageUrl }: { name: string; imageUrl?: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (!imageUrl || failed) {
-    return <div data-testid="campaign-product-image-fallback" className="grid aspect-square place-items-center bg-gray-100 text-gray-400"><Store /></div>;
-  }
-  return <img src={getMenuImageUrl(imageUrl, 520)} alt={name} onError={() => setFailed(true)} className="aspect-square w-full object-cover" />;
-}
 
 export default function OnlineCampaignStorefront() {
   const { slug, campaignSlug } = useParams<{ slug: string; campaignSlug: string }>();
@@ -25,7 +21,11 @@ export default function OnlineCampaignStorefront() {
   const { t, dateLocale, language } = useI18n();
   const [campaign, setCampaign] = useState<PublicOnlineCampaign | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [fulfillment, setFulfillment] = useState<CampaignFulfillmentMethod>('shipping');
   const [pickupPointId, setPickupPointId] = useState('');
@@ -33,14 +33,20 @@ export default function OnlineCampaignStorefront() {
   const [error, setError] = useState('');
   const [quote, setQuote] = useState<PromotionQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const [quoteRetry, setQuoteRetry] = useState(0);
   const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
   const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
   const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
 
   useEffect(() => {
     if (!slug || !campaignSlug) return;
+    let active = true;
+    setLoading(true);
+    setLoadFailed(false);
     void getPublicOnlineCampaign(slug, campaignSlug)
       .then((row) => {
+        if (!active) return;
         setCampaign(row);
         if (row) {
           const method: CampaignFulfillmentMethod = row.shipping_enabled ? 'shipping' : 'pickup';
@@ -49,11 +55,14 @@ export default function OnlineCampaignStorefront() {
         }
       })
       .catch((loadError) => {
+        if (!active) return;
         console.error(loadError);
+        setLoadFailed(true);
         setCampaign(null);
       })
-      .finally(() => setLoading(false));
-  }, [campaignSlug, slug]);
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [campaignSlug, slug, loadRetry]);
 
   const cartItems = useMemo(() => {
     if (!campaign) return [];
@@ -76,6 +85,7 @@ export default function OnlineCampaignStorefront() {
     }
     let active = true;
     setQuoteLoading(true);
+    setQuoteFailed(false);
     const timer = window.setTimeout(() => {
       void quotePromotions({
         campaignId: campaign.id,
@@ -86,7 +96,7 @@ export default function OnlineCampaignStorefront() {
         if (active) setQuote(nextQuote);
       }).catch((quoteError) => {
         console.error(quoteError);
-        if (active) setError(language === 'th' ? 'คำนวณโปรโมชั่นไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not calculate promotions. Please try again.');
+        if (active) setQuoteFailed(true);
       }).finally(() => {
         if (active) setQuoteLoading(false);
       });
@@ -95,7 +105,7 @@ export default function OnlineCampaignStorefront() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [campaign, cartItems, language, promotionChoices, rewardChoices]);
+  }, [campaign, cartItems, language, promotionChoices, rewardChoices, quoteRetry]);
 
   const changeQuantity = (productId: string, delta: number, max: number | null) => {
     setAcceptExhaustedRewards(false);
@@ -150,25 +160,23 @@ export default function OnlineCampaignStorefront() {
   };
 
   if (loading) return <div className="grid min-h-screen place-items-center text-pink-600"><Loader2 className="animate-spin" /></div>;
+  if (loadFailed) return <main className="shop-empty min-h-screen" role="alert"><h1>{language === 'th' ? 'โหลดร้านไม่สำเร็จ' : 'Could not load the shop'}</h1><button className="shop-outline" onClick={() => setLoadRetry(value => value + 1)}>{language === 'th' ? 'ลองอีกครั้ง' : 'Try again'}</button></main>;
   if (!campaign) return <div className="grid min-h-screen place-items-center bg-gray-50 px-4 text-center font-bold text-gray-500">{t('campaignUnavailable')}</div>;
 
   const saleOpen = campaign.state === 'open';
+  const categories = [...new Set(campaign.products.map(product => product.category).filter((value): value is string => Boolean(value)))];
+  const visibleProducts = campaign.products.filter(product => (category === 'all' || product.category === category) && `${product.name} ${product.variant_name || ''} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
 
   return (
-    <main className="min-h-screen bg-pink-50/30 pb-28 text-slate-800">
-      <header className="border-b border-pink-100 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-pink-100 text-pink-700"><Store size={22} /></span>
-          <div className="min-w-0">
-            <div className="text-xs font-black uppercase tracking-wide text-pink-600">{campaign.artist_name}</div>
-            <h1 className="truncate text-xl font-black text-gray-950">{campaign.name}</h1>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-5xl px-4 py-5">
+    <main className="creator-store min-h-screen pb-28 text-slate-800">
+      <CustomerBrandHeader>
+        <Link to={`/${slug}/home`} className="inline-flex min-h-11 items-center text-sm font-bold text-pink-800">{t('customerNavHome')}</Link>
+      </CustomerBrandHeader>
+      <StorefrontHeader name={campaign.artist_name} avatar={resolveAvatarUrl(campaign.artist_image_url)} artworks={campaign.products.map(product => ({ ...product, id: product.product_id }))} />
+      <div className="mx-auto max-w-6xl px-4 py-5">
         <StoreSuspensionNotice artistId={campaign.artist_id} />
         <section className="rounded-2xl border border-pink-100 bg-white p-5">
+          <h2 className="mb-3 break-words text-2xl font-extrabold text-gray-950">{campaign.name}</h2>
           <p className="whitespace-pre-line text-sm font-medium leading-6 text-gray-700">{campaign.description}</p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
             <span className="rounded-full bg-pink-50 px-3 py-1.5 text-pink-700">{t(('campaignState_' + campaign.state) as Parameters<typeof t>[0])}</span>
@@ -179,8 +187,16 @@ export default function OnlineCampaignStorefront() {
           {!saleOpen && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{t('campaignReadOnlyNotice')}</div>}
         </section>
 
-        <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {campaign.products.map((product) => {
+        <div className="shop-campaign-filters my-5 space-y-3">
+          <label className="block text-sm font-bold">{t('menuSearch')}
+            <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t('menuSearchPlaceholder')} className="mt-2 min-h-12 w-full rounded-xl border border-gray-300 bg-white px-4 font-normal" />
+          </label>
+          <div className="flex flex-wrap gap-2">{['all', ...categories].map(value => <button type="button" key={value} className="shop-variant-option" aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'all' ? (language === 'th' ? 'ทั้งหมด' : 'All') : value}</button>)}</div>
+          <p className="text-sm text-gray-600" aria-live="polite">{visibleProducts.length} {language === 'th' ? 'รายการ' : 'products'}</p>
+        </div>
+        {visibleProducts.length === 0 && <div className="shop-empty"><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{(search || category !== 'all') && <button className="shop-outline" onClick={() => { setSearch(''); setCategory('all'); }}>{t('menuClearFilters')}</button>}</div>}
+        <section className="shop-product-grid shop-campaign-grid">
+          {visibleProducts.map((product) => {
             const available = product.available_quantity ?? null;
             const soldOut = available !== null && available <= 0;
             const quantity = cart[product.product_id] || 0;
@@ -192,10 +208,11 @@ export default function OnlineCampaignStorefront() {
                 : Math.min(available, orderLimit);
             const limitReached = quantityLimit !== null && quantity >= quantityLimit;
             return (
-              <article key={product.product_id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <CampaignProductImage name={product.name} imageUrl={product.image_url} />
-                <div className="p-4">
-                  <div className="font-black text-gray-950">{product.name}</div>
+              <article key={product.product_id} className="shop-product" aria-label={product.name}>
+                <div className="shop-product-picture"><ShopImage name={product.name} src={product.image_url} /></div>
+                <div className="shop-product-copy">
+                  <h3 className="break-words font-bold text-gray-950">{product.name}</h3>
+                  {product.description && <details className="my-2 text-sm text-gray-600"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{language === 'th' ? 'รายละเอียดสินค้า' : 'Product details'}</summary><p className="whitespace-pre-line break-words leading-6">{product.description}</p></details>}
                   {product.variant_name && <div className="text-xs font-bold text-gray-500">{product.variant_name}</div>}
                   <div className="mt-2 text-lg font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</div>
                   <div className="mt-1 text-xs font-semibold text-gray-500">
@@ -203,10 +220,10 @@ export default function OnlineCampaignStorefront() {
                   </div>
                   {orderLimit !== null && <div className="mt-1 text-xs font-bold text-pink-700">{t('campaignProductOrderLimit', { count: orderLimit })}</div>}
                   {saleOpen && !soldOut && (
-                    <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-50 p-1">
-                      <button type="button" onClick={() => changeQuantity(product.product_id, -1, quantityLimit)} aria-label={t('campaignDecrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
+                    <div className="shop-quantity mt-3">
+                      <button type="button" disabled={quantity === 0} onClick={() => changeQuantity(product.product_id, -1, quantityLimit)} aria-label={`${t('campaignDecrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
                       <span className="font-black">{quantity}</span>
-                      <button type="button" disabled={limitReached} onClick={() => changeQuantity(product.product_id, 1, quantityLimit)} aria-label={t('campaignIncrease')} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={16} /></button>
+                      <button type="button" disabled={limitReached} onClick={() => changeQuantity(product.product_id, 1, quantityLimit)} aria-label={`${t('campaignIncrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={16} /></button>
                     </div>
                   )}
                   {soldOut && <div className="mt-3 rounded-xl bg-gray-100 px-3 py-2 text-center text-sm font-black text-gray-500">{t('campaignSoldOut')}</div>}
@@ -218,35 +235,43 @@ export default function OnlineCampaignStorefront() {
       </div>
 
       {saleOpen && cartItems.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-pink-100 bg-white p-3 shadow-2xl">
+        <div className="shop-campaign-cart fixed inset-x-0 bottom-0 z-20 border-t border-pink-100 bg-white p-3 shadow-2xl">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div><div className="text-xs font-bold text-gray-500">{t('campaignCartItems', { count: cartItems.reduce((sum, item) => sum + item.quantity, 0) })}</div><div className="text-lg font-black text-gray-950">{formatPrice(subtotal, campaign.currency)}</div></div>
-            <button onClick={() => setCheckoutOpen(true)} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white"><ShoppingCart size={18} />{t('campaignCheckout')}</button>
+            <button aria-haspopup="dialog" aria-expanded={checkoutOpen} onClick={() => setCheckoutOpen(true)} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white"><ShoppingCart size={18} />{t('campaignCheckout')}</button>
           </div>
         </div>
       )}
 
-      {checkoutOpen && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-4">
-          <form onSubmit={checkout} className="mx-auto max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-            <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">{t('campaignCheckout')}</h2><button type="button" onClick={() => setCheckoutOpen(false)} className="min-h-11 px-3 text-sm font-black text-gray-500">{t('campaignClose')}</button></div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {campaign.shipping_enabled && <button type="button" onClick={() => setFulfillment('shipping')} className={'min-h-11 rounded-xl border text-sm font-black ' + (fulfillment === 'shipping' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200')}>{t('campaignShipping')}</button>}
-              {campaign.pickup_enabled && <button type="button" onClick={() => setFulfillment('pickup')} className={'min-h-11 rounded-xl border text-sm font-black ' + (fulfillment === 'pickup' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200')}>{t('campaignPickup')}</button>}
+      <CheckoutDialog open={checkoutOpen} title={t('campaignCheckout')} busy={submitting} onClose={() => setCheckoutOpen(false)}>
+          <form onSubmit={checkout} className="checkout-form">
+            <div className="checkout-fields">
+              <fieldset className="checkout-section" disabled={submitting}>
+                <legend><span>1</span>{language === 'th' ? 'วิธีรับสินค้า' : 'Delivery method'}</legend>
+                <div className="checkout-delivery-options">
+                  {campaign.shipping_enabled && <button type="button" aria-label={t('campaignShipping')} aria-pressed={fulfillment === 'shipping'} onClick={() => setFulfillment('shipping')}><strong>{t('campaignShipping')}</strong><span>{formatPrice(campaign.flat_shipping_fee, campaign.currency)} / {language === 'th' ? 'ออเดอร์' : 'order'}</span></button>}
+                  {campaign.pickup_enabled && <button type="button" aria-label={t('campaignPickup')} aria-pressed={fulfillment === 'pickup'} onClick={() => setFulfillment('pickup')}><strong>{t('campaignPickup')}</strong><span>{language === 'th' ? 'เลือกจุดรับสินค้า' : 'Choose a pickup point'}</span></button>}
+                </div>
+                {fulfillment === 'pickup' && <label className="checkout-field">{language === 'th' ? 'จุดรับสินค้า' : 'Pickup point'}
+                  <select required value={pickupPointId} onChange={event => setPickupPointId(event.target.value)}>
+                    {campaign.pickup_points.map(point => <option key={point.id} value={point.id}>{point.name} · {new Date(point.starts_at).toLocaleString(dateLocale)}</option>)}
+                  </select>
+                  {campaign.pickup_points.filter(point => point.id === pickupPointId).map(point => <span className="checkout-help" key={point.id}>{point.address}<br />{new Date(point.starts_at).toLocaleString(dateLocale)} – {new Date(point.ends_at).toLocaleString(dateLocale)}{point.instructions && <><br />{point.instructions}</>}</span>)}
+                </label>}
+              </fieldset>
+              <fieldset className="checkout-section" disabled={submitting}>
+                <legend><span>2</span>{language === 'th' ? 'ข้อมูลผู้รับสินค้า' : 'Your details'}</legend>
+                <p className="checkout-help">{language === 'th' ? 'ใช้สำหรับติดต่อเรื่องออเดอร์ ช่องที่มี * จำเป็นต้องกรอก' : 'Used to contact you about this order. Fields marked * are required.'}</p>
+                <label className="checkout-field">{t('campaignCustomerName')} *<input name="customer_name" autoComplete="name" required placeholder={t('campaignCustomerName')} /></label>
+                <label className="checkout-field">{t('campaignCustomerEmail')} *<input name="customer_email" autoComplete="email" required type="email" placeholder={t('campaignCustomerEmail')} /><span className="checkout-help">{language === 'th' ? 'ใช้อีเมลที่เปิดอ่านได้เพื่อรับข้อมูลออเดอร์' : 'Use an email address you can access for order updates.'}</span></label>
+                <label className="checkout-field">{t('campaignCustomerPhone')} *<input name="customer_phone" autoComplete="tel" required type="tel" placeholder={t('campaignCustomerPhone')} /></label>
+                <label className="checkout-field" hidden={fulfillment !== 'shipping'}>{t('campaignShippingAddress')} *<textarea name="shipping_address" autoComplete="street-address" required={fulfillment === 'shipping'} placeholder={t('campaignShippingAddress')} rows={3} /></label>
+                <label className="checkout-field">{t('campaignCustomerNote')}<textarea name="customer_note" placeholder={t('campaignCustomerNote')} rows={2} /></label>
+              </fieldset>
             </div>
-            <div className="mt-4 space-y-3">
-              <input name="customer_name" required placeholder={t('campaignCustomerName')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3" />
-              <input name="customer_email" required type="email" placeholder={t('campaignCustomerEmail')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3" />
-              <input name="customer_phone" required placeholder={t('campaignCustomerPhone')} className="min-h-11 w-full rounded-xl border border-gray-200 px-3" />
-              {fulfillment === 'shipping' ? (
-                <textarea name="shipping_address" required placeholder={t('campaignShippingAddress')} className="min-h-24 w-full rounded-xl border border-gray-200 p-3" />
-              ) : (
-                <select required value={pickupPointId} onChange={(event) => setPickupPointId(event.target.value)} className="min-h-11 w-full rounded-xl border border-gray-200 px-3">
-                  {campaign.pickup_points.map((point) => <option key={point.id} value={point.id}>{point.name} · {new Date(point.starts_at).toLocaleString(dateLocale)}</option>)}
-                </select>
-              )}
-              <textarea name="customer_note" placeholder={t('campaignCustomerNote')} className="min-h-20 w-full rounded-xl border border-gray-200 p-3" />
-            </div>
+            <aside className="checkout-receipt">
+              <CheckoutItems currency={campaign.currency} items={cartItems.map(({ product, quantity }) => ({ id: product.product_id, name: product.name, image: product.image_url, quantity, price: product.price }))} />
+              <button type="button" className="checkout-edit" disabled={submitting} onClick={() => setCheckoutOpen(false)}>{language === 'th' ? 'กลับไปแก้รายการสินค้า' : 'Edit your items'}</button>
             {quote?.applied_promotions.length ? (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
                 <div className="font-black text-emerald-900">{language === 'th' ? 'โปรโมชั่นที่ได้รับ' : 'Applied promotions'}</div>
@@ -272,19 +297,22 @@ export default function OnlineCampaignStorefront() {
                 <span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรโมชั่นนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion, then confirm to continue.'}</span>
               </label>
             )}
-            <div className="mt-4 space-y-1 rounded-xl bg-gray-50 p-3 text-sm">
+            <div className="checkout-totals">
               <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(subtotal, campaign.currency)}</strong></div>
               {(quote?.discount_total || 0) > 0 && <div className="flex justify-between text-emerald-700"><span>{language === 'th' ? 'ส่วนลด' : 'Discount'}</span><strong>-{formatPrice(quote?.discount_total || 0, campaign.currency)}</strong></div>}
               <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(estimatedShipping, campaign.currency)}</strong></div>
               <div className="flex justify-between border-t border-gray-200 pt-2 text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(total, campaign.currency)}</strong></div>
             </div>
-            {error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div>}
-            <button disabled={submitting || quoteLoading || !quote || unresolvedChoices.length > 0 || (exhaustedRewards.length > 0 && !acceptExhaustedRewards)} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">
+            {error && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div>}
+            <p className="checkout-hold-note">{language === 'th' ? 'หลังยืนยัน ระบบจะจองสต็อกให้ 15 นาทีเพื่อชำระเงิน การกดปุ่มนี้ยังไม่ตัดเงิน' : 'After confirmation, stock is held for 15 minutes while you pay. This button does not charge you.'}</p>
+            {quoteFailed && <div role="alert" className="checkout-hold-note">{language === 'th' ? 'ตรวจราคาไม่สำเร็จ กรุณาลองอีกครั้งก่อนยืนยัน' : 'Could not check prices. Please retry before confirming.'}<button type="button" className="checkout-edit" onClick={() => setQuoteRetry(value => value + 1)}>{language === 'th' ? 'ตรวจราคาอีกครั้ง' : 'Retry price check'}</button></div>}
+            {quoteLoading && <p role="status" className="checkout-help">{language === 'th' ? 'กำลังตรวจราคาและโปรโมชั่น…' : 'Checking prices and promotions…'}</p>}
+            <button disabled={submitting || quoteLoading || quoteFailed || !quote || unresolvedChoices.length > 0 || (exhaustedRewards.length > 0 && !acceptExhaustedRewards)} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">
               {submitting && <Loader2 className="animate-spin" size={16} />}{submitting ? t('campaignCreatingOrder') : t('campaignConfirmOrder')}
             </button>
+            </aside>
           </form>
-        </div>
-      )}
+      </CheckoutDialog>
     </main>
   );
 }

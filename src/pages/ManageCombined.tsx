@@ -1,5 +1,7 @@
+import { useI18n } from '../i18n';
+import { offlineRows, type OfflineSnapshot, type OfflineEntry } from '../lib/offlineOperations';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import QueuePanel from '../components/dashboard/QueuePanel';
 import PosPanel from '../components/dashboard/PosPanel';
@@ -67,6 +69,8 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
+    const { language } = useI18n();
+    const text = (en: string, th: string) => language === 'th' ? th : en;
     // useSearchParams makes urlEventId reactive: if the URL changes while this
     // component stays mounted (e.g. navigating from one Event Hub to another),
     // the component picks up the new eventId without remounting.
@@ -97,10 +101,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         if (initialTab) return initialTab;
         if (typeof window === 'undefined') return 'queue';
         return hasPosPermission && window.matchMedia('(max-width: 767px)').matches ? 'pos' : 'queue';
-    });
-    const [isQueuePanelExpanded, setIsQueuePanelExpanded] = useState(() => {
-        if (typeof window === 'undefined') return true;
-        return !window.matchMedia('(max-width: 767px)').matches;
     });
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
@@ -233,6 +233,20 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             setQueues(data);
         }
     }, [actorContext.artist_id]);
+
+    useEffect(() => {
+        if (!activeEvent?.id) return;
+        const heartbeat = async () => {
+            const snapshots = await offlineRows<OfflineSnapshot>('snapshots');
+            const prepared = snapshots.find(item => item.event.id === activeEvent.id);
+            if (!prepared) return;
+            const rows = await offlineRows<OfflineEntry>('operations');
+            await supabase.rpc('offline_device_heartbeat', { p_event_id: activeEvent.id, p_device_id: prepared.device_id, p_pending: rows.some(row => row.eventId === activeEvent.id && (row.status === 'pending' || row.status === 'conflict')) });
+        };
+        const tick = () => { void heartbeat().catch(() => setToast({ tone: 'warning', title: 'ตรวจสถานะเครื่องหลักไม่ได้ / Primary device status unavailable' })); };
+        tick(); const timer = window.setInterval(tick, 20000);
+        return () => window.clearInterval(timer);
+    }, [activeEvent?.id]);
 
     const expireStaleCallingQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
@@ -396,7 +410,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         : queues;
 
     const servingQueues = filteredQueues.filter(q => q.status === 'serving');
-    const otherQueues = filteredQueues.filter(q => q.status !== 'serving');
     if (eventLoading) {
         return (
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
@@ -409,14 +422,15 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }
 
     return (
-        <div className="flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
+        <div className="festival-live flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
+
             <Toast message={toast} onClose={() => setToast(null)} />
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
-            <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+            <div className="festival-boothbar shrink-0 border-b border-gray-200 bg-white px-4 py-3">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Booth Status</div>
+                        <div className="text-xs font-semibold text-gray-500">{text("Live booth", "ประจำบูธ")}</div>
                         <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
                                 activeEvent?.is_booth_open
@@ -425,7 +439,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}>
                                 <span className={`h-2 w-2 rounded-full ${activeEvent?.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`} />
                                 <span data-testid="booth-status">
-                                    {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                                    {activeEvent?.is_booth_open ? text('Booth Open', 'บูธเปิดอยู่') : text('Booth Closed', 'บูธปิดอยู่')}
                                 </span>
                             </span>
                             {activeEvent ? (
@@ -434,30 +448,31 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                     onClick={() => navigate(`/manage-events/${activeEvent.id}/workspace`)}
                                     className="inline-flex min-h-9 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 hover:bg-pink-100"
                                 >
-                                    {`Active Event: ${activeEvent.event_name}`}
+                                    {activeEvent.event_name}
                                     <ArrowUpRight size={13} aria-hidden="true" />
                                 </button>
                             ) : (
                                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">
-                                    No active event
+                                    {text("No active event", "ยังไม่มีอีเวนต์ที่เปิดใช้งาน")}
                                 </span>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 lg:justify-end">
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {activeEvent && hasPosPermission && <Link to={`/offline?eventId=${activeEvent.id}`} className="workspace-action inline-flex items-center border border-pink-200 px-3 text-sm font-semibold text-pink-800">{text("Offline workspace", "เตรียมใช้งานออฟไลน์")}</Link>}
                         <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                             <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />
-                            <span className="sr-only">Select POS event</span>
+                            <span className="sr-only">{text("Select POS event", "เลือกอีเวนต์ที่ขาย")}</span>
                             <select
                                 value={activeEvent?.id || ''}
                                 onChange={(event) => handleSelectedEventChange(event.target.value)}
                                 disabled={availableEvents.length === 0}
                                 data-testid="pos-event-selector"
                                 className="min-w-0 w-full sm:w-[240px] bg-transparent text-sm font-bold text-gray-800 outline-none disabled:text-gray-400"
-                                aria-label="Select POS event"
+                                aria-label={text("Select POS event", "เลือกอีเวนต์ที่ขาย")}
                             >
-                                {availableEvents.length === 0 && <option value="">No active event</option>}
+                                {availableEvents.length === 0 && <option value="">{text("No active event", "ยังไม่มีอีเวนต์ที่เปิดใช้งาน")}</option>}
                                 {availableEvents.map((event) => (
                                     <option key={event.id} value={event.id}>
                                         {event.event_name}
@@ -478,29 +493,29 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}
                         >
                             {boothToggleLoading
-                                ? 'Updating...'
+                                ? text('Updating...', 'กำลังเปลี่ยนสถานะ...')
                                 : activeEvent?.is_booth_open
-                                    ? 'Close Booth'
-                                    : 'Open Booth'}
+                                    ? text('Close Booth', 'ปิดบูธ')
+                                    : text('Open Booth', 'เปิดบูธ')}
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div className="md:hidden sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
+            <div className="sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
                 <button
-                    onClick={() => setActiveTab('queue')}
+                    aria-pressed={activeTab === 'queue'} onClick={() => setActiveTab('queue')}
                     className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
                         activeTab === 'queue'
                             ? 'bg-pink-50 text-pink-600 border border-pink-200'
                             : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                 >
-                    Queue Control
+                    {text("Queue Control", "จัดการคิว")}
                 </button>
                 {hasPosPermission && (
                     <button
-                        onClick={() => setActiveTab('pos')}
+                        aria-pressed={activeTab === 'pos'} onClick={() => setActiveTab('pos')}
                         className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
                             activeTab === 'pos'
                                 ? 'bg-pink-50 text-pink-600 border border-pink-200'
@@ -508,7 +523,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         }`}
                         data-testid="pos-tab"
                     >
-                        POS / Order
+                        {text("POS / Order", "ขายสินค้า")}
                     </button>
                 )}
             </div>
@@ -521,16 +536,16 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                 <CalendarDays size={26} className="text-pink-400" aria-hidden="true" />
                             </div>
 
-                            <h2 className="text-lg font-black text-gray-900">No event running right now</h2>
+                            <h2 className="text-lg font-black text-gray-900">{text("No event running right now", "ยังไม่มีอีเวนต์ที่เริ่มแล้ว")}</h2>
 
                             {nextUpcomingEvent ? (
                                 <>
                                     <p className="mt-2 text-sm font-medium text-gray-500">
-                                        Your next event starts soon.
+                                        {text("Your next event starts soon.", "อีเวนต์ถัดไปกำลังจะเริ่ม")}
                                     </p>
                                     <div className="mt-5 rounded-2xl border border-pink-100 bg-white p-5 text-left shadow-sm">
                                         <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-500">
-                                            Up next
+                                            {text("Up next", "อีเวนต์ถัดไป")}
                                         </div>
                                         <div className="text-base font-black text-gray-900 leading-snug">
                                             {nextUpcomingEvent.event_name}
@@ -540,15 +555,15 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                             <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone)}</span>
                                         </div>
                                         <p className="mt-3 text-xs font-medium text-gray-400 leading-relaxed">
-                                            This event will appear in the POS dashboard automatically after it starts.
+                                            {text("This event will appear in the POS dashboard automatically after it starts.", "เมื่อถึงเวลาเริ่ม อีเวนต์นี้จะแสดงในหน้าขายโดยอัตโนมัติ")}
                                         </p>
                                     </div>
                                 </>
                             ) : (
                                 <p className="mt-3 text-sm font-medium text-gray-500">
-                                    No upcoming events found.{' '}
+                                    {text("No upcoming events found.", "ยังไม่มีอีเวนต์ที่กำลังจะมาถึง")}{' '}
                                     <a href="/manage-events" className="font-bold text-pink-600 hover:underline">
-                                        Create one in Event Management.
+                                        {text("Create one in Event Management.", "สร้างอีเวนต์ในหน้าจัดการอีเวนต์")}
                                     </a>
                                 </p>
                             )}
@@ -558,14 +573,13 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
                 <div className={`
                     ${activeTab === 'queue' ? 'flex' : 'hidden'}
-                    ${!hasPosPermission || isQueuePanelExpanded ? 'md:flex' : 'md:hidden'}
-                    w-full md:w-[35%] md:min-w-[320px] md:max-w-[400px]
+                    w-full min-w-0
                     border-r border-gray-200 bg-white flex-col z-10
                     shadow-[4px_0_24px_rgba(0,0,0,0.02)]
                 `}>
                     <QueuePanel
                         activeEvent={activeEvent}
-                        queues={otherQueues}
+                        queues={filteredQueues}
                         selectedQueueId={selectedQueueId}
                         actorContext={actorContext}
                         onSelectQueue={(queue) => {
@@ -581,19 +595,9 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
                 <div className={`
                     ${activeTab === 'pos' ? 'flex' : 'hidden'}
-                    md:flex flex-1 bg-gray-50 flex-col min-w-0 relative
+                    flex-1 bg-gray-50 flex-col min-w-0 relative
                 `} data-testid="pos-pane">
-                    {hasPosPermission && (
-                        <button
-                            type="button"
-                            onClick={() => setIsQueuePanelExpanded((prev) => !prev)}
-                            className="hidden md:inline-flex absolute top-6 -left-px z-20 rounded-r-lg border border-l-0 border-gray-200 bg-white/95 backdrop-blur px-1.5 py-2 text-[10px] font-bold text-gray-700 shadow-sm hover:bg-white"
-                            aria-label={isQueuePanelExpanded ? 'Collapse queue control' : 'Expand queue control'}
-                            title={isQueuePanelExpanded ? 'Hide Queue Control' : 'Expand Queue Control'}
-                        >
-                            <span className="[writing-mode:vertical-rl] rotate-180 leading-none tracking-tight">{isQueuePanelExpanded ? '< Hide Queue' : '> Queue'}</span>
-                        </button>
-                    )}
+
 
                     <PosPanel
                         activeEvent={activeEvent}
@@ -602,7 +606,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         selectedQueueNumber={selectedQueueNumber}
                         actorContext={actorContext}
                         canUsePos={hasPosPermission}
-                        isQueuePanelExpanded={isQueuePanelExpanded}
+                        isQueuePanelExpanded={false}
                         onSelectQueue={(queue) => {
                             setSelectedQueueId(queue.id);
                             setSelectedQueueNumber(queue.queue_number);

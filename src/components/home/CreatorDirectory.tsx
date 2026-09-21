@@ -24,16 +24,16 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
   if (creators.length === 0) return null;
 
   return (
-    <div className="px-4 mt-2 mb-4">
+    <div className="px-4 mt-2 mb-4 lg:px-6">
       <div className="flex items-center gap-2 px-1 mb-3">
         <Compass size={16} className="text-[#d63384]" />
-        <h3 className="font-bold text-gray-900 text-sm">{t('creatorsExplore')}</h3>
-        <Link to="/discover" className="ml-auto inline-flex min-h-9 items-center rounded-full px-3 text-[11px] font-black text-[#d63384] hover:bg-pink-50">
+        <h2 className="font-bold text-gray-900 text-xl">{t('creatorsExplore')}</h2>
+        <Link to="/discover" className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-black text-[#d63384] hover:bg-pink-50">
           {t('creatorsViewAll')}
         </Link>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {creators.map((creator) => (
           <Link
             key={creator.id}
@@ -45,10 +45,10 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                 <img
                   src={resolveAvatarUrl(creator.image_url)}
                   alt={creator.display_name}
-                  className="w-[88px] h-[88px] rounded-[26px] object-cover bg-gray-100 shrink-0"
+                  className="w-16 h-16 rounded-2xl object-cover bg-gray-100 shrink-0"
                 />
               ) : (
-                <div className="w-[88px] h-[88px] rounded-[26px] bg-pink-100 text-pink-600 flex items-center justify-center font-black text-2xl shrink-0">
+                <div className="w-16 h-16 rounded-2xl bg-pink-100 text-pink-600 flex items-center justify-center font-black text-2xl shrink-0">
                   {creator.display_name.charAt(0)}
                 </div>
               )}
@@ -57,12 +57,12 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                   <div className="min-w-0">
                     <div className="text-[15px] font-black leading-tight text-gray-900 truncate">{creator.display_name}</div>
                     {creator.bio && (
-                      <div className="mt-1 text-[11px] leading-[1.35] text-gray-500 line-clamp-2">{creator.bio}</div>
+                      <div className="mt-1 text-xs leading-[1.35] text-gray-600 line-clamp-2">{creator.bio}</div>
                     )}
                   </div>
                   <span
                     className={[
-                      'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shrink-0 border',
+                      'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold shrink-0 border',
                       creator.is_booth_open
                         ? 'bg-green-50 text-green-800 border-green-100'
                         : 'bg-white text-slate-700 border-gray-200'
@@ -73,19 +73,19 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                   </span>
                 </div>
                 <div className="mt-1.5 text-[13px] font-semibold leading-tight text-gray-800">{creator.event_name}</div>
-                <div className="flex items-center gap-1.5 text-[11px] leading-tight text-gray-500 mt-1.5">
+                <div className="flex items-center gap-1.5 text-xs leading-tight text-gray-600 mt-1.5">
                   <MapPin size={12} className="text-[#d63384] shrink-0" />
                   <span className="line-clamp-1">{creator.location || t('creatorsLocationSoon')}</span>
                 </div>
                 {creator.booth_detail && (
-                  <div className="mt-1 text-[11px] leading-tight text-gray-500">
+                  <div className="mt-1 text-xs leading-tight text-gray-600">
                     <span className="font-semibold text-gray-700">{t('eventsBooth')}</span> {creator.booth_detail}
                   </div>
                 )}
               </div>
             </div>
             <div className="flex justify-end mt-2">
-              <span className="inline-flex min-h-9 items-center gap-1 rounded-full bg-pink-50 px-3 text-[10px] font-black text-[#d63384]">
+              <span className="inline-flex min-h-11 items-center gap-1 rounded-full bg-pink-50 px-3 text-xs font-black text-[#d63384]">
                 <Sparkles size={11} />
                 {t('creatorsViewBooth')}
               </span>

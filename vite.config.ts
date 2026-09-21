@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  optimizeDeps: { exclude: ['@jsquash/webp'] },
   plugins: [
     react(),
     VitePWA({
@@ -36,7 +37,7 @@ export default defineConfig({
         enabled: false // Disable PWA in development to prevent caching issues
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,webp,wasm}'],
         // Don't cache API calls or Firestore
         navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^https:\/\/firestore\.googleapis\.com/],
         runtimeCaching: [

@@ -194,6 +194,15 @@ test.describe('catalog workspace', () => {
     await expect(row.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ })).toBeVisible();
     await expect(row.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ })).toBeVisible();
 
+    const actions = row.locator('.catalog-table-actions');
+    const editBox = await actions.getByRole('button', { name: /Edit product|แก้ไขสินค้า/ }).boundingBox();
+    const channelBox = await actions.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).boundingBox();
+    const stockBox = await actions.getByRole('button', { name: /Adjust stock|ปรับสต็อก/ }).boundingBox();
+    const moreBox = await actions.locator('button[aria-haspopup="menu"]').boundingBox();
+    expect(editBox?.y).toBe(channelBox?.y);
+    expect(stockBox?.y).toBe(moreBox?.y);
+    expect((stockBox?.y || 0) - (channelBox?.y || 0)).toBe(50);
+
     const tableBox = await page.getByRole('table').boundingBox();
     expect(tableBox).not.toBeNull();
     for (const button of await row.getByRole('button').all()) {

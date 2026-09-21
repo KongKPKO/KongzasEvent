@@ -1,3 +1,4 @@
+import { uploadImage } from './imageUploads';
 import { supabase } from '../supabaseClient';
 import type {
   CancelPreorderResult,
@@ -101,18 +102,7 @@ export const uploadPaymentEvidence = async (input: {
   pickupCode: string;
   file: File;
 }) => {
-  const extension = input.file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const nonce = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : String(Date.now());
-  const path = `${input.eventId}/${input.orderId}/${input.pickupCode}-${nonce}.${extension}`;
-  const { error } = await supabase.storage.from('PaymentEvidence').upload(path, input.file, {
-    cacheControl: '3600',
-    upsert: false,
-  });
-
-  if (error) throw error;
-  return path;
+  return uploadImage(input.file, 'evidence', { orderId: input.orderId, code: input.pickupCode });
 };
 
 export const submitPaymentEvidence = async (input: {

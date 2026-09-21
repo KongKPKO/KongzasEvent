@@ -148,7 +148,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
       });
 
       const baseName = file.name.replace(/\.[^/.]+$/, '') || 'product-image';
-      onConfirm(new File([blob], `${baseName}.webp`, { type: 'image/webp' }));
+      onConfirm(new File([blob], `${baseName}.${blob.type === 'image/webp' ? 'webp' : 'png'}`, { type: blob.type }));
     } catch (error) {
       console.error('[ProductImageCropModal] export failed:', error);
       onError?.('Could not prepare this image. Please try another file.');

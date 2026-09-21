@@ -1,3 +1,7 @@
+import { useI18n } from '../../i18n';
+import { eventCopy } from '../../lib/eventCopy';
+import './sales-readiness.css';
+import { uploadImage } from '../../lib/imageUploads';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, PackageCheck, Save, Settings, ShoppingCart, Store, Truck, type LucideIcon } from 'lucide-react';
@@ -94,6 +98,9 @@ const getFiniteAvailable = (product: EventProductRow) => {
 };
 
 export default function PreorderSettings() {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   const { eventId } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState<EventSettingsRow | null>(null);
@@ -108,13 +115,7 @@ export default function PreorderSettings() {
     if (!file || !event?.artist_id) return;
     setQrUploading(true);
     try {
-      const extension = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-      const path = `${event.artist_id}/payment-qr-${eventId}-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from('Avatar').upload(path, file, {
-        contentType: file.type || 'image/png',
-        upsert: true,
-      });
-      if (uploadError) throw uploadError;
+      const path = await uploadImage(file, 'qr', { artistId: event.artist_id });
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path);
       updatePaymentMethod('qr_image_url', publicUrl);
       setToast({ tone: 'success', title: 'QR image uploaded', detail: 'Remember to save payment settings.' });
@@ -228,10 +229,10 @@ export default function PreorderSettings() {
 
   const readinessItems = useMemo(
     () => {
-      const baseItems: Array<{ icon: LucideIcon; label: string; detail: string; ready: boolean }> = [
+      const baseItems: Array<{ icon: LucideIcon; label: string; detail: string; ready: boolean; target: string }> = [
         {
         icon: PackageCheck,
-        label: 'Event catalog has products',
+        label: 'Event catalog has products', target: 'catalog',
         detail: hasCatalogProducts
           ? `${catalogProducts.length} product${catalogProducts.length === 1 ? '' : 's'} available for this event.`
           : 'Add products to this event catalog before opening customer orders.',
@@ -239,18 +240,18 @@ export default function PreorderSettings() {
         },
         {
         icon: Store,
-        label: 'Finite stock is available',
-        detail: finiteProducts.length === 0
+        label: 'Finite stock is available', target: 'catalog',
+        detail: !hasCatalogProducts ? 'Choose products and event stock' : finiteProducts.length === 0
           ? 'All event products are unlimited.'
           : `${finiteProductsWithStock}/${finiteProducts.length} finite product${finiteProducts.length === 1 ? '' : 's'} have available stock.`,
-        ready: finiteStockReady,
+        ready: hasCatalogProducts && finiteStockReady,
         },
       ];
 
       if (orderingClosed) {
         baseItems.push({
           icon: AlertTriangle,
-          label: 'Emergency close is on',
+          label: 'Emergency close is on', target: 'sales-schedule',
           detail: 'Customer ordering is manually closed until you turn this off.',
           ready: false,
         });
@@ -259,7 +260,7 @@ export default function PreorderSettings() {
       if (preorderEnabled) {
         baseItems.push({
         icon: Clock3,
-        label: 'Pre-order window is valid',
+        label: 'Pre-order window is valid', target: 'sales-schedule',
         detail: preorderWindowReady
           ? 'Open and close times are ready.'
           : 'Set a pre-order window that closes before the event starts.',
@@ -267,7 +268,7 @@ export default function PreorderSettings() {
         });
         baseItems.push({
         icon: CalendarClock,
-        label: 'Pre-order closes before event',
+        label: 'Pre-order closes before event', target: 'sales-schedule',
         detail: preorderClosesBeforeEventStarts ? 'Pre-order ends before event-day live sales begin.' : 'Move the pre-order close time before the event starts.',
         ready: preorderClosesBeforeEventStarts,
         });
@@ -276,13 +277,13 @@ export default function PreorderSettings() {
       if (postorderEnabled) {
         baseItems.push({
           icon: Clock3,
-          label: 'Post-order window is valid',
+          label: 'Post-order window is valid', target: 'sales-schedule',
           detail: postorderWindowReady ? 'Open and close times are ready.' : 'Set a post-order window that starts after the event ends.',
           ready: postorderWindowReady,
         });
         baseItems.push({
           icon: CalendarClock,
-          label: 'Post-order starts after event',
+          label: 'Post-order starts after event', target: 'sales-schedule',
           detail: postOrderStartsAfterEvent ? 'Post-order starts after the event ends.' : 'Move the post-order open time after the event end.',
           ready: postOrderStartsAfterEvent,
         });
@@ -291,13 +292,13 @@ export default function PreorderSettings() {
       if (isAdvanceOrderMode) {
         baseItems.push({
         icon: CheckCircle2,
-        label: 'Pickup instructions added',
+        label: 'Pickup instructions added', target: 'pickup-settings',
         detail: hasPickupInstructions ? 'Customers will see pickup instructions after ordering.' : 'Tell customers where and when to show their pickup code.',
         ready: hasPickupInstructions,
         });
         baseItems.push({
         icon: CheckCircle2,
-        label: 'Payment instructions added',
+        label: 'Payment instructions added', target: 'payment-settings',
         detail: hasPaymentInstructions ? 'Customers can see how to transfer before uploading a slip.' : 'Add PromptPay, bank account, QR image, or clear payment instructions.',
         ready: hasPaymentInstructions,
         });
@@ -358,7 +359,11 @@ export default function PreorderSettings() {
   };
 
   const saveSettings = async () => {
-    if (!event) return;
+    if (!event || saving) return;
+    if (!event.event_name.trim() || new Date(event.end_date).getTime() <= new Date(event.start_date).getTime() || !Number.isFinite(new Date(event.start_date).getTime()) || !Number.isFinite(new Date(event.end_date).getTime()) || !preorderWindowReady || !postorderWindowReady) {
+      setToast({ tone: 'error', title: language === 'th' ? 'ตรวจชื่อและช่วงเวลาของงาน' : 'Check event name and schedule', detail: language === 'th' ? 'เวลาจบต้องหลังเวลาเริ่ม ช่วงสั่งก่อนงานต้องปิดก่อนเริ่มงาน และช่วงสั่งหลังงานต้องเริ่มหลังจบงาน' : 'End must follow start. Pre-order must close by event start; post-order must open after the event ends.' });
+      return;
+    }
     setSaving(true);
 
     try {
@@ -415,10 +420,10 @@ export default function PreorderSettings() {
         : await supabase.from('event_payment_methods').insert(paymentPayload);
 
       if (paymentError) throw paymentError;
-      setToast({ tone: 'success', title: 'Order settings saved' });
+      setToast({ tone: 'success', title: copy('Order settings saved') });
       await loadSettings();
     } catch (error: any) {
-      setToast({ tone: 'error', title: 'Order settings failed', detail: error.message });
+      setToast({ tone: 'error', title: copy('Order settings failed'), detail: error.message });
     } finally {
       setSaving(false);
     }
@@ -429,8 +434,7 @@ export default function PreorderSettings() {
       <div className="min-h-screen bg-gray-50">
         <AdminHeader activePage="events" />
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center text-sm font-bold text-gray-400">
-          Loading order settings...
-        </div>
+          {copy("Loading order settings...")}</div>
       </div>
     );
   }
@@ -441,11 +445,9 @@ export default function PreorderSettings() {
         <AdminHeader activePage="events" />
         <main className="mx-auto max-w-3xl p-4 md:p-6">
           <button onClick={() => navigate('/manage-events')} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50">
-            <ArrowLeft size={18} /> Back to events
-          </button>
+            <ArrowLeft size={18} /> {copy("Back to events")}</button>
           <div className="rounded-2xl border border-red-100 bg-white p-6 text-sm font-bold text-red-700">
-            Event not found or unavailable.
-          </div>
+            {copy("Event not found or unavailable.")}</div>
         </main>
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       </div>
@@ -456,37 +458,36 @@ export default function PreorderSettings() {
     <div className="min-h-screen bg-gray-50">
       <AdminHeader activePage="events" />
       <main className="mx-auto max-w-5xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} sellingMode={event.selling_mode} />}
+        {eventId && <EventNavTabs eventId={eventId} active="settings" sellingMode={event.selling_mode} />}
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">Order Settings</div>
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">{copy("Order Settings")}</div>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-950 md:text-3xl">{event.event_name}</h1>
             <p className="mt-1 text-sm font-semibold text-gray-500">
-              Set event details, sales schedule, pickup notes, and payment instructions in one place.
-            </p>
+              {copy("Set event details, sales schedule, pickup notes, and payment instructions in one place.")}</p>
           </div>
           <div className="rounded-xl border border-pink-100 bg-white px-4 py-3 text-sm font-black text-gray-800 shadow-sm">
-            {readyCount}/{readinessItems.length} ready
-          </div>
+            {readyCount}/{readinessItems.length} {copy("ready")}</div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <div className="sales-setup-layout grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <div className="grid gap-5">
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <details className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                <summary className="min-h-11 cursor-pointer font-bold text-gray-800">{language === 'th' ? 'ตรวจหรือแก้รายละเอียดงาน' : 'Review event details'}</summary>
                 <div className="mb-4 flex items-start gap-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-gray-700">
                     <Settings size={20} aria-hidden="true" />
                   </div>
                   <div>
-                    <h2 className="text-base font-black text-gray-950">Event details</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Basic information used across the customer page, queue, POS, and order flows.</p>
+                    <h2 className="text-base font-black text-gray-950">{copy("Event details")}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Basic information used across the customer page, queue, POS, and order flows.")}</p>
                   </div>
                 </div>
                 <div className="grid gap-4">
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Event name</span>
+                    <span className="text-sm font-black text-gray-700">{copy("Event name")}</span>
                     <input
                       value={event.event_name}
                       onChange={(e) => updateEvent('event_name', e.target.value)}
@@ -495,7 +496,7 @@ export default function PreorderSettings() {
                   </label>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Event starts</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Event starts")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.start_date, eventTimeZone)}
@@ -504,7 +505,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Event ends</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Event ends")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.end_date, eventTimeZone)}
@@ -515,81 +516,81 @@ export default function PreorderSettings() {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Location</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Location")}</span>
                       <input
                         value={event.location || event.location_name || ''}
                         onChange={(e) => updateEvent('location', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Siam Paragon"
+                        placeholder={copy("e.g. Siam Paragon")}
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Booth detail</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Booth detail")}</span>
                       <input
                         value={event.booth_detail || event.booth_number || ''}
                         onChange={(e) => updateEvent('booth_detail', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. A12, Creator Hall"
+                        placeholder={copy("e.g. A12, Creator Hall")}
                       />
                     </label>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Queueing area</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Queueing area")}</span>
                       <input
                         value={event.queueing_area || ''}
                         onChange={(e) => updateEvent('queueing_area', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Queue lane beside booth A12"
+                        placeholder={copy("e.g. Queue lane beside booth A12")}
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Entrance fee</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Entrance fee")}</span>
                       <input
                         value={event.entrance_fee || ''}
                         onChange={(e) => updateEvent('entrance_fee', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Free / 300 THB"
+                        placeholder={copy("e.g. Free / 300 THB")}
                       />
                     </label>
                   </div>
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Transit info</span>
+                    <span className="text-sm font-black text-gray-700">{copy("Transit info")}</span>
                     <textarea
                       value={event.transit_info || ''}
                       onChange={(e) => updateEvent('transit_info', e.target.value)}
                       rows={3}
                       className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
-                      placeholder="How customers should get to the venue."
+                      placeholder={copy("How customers should get to the venue.")}
                     />
                   </label>
                 </div>
-              </div>
+              </details>
 
               <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4">
                 <div className="mb-4">
-                  <h2 className="text-base font-black text-gray-950">Sales schedule</h2>
-                  <p className="mt-1 text-xs font-semibold text-gray-500">Live queue / POS is automatic during the event day. Turn on pre-order or post-order when this event needs customer orders outside the live booth.</p>
+                  <h2 id="sales-schedule" tabIndex={-1} className="text-base font-black text-gray-950">{copy("Sales schedule")}</h2>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Live queue / POS is automatic during the event day. Turn on pre-order or post-order when this event needs customer orders outside the live booth.")}</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                   <SalesModeCard
                     icon={ShoppingCart}
-                    title="Live event day"
-                    detail="Auto-active from event start to end."
+                    title={copy("Live event day")}
+                    detail={copy("Auto-active from event start to end.")}
                     active={!orderingClosed}
                     locked
                   />
                   <SalesModeCard
                     icon={PackageCheck}
-                    title="Pre-order"
-                    detail="Reserve before event, pickup at booth."
+                    title={copy("Pre-order")}
+                    detail={copy("Reserve before event, pickup at booth.")}
                     active={preorderEnabled}
                     onClick={togglePreorder}
                   />
                   <SalesModeCard
                     icon={Truck}
-                    title="Post-order"
-                    detail="Order after event, fulfill later."
+                    title={copy("Post-order")}
+                    detail={copy("Order after event, fulfill later.")}
                     active={postorderEnabled}
                     onClick={togglePostorder}
                   />
@@ -604,21 +605,20 @@ export default function PreorderSettings() {
                         : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    Emergency close customer ordering
-                  </button>
-                  <span className="text-xs font-semibold text-gray-500">Use only when customers should not place new orders even if a schedule window is open.</span>
+                    {copy("Emergency close customer ordering")}</button>
+                  <span className="text-xs font-semibold text-gray-500">{copy("Use only when customers should not place new orders even if a schedule window is open.")}</span>
                 </div>
               </div>
 
               {preorderEnabled && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
-                    <h2 className="text-base font-black text-gray-950">Pre-order window</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can reserve items before the event, then pick them up at the booth.</p>
+                    <h2 className="text-base font-black text-gray-950">{copy("Pre-order window")}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Customers can reserve items before the event, then pick them up at the booth.")}</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Pre-order opens</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Pre-order opens")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_opens_at, eventTimeZone)}
@@ -627,7 +627,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Pre-order closes</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Pre-order closes")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_closes_at, eventTimeZone)}
@@ -637,7 +637,7 @@ export default function PreorderSettings() {
                     </label>
                   </div>
                   <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
-                    Times are saved using the event timezone: <span className="font-black">{eventTimeZone}</span>.
+                    {copy("Times are saved using the event timezone:")}<span className="font-black">{eventTimeZone}</span>.
                   </div>
                 </div>
               )}
@@ -645,12 +645,12 @@ export default function PreorderSettings() {
               {postorderEnabled && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
-                    <h2 className="text-base font-black text-gray-950">Post-order window</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can order after the event, then you fulfill by shipping or post-event handling.</p>
+                    <h2 className="text-base font-black text-gray-950">{copy("Post-order window")}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Customers can order after the event, then you fulfill by shipping or post-event handling.")}</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Post-order opens</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Post-order opens")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.postorder_opens_at, eventTimeZone)}
@@ -659,7 +659,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Post-order closes</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Post-order closes")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.postorder_closes_at, eventTimeZone)}
@@ -669,20 +669,20 @@ export default function PreorderSettings() {
                     </label>
                   </div>
                   <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
-                    Times are saved using the event timezone: <span className="font-black">{eventTimeZone}</span>.
+                    {copy("Times are saved using the event timezone:")}<span className="font-black">{eventTimeZone}</span>.
                   </div>
                 </div>
               )}
 
               {isAdvanceOrderMode && (
                 <label className="grid gap-2">
-                  <span className="text-sm font-black text-gray-700">Pickup instructions</span>
+                  <span id="pickup-settings" tabIndex={-1} className="text-sm font-black text-gray-700">{copy("Pickup instructions")}</span>
                   <textarea
                     value={event.preorder_pickup_instructions || ''}
                     onChange={(e) => updateEvent('preorder_pickup_instructions', e.target.value)}
                     rows={5}
                     className="rounded-xl border border-gray-200 px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
-                    placeholder="Example: Show your pickup code at booth A12 between 12:00-17:00."
+                    placeholder={copy("Example: Show your pickup code at booth A12 between 12:00-17:00.")}
                   />
                 </label>
               )}
@@ -691,8 +691,8 @@ export default function PreorderSettings() {
               <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-4">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-base font-black text-gray-950">Payment instructions</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Money goes directly to your account. NireQ only stores the instruction and slip workflow.</p>
+                    <h2 id="payment-settings" tabIndex={-1} className="text-base font-black text-gray-950">{copy("Payment instructions")}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Money goes directly to your account. NireQ only stores the instruction and slip workflow.")}</p>
                   </div>
                   <label className="inline-flex items-center gap-2 text-xs font-black text-gray-700">
                     <input
@@ -701,27 +701,26 @@ export default function PreorderSettings() {
                       onChange={(e) => updatePaymentMethod('is_enabled', e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200"
                     />
-                    Enabled
-                  </label>
+                    {copy("Enabled")}</label>
                 </div>
 
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Method type</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Method type")}</span>
                       <select
                         value={paymentMethod.method_type}
                         onChange={(e) => updatePaymentMethod('method_type', e.target.value as PaymentMethodDraft['method_type'])}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       >
                         <option value="promptpay">PromptPay</option>
-                        <option value="bank_transfer">Bank transfer</option>
-                        <option value="qr_image">QR image</option>
-                        <option value="other">Other</option>
+                        <option value="bank_transfer">{copy("Bank transfer")}</option>
+                        <option value="qr_image">{copy("QR image")}</option>
+                        <option value="other">{copy("Other")}</option>
                       </select>
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Display name</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Display name")}</span>
                       <input
                         value={paymentMethod.display_name}
                         onChange={(e) => updatePaymentMethod('display_name', e.target.value)}
@@ -733,16 +732,16 @@ export default function PreorderSettings() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">PromptPay ID</span>
+                      <span className="text-sm font-black text-gray-700">{copy("PromptPay ID")}</span>
                       <input
                         value={paymentMethod.promptpay_id}
                         onChange={(e) => updatePaymentMethod('promptpay_id', e.target.value)}
-                        placeholder="Phone / national ID / e-wallet ID"
+                        placeholder={copy("Phone / national ID / e-wallet ID")}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Payment deadline</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Payment deadline")}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(paymentMethod.payment_deadline_at, eventTimeZone)}
@@ -754,7 +753,7 @@ export default function PreorderSettings() {
 
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Bank name</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Bank name")}</span>
                       <input
                         value={paymentMethod.bank_name}
                         onChange={(e) => updatePaymentMethod('bank_name', e.target.value)}
@@ -763,16 +762,16 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Account name</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Account name")}</span>
                       <input
                         value={paymentMethod.account_name}
                         onChange={(e) => updatePaymentMethod('account_name', e.target.value)}
-                        placeholder="Account holder"
+                        placeholder={copy("Account holder")}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Account number</span>
+                      <span className="text-sm font-black text-gray-700">{copy("Account number")}</span>
                       <input
                         value={paymentMethod.account_number}
                         onChange={(e) => updatePaymentMethod('account_number', e.target.value)}
@@ -783,17 +782,17 @@ export default function PreorderSettings() {
                   </div>
 
                   <div className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Payment QR image</span>
+                    <span className="text-sm font-black text-gray-700">{copy("Payment QR image")}</span>
                     {paymentMethod.qr_image_url ? (
                       <div className="flex items-center gap-3">
                         <img
                           src={paymentMethod.qr_image_url}
-                          alt="Payment QR preview"
+                          alt={copy("Payment QR preview")}
                           className="h-28 w-28 rounded-xl border border-pink-100 bg-white object-contain"
                         />
                         <div className="grid gap-2">
                           <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 px-4 text-sm font-black text-pink-700 hover:bg-pink-100">
-                            {qrUploading ? 'Uploading…' : 'Replace image'}
+                            {qrUploading ? copy("Uploading…") : copy("Replace image")}
                             <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
                           </label>
                           <button
@@ -801,25 +800,24 @@ export default function PreorderSettings() {
                             onClick={() => updatePaymentMethod('qr_image_url', '')}
                             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-600 hover:bg-gray-50"
                           >
-                            Remove
-                          </button>
+                            {copy("Remove")}</button>
                         </div>
                       </div>
                     ) : (
                       <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50">
-                        {qrUploading ? 'Uploading…' : 'Upload PromptPay / transfer QR image'}
+                        {qrUploading ? copy("Uploading…") : copy("Upload PromptPay / transfer QR image")}
                         <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
                       </label>
                     )}
                   </div>
 
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Extra instructions</span>
+                    <span className="text-sm font-black text-gray-700">{copy("Extra instructions")}</span>
                     <textarea
                       value={paymentMethod.instructions}
                       onChange={(e) => updatePaymentMethod('instructions', e.target.value)}
                       rows={3}
-                      placeholder="Example: Transfer exact amount, upload slip, then wait for confirmation."
+                      placeholder={copy("Example: Transfer exact amount, upload slip, then wait for confirmation.")}
                       className="rounded-xl border border-pink-100 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
                     />
                   </label>
@@ -827,56 +825,56 @@ export default function PreorderSettings() {
               </div>
               )}
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-gray-100 bg-white py-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => navigate(`/manage-events/${event.id}/catalog`)}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-black text-gray-700 hover:bg-gray-50"
                 >
-                  <PackageCheck size={17} /> Event catalog
-                </button>
+                  <PackageCheck size={17} /> {copy("Event catalog")}</button>
                 <button
                   type="button"
                   onClick={saveSettings}
                   disabled={saving}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:opacity-60"
                 >
-                  <Save size={17} /> {saving ? 'Saving...' : 'Save settings'}
+                  <Save size={17} /> {saving ? copy("Saving...") : copy("Save settings")}
                 </button>
               </div>
             </div>
           </section>
 
-          <aside className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <aside className="sales-readiness preorder-readiness">
             <div className="mb-4 flex items-start gap-3">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-pink-50 text-pink-600">
                 <AlertTriangle size={20} />
               </div>
               <div>
-                <h2 className="text-base font-black text-gray-900">Readiness checklist</h2>
+                <h2 className="text-base font-black text-gray-900">{copy("Readiness checklist")}</h2>
                 <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">
-                  Use this to catch setup gaps before customers see the {readinessScope}.
+                  {language === 'th' ? 'ตรวจจากค่าที่กำลังแก้ไข ต้องกดบันทึกก่อนจึงจะมีผลกับลูกค้า' : `Check the ${readinessScope}. Changes below must be saved before they apply.`}
                 </p>
               </div>
             </div>
 
             <div className="grid gap-3">
-              {readinessItems.map((item) => {
+              {[...readinessItems].sort((a, b) => Number(a.ready) - Number(b.ready)).map((item) => {
                 const Icon = item.icon;
                 return (
-                  <div key={item.label} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <div key={copy(item.label)} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                     <div className="flex items-start gap-3">
                       <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${item.ready ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                         <Icon size={17} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-black text-gray-800">{item.label}</div>
+                          <div className="text-sm font-black text-gray-800">{copy(item.label)}</div>
                           <span className={`shrink-0 text-[11px] font-black uppercase tracking-[0.12em] ${item.ready ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            {item.ready ? 'Ready' : 'Check'}
+                            {item.ready ? copy("Ready") : copy("Check")}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{item.detail}</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{copy(item.detail)}</p>
+                        <a className="readiness-link" href={item.target === 'catalog' ? `/manage-events/${eventId}/catalog` : `#${item.target}`}>{copy("Configure")}</a>
                       </div>
                     </div>
                   </div>
@@ -906,6 +904,9 @@ function SalesModeCard({
   onClick?: () => void;
   locked?: boolean;
 }) {
+  const { language } = useI18n();
+  const copy = (value: string) => eventCopy(language, value);
+
   return (
     <button
       type="button"
@@ -924,10 +925,10 @@ function SalesModeCard({
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-black text-gray-950">{title}</h3>
-            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">{locked ? 'Auto' : 'Enabled'}</span>}
+            <h3 className="text-sm font-black text-gray-950">{copy(title)}</h3>
+            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">{locked ? copy("Auto") : copy("Enabled")}</span>}
           </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{detail}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{copy(detail)}</p>
         </div>
       </div>
     </button>

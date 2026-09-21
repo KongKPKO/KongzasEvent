@@ -1,148 +1,74 @@
-import type { Session } from '@supabase/supabase-js';
-import type { ActorContext } from '../types/access';
+export type ReplayConsent = 'accepted' | 'rejected';
+export const REPLAY_CONSENT_KEY = 'nireq-replay-consent-v1';
+export const REPLAY_CONSENT_EVENT = 'nireq-replay-consent-change';
 
-type LogRocketClient = {
-  init: (appId: string, options?: Record<string, unknown>) => void;
-  identify: (userId: string, traits?: Record<string, string | boolean>) => void;
-  startNewSession: () => void;
-  debug: (message: string, extra?: Record<string, unknown>) => void;
-  info: (message: string, extra?: Record<string, unknown>) => void;
-  warn: (message: string, extra?: Record<string, unknown>) => void;
-  error: (message: string, extra?: Record<string, unknown>) => void;
-};
-
-const SENSITIVE_HEADERS = new Set([
-  'apikey',
-  'authorization',
-  'cookie',
-  'set-cookie',
-  'x-client-info',
-  'x-supabase-api-version',
-]);
-
-const SENSITIVE_QUERY_PARAMS = [
-  'access_token',
-  'refresh_token',
-  'token',
-  'code',
-  'apikey',
-  'password',
-];
-
+let loading = false;
 let initialized = false;
-let identifiedUserId: string | null = null;
-let logRocket: LogRocketClient | null = null;
-let pendingIdentity: { session: Session; actorContext: ActorContext | null } | null = null;
+let allowed = false;
 
-const sanitizeUrl = (rawUrl?: string | null) => {
-  if (!rawUrl) return rawUrl || '';
+export const getReplayConsent = (): ReplayConsent | null => {
   try {
-    const url = new URL(rawUrl, window.location.origin);
-    SENSITIVE_QUERY_PARAMS.forEach((param) => {
-      if (url.searchParams.has(param)) url.searchParams.set(param, '[redacted]');
-    });
-    return url.toString();
+    const value = window.localStorage.getItem(REPLAY_CONSENT_KEY);
+    return value === 'accepted' || value === 'rejected' ? value : null;
   } catch {
-    return rawUrl;
+    return null;
   }
 };
 
-const sanitizeHeaders = (headers: Record<string, string | null | undefined>) => {
-  const next: Record<string, string | null | undefined> = {};
-  Object.entries(headers || {}).forEach(([key, value]) => {
-    next[key] = SENSITIVE_HEADERS.has(key.toLowerCase()) ? '[redacted]' : value;
-  });
-  return next;
+export const setReplayConsent = (consent: ReplayConsent) => {
+  // Persist before starting recording; unavailable storage must fail closed.
+  window.localStorage.setItem(REPLAY_CONSENT_KEY, consent);
+  allowed = consent === 'accepted';
+  window.dispatchEvent(new Event(REPLAY_CONSENT_EVENT));
+  if (!allowed && initialized) {
+    // The installed SDK has no supported stop API. Reload unloads its recorder.
+    window.location.reload();
+  } else if (allowed) {
+    initObservability();
+  }
 };
 
 export const initObservability = () => {
   const appId = import.meta.env.VITE_LOGROCKET_APP_ID;
-  const disabled = import.meta.env.VITE_LOGROCKET_DISABLED === 'true';
-
-  if (!appId || disabled || initialized || typeof window === 'undefined') return;
-
-  void import('logrocket').then((module) => {
-    const client = (module.default || module) as LogRocketClient;
-    client.init(appId, {
+  if (!appId || import.meta.env.VITE_LOGROCKET_DISABLED === 'true' ||
+      typeof window === 'undefined' || initialized || loading || getReplayConsent() !== 'accepted') return;
+  allowed = true;
+  loading = true;
+  void import('logrocket').then(({ default: client }) => {
+    if (!allowed || getReplayConsent() !== 'accepted') return;
+    const options = {
       release: import.meta.env.VITE_RELEASE_SHA || import.meta.env.VITE_APP_VERSION,
       shouldCaptureIP: false,
+      forceCleanStart: true,
+      shouldDetectExceptions: false,
+      shouldSendData: () => allowed && getReplayConsent() === 'accepted',
+      console: { isEnabled: false, shouldAggregateConsoleErrors: false },
+      network: { requestSanitizer: () => null, responseSanitizer: () => null },
+      browser: { urlSanitizer: () => window.location.origin + '/[private]' },
       dom: {
+        imageSanitizer: true,
         inputSanitizer: true,
-        hiddenAttributes: ['data-private', 'data-sensitive'],
+        textSanitizer: true,
+        disablePageTitles: true,
+        // Protect evidence, customer content and URL-bearing attributes by default.
         privateAttributeBlocklist: ['data-private', 'data-sensitive'],
         privateClassNameBlocklist: ['lr-private', 'private', 'sensitive'],
+        hiddenAttributes: ['href', 'src', 'srcset', 'style', 'value', 'title', 'alt', 'id', 'data-testid'],
       },
-      network: {
-        requestSanitizer: (request: {
-          url: string;
-          headers: Record<string, string | null | undefined>;
-        }) => ({
-          ...request,
-          url: sanitizeUrl(request.url),
-          headers: sanitizeHeaders(request.headers),
-          body: null,
-        }),
-        responseSanitizer: (response: {
-          url?: string;
-          headers: Record<string, string | null | undefined>;
-        }) => ({
-          ...response,
-          url: sanitizeUrl(response.url),
-          headers: sanitizeHeaders(response.headers),
-          body: null,
-        }),
-      },
-      browser: {
-        urlSanitizer: sanitizeUrl,
-      },
-    });
-
-    logRocket = client;
+    };
+    client.init(appId, options);
     initialized = true;
-    if (pendingIdentity) {
-      identifyObservabilityUser(pendingIdentity.session, pendingIdentity.actorContext);
-      pendingIdentity = null;
-    }
-  }).catch((error) => {
-    console.warn('[Observability] LogRocket failed to load:', error);
+  }).catch(() => {
+    console.warn('[Observability] Session replay could not start.');
+  }).finally(() => { loading = false; });
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== REPLAY_CONSENT_KEY && event.key !== null) return;
+    allowed = getReplayConsent() === 'accepted';
+    window.dispatchEvent(new Event(REPLAY_CONSENT_EVENT));
+    if (!allowed && initialized) window.location.reload();
+    else if (allowed) initObservability();
   });
-};
-
-export const identifyObservabilityUser = (session: Session | null, actorContext: ActorContext | null) => {
-  if (!session?.user?.id) return;
-  if (!initialized || !logRocket) {
-    pendingIdentity = { session, actorContext };
-    return;
-  }
-
-  const nextUserId = session.user.id;
-  const traits: Record<string, string | boolean> = {
-    authProvider: session.user.app_metadata?.provider || 'unknown',
-  };
-
-  if (actorContext?.role) traits.role = actorContext.role;
-  if (actorContext?.artist_id) traits.artistId = actorContext.artist_id;
-  if (actorContext?.is_owner) traits.owner = true;
-
-  if (import.meta.env.VITE_LOGROCKET_CAPTURE_EMAIL === 'true' && session.user.email) {
-    traits.email = session.user.email;
-  }
-
-  logRocket.identify(nextUserId, traits);
-  identifiedUserId = nextUserId;
-};
-
-export const clearObservabilityUser = () => {
-  if (!initialized || !logRocket || !identifiedUserId) return;
-  logRocket.startNewSession();
-  identifiedUserId = null;
-};
-
-export const captureObservabilityMessage = (
-  level: 'debug' | 'info' | 'warn' | 'error',
-  message: string,
-  extra?: Record<string, unknown>
-) => {
-  if (!initialized || !logRocket) return;
-  logRocket[level](message, extra || {});
-};
+}

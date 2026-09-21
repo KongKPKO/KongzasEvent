@@ -1,10 +1,13 @@
+import { eventCopy } from '../../lib/eventCopy';
+import './catalog-workspace.css';
+import { uploadImage } from '../../lib/imageUploads';
 import { useState, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader, Upload, Plus, FileText, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import Papa from 'papaparse';
-import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
@@ -19,11 +22,13 @@ import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import {
-   addCatalogStock,
+   adjustCatalogStock,
+   readCatalogStockDraft,
+   fetchCatalogStockHistory,
+   type CatalogStockMovement,
    addEventStock,
    fetchProductStockSummaries,
    getStockAdjustmentErrorMessage,
-   removeCatalogStock,
    removeEventStock,
    type ProductStockSummary,
 } from '../../lib/stockAdjustments';
@@ -120,7 +125,7 @@ type ProductConfirmAction =
    | { type: 'delete_product'; id: string; name: string }
    | null;
 type StockAction =
-   | { scope: 'catalog'; kind: 'add' | 'remove'; product: Product }
+   | { scope: 'catalog'; kind: 'receive' | 'add' | 'remove'; product: Product }
    | { scope: 'event'; kind: 'add' | 'remove'; product: Product; eventProductId: string }
    | null;
 
@@ -323,6 +328,7 @@ const buildProductDuplicateKey = (input: {
 
 const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const { language, t } = useI18n();
+   const eventText = (value: string) => language === 'th' && value === 'Remove' ? 'คืนสต็อก' : eventCopy(language, value);
    const navigate = useNavigate();
    const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
@@ -385,6 +391,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [stockActionReason, setStockActionReason] = useState('');
    const [stockActionSaving, setStockActionSaving] = useState(false);
    const [stockActionError, setStockActionError] = useState('');
+   const historyDialogRef = useRef<HTMLDialogElement>(null);
+   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+   const [historyLoading, setHistoryLoading] = useState(false);
+   const [historyError, setHistoryError] = useState('');
+   const [historyRevision, setHistoryRevision] = useState(0);
+   const [stockHistory, setStockHistory] = useState<CatalogStockMovement[]>([]);
    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
    const [templatesLoading, setTemplatesLoading] = useState(false);
    const [templateSaving, setTemplateSaving] = useState(false);
@@ -1147,7 +1159,35 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setStockActionQuantity('');
       setStockActionReason('');
       setStockActionError('');
+      setStockHistory([]);
+      if (action?.scope === 'catalog') {
+         try {
+            const draft = readCatalogStockDraft(action.product.id);
+            if (draft) {
+               setStockAction({ ...action, kind: draft.kind === 'increase' ? 'add' : draft.kind === 'decrease' ? 'remove' : 'receive' });
+               setStockActionQuantity(String(draft.quantity));
+               setStockActionReason(draft.reason);
+            }
+         } catch (error) { setStockActionError(getLocalizedStockAdjustmentErrorMessage(error)); }
+      }
    };
+   const stockHistoryProductId = historyProduct?.id || (stockAction?.scope === 'catalog' ? stockAction.product.id : null);
+   useEffect(() => {
+      const dialog = historyDialogRef.current;
+      if (historyProduct) dialog?.showModal();
+      return () => dialog?.close();
+   }, [historyProduct]);
+   useEffect(() => {
+      if (!stockHistoryProductId) return;
+      let active = true;
+      setHistoryLoading(true); setHistoryError(''); setStockHistory([]);
+      void fetchCatalogStockHistory(stockHistoryProductId).then(rows => {
+         if (active) setStockHistory(rows);
+      }).catch(() => {
+         if (active) setHistoryError(language === 'th' ? 'โหลดประวัติสต็อกไม่ได้ กรุณาลองใหม่' : 'Could not load stock history. Please try again.');
+      }).finally(() => { if (active) setHistoryLoading(false); });
+      return () => { active = false; };
+   }, [stockHistoryProductId, language, historyRevision]);
    const closeStockAction = () => {
       setStockAction(null);
       setStockActionQuantity('');
@@ -1175,13 +1215,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       return t('catalogStockErrorGeneric');
    };
    const handleStockAction = async () => {
-      if (!stockAction) return;
+      if (!stockAction || stockActionSaving) return;
       const quantity = Number(stockActionQuantity);
       if (!Number.isInteger(quantity) || quantity <= 0) {
          setStockActionError(t('catalogStockErrorInvalidQuantity'));
          return;
       }
-      if (stockAction.scope === 'catalog' && stockAction.kind === 'remove' && !stockActionReason.trim()) {
+      if (stockAction.scope === 'catalog' && stockAction.kind !== 'receive' && !stockActionReason.trim()) {
          setStockActionError(t('catalogStockErrorReasonRequired'));
          return;
       }
@@ -1196,9 +1236,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setStockActionSaving(true);
       try {
          if (stockAction.scope === 'catalog') {
-            const summary = stockAction.kind === 'add'
-               ? await addCatalogStock(stockAction.product.id, quantity, stockActionReason)
-               : await removeCatalogStock(stockAction.product.id, quantity, stockActionReason);
+            const summary = await adjustCatalogStock(stockAction.product.id, quantity,
+               stockAction.kind === 'add' ? 'increase' : stockAction.kind === 'remove' ? 'decrease' : 'receive', stockActionReason);
             setStockSummaries((prev) => ({ ...prev, [summary.product_id]: summary }));
             await fetchProducts();
          } else {
@@ -1262,52 +1301,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setEventCurrencySaved(nextEventCurrency);
    }, [selectedEventId, selectedEventOption?.currency_override]);
 
-   const getProductImageUrl = (dbValue: string, width: number = 400) => {
-      if (!dbValue) return '';
-      let path = dbValue;
-      if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-         const parts = dbValue.split('Menu/');
-         if (parts.length > 1) path = parts[1];
-      }
-      const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-      
-      // Use ImageKit Utility
-      return getOptimizedImageUrl(data.publicUrl, width);
-   };
 
 
-   const handleImageCompression = async (imageFile: File): Promise<File> => {
-      // Options for compression
-      const options = {
-         maxSizeMB: 0.2,           // 200KB
-         maxWidthOrHeight: 1024,   // Max dimension
-         useWebWorker: true,
-         fileType: 'image/webp',   // Try to convert to WebP
-         initialQuality: 0.8       // 80% quality at first
-      };
-
-      // If file is larger than 10MB, reject immediately
-      if (imageFile.size > 10 * 1024 * 1024) {
-         throw new Error("File too large");
-      }
-      // Skip if already small enough (e.g. < 200KB)
-      if (imageFile.size / 1024 / 1024 < 0.2) {
-         return imageFile; 
-      }
-
-      try {
-         const { default: imageCompression } = await import('browser-image-compression');
-         const compressedFile = await imageCompression(imageFile, options);
-         // Keep original name but change extension if converted
-         const newName = imageFile.name.replace(/\.[^/.]+$/, "") + '.webp';
-         return new File([compressedFile], newName, { type: 'image/webp' });
-      } catch (error) {
-         console.warn('Image compression failed, using original.', error);
-         return imageFile;
-      }
-   };
 
    const prepareImageForCrop = async (selectedFile: File, target: ProductImageTarget) => {
+      if (selectedFile.size > 10 * 1024 * 1024) {
+         showToast({ tone: 'warning', title: 'Image too large / รูปใหญ่เกินไป', detail: 'Maximum 10 MB / ขนาดสูงสุด 10 MB' });
+         return;
+      }
       if (!isAllowedProductImage(selectedFile)) {
          showToast({ tone: 'warning', title: 'Unsupported image type', detail: 'Use JPG, PNG, WebP, HEIC, or HEIF.' });
          return;
@@ -1337,7 +1338,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       setCompressing(true);
       try {
-         const compressed = await handleImageCompression(croppedFile);
+         const compressed = croppedFile;
          if (cropRequest.target === 'add') {
             setFile(compressed);
          } else {
@@ -1346,12 +1347,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setCropRequest(null);
       } catch (error) {
          console.error('[ManageProducts] cropped image compression failed:', error);
-         if (cropRequest.target === 'add') {
-            setFile(croppedFile);
-         } else {
-            setEditFile(croppedFile);
-         }
-         setCropRequest(null);
+         showToast({ tone: 'error', title: 'Could not prepare image', detail: error instanceof Error ? error.message : 'Please try another image.' });
       } finally {
          setCompressing(false);
       }
@@ -1472,17 +1468,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          // 1. Upload image if provided
          let filePath = '';
 
-         if (file) {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-            filePath = `public/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-               .from('Menu')
-               .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
-         }
+         if (file) filePath = await uploadImage(file, 'product', { artistId: ctx.artist_id });
 
          // 2. Insert to DB
          const { data: createdProduct, error: dbError } = await supabase
@@ -1702,15 +1688,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
          // If new image selected, upload it
          if (editFile) {
-            const fileExt = editFile.name.split('.').pop();
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-            const filePath = `public/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-               .from('Menu')
-               .upload(filePath, editFile);
-
-            if (uploadError) throw uploadError;
+            const filePath = await uploadImage(editFile, 'product', { artistId });
             imageUrl = filePath;
 
             // Delete old image if it exists
@@ -1734,8 +1712,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                tags: parseTagsInput(tagsInput),
                status,
                currency,  // ✅ NEW: Update currency
-               stock_total: isUnlimited ? null : Number(stockTotal || 0),
-               is_unlimited: isUnlimited,
                variant_group_name: normalizedVariantGroupName,
                variant_name: normalizedVariantName,
                variant_sort_order: normalizedVariantSortOrder,
@@ -2196,7 +2172,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          : 'min-h-11 rounded-xl bg-pink-600 px-3 text-xs font-black text-white hover:bg-pink-700';
 
       return (
-         <div className={`flex items-center gap-1.5 ${surface === 'table' ? 'justify-end' : ''}`}>
+         <div className={`catalog-item-actions ${surface === 'table' ? 'catalog-table-actions' : ''} flex flex-wrap items-center gap-1.5 ${surface === 'table' ? 'justify-end' : ''}`}>
+            <button type="button" className={secondaryButtonClass} onClick={() => handleEditClick(product)}>{t('catalogEditProduct')}</button>
             <div className={surface === 'table' ? 'grid gap-1' : 'contents'}>
                <button
                   type="button"
@@ -2208,7 +2185,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                {!product.is_unlimited && (
                   <button
                      type="button"
-                     onClick={(event) => { event.stopPropagation(); openStockAction({ scope: 'catalog', kind: 'add', product }); }}
+                     onClick={(event) => { event.stopPropagation(); openStockAction({ scope: 'catalog', kind: 'receive', product }); }}
                      className={secondaryButtonClass}
                   >
                      {t('catalogAdjustStock')}
@@ -2258,6 +2235,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      >
                         {t('catalogEditProduct')}
                      </button>
+                     <button type="button" role="menuitem" className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50" onClick={() => { setCatalogActionMenuKey(null); setHistoryProduct(product); }}>{language === 'th' ? 'ประวัติสต็อก' : 'Stock history'}</button>
                      <button
                         type="button"
                         role="menuitem"
@@ -2273,14 +2251,29 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
+   const renderStockHistory = () => <div aria-live="polite">
+      {historyLoading ? <p>{language === 'th' ? 'กำลังโหลดประวัติ…' : 'Loading history…'}</p> : historyError ? <div role="alert"><p>{historyError}</p><button type="button" onClick={() => setHistoryRevision(value => value + 1)}>{language === 'th' ? 'ลองใหม่' : 'Retry'}</button></div> : stockHistory.length === 0 ? <p>{language === 'th' ? 'ยังไม่มีประวัติที่บันทึก' : 'No recorded changes yet'}</p> :
+      <ol className="catalog-history-list">{stockHistory.map(row => <li key={row.id}>
+         <time>{new Date(row.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</time>
+         <strong>{row.quantity_before ?? '∞'} → {row.quantity_after ?? '∞'}</strong>
+         <span>{row.reason === 'received' ? (language === 'th' ? 'รับสินค้าเพิ่ม' : 'Stock received') : row.reason}</span>
+         <small>{language === 'th' ? 'ผู้ทำ: ' : 'Actor: '}{row.actor_id || (language === 'th' ? 'ระบบ' : 'System')}</small>
+      </li>)}</ol>}
+   </div>;
+
    const selectedEventName = selectedEventOption?.event_name || 'Event';
    const pageTitle = isEventScopedWorkspace
-      ? activeWorkspaceTab === 'promotions' ? 'Event Promotion' : 'Event Catalog'
-      : activeWorkspaceTab === 'promotions' ? 'Promotion Workspace' : 'Catalog Workspace';
+      ? activeWorkspaceTab === 'promotions' ? (language === 'th' ? 'โปรโมชันของงาน' : 'Event Promotion') : (language === 'th' ? 'สินค้าและสต็อกของงาน' : 'Event Catalog')
+      : activeWorkspaceTab === 'promotions' ? (language === 'th' ? 'จัดการโปรโมชัน' : 'Promotion Workspace') : 'Catalog Workspace';
    const pageSubtitle = isEventScopedWorkspace ? selectedEventName : artistName;
 
    return (
-      <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
+      <div className="catalog-workspace min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
+         <dialog ref={historyDialogRef} aria-label={language === 'th' ? 'ประวัติสต็อก' : 'Stock history'} className="catalog-history-dialog" onCancel={() => setHistoryProduct(null)}>
+            <header><div><h2>{language === 'th' ? 'ประวัติสต็อก' : 'Stock history'}</h2><p>{historyProduct?.name} · {historyProduct?.sku}</p></div><button autoFocus type="button" onClick={() => setHistoryProduct(null)}>{language === 'th' ? 'ปิด' : 'Close'}</button></header>
+            <p>{language === 'th' ? 'การรับและปรับยอดคลังกลาง 30 รายการล่าสุด' : 'Latest 30 central stock receipts and adjustments'}</p>
+            {historyProduct && renderStockHistory()}
+         </dialog>
          {/* ✅ NEW: Unified Admin Header */}
          <AdminHeader
             activePage={activeWorkspaceTab === 'promotions' && !isEventScopedWorkspace ? 'promotion' : 'menu'}
@@ -2322,7 +2315,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="catalog-stock-dialog-title"
-                  className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+                  className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
                >
                   <div className="flex items-start justify-between gap-4">
                      <div>
@@ -2339,8 +2332,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   </div>
                   <div className="mt-5 space-y-4">
                      {stockAction.scope === 'catalog' && (
-                        <div className="grid grid-cols-2 rounded-xl bg-gray-100 p-1">
-                           {(['add', 'remove'] as const).map((kind) => (
+                        <div className="grid grid-cols-3 rounded-xl bg-gray-100 p-1">
+                           {(['receive', 'add', 'remove'] as const).map((kind) => (
                               <button
                                  key={kind}
                                  type="button"
@@ -2348,11 +2341,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  onClick={() => {
                                     setStockAction((current) => current?.scope === 'catalog' ? { ...current, kind } : current);
                                     setStockActionError('');
-                                    if (kind === 'add') setStockActionReason('');
+                                    if (kind === 'receive') setStockActionReason('');
                                  }}
                                  className={`min-h-11 rounded-lg px-3 text-sm font-black transition-colors ${stockAction.kind === kind ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
                               >
-                                 {kind === 'add' ? t('catalogIncreaseStock') : t('catalogDecreaseStock')}
+                                 {kind === 'receive' ? (language === 'th' ? 'รับสินค้าเพิ่ม' : 'Receive stock') : kind === 'add' ? t('catalogIncreaseStock') : t('catalogDecreaseStock')}
                               </button>
                            ))}
                         </div>
@@ -2372,7 +2365,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            className="w-full rounded-lg border border-gray-200 px-3 py-2 font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
                         />
                      </div>
-                     {stockAction.scope === 'catalog' && stockAction.kind === 'remove' && (
+                     {stockAction.scope === 'catalog' && stockAction.kind !== 'receive' && (
                         <div>
                            <label htmlFor="catalog-stock-reason" className="mb-1 block text-xs font-black uppercase tracking-wide text-gray-500">{t('catalogStockReason')}</label>
                            <select
@@ -2400,7 +2393,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     <div>{t('catalogStockAllocated')}: {summary.allocated}</div>
                                     <div>{t('catalogStockAvailable')}: {summary.available}</div>
                                     <div className="mt-2 font-black text-gray-900">
-                                       {stockAction.kind === 'add' ? t('catalogStockAfterIncrease') : t('catalogStockAfterDecrease')}: {stockAction.kind === 'add' ? summary.on_hand + quantity : summary.on_hand - quantity}
+                                       {stockAction.kind !== 'remove' ? t('catalogStockAfterIncrease') : t('catalogStockAfterDecrease')}: {stockAction.kind !== 'remove' ? summary.on_hand + quantity : summary.on_hand - quantity}
                                     </div>
                                  </>
                               );
@@ -2426,6 +2419,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            })()
                         )}
                      </div>
+                     {stockAction.scope === 'catalog' && (
+                        <section className="border-t border-gray-100 pt-3">
+                           <h3 className="text-sm font-bold">{language === 'th' ? 'ประวัติสต็อกล่าสุด (30 รายการ)' : 'Recent stock history (30 changes)'}</h3>
+                           {renderStockHistory()}
+                        </section>
+                     )}
                      {stockActionError && (
                         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
                            {stockActionError}
@@ -2445,7 +2444,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         {stockActionSaving
                            ? t('catalogStockSaving')
                            : stockAction.scope === 'catalog'
-                             ? stockAction.kind === 'add' ? t('catalogStockSaveIncrease') : t('catalogStockSaveDecrease')
+                             ? stockAction.kind === 'receive' ? (language === 'th' ? 'บันทึกรับสินค้า' : 'Save receipt') : stockAction.kind === 'add' ? t('catalogStockSaveIncrease') : t('catalogStockSaveDecrease')
                              : stockAction.kind === 'add' ? t('catalogStockAddToEvent') : t('catalogStockRemoveFromEvent')}
                      </Button>
                   </div>
@@ -2455,7 +2454,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          
          {addToSaleProduct && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-               <form onSubmit={handleAddToSale} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+               <form onSubmit={handleAddToSale} className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
                   <div className="flex items-start justify-between gap-3">
                      <div><h2 className="text-lg font-black text-gray-900">{t('catalogAddToSale')}</h2><p className="mt-1 text-sm font-semibold text-gray-500">{addToSaleProduct.name} · {addToSaleProduct.sku}</p></div>
                      <button type="button" onClick={() => setAddToSaleProduct(null)} className="icon-touch text-gray-400" aria-label={t('campaignClose')}><X size={20} /></button>
@@ -2507,7 +2506,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white">
                               {variantSourceProduct.image_url ? (
                                  <img
-                                    src={getProductImageUrl(variantSourceProduct.image_url, 160)}
+                                    src={getMenuImageUrl(variantSourceProduct.image_url)}
                                     alt={variantSourceProduct.name}
                                     className="h-full w-full object-cover"
                                     loading="lazy"
@@ -2603,7 +2602,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <section className="mb-5 rounded-xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
-                     <h2 className="text-lg font-black text-gray-900">{t('catalogTitle')}</h2>
+                     <h1 className="text-lg font-black text-gray-900">{t('catalogTitle')}</h1>
                      <p className="mt-1 max-w-2xl text-sm font-semibold text-gray-500">{t('catalogSubtitle')}</p>
                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
                         {([
@@ -3240,12 +3239,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <Sparkles className="text-pink-500" size={18} />
-                        {isEventScopedWorkspace ? 'Event Promotion' : 'Promotions'}
+                        {language === 'th' ? 'โปรโมชัน' : 'Promotions'}
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">
                         {isEventScopedWorkspace
-                           ? 'Manage pricing rules for this event only.'
-                           : 'Manage shared pricing rules separately from daily product maintenance.'}
+                           ? (language === 'th' ? 'กำหนดข้อเสนอ แล้วเลือกใช้ก่อนงาน วันงาน หรือหลังงาน' : 'Set offers for pre-order, event-day sales or post-order.')
+                           : (language === 'th' ? 'กำหนดส่วนลด ของแถม และช่วงใช้งานของแต่ละช่องทางขาย' : 'Set discounts, gifts and schedules for your sales channels.')}
                      </p>
                   </div>
                </div>
@@ -3269,29 +3268,30 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="border-b border-gray-100 px-4 py-4">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                      <div className="min-w-0">
-                        <p className="text-xs font-black uppercase tracking-wide text-pink-600">Event Catalog Setup</p>
+                        <p className="text-xs font-black uppercase tracking-wide text-pink-600">{eventText("Event Catalog Setup")}</p>
                         <h2 className="mt-1 flex items-center gap-2 text-lg font-black text-gray-900">
                            <CalendarDays className="text-pink-500" size={18} />
                            {selectedEventName}
                         </h2>
-                        <p className="mt-1 text-sm font-semibold text-gray-500">Choose which library products sell in this event, then set event price and event stock.</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-500">{eventText("Choose which library products sell in this event, then set event price and event stock.")}</p>
+                        <button type="button" onClick={() => navigate('/manage-products')} className="mt-2 min-h-11 rounded-lg border border-pink-200 px-3 text-sm font-bold text-pink-700">{language === 'th' ? 'เพิ่มสินค้าในคลังร้าน' : 'Manage shop products'}</button>
                      </div>
                      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         {([
-                           { label: 'Selling', value: eventCatalogSelling },
-                           { label: 'Overrides', value: eventCatalogOverrides },
-                           { label: 'Stock warnings', value: eventCatalogStockWarnings },
-                           { label: 'Status', value: hasPendingEventCatalogChanges ? 'Unsaved' : 'Saved' },
+                           { label: eventText("Selling"), value: eventCatalogSelling },
+                           { label: eventText("Overrides"), value: eventCatalogOverrides },
+                           { label: eventText("Stock warnings"), value: eventCatalogStockWarnings },
+                           { label: eventText("Status"), value: hasPendingEventCatalogChanges ? eventText("Unsaved") : eventText("Saved") },
                         ]).map((item) => (
-                           <div key={item.label} className={`min-w-[120px] rounded-lg border px-3 py-2 ${
-                              item.label === 'Stock warnings' && Number(item.value) > 0
+                           <div key={eventText(String(item.label))} className={`min-w-[120px] rounded-lg border px-3 py-2 ${
+                              item.label === eventText("Stock warnings") && Number(item.value) > 0
                                  ? 'border-red-100 bg-red-50 text-red-700'
-                                 : item.label === 'Status' && hasPendingEventCatalogChanges
+                                 : item.label === eventText("Status") && hasPendingEventCatalogChanges
                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
                                    : 'border-gray-100 bg-gray-50 text-gray-600'
                            }`}>
-                              <div className="text-lg font-black leading-none">{item.value}</div>
-                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
+                              <div className="text-lg font-black leading-none">{eventText(String(item.value))}</div>
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{eventText(String(item.label))}</div>
                            </div>
                         ))}
                      </div>
@@ -3302,7 +3302,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_auto] xl:items-end">
                         <div className="grid gap-3 md:grid-cols-2">
                            <div className="space-y-1">
-                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">{eventText("Event")}</label>
                               {isEventScopedWorkspace ? (
                                  <div className="min-h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-black text-gray-800">
                                     {selectedEventName}
@@ -3313,9 +3313,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     onChange={(event) => setSelectedEventId(event.target.value)}
                                     className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                     disabled={eventOptions.length === 0}
-                                    aria-label="Select event catalog"
+                                    aria-label={eventText("Select event catalog")}
                                  >
-                                    {eventOptions.length === 0 && <option value="">No confirmed events</option>}
+                                    {eventOptions.length === 0 && <option value="">{eventText("No confirmed events")}</option>}
                                     {eventOptions.map((event) => (
                                        <option key={event.id} value={event.id}>{event.event_name}</option>
                                     ))}
@@ -3323,20 +3323,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               )}
                               {selectedEventOption && (
                                  <p className="text-[11px] font-bold text-pink-700">
-                                    Event starts {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
+                                    {eventText("Event starts")}{new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
                                  </p>
                               )}
                            </div>
                            <div className="space-y-1">
-                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event currency</label>
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">{eventText("Event currency")}</label>
                               <select
                                  value={eventCurrencyDraft}
                                  onChange={(event) => setEventCurrencyDraft(event.target.value)}
                                  className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                  disabled={!selectedEventId}
-                                 aria-label="Select event currency"
+                                 aria-label={eventText("Select event currency")}
                               >
-                                 <option value="">Use product currency</option>
+                                 <option value="">{eventText("Use product currency")}</option>
                                  {Object.keys(CURRENCIES).sort().map((code) => (
                                     <option key={code} value={code}>{code}</option>
                                  ))}
@@ -3350,7 +3350,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         }`}>
                            {hasPendingEventCatalogChanges
                               ? 'Unsaved changes will not show in POS or customer menu yet.'
-                              : 'Saved setup is ready for POS and customer menu.'}
+                              : eventText("Saved setup is ready for POS and customer menu.")}
                         </div>
                         <button
                            type="button"
@@ -3359,7 +3359,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
                         >
                            {eventCatalogSaving ? <Loader className="animate-spin" size={14} /> : <Save size={14} />}
-                           {hasPendingEventCatalogChanges ? 'Save Changes' : 'Saved'}
+                           {hasPendingEventCatalogChanges ? 'Save Changes' : eventText("Saved")}
                         </button>
                      </div>
 
@@ -3370,34 +3370,34 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               value={eventCatalogSearch}
                               onChange={(event) => setEventCatalogSearch(event.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-pink-200"
-                              placeholder="Search event products..."
+                              placeholder={eventText("Search event products...")}
                            />
                         </div>
                         <select
                            value={eventCatalogCategory}
                            onChange={(event) => setEventCatalogCategory(event.target.value)}
                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label="Filter event catalog category"
+                           aria-label={eventText("Filter event catalog category")}
                         >
-                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === 'All' ? 'All categories' : item}</option>)}
+                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === eventText("All") ? eventText("All categories") : item}</option>)}
                         </select>
                         <select
                            value={eventCatalogTag}
                            onChange={(event) => setEventCatalogTag(event.target.value)}
                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label="Filter event catalog tag"
+                           aria-label={eventText("Filter event catalog tag")}
                         >
-                           {uniqueTags.map((item) => <option key={item} value={item}>{item === 'All' ? 'All tags' : item}</option>)}
+                           {uniqueTags.map((item) => <option key={item} value={item}>{item === eventText("All") ? eventText("All tags") : item}</option>)}
                         </select>
                      </div>
 
                      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
-                        <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-500">Show</span>
+                        <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-500">{eventText("Show")}</span>
                         {([
-                           ['all', 'All'],
-                           ['selling', 'Selling'],
-                           ['hidden', 'Hidden'],
-                           ['overrides', 'Overrides'],
+                           ['all', eventText("All")],
+                           ['selling', eventText("Selling")],
+                           ['hidden', eventText("Hidden")],
+                           ['overrides', eventText("Overrides")],
                         ] as const).map(([view, label]) => (
                            <button
                               key={view}
@@ -3414,8 +3414,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         ))}
                         <div className="ml-0 inline-grid grid-cols-2 rounded-lg border border-gray-200 bg-white p-1 sm:ml-2">
                            {([
-                              ['visual', LayoutGrid, 'Visual'],
-                              ['operations', List, 'Operations'],
+                              ['visual', LayoutGrid, eventText("Visual")],
+                              ['operations', List, eventText("Operations")],
                            ] as const).map(([mode, Icon, label]) => (
                               <button
                                  key={mode}
@@ -3434,14 +3434,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            ))}
                         </div>
                         <span className="ml-auto rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-600">
-                           {filteredEventCatalogProducts.length} of {products.length}
+                           {filteredEventCatalogProducts.length} {eventText("of")}{products.length}
                         </span>
                      </div>
 
                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                           <span className="text-xs font-black uppercase tracking-wide text-gray-500">Bulk actions for visible rows</span>
-                           <span className="text-[11px] font-bold text-gray-400">Uses current search and filters</span>
+                           <span className="text-xs font-black uppercase tracking-wide text-gray-500">{eventText("Bulk actions for visible rows")}</span>
+                           <span className="text-[11px] font-bold text-gray-400">{eventText("Uses current search and filters")}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                            <button
@@ -3449,29 +3449,25 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               onClick={() => updateFilteredEventCatalogDraft({ is_enabled: true })}
                               className="workspace-action min-h-9 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-black text-pink-700 hover:bg-pink-50"
                            >
-                              Sell visible
-                           </button>
+                              {eventText("Sell visible")}</button>
                            <button
                               type="button"
                               onClick={() => updateFilteredEventCatalogDraft({ is_enabled: false })}
                               className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
                            >
-                              Hide visible
-                           </button>
+                              {eventText("Hide visible")}</button>
                            <button
                               type="button"
                               onClick={() => updateFilteredEventCatalogDraft({ price_override: '' })}
                               className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
                            >
-                              Reset visible prices
-                           </button>
+                              {eventText("Reset visible prices")}</button>
                         </div>
                      </div>
 
                      {!selectedEventId ? (
                         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-500">
-                           Create or confirm an event before assigning products.
-                        </div>
+                           {eventText("Create or confirm an event before assigning products.")}</div>
                      ) : (
                         <>
 	                           {eventCatalogDisplayMode === 'visual' ? (
@@ -3504,14 +3500,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                          <div className="relative aspect-[4/3] bg-pink-50/50">
 	                                             {product.image_url ? (
 	                                                <img
-	                                                   src={getProductImageUrl(product.image_url, 420)}
+	                                                   src={getMenuImageUrl(product.image_url)}
 	                                                   alt={product.name}
 	                                                   className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${draft.is_enabled ? '' : 'grayscale'}`}
 	                                                   loading="lazy"
 	                                                   decoding="async"
 	                                                />
 	                                             ) : (
-	                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">No image</div>
+	                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">{eventText("No image")}</div>
 	                                             )}
 	                                             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
 	                                                <button
@@ -3523,12 +3519,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         : 'bg-white/90 text-gray-500 ring-1 ring-gray-200'
 	                                                   }`}
 	                                                >
-	                                                   {draft.is_enabled ? 'Selling' : 'Hidden'}
+	                                                   {draft.is_enabled ? eventText("Selling") : eventText("Hidden")}
 	                                                </button>
 	                                                {hasCustomSetup && (
 	                                                   <span className="rounded-full bg-amber-50/95 px-3 py-1.5 text-[11px] font-black text-amber-700 shadow-sm ring-1 ring-amber-100 backdrop-blur">
-	                                                      Custom
-	                                                   </span>
+	                                                      {eventText("Custom")}</span>
 	                                                )}
 	                                             </div>
 	                                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent p-3">
@@ -3548,20 +3543,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                   {product.variant_name && (
 	                                                      <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.variant_name}</span>
 	                                                   )}
-	                                                   <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.category || 'Other'}</span>
+	                                                   <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.category || eventText("Other")}</span>
 	                                                </div>
 	                                             </div>
 
 	                                             <div className={`rounded-xl p-3 ${stockOverLimit ? 'bg-red-50 ring-1 ring-red-100' : 'bg-gray-50 ring-1 ring-gray-100'}`}>
 	                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
 	                                                {stockOverLimit && (
-	                                                   <p className="mt-2 text-[11px] font-bold text-red-600">Max {stockLimit} available for this event.</p>
+	                                                   <p className="mt-2 text-[11px] font-bold text-red-600">{eventText("Max")}{stockLimit} {eventText("available for this event.")}</p>
 	                                                )}
 	                                             </div>
 
 	                                             <div className="grid grid-cols-2 gap-2">
 	                                                <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event price</span>
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{eventText("Event price")}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3574,7 +3569,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                   />
 	                                                </label>
 	                                                <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event stock</span>
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{eventText("Event stock")}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3586,7 +3581,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-black text-gray-900 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
 	                                                         stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
 	                                                      }`}
-	                                                      placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
+	                                                      placeholder={draft.is_unlimited ? eventText("Unlimited") : 'Qty'}
 	                                                      aria-label={`Event stock for ${product.name}`}
 	                                                   />
 	                                                </label>
@@ -3601,8 +3596,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      disabled={!product.is_unlimited || hasAllocatedEventStock}
 	                                                      className="h-3.5 w-3.5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-40"
 	                                                   />
-	                                                   Unlimited
-	                                                </label>
+	                                                   {eventText("Unlimited")}</label>
 	                                                {draft.id && !draft.is_unlimited ? (
 	                                                   <>
 	                                                      <button
@@ -3610,18 +3604,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
 	                                                         className="min-h-9 rounded-full bg-emerald-50 px-3 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100"
 	                                                      >
-	                                                         Add stock
-	                                                      </button>
+	                                                         {eventText("Add stock")}</button>
 	                                                      <button
 	                                                         type="button"
 	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
 	                                                         className="min-h-9 rounded-full bg-white px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
 	                                                      >
-	                                                         Remove
-	                                                      </button>
+	                                                         {eventText("Remove")}</button>
 	                                                   </>
 	                                                ) : (
-	                                                   <span className="text-[11px] font-bold text-gray-400">Save first to move stock.</span>
+	                                                   <span className="text-[11px] font-bold text-gray-400">{eventText("Save first to move stock.")}</span>
 	                                                )}
 	                                             </div>
 	                                          </div>
@@ -3632,11 +3624,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            ) : (
                               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
                                  <div className="hidden xl:grid xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
-                                    <div>Product</div>
-                                    <div>Sell / Price</div>
-                                    <div>Central to event</div>
-                                    <div>Event stock</div>
-                                    <div>Actions</div>
+                                    <div>{eventText("Product")}</div>
+                                    <div>{eventText("Sell / Price")}</div>
+                                    <div>{eventText("Central to event")}</div>
+                                    <div>{eventText("Event stock")}</div>
+                                    <div>{eventText("Actions")}</div>
                                  </div>
                                  <div className="divide-y divide-gray-100">
                                     {filteredEventCatalogProducts.map((product) => {
@@ -3660,14 +3652,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
                                                    {product.image_url ? (
                                                       <img
-                                                         src={getProductImageUrl(product.image_url, 120)}
+                                                         src={getMenuImageUrl(product.image_url)}
                                                          alt={product.name}
                                                          className="h-full w-full object-cover"
                                                          loading="lazy"
                                                          decoding="async"
                                                       />
                                                    ) : (
-                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">No image</div>
+                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">{eventText("No image")}</div>
                                                    )}
                                                 </div>
                                                 <div className="min-w-0">
@@ -3676,7 +3668,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
                                                          draft.is_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
                                                       }`}>
-                                                         {draft.is_enabled ? 'Selling' : 'Hidden'}
+                                                         {draft.is_enabled ? eventText("Selling") : eventText("Hidden")}
                                                       </span>
                                                       {product.category && (
                                                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">{product.category}</span>
@@ -3687,7 +3679,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                                              <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
-                                                   <span>Sell</span>
+                                                   <span>{eventText("Sell")}</span>
                                                    <input
                                                       type="checkbox"
                                                       checked={draft.is_enabled}
@@ -3713,7 +3705,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                                              <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
-                                                   <span>Unlimited</span>
+                                                   <span>{eventText("Unlimited")}</span>
                                                    <input
                                                       type="checkbox"
                                                       checked={draft.is_unlimited}
@@ -3733,7 +3725,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                    className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
                                                       stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
                                                    }`}
-                                                   placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
+                                                   placeholder={draft.is_unlimited ? eventText("Unlimited") : 'Qty'}
                                                    aria-label={`Event stock for ${product.name}`}
                                                 />
                                              </div>
@@ -3746,18 +3738,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                          onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
                                                          className="rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
                                                       >
-                                                         Add stock
-                                                      </button>
+                                                         {eventText("Add stock")}</button>
                                                       <button
                                                          type="button"
                                                          onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
                                                          className="rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-black text-gray-700 hover:bg-gray-200"
                                                       >
-                                                         Remove
-                                                      </button>
+                                                         {eventText("Remove")}</button>
                                                    </div>
                                                 ) : (
-                                                   <div className="text-[11px] font-semibold text-gray-400">Save first</div>
+                                                   <div className="text-[11px] font-semibold text-gray-400">{eventText("Save first")}</div>
                                                 )}
                                              </div>
                                           </div>
@@ -3776,8 +3766,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="sticky bottom-4 z-30 mb-6 rounded-2xl border border-pink-200 bg-white/95 p-3 shadow-xl shadow-pink-100/70 backdrop-blur">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                      <div>
-                        <p className="text-sm font-black text-gray-900">Unsaved event catalog</p>
-                        <p className="text-xs font-semibold text-gray-500">Save before using POS or sharing the customer menu for this event.</p>
+                        <p className="text-sm font-black text-gray-900">{eventText("Unsaved event catalog")}</p>
+                        <p className="text-xs font-semibold text-gray-500">{eventText("Save before using POS or sharing the customer menu for this event.")}</p>
                      </div>
                      <button
                         type="button"
@@ -3786,8 +3776,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white shadow-md shadow-pink-100 hover:bg-pink-700 disabled:bg-gray-300"
                      >
                         {eventCatalogSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
-                        Save catalog
-                     </button>
+                        {eventText("Save catalog")}</button>
                   </div>
                </div>
             )}
@@ -3882,7 +3871,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                      <input 
                         type="text"
-                        placeholder="Search products..."
+                        aria-label={language === 'th' ? 'ค้นหาสินค้า' : 'Search products'} placeholder="Search products..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm"
@@ -4003,11 +3992,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             {/* PRODUCT LIST */}
             <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Catalog items ({filteredProducts.length})</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{language === 'th' ? 'สินค้าและตัวเลือก' : 'Products & variants'} ({filteredProducts.length})</h2>
                   <p className="text-xs font-semibold text-gray-500">
                      {catalogDisplayMode === 'visual'
-                        ? 'Visual check for product photos, names, price, and stock before customers see them.'
-                        : 'Operations view for dense stock and maintenance actions.'}
+                        ? (language === 'th' ? 'ตรวจรูป ราคา และสต็อกแยกตามตัวเลือกสินค้า' : 'Review photos, prices, and stock for each variant.')
+                        : (language === 'th' ? 'เทียบยอดพร้อมจัดสรร และจัดการสินค้าในตาราง' : 'Compare stock ready to allocate and manage products in a table.')}
                   </p>
                </div>
             </div>
@@ -4022,11 +4011,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            const effectiveStatus = getEffectiveStatus(product);
                            const hasImage = Boolean(product.image_url);
                            return (
-                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group relative rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
+                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group relative rounded-2xl border border-gray-100 bg-white">
                                  <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-gray-100">
                                     {hasImage ? (
                                        <img
-                                          src={getProductImageUrl(product.image_url, 600)}
+                                          src={getMenuImageUrl(product.image_url)}
                                           alt={product.name}
                                           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                                           loading="lazy"
@@ -4108,7 +4097,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               <div className="relative w-[100px] shrink-0 overflow-hidden rounded-l-xl bg-gray-100">
                                  {hasImage ? (
                                     <img
-                                       src={getProductImageUrl(product.image_url, 400)}
+                                       src={getMenuImageUrl(product.image_url)}
                                        alt={product.name}
                                        className="w-full h-full object-cover"
                                        loading="lazy"
@@ -4179,7 +4168,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                      {/* DESKTOP VIEW: Table (>=768px) */}
                      <div className="hidden rounded-xl border border-gray-200 bg-white shadow-sm md:block animate-fade-in">
-                     <table className="w-full table-fixed border-collapse text-left">
+                     <table className="catalog-operations-table w-full table-fixed border-collapse text-left">
                         <thead>
                            <tr className="border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
                               <th className="w-[29%] rounded-tl-xl px-3 py-3 font-bold">{t('catalogProducts')}</th>
@@ -4201,10 +4190,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               <tr key={product.id} data-testid={`catalog-row-${product.id}`} className="hover:bg-gray-50/50 transition-colors group">
                                  <td className="px-3 py-3 align-top">
                                     <div className="flex min-w-0 items-start gap-3">
-                                       <div className="w-12 h-12 rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
+                                       <div className="catalog-table-image rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100">
                                           {hasImage ? (
                                              <img
-                                                src={getProductImageUrl(product.image_url, 100)}
+                                                src={getMenuImageUrl(product.image_url)}
                                                 alt={product.name}
                                                 className="h-full w-full object-cover"
                                                 loading="lazy"
@@ -4483,7 +4472,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     <div className="mt-3 flex gap-2">
                                        <Button
                                           type="button"
-                                          onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product: editingProduct })}
+                                          onClick={() => openStockAction({ scope: 'catalog', kind: 'receive', product: editingProduct })}
                                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                                        >
                                           Add stock
@@ -4520,7 +4509,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            <label className="block text-sm font-medium text-gray-700 mb-2">Current Image</label>
                            <div className="flex items-end gap-3">
                               <img 
-                                 src={getProductImageUrl(editingProduct.image_url, 200)} 
+                                 src={getMenuImageUrl(editingProduct.image_url)}
                                  alt="Current"
                                  loading="lazy"
                                  decoding="async"

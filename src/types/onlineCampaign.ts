@@ -150,6 +150,7 @@ export interface CampaignOrder {
 }
 
 export interface CampaignWorkspace {
+  can_manage_shipping?: boolean;
   campaign: OnlineCampaignSummary;
   products: CampaignProduct[];
   catalog: CampaignProduct[];

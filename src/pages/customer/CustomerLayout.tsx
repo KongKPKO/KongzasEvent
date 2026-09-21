@@ -1,3 +1,4 @@
+import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import { useEffect, useMemo, useState } from 'react';
 import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import { Outlet, useParams, useLocation, Link } from 'react-router-dom';
@@ -6,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useArtist } from '../../hooks/useArtist';
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
-import { LanguageToggle, useI18n } from '../../i18n';
+import { useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
 import { customerEventStorageKey, getCurrentCustomerEvents, getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
 
@@ -127,12 +128,14 @@ const CustomerLayout = () => {
    );
 
    return (
-      <div className="min-h-screen bg-gray-50 pb-20 font-sans lg:pb-0">
-         {/* Mobile keeps the phone shell; desktop opens into a full workspace-like canvas. */}
+      <div className={`min-h-screen bg-gray-50 pb-20 font-sans lg:pb-0 ${/\/(home|menu)$/.test(location.pathname) ? 'shop-shell' : ''}`}>
+         {/* Storefront pages use the full tablet width; other customer flows keep their existing shell. */}
          <div className="relative mx-auto min-h-screen max-w-md overflow-hidden bg-white shadow-xl lg:max-w-none lg:overflow-visible lg:bg-transparent lg:shadow-none">
+            <CustomerBrandHeader />
             {availableEvents.length === 0 && (
-               <div className="fixed right-3 top-3 z-[120]">
-                  <LanguageToggle className="min-h-11 min-w-11 px-3 py-2 text-[11px]" />
+               <div className="flex items-center justify-end gap-3 border-b border-pink-100 bg-white px-4 py-2">
+                  <Link to={`/${slug}/home`} className="mr-auto inline-flex min-h-11 items-center text-sm font-bold text-pink-800">{t('customerNavHome')}</Link>
+                  <Link to={`/${slug}/menu`} className="inline-flex min-h-11 items-center text-sm font-bold text-pink-800">{t('customerNavMerch')}</Link>
                </div>
             )}
 
@@ -206,7 +209,6 @@ const CustomerLayout = () => {
                            </Link>
                         ))}
                      </nav>
-                     <LanguageToggle className="min-h-11 min-w-11 shrink-0 px-3 py-2 text-[11px]" />
                   </div>
                </div>
             )}
@@ -236,7 +238,7 @@ const CustomerLayout = () => {
             </AnimatePresence>
 
             {/* Bottom Nav for Mobile */}
-            <nav className="fixed bottom-0 z-50 flex h-20 w-full max-w-md justify-around border-t border-gray-100 bg-white/90 pb-5 text-[11px] font-bold tracking-tight backdrop-blur-md lg:hidden" aria-label="Main navigation">
+            <nav className="customer-bottom-nav fixed bottom-0 z-50 flex h-20 w-full max-w-md justify-around border-t border-gray-100 bg-white/90 pb-5 text-[11px] font-bold tracking-tight backdrop-blur-md lg:hidden" aria-label="Main navigation">
                <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/home`}

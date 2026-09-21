@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../../i18n';
+import { eventCopy } from '../../lib/eventCopy';
+import EvidenceReview from '../../components/EvidenceReview';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, Truck, X, XCircle } from 'lucide-react';
+import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, Truck, XCircle } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -64,6 +67,9 @@ const CLOSED_STATUSES: PaymentStatus[] = ['payment_rejected', 'payment_expired',
 const toNumber = (value: unknown) => Number(value || 0);
 
 export default function PreorderDashboard({ actorContext, scope = 'preorder' }: PreorderDashboardProps) {
+  const { language } = useI18n();
+  const copy = (value: string) => language === 'th' && value === 'Confirmed' ? 'ยืนยันชำระเงินแล้ว' : eventCopy(language, value);
+
   const { eventId } = useParams();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
@@ -77,19 +83,18 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   const [reviewNote, setReviewNote] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingCarrier, setShippingCarrier] = useState('');
+  const [canShip, setCanShip] = useState(false);
   const [slipPreview, setSlipPreview] = useState<{ order: PreorderPaymentReviewRow; url: string } | null>(null);
   const [slipLoadingId, setSlipLoadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
   const [failedNotification, setFailedNotification] = useState<{ orderId: string; event: 'confirmed' | 'rejected'; pickupCode: string } | null>(null);
   const [notificationRetrying, setNotificationRetrying] = useState(false);
-  const slipCloseRef = useRef<HTMLButtonElement | null>(null);
-  const slipPreviousFocusRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!eventId) return;
     if (!silent) setLoading(true);
     try {
-      const [{ data: eventData, error: eventError }, summaryData, reviewData] = await Promise.all([
+      const [{ data: eventData, error: eventError }, summaryData, reviewData, shippingAccess] = await Promise.all([
         supabase
           .from('events')
           .select('id, event_name, selling_mode')
@@ -98,9 +103,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           .maybeSingle(),
         listPreorderProductionSummary(eventId),
         listPreorderPaymentReview(eventId, null),
+        supabase.rpc('has_shipping_access', { p_artist_id: actorContext.artist_id }),
       ]);
 
       if (eventError) throw eventError;
+      if (shippingAccess.error) throw shippingAccess.error;
+      setCanShip(shippingAccess.data === true);
       setEventInfo((eventData || null) as EventInfo | null);
       setSummary(summaryData);
       setOrders(reviewData.filter((order) => (scope === 'post_event' ? order.order_type === 'post_event' : order.order_type !== 'post_event')));
@@ -133,21 +141,6 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       void supabase.removeChannel(channel);
     };
   }, [eventId, load]);
-
-  // Slip preview modal: focus management + Escape to close.
-  useEffect(() => {
-    if (!slipPreview) {
-      slipPreviousFocusRef.current?.focus();
-      return;
-    }
-    slipPreviousFocusRef.current = document.activeElement as HTMLElement | null;
-    slipCloseRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSlipPreview(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [slipPreview]);
 
   const totals = useMemo(() => {
     const submitted = orders.filter((order) => order.payment_status === 'payment_submitted');
@@ -381,7 +374,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     return (
       <div className="min-h-screen bg-gray-50">
         <AdminHeader activePage="events" actorRole={actorContext.role} userEmail={actorContext.member_email} />
-        <div className="p-10 text-center text-sm font-bold text-gray-400">Loading pre-order dashboard...</div>
+        <div className="p-10 text-center text-sm font-bold text-gray-400">{copy("Loading pre-order dashboard...")}</div>
       </div>
     );
   }
@@ -394,19 +387,21 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         actorRole={actorContext.role}
         userEmail={actorContext.member_email}
       />
-      <Toast message={toast} onClose={() => setToast(null)} />
+      <Toast message={toast ? { ...toast, title: copy(toast.title), detail: toast.detail ? copy(toast.detail) : undefined } : null} onClose={() => setToast(null)} />
       <ConfirmDialog
         open={Boolean(reviewAction)}
         title={
           reviewAction?.type === 'confirm'
-            ? 'Confirm transfer received?'
+            ? copy("Confirm transfer received?")
             : reviewAction?.type === 'ship'
-              ? 'Mark order shipped?'
-              : 'Reject payment?'
+              ? copy("Mark order shipped?")
+              : copy("Reject payment?")
         }
         detail={
           reviewAction
-            ? reviewAction.type === 'confirm'
+            ? language === 'th'
+              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\n${reviewAction.type === 'confirm' ? 'ยืนยันว่าตรวจหลักฐานและได้รับเงินโอนแล้ว NireQ ไม่ได้ตรวจบัญชีธนาคารให้ ออเดอร์จะเข้าสู่รายการเตรียมส่งมอบ' : reviewAction.type === 'ship' ? 'กรอกเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์' : 'การไม่รับสลิปจะยกเลิกออเดอร์และคืนสต็อกที่จอง หากลูกค้าโอนแล้วแต่แนบสลิปผิด ควรติดต่อให้ชัดเจนก่อน'}`
+              : reviewAction.type === 'confirm'
               ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Nireq does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
               : reviewAction.type === 'ship'
                 ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
@@ -415,10 +410,10 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         }
         confirmLabel={
           reviewAction?.type === 'confirm'
-            ? 'Confirm transfer received'
+            ? copy("Confirm transfer received")
             : reviewAction?.type === 'ship'
-              ? 'Mark shipped'
-              : 'Reject payment'
+              ? copy("Mark shipped")
+              : copy("Reject payment")
         }
         tone={reviewAction?.type === 'reject' ? 'danger' : 'default'}
         loading={actionLoading}
@@ -436,12 +431,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       >
         {reviewAction?.type === 'reject' && (
           <label className="mt-4 block">
-            <span className="text-xs font-black uppercase tracking-wide text-red-700">Reject reason (sent to the customer)</span>
+            <span className="text-xs font-black uppercase tracking-wide text-red-700">{copy("Reject reason (sent to the customer)")}</span>
             <textarea
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
               rows={3}
-              placeholder="Example: Transfer amount does not match, duplicate slip, or payment not found."
+              placeholder={copy("Example: Transfer amount does not match, duplicate slip, or payment not found.")}
               className="mt-1 w-full resize-none rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-bold text-red-950 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-100"
             />
           </label>
@@ -449,64 +444,27 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         {reviewAction?.type === 'ship' && (
           <div className="mt-4 grid gap-3">
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wide text-emerald-700">Tracking number</span>
+              <span className="text-xs font-black uppercase tracking-wide text-emerald-700">{copy("Tracking number")}</span>
               <input
                 value={trackingNumber}
                 onChange={(event) => setTrackingNumber(event.target.value)}
-                placeholder="Tracking number"
+                placeholder={copy("Tracking number")}
                 className="mt-1 min-h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 text-sm font-bold text-emerald-950 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wide text-gray-600">Carrier (e.g. Kerry, Flash, ไปรษณีย์ไทย)</span>
+              <span className="text-xs font-black uppercase tracking-wide text-gray-600">{copy("Carrier (e.g. Kerry, Flash, ไปรษณีย์ไทย)")}</span>
               <input
                 value={shippingCarrier}
                 onChange={(event) => setShippingCarrier(event.target.value)}
-                placeholder="Carrier"
+                placeholder={copy("Carrier")}
                 className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
           </div>
         )}
       </ConfirmDialog>
-      {slipPreview && (
-        <div
-          className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/70 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Payment slip for ${slipPreview.order.pickup_code}`}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setSlipPreview(null);
-          }}
-        >
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <div className="min-w-0">
-                <div className="text-sm font-black text-gray-950">Payment slip</div>
-                <div className="truncate text-xs font-bold text-gray-500">
-                  {slipPreview.order.pickup_code} · {slipPreview.order.customer_name}
-                </div>
-                <div className="mt-0.5 text-base font-black text-gray-950">
-                  Amount expected: {formatPrice(slipPreview.order.total_price, slipPreview.order.currency)}
-                </div>
-              </div>
-              <button
-                ref={slipCloseRef}
-                type="button"
-                onClick={() => setSlipPreview(null)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"
-                aria-label="Close slip preview"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-gray-100 p-4">
-              <img
-                src={slipPreview.url}
-                alt={`Payment slip for ${slipPreview.order.pickup_code}`}
-                className="mx-auto max-h-[64vh] max-w-full rounded-xl bg-white object-contain shadow-sm"
-              />
-            </div>
+      {slipPreview && <EvidenceReview title={`Payment slip for ${slipPreview.order.pickup_code}`} closeLabel="Close slip preview" code={slipPreview.order.pickup_code} customer={slipPreview.order.customer_name} amount={slipPreview.order.total_price} currency={slipPreview.order.currency} url={slipPreview.url} items={slipPreview.order.items} onClose={() => setSlipPreview(null)}>
             {slipPreview.order.payment_status === 'payment_submitted' && (
               <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-4 py-3">
                 <button
@@ -518,8 +476,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                   }}
                   className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-black text-red-700 hover:bg-red-100"
                 >
-                  <XCircle size={15} /> Reject
-                </button>
+                  <XCircle size={15} /> {copy("Reject")}</button>
                 <button
                   type="button"
                   onClick={() => {
@@ -529,15 +486,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                   }}
                   className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-black text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle size={15} /> Confirm
-                </button>
+                  <CheckCircle size={15} /> {copy("Confirm")}</button>
               </div>
             )}
-          </div>
-        </div>
-      )}
+      </EvidenceReview>}
 
-      <main className="mx-auto max-w-6xl p-4 md:p-6">
+      <main className="merchant-orders mx-auto max-w-6xl p-4 md:p-6">
         {eventId && <EventNavTabs eventId={eventId} active={scope === 'post_event' ? 'postorder' : 'preorder'} actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-wrap gap-2">
@@ -545,40 +499,38 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
               onClick={() => void load()}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50"
             >
-              <RefreshCw size={15} /> Refresh
-            </button>
+              <RefreshCw size={15} /> {copy("Refresh")}</button>
             <button
               onClick={exportCsv}
               disabled={summary.length === 0}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-3 text-xs font-black text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download size={15} /> Export CSV
-            </button>
+              <Download size={15} /> {copy("Export CSV")}</button>
           </div>
         </div>
 
         <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ReceiptText className="text-pink-600" size={24} />
-            <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
+            <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? copy("Post-order Dashboard") : copy("Pre-order Dashboard")}</h1>
           </div>
-          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {scope === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
-          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.</p>
+          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || copy("Event")} · {scope === 'post_event' ? copy("Review transfers, then ship orders") : copy("Review transfers, then prepare production")}</p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">{copy("Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.")}</p>
         </section>
 
         {failedNotification && (
           <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
             <div>
-              <p className="text-sm font-black text-amber-900">Order saved · email not sent</p>
-              <p className="mt-1 text-xs font-semibold text-amber-800">Retry only sends the email for {failedNotification.pickupCode}; it does not repeat payment, stock, or fulfillment changes.</p>
+              <p className="text-sm font-black text-amber-900">{copy("Order saved · email not sent")}</p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">{copy("Retry only sends the email for")}{failedNotification.pickupCode}{copy("; it does not repeat payment, stock, or fulfillment changes.")}</p>
             </div>
             <button type="button" onClick={retryFailedNotification} disabled={notificationRetrying} className="min-h-11 rounded-xl bg-amber-900 px-4 text-sm font-black text-white hover:bg-amber-950 disabled:opacity-60">
-              {notificationRetrying ? 'Sending…' : 'Retry email'}
+              {notificationRetrying ? copy("Sending…") : copy("Retry email")}
             </button>
           </section>
         )}
 
-        <section aria-label="Order status filters" className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
+        <section aria-label={copy("Order status filters")} className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           {statCards.map((card) => (
             <button
               key={card.key}
@@ -587,7 +539,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
               aria-pressed={filter === card.key}
               className={`rounded-xl border p-4 text-left transition-shadow hover:shadow-md ${card.classes} ${filter === card.key ? card.activeClasses : ''}`}
             >
-              <div className="text-xs font-black uppercase tracking-wide">{card.label}</div>
+              <div className="text-xs font-black uppercase tracking-wide">{copy(card.label)}</div>
               <div className="mt-1 text-2xl font-black text-gray-950">{card.value}</div>
             </button>
           ))}
@@ -596,15 +548,15 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         <section className="mb-5 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-black text-gray-900">
-              {filter === 'needs_review' ? `Review queue (${visibleOrders.length})` : filter === 'to_ship' ? `Shipping queue (${visibleOrders.length})` : 'Orders'}
+              {filter === 'needs_review' ? `${language === 'th' ? 'รอตรวจสลิป' : 'Review queue'} (${visibleOrders.length})` : filter === 'to_ship' ? `${language === 'th' ? 'รอจัดส่ง' : 'Shipping queue'} (${visibleOrders.length})` : copy("Orders")}
             </h2>
             <label className="relative block md:w-72">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search code, name, contact, product"
-                aria-label="Search orders"
+                placeholder={copy("Search code, name, contact, product")}
+                aria-label={copy("Search orders")}
                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm font-bold outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
               />
             </label>
@@ -612,10 +564,10 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           {visibleOrders.length === 0 ? (
             <div className="p-6 text-sm font-bold text-gray-400">
               {filter === 'needs_review' && !search
-                ? 'No slips waiting for review — all caught up.'
+                ? copy("No slips waiting for review — all caught up.")
                 : filter === 'to_ship' && !search
-                  ? 'Nothing waiting to ship.'
-                  : 'No orders match this view.'}
+                  ? copy("Nothing waiting to ship.")
+                  : copy("No orders match this view.")}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -625,12 +577,11 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-lg font-black tracking-[0.12em] text-gray-950">{order.pickup_code}</span>
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-black ${statusClasses[order.payment_status]}`}>
-                        {statusLabels[order.payment_status]}
+                        {copy(statusLabels[order.payment_status])}
                       </span>
                       {order.order_type === 'post_event' && (
                         <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-black text-violet-700">
-                          Post · ship
-                        </span>
+                          {copy("Post · ship")}</span>
                       )}
                     </div>
                     <div className="mt-1 text-sm font-black text-gray-900">{order.customer_name}</div>
@@ -642,7 +593,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                         className="mt-1 max-w-xl truncate text-xs font-bold text-sky-700"
                         title={order.shipping_address}
                       >
-                        Ship to: {order.shipping_address}
+                        {copy("Ship to:")}{order.shipping_address}
                       </div>
                     )}
                     <div className="mt-2 text-xs font-semibold text-gray-600">
@@ -650,18 +601,18 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     </div>
                     {order.order_type === 'post_event' && order.pickup_status === 'shipped' && order.tracking_number && (
                       <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">
-                        <Truck size={13} /> <span className="truncate">Shipped · {order.tracking_number}</span>
+                        <Truck size={13} /> <span className="truncate">{copy("Shipped ·")}{order.tracking_number}</span>
                       </div>
                     )}
                     {order.review_note && CLOSED_STATUSES.includes(order.payment_status) && (
                       <div className="mt-2 rounded-lg border border-red-100 bg-red-50/60 px-2 py-1 text-xs font-bold text-red-700">
-                        Reason: {order.review_note}
+                        {copy("Reason:")}{order.review_note}
                       </div>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="mr-2 text-right">
-                      <div className="text-xs font-bold text-gray-500">Amount</div>
+                      <div className="text-xs font-bold text-gray-500">{copy("Amount")}</div>
                       <div className="text-sm font-black text-gray-950">{formatPrice(order.total_price, order.currency)}</div>
                     </div>
                     {order.slip_url && (
@@ -671,7 +622,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                         disabled={slipLoadingId === order.order_id}
                         className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
-                        <Eye size={14} /> {slipLoadingId === order.order_id ? 'Opening…' : 'Slip'}
+                        <Eye size={14} /> {slipLoadingId === order.order_id ? copy("Opening…") : copy("Slip")}
                       </button>
                     )}
                     {order.payment_status === 'payment_submitted' && (
@@ -680,25 +631,22 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                           onClick={() => setReviewAction({ type: 'reject', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 hover:bg-red-100"
                         >
-                          <XCircle size={15} /> Reject
-                        </button>
+                          <XCircle size={15} /> {copy("Reject")}</button>
                         <button
                           onClick={() => setReviewAction({ type: 'confirm', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white hover:bg-emerald-700"
                         >
-                          <CheckCircle size={15} /> Confirm
-                        </button>
+                          <CheckCircle size={15} /> {copy("Confirm")}</button>
                       </>
                     )}
-                    {order.order_type === 'post_event'
+                    {canShip && order.order_type === 'post_event'
                       && order.payment_status === 'payment_confirmed'
                       && order.pickup_status === 'awaiting_shipment' && (
                         <button
                           onClick={() => setReviewAction({ type: 'ship', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white hover:bg-emerald-700"
                         >
-                          <Truck size={15} /> Mark shipped
-                        </button>
+                          <Truck size={15} /> {copy("Mark shipped")}</button>
                     )}
                   </div>
                 </div>
@@ -709,31 +657,31 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
 
         <section className="mb-5 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-pink-100 bg-pink-50 p-4">
-            <div className="text-xs font-black uppercase tracking-wide text-pink-700">Expected revenue</div>
+            <div className="text-xs font-black uppercase tracking-wide text-pink-700">{copy("Expected revenue")}</div>
             <div className="mt-1 text-2xl font-black text-gray-950">{formatPrice(totals.expectedAmount, totals.currency)}</div>
           </div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">Confirmed revenue</div>
+            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">{copy("Confirmed revenue")}</div>
             <div className="mt-1 text-2xl font-black text-gray-950">{formatPrice(totals.confirmedAmount, totals.currency)}</div>
           </div>
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-4 py-3">
-            <h2 className="text-lg font-black text-gray-900">Production Summary</h2>
+            <h2 className="text-lg font-black text-gray-900">{copy("Production Summary")}</h2>
           </div>
           {summary.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-400">No submitted or confirmed pre-orders yet.</div>
+            <div className="p-6 text-sm font-bold text-gray-400">{copy("No submitted or confirmed pre-orders yet.")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-gray-50 text-xs font-black uppercase tracking-wide text-gray-500">
                   <tr>
-                    <th className="px-4 py-3">Product</th>
-                    <th className="px-4 py-3">Needs review</th>
-                    <th className="px-4 py-3">Confirmed</th>
-                    <th className="px-4 py-3">To prepare</th>
-                    <th className="px-4 py-3">Expected</th>
+                    <th className="px-4 py-3">{copy("Product")}</th>
+                    <th className="px-4 py-3">{copy("Needs review")}</th>
+                    <th className="px-4 py-3">{copy("Confirmed")}</th>
+                    <th className="px-4 py-3">{copy("To prepare")}</th>
+                    <th className="px-4 py-3">{copy("Expected")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">

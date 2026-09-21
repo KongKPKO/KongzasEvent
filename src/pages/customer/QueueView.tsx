@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
-import { Button, Card } from '../../components/ui';
+import { Button } from '../../components/ui';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { Ban, RefreshCcw, LogOut, Ticket } from 'lucide-react';
-import CustomerHeader from '../../components/CustomerHeader';
-import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
@@ -37,17 +35,6 @@ const formatTime = (dateString: string, locale: string) => {
 
 const QueueView = () => {
     const { t, language, dateLocale } = useI18n();
-    const funFacts = language === 'th'
-        ? [
-            'ขอบคุณที่มารอคิวนะคะ/ครับ',
-            'ระหว่างรออย่าลืมพักและดื่มน้ำ',
-            'ขอบคุณที่คอยซัพพอร์ต creator วันนี้',
-        ]
-        : [
-            'Thanks for waiting in the queue.',
-            'Take a quick break and stay hydrated while you wait.',
-            'Thanks for supporting creators today.',
-        ];
     // Midnight Watcher: Triggers update when day changes
     const currentDate = useMidnightTick();
 
@@ -67,7 +54,6 @@ const QueueView = () => {
     const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
     const [etaWindow, setEtaWindow] = useState<{ min: number; max: number; peopleAhead: number } | null>(null);
     const [loading, setLoading] = useState(true);
-    const [factIndex, setFactIndex] = useState(0);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,14 +80,16 @@ const QueueView = () => {
     const myTicketRef = useRef(myTicket);
     myTicketRef.current = myTicket;
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setFactIndex(prev => (prev + 1) % funFacts.length);
-        }, 4000);
-        return () => clearInterval(interval);
-    }, [funFacts.length]);
-
     const activeEvent = selectedEvent;
+    const [updatesDelayed, setUpdatesDelayed] = useState(false);
+    useEffect(() => {
+        if (!activeEvent?.id) { setUpdatesDelayed(false); return; }
+        let active = true;
+        const check = async () => { const result = await supabase.rpc('queue_updates_delayed', { p_event_id: activeEvent.id }); if (active) setUpdatesDelayed(Boolean(result.error) || result.data === true); };
+        void check(); const timer = window.setInterval(() => void check(), 20000);
+        return () => { active = false; window.clearInterval(timer); };
+    }, [activeEvent?.id]);
+
     const activeServiceDate = activeEvent
         ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
         : null;
@@ -194,11 +182,16 @@ const QueueView = () => {
             return false;
         }
 
-        const { data: ticket } = await supabase
+        const { data: ticket, error } = await supabase
             .from('queues')
             .select('id, event_id, queue_service_date, queue_number, status, created_at')
             .eq('id', storedTicketId)
             .maybeSingle();
+
+        if (error) {
+            setToast({ tone: 'warning', title: t('queueTryAgain') });
+            return Boolean(myTicketRef.current);
+        }
 
         if (!ticket) {
             // Row was deleted (admin reset, retention) — clear stale id uniformly.
@@ -458,19 +451,17 @@ const QueueView = () => {
 
     const handleRefresh = async () => {
         setLoading(true);
-        // Refresh Realtime Data (Artist + Events)
-        await refresh();
-
-        // Refresh Queue Data (Now Serving + My Ticket)
-        // restoreStoredTicket handles all cases: no ticket, deleted ticket,
-        // event_id/date mismatch, and valid ticket — including when myTicket
-        // is currently null but localStorage still holds an id (cross-tab clear
-        // followed by a manual refresh before the storage event fires).
-        if (activeEvent) {
-            await fetchNowServing(activeEvent.id, activeServiceDate);
-            await restoreStoredTicket();
+        try {
+            await refresh();
+            if (activeEvent) {
+                await fetchNowServing(activeEvent.id, activeServiceDate);
+                await restoreStoredTicket();
+            }
+        } catch {
+            setToast({ tone: 'warning', title: t('queueTryAgain') });
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleLeaveQueue = async () => {
@@ -529,7 +520,7 @@ const QueueView = () => {
         // Configuration for each status
         const config = {
             waiting: {
-                bg: 'bg-gray-50',
+                bg: 'bg-pink-50',
                 border: 'border-gray-200',
                 badge: { text: t('queueStatusWaiting'), bg: 'bg-gray-200', color: 'text-gray-700' },
                 messageColor: 'text-gray-500',
@@ -582,79 +573,19 @@ const QueueView = () => {
         const theme = config[status as keyof typeof config] || config.missed;
 
         return (
-            <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                className="w-full"
-            >
-                <Card className={`w-full min-h-[320px] p-8 flex flex-col justify-center items-center text-center border-2 shadow-lg transition-all duration-300 relative overflow-hidden ${theme.bg} ${theme.border} ${status === 'calling' ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}`}>
-
-                    {/* Pulse Effect Background when calling */}
-                    {status === 'calling' && (
-                        <motion.div
-                            className="absolute inset-0 bg-yellow-400/20"
-                            animate={{ scale: [1, 1.05, 1], opacity: [0.2, 0.5, 0.2] }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                        />
-                    )}
-
-                    {/* Status Badge */}
-                    <div className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase mb-8 shadow-sm tracking-wide z-10 ${theme.badge.bg} ${theme.badge.color}`}>
-                        {theme.badge.text}
-                    </div>
-
-                    {/* Created Time */}
-                    <div className="mb-4 text-xs font-medium text-gray-400 uppercase tracking-wide z-10">
-                        {t('queueBookedAt', { time: formatTime(myTicket.created_at, dateLocale) })}
-                    </div>
-
-                    {/* Queue Number */}
-                    <motion.div
-                        className="text-7xl font-black text-gray-900 mb-6 leading-none tracking-tight z-10"
-                        animate={status === 'waiting' ? { opacity: [0.8, 1, 0.8] } : {}}
-                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                        #{queue_number}
-                    </motion.div>
-
-                    {/* Primary Message */}
-                    <p className={`font-bold text-lg whitespace-pre-line z-10 ${theme.messageColor}`}>
-                        {theme.message}
-                    </p>
-
-                    {etaWindow && (status === 'waiting' || status === 'calling' || status === 'serving') && (
-                        <div className="mt-4 text-sm font-semibold text-gray-600 z-10">
-                            {t('queueEstimatedWait', { min: etaWindow.min, max: etaWindow.max, people: etaWindow.peopleAhead })}
-                        </div>
-                    )}
-
-                    {/* Fun Facts Carousel for waiting status */}
-                    {status === 'waiting' && (
-                        <div className="mt-6 w-full h-8 relative overflow-hidden flex justify-center items-center z-10 bg-white/50 rounded-full px-2">
-                            <AnimatePresence mode="popLayout">
-                                <motion.div
-                                    key={factIndex}
-                                    initial={{ y: 20, opacity: 0 }}
-                                    animate={{ y: 0, opacity: 1 }}
-                                    exit={{ y: -20, opacity: 0 }}
-                                    transition={{ duration: 0.4 }}
-                                    className="absolute text-xs font-medium text-pink-600 tracking-wide w-full"
-                                >
-                                    {funFacts[factIndex]}
-                                </motion.div>
-                            </AnimatePresence>
-                        </div>
-                    )}
-
-                    {/* Secondary Message (Calling/Serving) */}
-                    {(status === 'calling' || status === 'serving') && theme.subMessage && (
-                        <div className={`mt-4 text-xs uppercase tracking-widest font-semibold opacity-75 z-10 ${status === 'calling' ? 'animate-pulse' : ''}`}>
-                            {theme.subMessage}
-                        </div>
-                    )}
-                </Card>
-            </motion.div>
+            <section className={`customer-queue-ticket ${theme.bg} ${theme.border}`} aria-label={language === 'th' ? 'บัตรคิวของคุณ' : 'Your queue ticket'}>
+                <div className="queue-ticket-top"><Ticket size={22} aria-hidden="true" /><span>{language === 'th' ? 'บัตรคิวของคุณ' : 'Your queue ticket'}</span></div>
+                <div className="queue-ticket-number">#{queue_number}</div>
+                <div aria-live="polite" aria-atomic="true">
+                    <h2 className={`queue-ticket-status ${theme.messageColor}`}>{theme.badge.text}</h2>
+                    <p className="queue-ticket-message">{theme.message}</p>
+                </div>
+                {etaWindow && status === 'waiting' && !updatesDelayed && isConnected && <div className="queue-ticket-estimate">
+                    <strong>{t('queueEstimatedWait', { min: etaWindow.min, max: etaWindow.max, people: etaWindow.peopleAhead })}</strong>
+                    <p>{language === 'th' ? 'เวลาโดยประมาณ อาจเปลี่ยนตามการให้บริการหน้าบูธ' : 'An estimate; timing may change with service at the booth.'}</p>
+                </div>}
+                <div className="queue-ticket-stub"><span>{t('queueBookedAt', { time: formatTime(myTicket.created_at, dateLocale) })}</span><span>{activeEvent?.event_name}</span></div>
+            </section>
         );
     };
 
@@ -759,182 +690,44 @@ const QueueView = () => {
 
 
     return (
-        <div className="min-h-screen bg-[#fff7fb] pb-24 animate-fade-in flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl">
+        <main className="customer-queue-page">
             <Toast message={toast} onClose={() => setToast(null)} />
-            <ConfirmDialog
-                open={isLeaveConfirmOpen}
-                title={t('queueLeaveTitle')}
-                detail={t('queueLeaveDetail')}
-                confirmLabel={t('queueLeaveButton')}
-                tone="danger"
-                onConfirm={confirmLeaveQueue}
-                onCancel={() => setIsLeaveConfirmOpen(false)}
-            />
-
-            {/* Offline Indicator */}
-            {!isConnected && (
-                <div className="bg-red-600 text-white text-xs font-black text-center py-2.5 px-4 tracking-wide sticky top-0 z-[60] shadow-md">
-                    {t('customerOffline')}
-                </div>
-            )}
-
-            <CustomerHeader
-                artistId={displayArtist.id}
-                title={displayArtist.display_name || 'Queue'}
-                transparent={true} // Restored transparent background
-                avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
-                avatarDisplay="inline"
-            />
-
-            {/* Content Area with Padding */}
-            <div className="w-full px-4 mt-4 flex flex-col items-center flex-1">
-                {/* NOW SERVING INDICATOR (Compact) */}
-                {!isQueueUnavailable && (
-                    <motion.div
-                        className="w-full rounded-[1.75rem] border border-pink-100 bg-gray-950 p-5 shadow-xl shadow-pink-100 mb-4 relative overflow-hidden group"
-                        whileTap={{ scale: 0.99 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    >
-                        <div className="relative flex flex-row items-center justify-between">
-                            <div className="flex flex-col items-start gap-1">
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
-                                    <span className="text-[10px] font-black text-pink-100 uppercase tracking-widest leading-tight">{t('queueNowServing')}</span>
-                                </span>
-                                {activeEvent?.queueing_area?.trim() && (
-                                    <span className="mt-1 text-[11px] font-bold text-gray-400">{activeEvent.queueing_area.trim()}</span>
-                                )}
-                            </div>
-
-                            <div
-                                className={`text-5xl font-black tracking-tighter tabular-nums ${nowServingNumber ? 'text-white' : 'text-gray-700'}`}
-                                aria-live="polite"
-                                aria-atomic="true"
-                                role="status"
-                            >
-                                <span className="sr-only">
-                                    {nowServingNumber
-                                        ? `Now serving queue number ${nowServingNumber}`
-                                        : "No queue is currently being served"}
-                                </span>
-                                <span aria-hidden="true">
-                                    {nowServingNumber ? (
-                                        <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
-                                    ) : (
-                                        <span className="text-sm font-black uppercase tracking-widest text-gray-400">Waiting</span>
-                                    )}
-                                </span>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-
-                <div className={`w-full rounded-2xl border px-4 py-3 mb-4 ${
-                    queueActionGuidance.tone === 'pink' ? 'bg-pink-50 border-pink-100' :
-                    queueActionGuidance.tone === 'amber' ? 'bg-amber-50 border-amber-100' :
-                    queueActionGuidance.tone === 'blue' ? 'bg-sky-50 border-sky-100' :
-                    queueActionGuidance.tone === 'green' ? 'bg-green-50 border-green-100' :
-                    queueActionGuidance.tone === 'red' ? 'bg-red-50 border-red-100' :
-                    'bg-white border-pink-50'
-                }`}>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{t('queueNextStep')}</div>
-                    <div className="mt-1 text-sm font-bold text-gray-900">{queueActionGuidance.title}</div>
-                    <div className="mt-1 text-xs leading-relaxed text-gray-600">{queueActionGuidance.detail}</div>
-                </div>
-
-                {/* MAIN TICKET AREA */}
-                {myTicket ? (
-                    <div className="w-full flex-1 flex flex-col gap-4">
-                        {renderTicketStatus()}
-
-                        {/* ACTION BUTTONS (Outside Card) */}
-                        <div className="flex flex-col gap-2 w-full animate-fade-in-up delay-100 mt-auto">
-                            <Button
-                                onClick={handleRefresh}
-                                className="w-full bg-[#d63384] hover:bg-pink-700 text-white font-bold flex items-center justify-center gap-2 py-3 rounded-xl shadow-md shadow-pink-200 transition-all active:scale-95 text-sm touch-manipulation"
-                                aria-label={t('queueRefreshStatus')}
-                            >
-                                <RefreshCcw size={16} aria-hidden="true" /> {t('queueRefreshStatus')}
-                            </Button>
-
-                            <button
-                                onClick={handleLeaveQueue}
-                                className={`flex items-center justify-center gap-1.5 font-bold text-xs transition-all py-3 rounded-xl border touch-manipulation ${
-                                    ['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase())
-                                        ? 'text-gray-400 border-transparent hover:text-gray-600'
-                                        : 'text-red-500 border-red-100 bg-red-50/30 hover:bg-red-50 hover:border-red-200'
-                                }`}
-                            >
-                                <LogOut size={14} />
-                                {['complete', 'missed', 'expired'].includes(myTicket.status.toLowerCase()) ? t('queueCloseTicket') : t('queueLeaveQueue')}
-                            </button>
-                        </div>
+            <ConfirmDialog open={isLeaveConfirmOpen} title={t('queueLeaveTitle')} detail={t('queueLeaveDetail')} confirmLabel={t('queueLeaveButton')} tone="danger" onConfirm={confirmLeaveQueue} onCancel={() => setIsLeaveConfirmOpen(false)} />
+            <div className="customer-queue-layout">
+                <header className="queue-page-heading">
+                    <div className="queue-creator">
+                        {displayArtist.image_url && <img src={resolveAvatarUrl(displayArtist.image_url)} alt="" />}
+                        <div><p>{displayArtist.display_name}</p><h1>{language === 'th' ? 'คิวของคุณ' : 'Your queue'}</h1></div>
                     </div>
-                ) : (
-                    <div className={`w-full flex-1 flex flex-col justify-start pb-8 ${isQueueUnavailable ? 'pt-3' : 'pt-8'}`}>
-                        <div className="rounded-[2rem] border border-pink-100 bg-white p-6 text-center shadow-xl shadow-pink-50 mb-4">
-                            <div className={`mx-auto mb-4 grid h-16 w-16 place-items-center rounded-3xl ${!isQueueOpen ? 'bg-red-50 text-red-500' : 'bg-pink-50 text-pink-600'
-                                }`}>
-                                {!isQueueOpen ? <Ban size={30} aria-hidden="true" /> : <Ticket size={30} aria-hidden="true" />}
-                            </div>
-
-                            <h3 className="text-xl font-black text-gray-950 mb-2">
-                                {!isQueueOpen
-                                    ? t('queueClosedTitle')
-                                    : (activeEvent && isBoothOpen ? t('queueJoinTitle') : (eventStatusMessage || t('customerBoothClosed')))
-                                }
-                            </h3>
-
-                            {activeEvent && (
-                                <div className="mx-auto mb-3 inline-flex max-w-full items-center gap-1.5 rounded-full border border-pink-100 bg-pink-50 px-3 py-1.5 text-[11px] font-black text-pink-700">
-                                    <Ticket size={13} aria-hidden="true" />
-                                    <span className="truncate">{activeEvent.event_name}</span>
-                                </div>
-                            )}
-
-                            <p className="text-gray-600 text-sm font-medium leading-relaxed px-2">
-                                {!isQueueOpen
-                                    ? t('queueClosedPausedBody')
-                                    : (activeEvent && isBoothOpen
-                                        ? t('queueJoinBody')
-                                        : (eventStatusMessage === t('queueEventCancelledBody')
-                                            ? t('queueEventCancelledBody')
-                                            : t('queueCurrentlyClosedBody')))
-                                }
-                            </p>
-                        </div>
-
-                        {isQueueUnavailable && (
-                            <div className="mb-4 overflow-hidden rounded-2xl border border-pink-100 bg-white/80 px-4 py-3 text-center shadow-sm">
-                                <AnimatePresence mode="popLayout">
-                                    <motion.div
-                                        key={factIndex}
-                                        initial={{ y: 12, opacity: 0 }}
-                                        animate={{ y: 0, opacity: 1 }}
-                                        exit={{ y: -12, opacity: 0 }}
-                                        transition={{ duration: 0.35 }}
-                                        className="text-xs font-bold leading-relaxed text-pink-600"
-                                    >
-                                        {funFacts[factIndex]}
-                                    </motion.div>
-                                </AnimatePresence>
-                            </div>
-                        )}
-
-                        {/* Hide Button if Queue is Closed (Paused or booth unavailable) */}
-                        {isQueueOpen && activeEvent && isBoothOpen && (
-                            <Button
-                                onClick={handleGetTicket}
-                                disabled={loading}
-                                className="w-full min-h-14 py-4 text-base shadow-lg font-black rounded-2xl transition-transform active:scale-95 bg-pink-600 hover:bg-pink-700 shadow-pink-200 text-white disabled:bg-gray-200 disabled:[color:#475569] disabled:shadow-none disabled:cursor-not-allowed"
-                            >
-                                {t('queueGetTicket')}
-                            </Button>
-                        )}
-                    </div>
-                )}
+                    <p className="order-caption">{activeEvent?.event_name || eventStatusMessage}</p>
+                </header>
+                {(!isConnected || updatesDelayed) && <p role="status" className="queue-connection-warning">{!isConnected ? t('customerOffline') : (language === 'th' ? 'สถานะคิวอาจล่าช้า กรุณารอฟังหน้าบูธและแสดงหมายเลขนี้ให้สตาฟ' : 'Queue updates may be delayed. Listen at the booth and show this number to staff.')}</p>}
+                <div className="queue-ticket-column">
+                    {myTicket ? renderTicketStatus() : <section className="queue-join-card">
+                        <div className="queue-join-icon">{isQueueUnavailable ? <Ban size={32} /> : <Ticket size={32} />}</div>
+                        <h2>{isQueueUnavailable ? queueActionGuidance.title : t('queueJoinTitle')}</h2>
+                        <p>{isQueueUnavailable ? queueActionGuidance.detail : t('queueJoinBody')}</p>
+                        {!isQueueUnavailable && <Button onClick={handleGetTicket} disabled={loading} className="shop-add mt-6 w-full">{t('queueGetTicket')}</Button>}
+                    </section>}
+                    {myTicket && <div className="queue-ticket-actions">
+                        <Button onClick={handleRefresh} className="queue-refresh" aria-label={t('queueRefreshStatus')}><RefreshCcw size={17} />{t('queueRefreshStatus')}</Button>
+                        <button onClick={handleLeaveQueue} className="queue-leave"><LogOut size={16} />{['complete', 'missed', 'expired'].includes(myTicket.status) ? t('queueCloseTicket') : t('queueLeaveQueue')}</button>
+                    </div>}
+                </div>
+                <aside className="queue-details-column">
+                    {activeEvent && <section className="queue-now-serving">
+                        <p>{t('queueNowServing')}</p>
+                        <div role="status" aria-live="polite" aria-atomic="true"><strong>{nowServingNumber ? `#${nowServingNumber}` : '—'}</strong></div>
+                        <span>{activeEvent.queueing_area?.trim() || (language === 'th' ? 'รอฟังประกาศหน้าบูธ' : 'Listen for announcements at the booth')}</span>
+                    </section>}
+                    <section className={`queue-guidance queue-guidance-${queueActionGuidance.tone}`}>
+                        <p className="queue-eyebrow">{t('queueNextStep')}</p><h2>{queueActionGuidance.title}</h2><p>{queueActionGuidance.detail}</p>
+                    </section>
+                    <Link to="../menu" className="queue-browse"><Ticket size={21} aria-hidden="true" /><span><strong>{language === 'th' ? 'ดูสินค้าของครีเอเตอร์' : 'Browse creator goods'}</strong><small>{language === 'th' ? 'กลับมาดูคิวได้จากแถบด้านล่าง' : 'Return to your queue from navigation'}</small></span><span aria-hidden="true">→</span></Link>
+                    <p className="order-caption">{language === 'th' ? 'ขอบคุณที่รอคิวและสนับสนุนครีเอเตอร์ พักและดื่มน้ำระหว่างรอได้นะ' : 'Thanks for supporting creators. Stay hydrated while you wait.'}</p>
+                </aside>
             </div>
-        </div >
+        </main>
     );
 };
 

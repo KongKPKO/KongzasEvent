@@ -1,3 +1,5 @@
+import { useI18n } from '../../i18n';
+import { recordPreparedPayment, saveOffline, type OfflineEntry } from '../../lib/offlineOperations';
 import { Fragment, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import PromotionChoicePicker from '../promotions/PromotionChoicePicker';
 import { supabase } from '../../supabaseClient';
@@ -78,13 +80,17 @@ class PaymentTimeoutError extends Error {
 // an AbortError / "failed to fetch" means the request may have committed but
 // the response was lost in transit.  Callers should warn staff to check order
 // history rather than assume the payment failed.
+const paymentErrorText = (err: unknown): string => typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string' ? err.message : String(err);
+
 const isNetworkAmbiguousError = (err: unknown): boolean => {
-    const msg = err instanceof Error ? err.message.toLowerCase() : '';
+    const msg = paymentErrorText(err).toLowerCase();
     return (
         err instanceof PaymentTimeoutError ||
         msg.includes('aborted') ||
         msg.includes('failed to fetch') ||
-        msg.includes('networkerror')
+        msg.includes('networkerror') ||
+        msg.includes('load failed') ||
+        msg.includes('network request failed')
     );
 };
 
@@ -111,6 +117,7 @@ interface CartItem { product: Product; quantity: number; notes?: string; }
 interface ActiveEvent {
     id: string;
     event_name: string;
+    event_timezone?: string | null;
     start_date: string;
     end_date: string;
     is_booth_open: boolean;
@@ -161,6 +168,8 @@ export default function POSPanel({
     onClearQueue,
     onQueueCompleted,
 }: POSPanelProps) {
+    const { language } = useI18n();
+    const text = (en: string, th: string) => language === 'th' ? th : en;
     const [products, setProducts] = useState<Product[]>([]);
     const [promotions, setPromotions] = useState<PromotionRule[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
@@ -208,6 +217,24 @@ export default function POSPanel({
     });
     const [recentProductIds, setRecentProductIds] = useState<string[]>([]);
     const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+    const paymentDialogRef = useRef<HTMLDivElement>(null);
+    const cartDialogRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const dialog = isPaymentModalOpen ? paymentDialogRef.current : isMobileCartOpen ? cartDialogRef.current : null;
+        if (!dialog) return;
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        dialog.focus();
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key !== 'Tab') return;
+            const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]')).filter(node => node.getClientRects().length > 0);
+            const first = controls[0], last = controls[controls.length - 1];
+            if (!first) { event.preventDefault(); return; }
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        };
+        dialog.addEventListener('keydown', handleKey);
+        return () => { dialog.removeEventListener('keydown', handleKey); if (previousFocus?.isConnected) previousFocus.focus(); };
+    }, [isPaymentModalOpen, isMobileCartOpen]);
 
     useEffect(() => {
         selectedQueueIdRef.current = selectedQueueId;
@@ -636,7 +663,7 @@ export default function POSPanel({
     // on err.message.  Unknown errors get a generic fallback that warns about
     // retrying to avoid accidental duplicate charges.
     const toPaymentErrorMessage = (err: unknown): string => {
-        const raw = err instanceof Error ? err.message : String(err);
+        const raw = paymentErrorText(err);
         if (raw.includes('insufficient_stock')) {
             return 'One or more items just sold out. Remove unavailable items and try again.';
         }
@@ -670,7 +697,7 @@ export default function POSPanel({
             return;
         }
         if (cart.length === 0) {
-            setToast({ tone: 'warning', title: 'Cart is empty', detail: 'Select products before charging.' });
+            setToast({ tone: 'warning', title: text('Cart is empty', 'ยังไม่มีสินค้าในตะกร้า'), detail: 'Select products before charging.' });
             return;
         }
 
@@ -704,7 +731,16 @@ export default function POSPanel({
         // The full RPC sequence (up to 3 sequential calls).  On confirmed success
         // it clears all payment-related state; on error it throws so the outer
         // catch can classify and display the right message.
+        let durablePayment: OfflineEntry | null = null;
         const runPaymentSequence = async () => {
+            durablePayment = await recordPreparedPayment(paymentAttemptId, eventId, {
+                kind: 'sale', order_id: orderIdAtPaymentStart, items: cart.map(item => ({ product_id:item.product.id,quantity:item.quantity,notes:item.notes || '',name:item.product.name,unit_price:item.product.price,currency:item.product.currency })), currency:cart[0]?.product.currency, collected_total: pricingSnapshot.total, method,
+                queue_number: selectedQueueNumber ? Number(selectedQueueNumber) : null,
+                service_date: new Intl.DateTimeFormat('en-CA', { timeZone: activeEvent.event_timezone || 'Asia/Bangkok' }).format(new Date()), recorded_at: new Date().toISOString(),
+                reward_choices: rewardChoices, promotion_choices: promotionChoices, expected_pricing_hash: promotionQuote?.pricing_hash,
+                accept_exhausted_rewards: acceptExhaustedRewards,
+            }, paymentAttemptStorageKey);
+
             if (orderIdAtPaymentStart) {
                 const { error: syncError } = await supabase.rpc('sync_customer_order_items_with_stock', {
                     p_order_id: orderIdAtPaymentStart,
@@ -758,6 +794,7 @@ export default function POSPanel({
 
             // Confirmed success: clear state and notify parent.
             // Also clear any prior "unknown" warning — we now know it succeeded.
+            if (durablePayment) await saveOffline('operations', { ...durablePayment, status: 'applied' }).catch(() => { throw new PaymentTimeoutError(); });
             clearPaymentAttemptId(paymentAttemptStorageKey);
             setCart([]);
             setCurrentOrderId(null);
@@ -828,11 +865,11 @@ export default function POSPanel({
     };
 
     const quickFilters: Array<{ id: QuickFilter; label: string; count: number; icon: typeof Sparkles }> = [
-        { id: 'all', label: 'All items', count: products.length, icon: Grid2x2 },
-        { id: 'promo', label: 'Promo', count: highlightedCounts.promo, icon: Sparkles },
-        { id: 'low_stock', label: 'Low stock', count: highlightedCounts.lowStock, icon: PackageX },
-        { id: 'recent', label: 'Recent', count: highlightedCounts.recent, icon: Clock3 },
-        { id: 'pinned', label: 'Pinned', count: highlightedCounts.pinned, icon: Pin },
+        { id: 'all', label: text('All items', 'สินค้าทั้งหมด'), count: products.length, icon: Grid2x2 },
+        { id: 'promo', label: text('Promo', 'โปรโมชัน'), count: highlightedCounts.promo, icon: Sparkles },
+        { id: 'low_stock', label: text('Low stock', 'เหลือน้อย'), count: highlightedCounts.lowStock, icon: PackageX },
+        { id: 'recent', label: text('Recent', 'ล่าสุด'), count: highlightedCounts.recent, icon: Clock3 },
+        { id: 'pinned', label: text('Pinned', 'ปักหมุด'), count: highlightedCounts.pinned, icon: Pin },
     ];
 
     const renderPromoHelper = () => {
@@ -842,7 +879,7 @@ export default function POSPanel({
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                 <div className="flex items-center gap-2 text-amber-800 text-xs font-black uppercase tracking-wide mb-2">
                     <Flame size={14} />
-                    Promo helper
+                    {text("Promo helper", "เงื่อนไขโปรโมชัน")}
                 </div>
                 <div className="space-y-2">
                     {promoInsights.map((insight) => (
@@ -868,7 +905,7 @@ export default function POSPanel({
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                 <div className="flex items-center gap-2 text-emerald-800 text-xs font-black uppercase tracking-wide mb-2">
                     <Sparkles size={14} />
-                    Applied promotions
+                    {text("Applied promotions", "โปรโมชันที่ใช้")}
                 </div>
                 <div className="space-y-2">
                     {promotionQuote.applied_promotions.map((promotion) => (
@@ -880,7 +917,7 @@ export default function POSPanel({
                             {promotion.discount_amount > 0 && <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discount_amount, cart[0]?.product.currency)}</div>}
                         </div>
                     ))}
-                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">Free gift: {reward.name} × {reward.quantity}</div>)}
+                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">{text("Free gift:", "ของแถม:")} {reward.name} × {reward.quantity}</div>)}
                 </div>
             </div>
         );
@@ -894,7 +931,7 @@ export default function POSPanel({
                 setChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || (item.tier_id || null) !== (choice.tier_id || null)), selection]);
               }} />
             </div>)}
-        {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">All gifts for this promotion are out of stock.</strong>Review the new total without this promotion before charging.</span></label>}
+        {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">{text("All gifts for this promotion are out of stock.", "ของแถมในโปรโมชันนี้หมดแล้ว")}</strong>{text("Review the new total without this promotion before charging.", "ตรวจยอดใหม่ที่ไม่มีโปรโมชันนี้ก่อนรับชำระ")}</span></label>}
     </>;
 
     const renderCartItems = () => {
@@ -910,8 +947,8 @@ export default function POSPanel({
                         </div>
                     )}
                     <span className="text-4xl mb-2">🛒</span>
-                    <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
-                    <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">Select products first. Promotions and totals update automatically.</p>
+                    <p className="font-medium text-sm">{loading ? 'Loading...' : text('Cart is empty', 'ยังไม่มีสินค้าในตะกร้า')}</p>
+                    <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">{text('Select products first. Promotions and totals update automatically.', 'เลือกสินค้า ยอดรวมและโปรโมชันจะคำนวณให้อัตโนมัติ')}</p>
                 </div>
             );
         }
@@ -925,8 +962,8 @@ export default function POSPanel({
                 )}
                 {!loading && fetchError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20 backdrop-blur-[1px] gap-2 px-4">
-                        <span className="text-red-500 font-bold text-sm text-center">Failed to load order</span>
-                        <span className="text-xs text-gray-500 text-center">Select this queue again or wait for an update.</span>
+                        <span className="text-red-500 font-bold text-sm text-center">{text("Failed to load order", "โหลดรายการขายไม่สำเร็จ")}</span>
+                        <span className="text-xs text-gray-500 text-center">{text("Select this queue again or wait for an update.", "เลือกคิวนี้อีกครั้ง หรือรอข้อมูลอัปเดต")}</span>
                     </div>
                 )}
                 {renderPromoHelper()}
@@ -942,7 +979,7 @@ export default function POSPanel({
                     return (
                         <div
                             key={item.product.id}
-                            className={`flex items-center justify-between p-2 rounded-lg shadow-sm border ${
+                            className={`flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border ${
                                 isOverdraft
                                     ? 'bg-red-50 border-red-300'
                                     : 'bg-white border-gray-100'
@@ -955,7 +992,7 @@ export default function POSPanel({
                                             src={getProductImage(item.product.image_url)}
                                             alt={item.product.name}
                                             className="w-full h-full object-cover"
-                                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Img'; }}
+                                            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/nireq-mark.svg'; }}
                                         />
                                     ) : renderImageFallback(item.product.name, true)}
                                 </div>
@@ -964,7 +1001,7 @@ export default function POSPanel({
                                     <span className="text-[10px] text-gray-500">{formatPrice(item.product.price, item.product.currency)}</span>
                                     {isOverdraft && (
                                         <span className="text-[9px] font-bold text-red-600 mt-0.5">
-                                            Only {availableNow} left — reduce or remove
+                                            {text("Only", "เหลือ")} {availableNow} {text("left — reduce or remove", "ชิ้น กรุณาลดจำนวนหรือนำออก")}
                                         </span>
                                     )}
                                     {!isOverdraft && !!promoBadges.length && (
@@ -978,31 +1015,31 @@ export default function POSPanel({
                                     )}
                                 </div>
                             </div>
-                            <div className="flex flex-col items-end gap-0.5 ml-1">
+                            <div className="flex w-full items-center justify-between gap-2">
                                 <span className={`font-bold text-xs ${isOverdraft ? 'text-red-500 line-through' : 'text-pink-600'}`}>
                                     {formatPrice(item.product.price * item.quantity, item.product.currency)}
                                 </span>
                                 <div className="flex items-center gap-1">
-                                    <div className="flex items-center bg-gray-50 rounded border border-gray-200 h-6">
+                                    <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 min-h-11">
                                         <button
                                             disabled={loading || fetchError}
                                             onClick={() => decreaseQuantity(item.product.id)}
-                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50"
-                                            aria-label={`Decrease quantity of ${item.product.name}`}
+                                            className="w-11 min-h-11 flex items-center justify-center text-gray-600 hover:text-red-600 text-[11px] disabled:opacity-50"
+                                            aria-label={text(`Decrease quantity of ${item.product.name}`, `ลดจำนวน ${item.product.name}`)}
                                         >-</button>
-                                        <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
+                                        <span className={`min-w-[28px] text-center font-bold text-sm ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
                                         <button
                                             disabled={loading || fetchError}
                                             onClick={() => addToCart(item.product)}
-                                            className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50"
-                                            aria-label={`Increase quantity of ${item.product.name}`}
+                                            className="w-11 min-h-11 flex items-center justify-center text-gray-600 hover:text-green-600 text-[11px] disabled:opacity-50"
+                                            aria-label={text(`Increase quantity of ${item.product.name}`, `เพิ่มจำนวน ${item.product.name}`)}
                                         >+</button>
                                     </div>
                                     <button
                                         disabled={loading || fetchError}
                                         onClick={() => removeFromCart(item.product.id)}
-                                        className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50"
-                                        aria-label={`Remove ${item.product.name} from cart`}
+                                        className="w-11 min-h-11 text-sm text-gray-600 hover:text-red-700 disabled:opacity-50"
+                                        aria-label={text(`Remove ${item.product.name} from cart`, `นำ ${item.product.name} ออกจากตะกร้า`)}
                                     >✕</button>
                                 </div>
                             </div>
@@ -1017,24 +1054,24 @@ export default function POSPanel({
         <>
             <div className="space-y-1.5 mb-2">
                 <div className="flex justify-between items-baseline">
-                    <span className="text-gray-500 font-medium text-sm">Subtotal</span>
+                    <span className="text-gray-500 font-medium text-sm">{text("Subtotal", "ยอดสินค้า")}</span>
                     <span className="text-sm font-bold text-gray-700">{formatPrice(displayedSubtotal, cart[0]?.product.currency)}</span>
                 </div>
                 {displayedDiscount > 0 && (
                     <div className="flex justify-between items-baseline">
-                        <span className="text-emerald-700 font-medium text-sm">Discount</span>
+                        <span className="text-emerald-700 font-medium text-sm">{text("Discount", "ส่วนลด")}</span>
                         <span className="text-sm font-black text-emerald-700">- {formatPrice(displayedDiscount, cart[0]?.product.currency)}</span>
                     </div>
                 )}
                 <div className="flex justify-between items-baseline pt-1 border-t border-gray-100">
-                    <span className="text-gray-500 font-medium text-sm">Total</span>
+                    <span className="text-gray-500 font-medium text-sm">{text("Total", "ยอดรวม")}</span>
                     <span className={`${mobile ? 'text-xl' : 'text-2xl'} font-extrabold text-gray-900`}>{formatPrice(displayedTotal, cart[0]?.product.currency)}</span>
                 </div>
             </div>
 
             {!activeEvent && (
                 <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600 font-bold text-center">
-                    No active event
+                    {text("No active event", "ยังไม่มีอีเวนต์ที่เปิดใช้งาน")}
                 </div>
             )}
 
@@ -1044,11 +1081,10 @@ export default function POSPanel({
                         <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-black text-amber-900 uppercase tracking-wide">
-                                Payment status unknown
+                                {text("Payment status unknown", "ยังไม่ทราบผลการรับชำระ")}
                             </div>
                             <div className="mt-1 text-[11px] font-medium text-amber-800 leading-snug">
-                                The network timed out. This payment may or may not have gone through.
-                                Check order history before charging again to avoid a duplicate.
+                                {text("The network timed out. This payment may or may not have gone through. Check order history before charging again to avoid a duplicate.", "การเชื่อมต่อหมดเวลา รายการนี้อาจบันทึกแล้ว ตรวจประวัติการขายก่อนรับชำระอีกครั้งเพื่อป้องกันรายการซ้ำ")}
                             </div>
                             <div className="mt-2 flex items-center gap-3">
                                 <a
@@ -1057,14 +1093,14 @@ export default function POSPanel({
                                     rel="noopener noreferrer"
                                     className="text-[11px] font-black text-amber-900 underline underline-offset-2 hover:text-amber-700"
                                 >
-                                    Open order history ↗
+                                    {text("Open order history ↗", "เปิดประวัติการขาย ↗")}
                                 </a>
                                 <button
                                     type="button"
                                     onClick={() => setPaymentUnknownEventId(null)}
                                     className="text-[10px] font-bold text-amber-700 hover:text-amber-900 border border-amber-300 rounded px-2 py-0.5 hover:bg-amber-100"
                                 >
-                                    Dismiss
+                                    {text("Dismiss", "ปิดข้อความ")}
                                 </button>
                             </div>
                         </div>
@@ -1074,7 +1110,7 @@ export default function POSPanel({
 
             {overdraftProductIds.size > 0 && (
                 <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 font-bold text-center">
-                    ⚠️ Remove unavailable items before charging
+                    {text("⚠️ Remove unavailable items before charging", "⚠️ นำสินค้าที่ไม่พร้อมขายออกก่อนรับชำระ")}
                 </div>
             )}
 
@@ -1084,19 +1120,19 @@ export default function POSPanel({
                     setIsMobileCartOpen(false);
                     setIsPaymentModalOpen(true);
                 }}
-                className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:[color:#475569] disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
+                className="w-full bg-pink-700 hover:bg-pink-800 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:[color:#475569] disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
             >
                 {loading
-                    ? 'Processing...'
+                    ? text('Processing...', 'กำลังบันทึก...')
                     : fetchError
-                    ? 'Order load failed'
+                    ? text('Order load failed', 'โหลดรายการไม่สำเร็จ')
                     : !activeEvent
-                    ? 'Event Ended'
+                    ? text('Event Ended', 'อีเวนต์สิ้นสุดแล้ว')
                     : overdraftProductIds.size > 0
-                    ? 'Cart has unavailable items'
+                    ? text('Cart has unavailable items', 'มีสินค้าที่ไม่พร้อมขาย')
                     : cart.length === 0
-                    ? 'Charge ' + formatPrice(0, cart[0]?.product.currency)
-                    : 'Charge ' + formatPrice(displayedTotal, cart[0]?.product.currency)}
+                    ? text('Charge ', 'รับชำระ ') + formatPrice(0, cart[0]?.product.currency)
+                    : text('Charge ', 'รับชำระ ') + formatPrice(displayedTotal, cart[0]?.product.currency)}
             </button>
         </>
     );
@@ -1105,19 +1141,19 @@ export default function POSPanel({
         return (
             <div className="h-full flex items-center justify-center p-6">
                 <div className="max-w-md w-full bg-white border border-gray-200 rounded-xl p-6 text-center">
-                    <h3 className="text-lg font-bold text-gray-800 mb-2">POS Access Restricted</h3>
-                    <p className="text-sm text-gray-600">Your account role is queue-only. You can manage queue flow but cannot charge orders.</p>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">{text("POS Access Restricted", "บัญชีนี้ไม่มีสิทธิ์ขายสินค้า")}</h3>
+                    <p className="text-sm text-gray-600">{text("Your account role is queue-only. You can manage queue flow but cannot charge orders.", "คุณจัดการคิวได้ แต่ไม่มีสิทธิ์รับชำระเงิน")}</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">{text('Select Customer', 'ขายให้')}</div>
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={onClearQueue}
@@ -1128,7 +1164,7 @@ export default function POSPanel({
                             }`}
                         >
                             <User size={16} />
-                            <span>Walk-in</span>
+                            <span>{text('Walk-in', 'ลูกค้าหน้าบูธ')}</span>
                         </button>
 
                         <div className="min-w-0">
@@ -1147,7 +1183,7 @@ export default function POSPanel({
                                                 }`}
                                             >
                                                 <CheckCircle size={14} className={isSelected ? 'text-white' : 'text-green-500'} />
-                                                <span>Queue #{queue.queue_number}</span>
+                                                <span>{text("Queue #", "คิว #")}{queue.queue_number}</span>
                                             </button>
                                         );
                                     })}
@@ -1157,7 +1193,7 @@ export default function POSPanel({
                                     disabled
                                     className="flex min-h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-400"
                                 >
-                                    From Queue
+                                    {text("From Queue", "ลูกค้าจากคิว")}
                                 </button>
                             )}
                         </div>
@@ -1167,25 +1203,25 @@ export default function POSPanel({
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-                <div className="hidden md:flex w-full h-auto max-h-[36dvh] md:max-h-none md:h-full md:w-[320px] bg-white border-t md:border-t-0 md:border-b-0 md:border-r border-pink-100 flex-col shrink-0 order-2 md:order-1">
+                <div className="festival-cart hidden md:flex w-full h-auto max-h-[36dvh] md:max-h-none md:h-full md:w-[320px] bg-white border-t md:border-t-0 md:border-b-0 md:border-l border-pink-100 flex-col shrink-0 order-2 md:order-2">
                     <div className="px-3 py-3 border-b border-gray-100 bg-gradient-to-r from-white to-pink-50/40 shrink-0">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Cart Summary</div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{text('Cart Summary', 'รายการขายนี้')}</div>
                                 <div className="mt-1 text-sm font-bold text-gray-800">
-                                    {cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU
+                                    {cartItemCount} {text("item", "ชิ้น")}{language === 'en' && cartItemCount !== 1 ? 's' : ''} · {cart.length} SKU
                                 </div>
                             </div>
                             {displayedDiscount > 0 && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 border border-emerald-100">
-                                    Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}
+                                    {text("Save", "ประหยัด")} {formatPrice(displayedDiscount, cart[0]?.product.currency)}
                                 </span>
                             )}
                         </div>
                         {selectedQueueId ? (
-                            <p className="mt-1 text-xs text-gray-500">Editing preselected order for Queue #{selectedQueueNumber}.</p>
+                            <p className="mt-1 text-xs text-gray-500">{text("Editing preselected order for Queue #", "รายการที่เลือกไว้สำหรับคิว #")}{selectedQueueNumber}.</p>
                         ) : (
-                            <p className="mt-1 text-xs text-gray-500">Walk-in checkout. Add items, review promotions, then charge.</p>
+                            <p className="mt-1 text-xs text-gray-500">{text('Walk-in checkout. Add items, review promotions, then charge.', 'เพิ่มสินค้า ตรวจยอดและโปรโมชัน แล้วรับชำระเงิน')}</p>
                         )}
                     </div>
 
@@ -1198,16 +1234,16 @@ export default function POSPanel({
                     </div>
                 </div>
 
-                <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-gray-50/50 order-1 md:order-2">
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-gray-50/50 order-1 md:order-1">
                     <div className="bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
                         <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Product Browser</div>
+                                <h1 className="festival-title">{text('Sell', 'ขายสินค้า')}</h1>
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
                                         {filteredProducts.length} / {products.length}
                                     </span>
-                                    <div className="hidden md:block text-xs text-gray-500">Search by name or tag, then narrow with quick filters, category, and tags.</div>
+                                    <div className="hidden md:block text-xs text-gray-500">{text('Select products to start a sale.', 'เลือกสินค้าเพื่อเริ่มขาย')}</div>
                                 </div>
                             </div>
                             <div className="hidden md:flex items-center gap-2">
@@ -1216,7 +1252,7 @@ export default function POSPanel({
                                         onClick={clearProductFilters}
                                         className="rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600 hover:bg-pink-100 transition-colors"
                                     >
-                                        Clear filters
+                                        {text("Clear filters", "ล้างตัวกรอง")}
                                     </button>
                                 )}
                             </div>
@@ -1224,21 +1260,21 @@ export default function POSPanel({
                         <div className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Search by name or tag..."
+                                placeholder={text("Search by name or tag...", "ค้นหาชื่อสินค้าหรือแท็ก...")}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 text-sm"
-                                aria-label="Search products"
+                                aria-label={text("Search products", "ค้นหาสินค้า")}
                             />
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value as SortType)}
                                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer font-medium w-[110px] md:w-auto"
-                                aria-label="Sort products by"
+                                aria-label={text("Sort products by", "เรียงสินค้า") }
                             >
-                                <option value="name">Name</option>
-                                <option value="price_low">Price ↑</option>
-                                <option value="price_high">Price ↓</option>
+                                <option value="name">{text("Name", "ชื่อสินค้า")}</option>
+                                <option value="price_low">{text("Price ↑", "ราคาต่ำก่อน")}</option>
+                                <option value="price_high">{text("Price ↓", "ราคาสูงก่อน")}</option>
                             </select>
                             <div className="hidden md:flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label="Product browser layout">
                                 <button
@@ -1246,7 +1282,7 @@ export default function POSPanel({
                                     className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black ${viewPreference === 'auto' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
                                     aria-label="Auto product layout"
                                 >
-                                    Auto
+                                    {text("Auto", "อัตโนมัติ")}
                                 </button>
                                 <button
                                     onClick={() => setViewPreference('visual')}
@@ -1254,7 +1290,7 @@ export default function POSPanel({
                                     aria-label="Fast grid product view"
                                 >
                                     <Grid2x2 size={16} />
-                                    Grid
+                                    {text("Grid", "รูปสินค้า")}
                                 </button>
                                 <button
                                     onClick={() => setViewPreference('compact')}
@@ -1262,7 +1298,7 @@ export default function POSPanel({
                                     aria-label="Detail list product view"
                                 >
                                     <Rows3 size={16} />
-                                    List
+                                    {text("List", "รายการ")}
                                 </button>
                             </div>
                         </div>
@@ -1310,22 +1346,22 @@ export default function POSPanel({
                             <div className="flex flex-wrap gap-2 pt-1">
                                 {selectedQuickFilter !== 'all' && (
                                     <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
-                                        Quick: {quickFilters.find((filter) => filter.id === selectedQuickFilter)?.label}
+                                        {text("Quick:", "ตัวกรอง:")} {quickFilters.find((filter) => filter.id === selectedQuickFilter)?.label}
                                     </span>
                                 )}
                                 {selectedCategory !== 'All' && (
                                     <span className="rounded-full bg-pink-50 px-3 py-1 text-[11px] font-semibold text-pink-600">
-                                        Category: {selectedCategory}
+                                        {text("Category:", "หมวด:")} {selectedCategory}
                                     </span>
                                 )}
                                 {selectedTag !== 'All' && (
                                     <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
-                                        Tag: {selectedTag}
+                                        {text("Tag:", "แท็ก:")} {selectedTag}
                                     </span>
                                 )}
                                 {searchQuery.trim() && (
                                     <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
-                                        Search: {searchQuery.trim()}
+                                        {text("Search:", "ค้นหา:")} {searchQuery.trim()}
                                     </span>
                                 )}
                             </div>
@@ -1334,9 +1370,9 @@ export default function POSPanel({
 
                     <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'}>
                         {filteredProducts.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
+                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>{text("No products found.", "ไม่พบสินค้า ลองเปลี่ยนคำค้นหรือล้างตัวกรอง")}</p></div>
                         ) : (
-                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
+                            <div className={effectiveViewMode === 'compact' ? 'space-y-2' : 'festival-product-grid grid gap-3'}>
                                 {filteredProducts.map((product, productIndex) => {
                                     const groupName = product.variant_group_name?.trim() || '';
                                     const previousGroupName = filteredProducts[productIndex - 1]?.variant_group_name?.trim() || '';
@@ -1347,7 +1383,7 @@ export default function POSPanel({
                                         {showVariantHeader && (
                                             <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-pink-100 bg-pink-50 px-3 py-2' : 'col-span-full rounded-xl border border-pink-100 bg-pink-50 px-3 py-2'}>
                                                 <div className="text-sm font-black text-pink-950">{groupName}</div>
-                                                <div className="text-[11px] font-bold text-pink-800">Variants</div>
+                                                <div className="text-[11px] font-bold text-pink-800">{text("Variants", "ตัวเลือก")}</div>
                                             </div>
                                         )}
                                     {(() => {
@@ -1390,7 +1426,7 @@ export default function POSPanel({
                                                                 </div>
                                                                 <div className="text-right shrink-0">
                                                                     <div className="font-black text-pink-600 text-sm">{formatPrice(product.price, product.currency)}</div>
-                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? `${available} left` : 'Unlimited'}</div>
+                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? text(`${available} left`, `เหลือ ${available} ชิ้น`) : text('Unlimited', 'ไม่จำกัด')}</div>
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
@@ -1401,7 +1437,7 @@ export default function POSPanel({
                                                                 ))}
                                                                 {lowStock && (
                                                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-100">
-                                                                        Low stock
+                                                                        {text("Low stock", "เหลือน้อย")}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1421,7 +1457,7 @@ export default function POSPanel({
                                         return (
                                                 <div
                                                     key={product.id}
-                                                    className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200 hover:shadow-md"
+                                                    className="festival-product bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200"
                                                 >
                                                     <button
                                                     onClick={() => addToCart(product)}
@@ -1435,7 +1471,7 @@ export default function POSPanel({
                                                                 className="w-full h-full object-contain bg-white group-hover:scale-[1.03] transition-transform"
                                                                 loading="lazy"
                                                                 decoding="async"
-                                                                onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x400?text=No+Img'; }}
+                                                                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/nireq-mark.svg'; }}
                                                             />
                                                         ) : renderImageFallback(product.name)}
                                                     </div>
@@ -1450,12 +1486,12 @@ export default function POSPanel({
                                                                 {promoBadges.slice(0, 2).map((badge) => (
                                                                     <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
                                                                 ))}
-                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">Low</span>}
+                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">{text("Low", "เหลือน้อย")}</span>}
                                                             </div>
                                                         </div>
                                                         <div className="mt-3 flex items-end justify-between gap-2">
                                                             <div className="text-[10px] font-bold text-gray-500">
-                                                                {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
+                                                                {Number.isFinite(available) ? text(`${available} left`, `เหลือ ${available} ชิ้น`) : text('Unlimited', 'ไม่จำกัด')}
                                                             </div>
                                                             <div className="text-base font-black text-pink-600">
                                                                 {formatPrice(product.price, product.currency)}
@@ -1489,18 +1525,18 @@ export default function POSPanel({
                 >
                     <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">Cart</div>
-                            <div className="text-sm font-bold text-gray-800">{cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{text('Cart', 'ตะกร้า')}</div>
+                            <div className="text-sm font-bold text-gray-800">{cartItemCount} {text("item", "ชิ้น")}{language === 'en' && cartItemCount !== 1 ? 's' : ''} · {cart.length} SKU</div>
                             <div className="text-[11px] text-gray-500 truncate">
-                                {selectedQueueId ? `Queue #${selectedQueueNumber}` : 'Walk-in checkout'}
+                                {selectedQueueId ? `Queue #${selectedQueueNumber}` : text('Walk-in checkout', 'ขายให้ลูกค้าหน้าบูธ')}
                             </div>
                         </div>
                         <div className="text-right shrink-0">
                             {displayedDiscount > 0 && (
-                                <div className="text-[11px] font-bold text-emerald-600">Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
+                                <div className="text-[11px] font-bold text-emerald-600">{text("Save", "ประหยัด")} {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
                             )}
                             <div className="text-lg font-extrabold text-gray-900">{formatPrice(displayedTotal, cart[0]?.product.currency)}</div>
-                            <div className="text-[11px] font-bold text-pink-600">{cart.length === 0 ? 'Select items' : 'View cart'}</div>
+                            <div className="text-[11px] font-bold text-pink-600">{cart.length === 0 ? text('Select items', 'เลือกสินค้า') : text('View cart', 'ดูตะกร้า')}</div>
                         </div>
                     </div>
                 </button>
@@ -1513,24 +1549,24 @@ export default function POSPanel({
                         aria-label="Close mobile cart"
                         onClick={() => setIsMobileCartOpen(false)}
                     />
-                    <div className="absolute inset-x-0 bottom-0 max-h-[78dvh] rounded-t-3xl bg-white shadow-2xl border-t border-pink-100 flex flex-col overflow-hidden">
+                    <div ref={cartDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={text("Shopping cart", "ตะกร้าสินค้า")} className="absolute inset-x-0 bottom-0 max-h-[78dvh] rounded-t-3xl bg-white shadow-2xl border-t border-pink-100 flex flex-col overflow-hidden">
                         <div className="shrink-0 px-4 pt-3 pb-2 border-b border-gray-100">
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-gray-200" />
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Cart Summary</div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{text('Cart Summary', 'รายการขายนี้')}</div>
                                     <div className="mt-1 text-sm font-bold text-gray-800">
-                                        {cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU
+                                        {cartItemCount} {text("item", "ชิ้น")}{language === 'en' && cartItemCount !== 1 ? 's' : ''} · {cart.length} SKU
                                     </div>
                                     <div className="mt-1 text-xs text-gray-500">
-                                        {selectedQueueId ? `Editing Queue #${selectedQueueNumber}` : 'Walk-in checkout'}
+                                        {selectedQueueId ? `Editing Queue #${selectedQueueNumber}` : text('Walk-in checkout', 'ขายให้ลูกค้าหน้าบูธ')}
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setIsMobileCartOpen(false)}
                                     className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600"
                                 >
-                                    Close
+                                    {text("Close", "ปิด")}
                                 </button>
                             </div>
                         </div>
@@ -1546,9 +1582,9 @@ export default function POSPanel({
 
             {isPaymentModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
-                        <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Record payment</h3>
-                        <p className="text-gray-500 text-center mb-6">Confirm what you received directly from the customer. Nireq does not check your bank account.<br />Amount: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
+                    <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="payment-title" className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
+                        <h3 id="payment-title" className="text-2xl font-black text-gray-800 text-center mb-2">{text('Record payment', 'บันทึกการรับเงิน')}</h3>
+                        <p className="text-gray-500 text-center mb-6">{text('Confirm what you received directly from the customer. Nireq does not check your bank account.', 'ยืนยันเงินที่ได้รับจากลูกค้า NireQ ไม่ได้ตรวจยอดในบัญชีธนาคารของคุณ')}<br />{text("Amount:", "ยอดเงิน:")} <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
@@ -1556,7 +1592,7 @@ export default function POSPanel({
                                 className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
-                                <span className="font-bold text-emerald-700">CASH</span>
+                                <span className="font-bold text-emerald-700">{text('CASH', 'เงินสด')}</span>
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
@@ -1564,14 +1600,14 @@ export default function POSPanel({
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>
-                                <span className="text-center font-bold text-sky-700">Confirm transfer received</span>
+                                <span className="text-center font-bold text-sky-700">{text('Confirm transfer received', 'ยืนยันว่าได้รับเงินโอน')}</span>
                             </button>
                         </div>
                         <button
                             onClick={() => setIsPaymentModalOpen(false)}
                             className="w-full py-2 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
                         >
-                            Cancel
+                            {text("Cancel", "ยกเลิก")}
                         </button>
                     </div>
                 </div>

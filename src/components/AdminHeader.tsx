@@ -12,7 +12,7 @@ interface ActiveEvent {
 }
 
 type ActivePage = 'events' | 'menu' | 'promotion' | 'pos' | 'online-sales';
-type VisiblePage = ActivePage | 'team';
+type VisiblePage = ActivePage | 'team' | 'problems';
 
 interface AdminHeaderProps {
     activePage: VisiblePage;
@@ -25,11 +25,12 @@ interface AdminHeaderProps {
 // Setup-mode items (configuration-oriented, used before/between events)
 // Live-mode items (operational, used during events)
 const navItems = [
+    { path: '/manage-order-problems', label: 'Order problems', icon: ClipboardCheck, page: 'problems' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-online-sales', label: 'Online Sales', icon: ShoppingBag, page: 'online-sales' as VisiblePage, roles: ['owner', 'manager', 'seller'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-promotions', label: 'Promotion', icon: Sparkles, page: 'promotion' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
-    { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
 ];
 
 const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
@@ -79,7 +80,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
         seller: t('workspaceRoleSeller'),
         queue_staff: t('workspaceRoleQueueStaff'),
     };
-    
+
     const displayRole = actorRole ? (roleLabelMapping[actorRole] || actorRole) : 'Admin';
     const displayEmail = userEmail || contextEmail || 'Signed in';
     const firstLetter = displayEmail ? displayEmail.charAt(0).toUpperCase() : 'U';
@@ -90,13 +91,10 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
     };
 
     return (
-        <header className="bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-20 shadow-sm relative">
+        <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 shadow-sm relative">
             {/* Left: Brand + Event Badge */}
             <div className="flex items-center gap-2">
-                <div className="bg-pink-500 text-white p-1.5 rounded-md font-bold text-sm">K</div>
-                <span className="font-bold text-gray-800 hidden md:inline">Nire<span className="text-pink-600">q</span> Workspace</span>
-                <span className="font-bold text-gray-800 md:hidden">Nireq</span>
-                
+                <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักครีเอเตอร์' : 'Creator workspace'} className="festival-wordmark">Nire<span>Q</span></Link>
                 {/* Active Event Badge */}
                 {activeEvent && (
                     <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex items-center gap-1.5 max-w-[140px] md:max-w-none">
@@ -114,7 +112,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1">
+            <div className="hidden xl:flex items-center gap-1">
                 {filteredNavItems.map((item) => {
                     const Icon = item.icon;
                     // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
@@ -123,8 +121,8 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
-                    const label = item.page === 'promotion' ? item.label : t(getNavLabel(item.page));
-                    
+                    const label = item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
+
                     return (
                         <button
                             key={item.path}
@@ -156,7 +154,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         <span className="hidden sm:inline">{t('workspaceNavApplications')}</span>
                     </button>
                 )}
-                
+
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
                 {isPlatformAdmin && <Link to="/admin/support" className="min-h-11 inline-flex items-center px-3 text-xs font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
                 <LanguageToggle className="workspace-action px-2 py-2" />
@@ -181,9 +179,9 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 </div>
 
                 <div className="h-5 w-px bg-gray-200 mr-2"></div>
-                
-                <button 
-                    onClick={handleLogout} 
+
+                <button
+                    onClick={handleLogout}
                     className="workspace-action px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-red-700 hover:bg-gray-50 flex items-center gap-1.5 transition-all"
                     aria-label={t('signOut')}
                 >
@@ -193,17 +191,17 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             </div>
 
             {/* Mobile Menu Button */}
-            <button 
-                className="md:hidden icon-touch inline-flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg"
+            <button
+                className="xl:hidden icon-touch inline-flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                aria-label={isMenuOpen ? 'Close workspace menu' : 'Open workspace menu'}
+                aria-expanded={isMenuOpen} aria-controls="workspace-menu" aria-label={isMenuOpen ? (language === 'th' ? 'ปิดเมนู' : 'Close workspace menu') : (language === 'th' ? 'เปิดเมนู' : 'Open workspace menu')}
             >
                 {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
 
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
-                <div className="absolute top-14 left-0 right-0 bg-white border-b border-gray-200 shadow-lg md:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
+                <div id="workspace-menu" className="max-h-[calc(100dvh-4rem)] overflow-y-auto absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg xl:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
                     {/* Profile Information (Mobile) */}
                     <div className="flex items-center gap-3 px-4 py-2 mb-2 bg-gray-50 rounded-lg">
                         <div className="w-10 h-10 rounded-md bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-sm ring-1 ring-pink-200">
@@ -224,7 +222,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
-                        const label = item.page === 'promotion' ? item.label : t(getNavLabel(item.page));
+                        const label = item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
                         return (
                             <button
                                 key={item.path}
@@ -263,11 +261,12 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                     )}
                     {isPlatformAdmin && <Link to="/admin/support" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
                     <div className="h-px bg-gray-100 my-1"></div>
+                    <Link to="/help" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
                     <div className="px-4 py-2">
                         <LanguageToggle />
                     </div>
                     <div className="h-px bg-gray-100 my-1"></div>
-                    <button 
+                    <button
                         onClick={handleLogout}
                         className="w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3"
                         aria-label={t('signOut')}

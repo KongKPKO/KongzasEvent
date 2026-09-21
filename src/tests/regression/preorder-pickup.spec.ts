@@ -375,7 +375,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await page.goto(`/${artistSlug}/menu`);
 
     await expect(page.getByText('Pre-order now. No queue ticket needed.').first()).toBeVisible({ timeout: 20000 });
-    const addButton = page.getByRole('button', { name: /^Add$/i }).first();
+    const addButton = page.getByRole('button', { name: /^Add:/i }).first();
     await expect(addButton).toBeVisible({ timeout: 20000 });
     await page.waitForTimeout(900);
     await addButton.click();
@@ -393,7 +393,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await expect(page.getByRole('heading', { name: 'How to pay' })).toBeVisible();
     await expect(page.getByText(/Pay before/i)).toBeVisible();
     await expect(page.getByText(/Time left: 14:/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Photo or PDF of your transfer slip' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Choose a photo of your transfer slip' })).toBeVisible();
   });
 
   test('expired checkout hold requires a new order', async ({ page }) => {
@@ -403,7 +403,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await expect(page.getByRole('heading', { name: 'Order expired' })).toBeVisible();
     await expect(page.getByText(/reserved items were released/i)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Order again from menu' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Photo or PDF of your transfer slip' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Choose a photo of your transfer slip' })).toHaveCount(0);
   });
 
   test('live mode customer menu still requires a queue ticket before checkout', async ({ page }) => {
@@ -411,7 +411,7 @@ test.describe('pre-order pickup MVP regressions', () => {
     await page.goto(`/${artistSlug}/menu`);
 
     await expect(page.getByText('Queue Number', { exact: true })).toBeVisible({ timeout: 20000 });
-    const addButton = page.getByRole('button', { name: /^Add$/i }).first();
+    const addButton = page.getByRole('button', { name: /^Add:/i }).first();
     await expect(addButton).toBeVisible({ timeout: 20000 });
     await page.waitForTimeout(900);
     await addButton.click();
@@ -427,6 +427,15 @@ test.describe('pre-order pickup MVP regressions', () => {
     await expect(page.getByText(pickupCode)).toBeVisible();
     await expect(page.getByText('Pickup List Customer')).toBeVisible();
     await expect(page.locator('main').getByText('Awaiting pickup').last()).toBeVisible();
+    await page.getByRole('textbox', { name: 'Search pickup orders' }).fill(pickupCode);
+    await page.getByRole('button', { name: 'Picked up', exact: true }).click();
+    const confirmation = page.getByRole('dialog');
+    await expect(confirmation).toContainText(pickupCode);
+    await expect(confirmation).toContainText('Pickup List Customer');
+    await expect(confirmation).toContainText('handing over all items');
+    await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+
   });
 
   test('single active event opens the event workspace by default', async ({ page }) => {
@@ -435,10 +444,26 @@ test.describe('pre-order pickup MVP regressions', () => {
 
     await expect(page).toHaveURL(new RegExp(`/manage-events/${preorderEventId}/workspace`), { timeout: 20000 });
     await expect(page.getByRole('heading', { name: 'Regression Preorder Event' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Guided booth setup' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue setup' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Event setup steps' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Choose products & allocate stock' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '1 order waiting for pickup' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Open pickup' })).toBeVisible();
+  });
+
+  test('storefront review stays on publication controls with one active event', async ({ page }) => {
+    mockOptions.eventMode = 'single-active';
+    await loginOwner(page);
+    await page.getByRole('button', { name: 'Review storefront', exact: true }).click();
+    await expect(page).toHaveURL(/\/manage-events\?focus=publish$/);
+    const heading = page.getByRole('heading', { name: 'Review storefront publication', exact: true });
+    await expect(heading).toBeVisible();
+    await expect(heading).toBeFocused();
+    await expect(page.getByRole('link', { name: 'Open public catalog' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Event Workspaces' })).toBeVisible();
+    await expect(page.getByText('Opening your active event workspace...')).toHaveCount(0);
+    await page.reload();
+    await expect(heading).toBeVisible();
+    await expect(page).toHaveURL(/\/manage-events\?focus=publish$/);
   });
 
   test('full event grid escape hatch keeps profile access visible', async ({ page }) => {

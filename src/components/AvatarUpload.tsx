@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n';
+import { uploadImage } from '../lib/imageUploads';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
@@ -10,6 +12,8 @@ interface AvatarUploadProps {
 }
 
 const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUploadProps) => {
+  const { language } = useI18n();
+  const th = language === 'th';
   const [previewUrl, setPreviewUrl] = useState<string | null>(resolveAvatarUrl(currentImageUrl) || null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -21,38 +25,6 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
     setPreviewUrl(resolveAvatarUrl(currentImageUrl) || null);
   }, [currentImageUrl]);
 
-  const handleImageCompression = async (imageFile: File): Promise<File> => {
-    // 1. Validation: Allow large raw files (e.g., up to 10MB) to support camera uploads
-    if (imageFile.size > 10 * 1024 * 1024) {
-       throw new Error("File too large. Maximum size is 10MB.");
-    }
-
-    // 2. Skip Condition: If the original file is already smaller than 0.2MB, skip compression
-    if (imageFile.size / 1024 / 1024 < 0.2) {
-       return imageFile;
-    }
-
-    // 3. Optimization Target
-    const options = {
-       maxSizeMB: 0.2,           // Aim for ~200KB
-       maxWidthOrHeight: 800,    // 800px is sufficient for profile pics
-       useWebWorker: true,
-       fileType: 'image/webp',   // Convert to WebP
-       initialQuality: 0.8
-    };
-
-    try {
-       const { default: imageCompression } = await import('browser-image-compression');
-       const compressedFile = await imageCompression(imageFile, options);
-       
-       // Ensure we return a file with the correct extension if it was converted
-       const newName = imageFile.name.replace(/\.[^/.]+$/, "") + '.webp';
-       return new File([compressedFile], newName, { type: 'image/webp' });
-    } catch (err) {
-       console.warn('Compression failed, falling back to original file', err);
-       return imageFile;
-    }
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
@@ -60,34 +32,8 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
     if (!file) return;
 
     try {
-      // Start Compression
-      setIsCompressing(true);
-      const processedFile = await handleImageCompression(file);
-      setIsCompressing(false);
-
-      // Start Upload
       setIsUploading(true);
-      
-      const timestamp = Date.now();
-      const mimeToExtension: Record<string, string> = {
-        'image/webp': 'webp',
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-      };
-
-      const normalizedMimeType = processedFile.type || 'image/webp';
-      const extension = mimeToExtension[normalizedMimeType] || 'webp';
-      const filePath = `${artistId}/${timestamp}.${extension}`;
-
-      // Upload to 'Avatar' bucket
-      const { error: uploadError } = await supabase.storage
-        .from('Avatar')
-        .upload(filePath, processedFile, {
-          contentType: normalizedMimeType,
-          upsert: true
-        });
-
-      if (uploadError) throw uploadError;
+      const filePath = await uploadImage(file, 'avatar', { artistId });
 
       // Use Supabase public URL directly to avoid broken external transforms.
       const { data: { publicUrl } } = supabase.storage
@@ -99,9 +45,9 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
       setPreviewUrl(finalUrl);
       onUploadComplete(publicUrl);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Upload failed:', err);
-      setError(err.message || 'Failed to upload image');
+      setError(err instanceof Error ? err.message : 'Failed to upload image');
       // Revert preview if needed, or just keep the old one
     } finally {
       setIsCompressing(false);
@@ -118,7 +64,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div 
+      <button type="button" aria-label={th ? 'เปลี่ยนรูปโปรไฟล์' : 'Change profile photo'} disabled={isUploading || isCompressing}
         onClick={handleClick}
         className={`
           relative w-32 h-32 rounded-full cursor-pointer overflow-hidden border-4 border-white shadow-lg group
@@ -146,18 +92,19 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
           {isCompressing ? (
             <>
               <Loader2 className="animate-spin mb-1" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wide">Optimizing</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide">{th ? 'กำลังย่อรูป' : 'Optimizing'}</span>
             </>
           ) : isUploading ? (
             <>
               <Loader2 className="animate-spin mb-1" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wide">Uploading</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide">{th ? 'กำลังอัปโหลด' : 'Uploading'}</span>
             </>
           ) : (
             <Camera size={32} />
           )}
         </div>
-      </div>
+      </button>
+      <span className="text-sm font-semibold text-pink-800">{th ? 'แตะรูปเพื่อเปลี่ยน' : 'Select photo to change'}</span>
 
       {/* Hidden Input */}
       <input 

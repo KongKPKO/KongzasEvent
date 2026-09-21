@@ -1,3 +1,4 @@
+import { offlineAuthorization } from './lib/offlineOperations';
 import { Suspense, lazy, useState, useEffect, type ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 
@@ -14,7 +15,6 @@ import {
   POS_ROLES,
   QUEUE_ROLES,
   canAccessManagementPages,
-  canAccessOwnerPages,
   canAccessQueuePages,
   canUsePos,
 } from './types/access';
@@ -32,7 +32,9 @@ import AdminApplications from './pages/AdminApplications';
 import LegalPage from './pages/LegalPage';
 
 const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
 const AdminSupport = lazy(() => import('./pages/AdminSupport'));
+const OrderProblems = lazy(() => import('./pages/creators/OrderProblems'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
@@ -43,6 +45,7 @@ const PreorderPickup = lazy(() => import('./pages/creators/PreorderPickup'));
 const PreorderDashboard = lazy(() => import('./pages/creators/PreorderDashboard'));
 const OnlineCampaigns = lazy(() => import('./pages/creators/OnlineCampaigns'));
 const OnlineCampaignWorkspace = lazy(() => import('./pages/creators/OnlineCampaignWorkspace'));
+const OfflineWorkspace = lazy(() => import('./pages/OfflineWorkspace'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
@@ -50,7 +53,6 @@ import ManageLogin from './pages/ManageLogin';
 import { useI18n } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 import InvitationsPage from './pages/InvitationsPage';
-import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
 
 function EventAccessRoute({
   allowedRoles,
@@ -114,7 +116,6 @@ function App() {
       if (!nextSession) {
         setActorContext(null);
         setPendingInvitations([]);
-        clearObservabilityUser();
         return;
       }
 
@@ -125,7 +126,6 @@ function App() {
         loadPendingInvitations(),
       ]);
       setActorContext(ctx);
-      identifyObservabilityUser(nextSession, ctx);
     } catch (error) {
       console.error('[App] Failed to sync session context:', error);
       setActorContext(null);
@@ -155,6 +155,7 @@ function App() {
     void loadInitialSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT' && offlineAuthorization()) localStorage.removeItem('nireq-offline-authorized');
       if (event === 'PASSWORD_RECOVERY') {
         window.location.replace('/reset-password');
         return;
@@ -173,7 +174,6 @@ function App() {
     };
   }, []);
 
-  const isOwner = canAccessOwnerPages(actorContext?.role);
   const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
   const canSell = canUsePos(actorContext?.role);
@@ -189,9 +189,9 @@ function App() {
   const isCustomerRoute = typeof window !== 'undefined'
     ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(window.location.pathname)
     : false;
-  const isWorkspaceOptionalPath = ['/', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+  const isWorkspaceOptionalPath = ['/', '/help', '/offline', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
-  if (loading) {
+  if (loading && currentPath !== '/offline') {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
   }
 
@@ -223,12 +223,15 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
+        {currentPath !== '/offline' && offlineAuthorization() && <a href="/offline" className="block bg-amber-50 p-3 text-center text-sm font-semibold text-amber-900">เปิดพื้นที่ขายที่เตรียมไว้เมื่อเน็ตขาด · Open prepared offline workspace</a>}
         <Suspense fallback={<div className="flex justify-center items-center h-screen">{t('loading')}</div>}>
           <Routes>
+            <Route path="/offline" element={<OfflineWorkspace />} />
             <Route path="/manage-login" element={<ManageLogin />} />
             <Route path="/creator/register" element={<CreatorRegister />} />
             <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/help" element={<HelpPage />} />
             <Route path="/privacy" element={<LegalPage kind="privacy" />} />
             <Route path="/terms" element={<LegalPage kind="terms" />} />
             <Route path="/cookies" element={<LegalPage kind="cookies" />} />
@@ -250,6 +253,7 @@ function App() {
               path="/manage-promotions"
               element={session ? (canUseManagement ? <ManageProducts initialTab="promotions" /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
+            <Route path="/manage-order-problems" element={session && canUseManagement && actorContext ? <OrderProblems actorContext={actorContext} /> : <Navigate to={getDefaultPath()} replace />} />
             <Route
               path="/manage-events"
               element={session ? (canUseManagement ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -264,7 +268,7 @@ function App() {
             />
             <Route
               path="/manage-team"
-              element={session ? (isOwner && actorContext ? <ManageTeam actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+              element={session ? (canUseManagement && actorContext ? <ManageTeam actorContext={actorContext} /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
               path="/manage-events/:eventId"

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, CalendarDays, MapPin, Search, Sparkles, Ticket, UsersRound } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowRight, CalendarDays, MapPin, Search, Sparkles, Ticket, ShoppingBag, X, Heart, Users, Zap, Store, Star } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-import { LanguageToggle, useI18n } from '../../i18n';
+import { useI18n } from '../../i18n';
+import PublicShell from '../../components/PublicShell';
+import './discovery-landing.css';
 
 interface DiscoveryEventRecord {
   id: string;
@@ -20,7 +22,11 @@ interface DiscoveryEventRecord {
   booth_number?: string | null;
 }
 
+interface DiscoveryProduct { id: string; artist_id: string; name: string; image_url: string | null; category: string | null; }
+
 interface DiscoveryRow {
+  accepts_queue?: boolean;
+  products?: DiscoveryProduct[];
   artist_id: string;
   slug: string;
   display_name: string;
@@ -65,36 +71,36 @@ const isPublicCreator = (creator: Pick<DiscoveryRow, 'slug' | 'display_name' | '
   return true;
 };
 
-function NireqWordmark() {
-  return (
-    <div className="flex items-center gap-2" aria-label="Nireq">
-      <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-pink-600 text-white shadow-lg shadow-pink-200">
-        <span className="text-lg font-black">N</span>
-        <span className="absolute -right-1.5 bottom-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-rose-200" />
-      </div>
-      <div className="text-2xl font-black tracking-normal text-gray-950">
-        Nire<span className="text-pink-600">q</span>
-      </div>
-    </div>
-  );
-}
-
 export default function DiscoveryHome() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const th = language === 'th';
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [openOnly, setOpenOnly] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchQuery = searchParams.get('q') || '';
+  const queueOnly = searchParams.get('queue') === '1';
+  const productsOnly = searchParams.get('products') === '1';
+  const [productError, setProductError] = useState(false);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const openOnly = searchParams.get('open') === '1';
+  const setFilter = (key: string, value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value); else next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [creators, setCreators] = useState<DiscoveryRow[]>([]);
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
-      setLoading(true);
+      setLoading(true); setLoadError(false); setProductError(false);
       try {
         const today = new Date().toISOString();
         const [{ data: artists, error: artistsError }, { data: events, error: eventsError }] = await Promise.all([
           supabase
             .from('artists')
-            .select('id, slug, display_name, bio, image_url, published_at')
+            .select('id, slug, display_name, bio, image_url, published_at, is_queue_open')
             .eq('is_public', true)
             .eq('is_verified', true)
             .not('published_at', 'is', null)
@@ -111,6 +117,12 @@ export default function DiscoveryHome() {
         if (artistsError) throw artistsError;
         if (eventsError) throw eventsError;
 
+        const publicIds = (artists || []).map(artist => artist.id);
+        const productResult = publicIds.length ? await supabase.from('products')
+          .select('id, artist_id, name, image_url, category').in('artist_id', publicIds)
+          .is('deleted_at', null).in('status', ['enable', 'soldout']).order('created_at', { ascending: false }) : { data: [], error: null };
+        if (active) setProductError(Boolean(productResult.error));
+        const products = (productResult.data || []) as DiscoveryProduct[];
         const byArtist = new Map<string, DiscoveryEventRecord>();
         for (const event of (events || []) as DiscoveryEventRecord[]) {
           if (!byArtist.has(event.artist_id)) byArtist.set(event.artist_id, event);
@@ -121,12 +133,14 @@ export default function DiscoveryHome() {
             const event = byArtist.get(artist.id);
             return {
               artist_id: artist.id,
+              accepts_queue: Boolean(event && artist.is_queue_open),
+              products: products.filter(product => product.artist_id === artist.id),
               slug: artist.slug,
               display_name: artist.display_name,
               bio: artist.bio,
               image_url: resolveAvatarUrl(artist.image_url),
               event_id: event?.id || `artist-${artist.id}`,
-              event_name: event?.event_name || 'No upcoming event',
+              event_name: event?.event_name || '',
               location: normalizeEventLocation(event),
               booth_detail: normalizeEventBooth(event),
               is_booth_open: !!event?.is_booth_open,
@@ -137,17 +151,18 @@ export default function DiscoveryHome() {
           .filter(isPublicCreator)
           .sort((left, right) => Number(right.is_booth_open) - Number(left.is_booth_open)) as DiscoveryRow[];
 
-        setCreators(nextRows);
+        if (active) setCreators(nextRows);
       } catch (error) {
         console.error('[DiscoveryHome] load failed:', error);
-        setCreators([]);
+        if (active) setLoadError(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     void load();
-  }, []);
+    return () => { active = false; };
+  }, [retry]);
 
   const filteredCreators = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -156,236 +171,67 @@ export default function DiscoveryHome() {
         query.length === 0 ||
         creator.display_name.toLowerCase().includes(query) ||
         creator.event_name.toLowerCase().includes(query) ||
-        (creator.location || '').toLowerCase().includes(query);
+        (creator.location || '').toLowerCase().includes(query) ||
+        `${creator.slug} ${creator.bio || ''} ${creator.booth_detail || ''}`.toLowerCase().includes(query);
       const matchesOpen = !openOnly || creator.is_booth_open;
-      return matchesSearch && matchesOpen;
+      return matchesSearch && matchesOpen && (!queueOnly || creator.accepts_queue) && (!productsOnly || productError || Boolean(creator.products?.length));
     });
-  }, [creators, searchQuery, openOnly]);
+  }, [creators, searchQuery, openOnly, queueOnly, productsOnly, productError]);
 
-  const openCount = creators.filter((creator) => creator.is_booth_open).length;
-  const previewCreators = filteredCreators.slice(0, 3);
-
-  return (
-    <div className="min-h-screen bg-[#fff7fb] text-gray-950">
-      <header className="sticky top-0 z-30 border-b border-pink-100 bg-white/88 backdrop-blur-xl" data-testid="public-topbar">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link to="/" aria-label="Nireq home" className="inline-flex min-h-11 items-center">
-            <NireqWordmark />
-          </Link>
-          <nav className="flex items-center gap-2">
-            <a href="#discover" className="hidden min-h-11 items-center rounded-full px-4 text-sm font-black text-pink-900 hover:bg-pink-50 hover:text-pink-800 sm:inline-flex">
-              {t('navDiscover')}
-            </a>
-            <Link to="/manage-login" className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-black text-pink-900 hover:bg-pink-50 hover:text-pink-800">
-              {t('navCreatorLogin')}
-            </Link>
-            <Link to="/creator/register" className="hidden min-h-11 items-center rounded-full bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-200 hover:bg-pink-700 sm:inline-flex">
-              {t('navApply')}
-            </Link>
-            <LanguageToggle className="min-h-11 min-w-11" />
-          </nav>
+  return <PublicShell discovery>
+    <main>
+      <section className="discovery-intro public-width">
+        <div className="discovery-intro-copy"><p className="public-kicker">{t('discoveryEyebrow')}</p>
+          <h1>{t('discoveryTitle')}<span>{t('discoveryTitleAccent')}</span></h1>
+          <p>{t('discoverySubtitle')}</p>
+          <div className="discovery-hero-actions"><a className="public-button public-primary" href="#discover"><Search size={20} />{t('discoveryFindBooth')}</a><Link className="public-button" to="/creator/register"><Store size={20} />{t('discoveryOwnBooth')}</Link></div>
+          <ul className="discovery-benefits"><li><Zap size={18} />{t('discoveryBenefitQueue')}</li><li><Heart size={18} />{t('discoveryBenefitCreators')}</li><li><Users size={18} />{t('discoveryBenefitPlan')}</li></ul>
         </div>
-      </header>
-
-      <main>
-        <section className="relative overflow-hidden border-b border-pink-100 bg-[radial-gradient(circle_at_20%_20%,#ffe4f1_0,#fff7fb_36%,#ffffff_100%)]">
-          <div className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-8 px-4 py-8 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:gap-10 lg:py-14">
-            <div className="max-w-2xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-pink-700 shadow-sm">
-                <Sparkles size={14} />
-                {t('homeEyebrow')}
-              </div>
-              <h1 className="text-4xl font-black leading-[0.96] tracking-normal text-gray-950 md:text-7xl">
-                {t('homeTitle')}
-              </h1>
-              <p className="mt-5 max-w-xl text-base font-semibold leading-7 text-slate-700 md:text-lg">
-                {t('homeSubtitle')}
-              </p>
-
-              <div className="mt-6 rounded-2xl border border-pink-100 bg-white p-3 shadow-lg shadow-pink-100/60">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <label className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-400" size={18} />
-                    <input
-                      id="public-creator-search"
-                      name="creator-search"
-                      data-testid="public-creator-search"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder={t('homeSearchPlaceholder')}
-                      className="h-[3.25rem] w-full rounded-2xl border border-pink-100 bg-pink-50/55 py-3 pl-12 pr-4 text-sm font-bold text-pink-950 placeholder:text-pink-900 outline-none transition focus:border-pink-300 focus:bg-white focus:ring-4 focus:ring-pink-100"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    data-testid="public-open-now-filter"
-                    onClick={() => setOpenOnly((current) => !current)}
-                    className={`h-[3.25rem] rounded-2xl border px-5 py-3 text-sm font-black transition ${
-                      openOnly
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                        : 'border-pink-100 bg-white text-pink-900 hover:border-pink-200 hover:bg-pink-50 hover:text-pink-800'
-                    }`}
-                  >
-                    {t('homeOpenNow')}
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-5 grid max-w-lg grid-cols-3 gap-3">
-                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
-                  <div className="text-2xl font-black text-pink-600">{creators.length}</div>
-                  <div className="text-xs font-bold text-pink-900">{t('homeCreators')}</div>
-                </div>
-                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
-                  <div className="text-2xl font-black text-pink-600">{openCount}</div>
-                  <div className="text-xs font-bold text-pink-900">{t('homeOpenNow')}</div>
-                </div>
-                <div className="rounded-xl border border-pink-100 bg-white/80 p-3">
-                  <div className="text-2xl font-black text-pink-600">Q</div>
-                  <div className="text-xs font-bold text-pink-900">{t('homeLiveQueue')}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="relative rounded-2xl border border-pink-100 bg-white p-4 shadow-lg shadow-pink-100/60">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-700">{t('homeFeaturedEyebrow')}</div>
-                    <div className="text-lg font-black text-gray-950">{t('homeFeaturedTitle')}</div>
-                  </div>
-                  <Ticket className="text-pink-700" size={24} />
-                </div>
-                <div className="grid gap-3">
-                  {loading ? (
-                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-700">{t('homeLoadingCreators')}</div>
-                  ) : previewCreators.length === 0 ? (
-                    <div className="rounded-2xl bg-pink-50 p-6 text-center text-sm font-bold text-pink-700">{t('homeNoCreators')}</div>
-                  ) : previewCreators.map((creator) => (
-                    <CreatorCard key={`${creator.artist_id}-${creator.event_id}-hero`} creator={creator} compact />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="border-b border-pink-100 bg-white">
-          <div className="mx-auto grid max-w-6xl gap-3 px-4 py-6 md:grid-cols-4">
-            {[
-              { icon: Search, title: t('homeDiscoverTitle'), body: t('homeDiscoverBody') },
-              { icon: CalendarDays, title: t('homePlanTitle'), body: t('homePlanBody') },
-              { icon: UsersRound, title: t('homeQueueTitle'), body: t('homeQueueBody') },
-              { icon: Ticket, title: t('homeEnjoyTitle'), body: t('homeEnjoyBody') },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <div key={item.title} className="rounded-2xl border border-pink-100 bg-[#fff7fb] p-4">
-                  <Icon className="mb-3 text-pink-600" size={22} />
-                  <div className="text-base font-black text-gray-950">{item.title}</div>
-                  <p className="mt-1 text-sm font-medium leading-5 text-gray-600">{item.body}</p>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section id="discover" data-testid="public-discovery" className="mx-auto max-w-6xl px-4 py-10 md:py-14">
-          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-pink-700">{t('homeBrowseEyebrow')}</div>
-              <h2 className="mt-2 text-3xl font-black tracking-normal text-gray-950 md:text-4xl">{t('homeBrowseTitle')}</h2>
-            </div>
-            <Link to="/creator/register" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 hover:bg-pink-50">
-              {t('navApplyCreator')}
-              <ArrowRight size={16} />
-            </Link>
-          </div>
-
-          {loading ? (
-            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-700 shadow-sm">{t('homeLoadingCreators')}</div>
-          ) : filteredCreators.length === 0 ? (
-            <div className="rounded-[2rem] border border-pink-100 bg-white p-12 text-center text-sm font-bold text-pink-700 shadow-sm">{t('homeNoCreators')}</div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredCreators.map((creator) => (
-                <CreatorCard key={`${creator.artist_id}-${creator.event_id}`} creator={creator} />
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-    </div>
-  );
+        <CreatorPass />
+      </section>
+      <section id="discover" data-testid="public-discovery" className="discovery-directory public-width">
+        <div className="discovery-heading"><span className="discovery-scribble" aria-hidden="true">Find your<br />favorites!</span><div><h2>{t('discoveryHeading')}</h2><p>{t('discoverySearchHint')}</p></div></div>
+        <form className="discovery-searchbar" onSubmit={event => { event.preventDefault(); document.getElementById('discovery-results')?.focus(); }}><label className="discovery-search"><span className="sr-only">{th ? 'ค้นหาครีเอเตอร์' : 'Search creators'}</span><Search size={21} aria-hidden="true" /><input id="public-creator-search" name="creator-search" data-testid="public-creator-search" value={searchQuery} onChange={event => setFilter('q', event.target.value)} placeholder={t('discoveryPlaceholder')} autoComplete="off" />{searchQuery && <button type="button" onClick={() => setFilter('q', '')} aria-label={th ? 'ล้างคำค้น' : 'Clear search'}><X size={18} /></button>}</label><button type="submit" className="public-button public-primary">{t('discoverySearch')}</button></form>
+        <div className="discovery-chips"><button type="button" className="public-button" aria-pressed={!openOnly && !queueOnly && !productsOnly} onClick={() => { const next = new URLSearchParams(searchParams); ['open', 'queue', 'products'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); }}><CalendarDays size={17} />{t('discoveryAll')}</button><button type="button" data-testid="public-open-now-filter" aria-pressed={openOnly} onClick={() => setFilter('open', openOnly ? '' : '1')} className="public-button discovery-filter"><span className="discovery-open-dot" />{t('homeOpenNow')}</button><button type="button" className="public-button" aria-pressed={queueOnly} onClick={() => setFilter('queue', queueOnly ? '' : '1')}><Users size={17} />{t('discoveryQueue')}</button><button type="button" className="public-button" disabled={productError} aria-pressed={productsOnly} onClick={() => setFilter('products', productsOnly ? '' : '1')}><ShoppingBag size={17} />{t('discoveryProducts')}</button></div>
+        {queueOnly && <p className="discovery-filter-note">{t('discoveryQueueHint')}</p>}
+        {productError && <p role="status" className="discovery-filter-note">{t('discoveryProductError')}</p>}
+        <div id="discovery-results" tabIndex={-1}>
+        {loading ? <p className="discovery-feedback" role="status">{t('homeLoadingCreators')}</p> : loadError ? <div className="discovery-feedback" role="alert"><h3>{th ? 'โหลดรายชื่อครีเอเตอร์ไม่ได้' : 'Could not load creators'}</h3><p>{th ? 'ลองโหลดใหม่อีกครั้งเพื่อดูร้านที่เปิดให้เข้าชม' : 'Try again to see the available shops.'}</p><button className="public-button" onClick={() => setRetry(value => value + 1)}>{th ? 'ลองใหม่' : 'Retry'}</button></div> : <>
+          <p className="discovery-result-count" role="status">{th ? `พบ ${filteredCreators.length} ครีเอเตอร์${openOnly ? 'ที่เปิดบูธอยู่' : ''}` : `${filteredCreators.length} creators${openOnly ? ' with open booths' : ''}`}</p>
+          {filteredCreators.length ? <div className="discovery-grid">{filteredCreators.map(creator => <CreatorCard key={creator.artist_id} creator={creator} liked={liked.has(creator.artist_id)} onLike={() => setLiked(current => { const next = new Set(current); if (next.has(creator.artist_id)) next.delete(creator.artist_id); else next.add(creator.artist_id); return next; })} />)}</div> : <div className="discovery-feedback"><Search size={28} aria-hidden="true" /><h3>{th ? 'ยังไม่พบครีเอเตอร์ที่ค้นหา' : 'No creators found yet'}</h3><p>{th ? 'ลองชื่ออื่น หรือดูร้านทั้งหมด บางร้านอาจยังไม่ได้เผยแพร่หน้าร้าน' : 'Try another name or browse all shops. Some creators may not have published their shop yet.'}</p>{(searchQuery || openOnly || queueOnly || productsOnly) && <button className="public-button" onClick={() => setSearchParams({}, { replace: true })}>{th ? 'ดูครีเอเตอร์ทั้งหมด' : 'Show all creators'}</button>}</div>}
+        </>}
+        </div>
+      </section>
+      <section className="discovery-finale"><div className="public-width"><span className="discovery-mini-ticket" aria-hidden="true">MORE<br />CREATORS<br />BRIGHTER<br />EVENTS <Heart size={18} /></span><div><p className="public-kicker">{t('discoveryBottomEyebrow')}</p><h2>{t('discoveryBottomTitle')}</h2><p>{t('discoveryBottomBody')}</p></div><a className="public-button public-primary" href="#discover">{t('discoveryBottomButton')}<ArrowRight size={18} /></a><div className="discovery-mascot" aria-hidden="true"><span>• ᴗ •</span><Heart size={19} fill="currentColor" /></div></div></section>
+    </main>
+  </PublicShell>;
 }
 
-function CreatorCard({ creator, compact = false }: { creator: DiscoveryRow; compact?: boolean }) {
+function ArtTile({ variant = 0 }: { variant?: number }) {
+  return <div className={`discovery-art discovery-art-${variant % 4}`} aria-hidden="true"><Star className="art-star" size={18} /><span className="art-face">{variant % 2 ? '• ω •' : '• ᴗ •'}</span><Heart className="art-heart" size={15} /></div>;
+}
+
+function CreatorPass() {
+  const { t } = useI18n();
+  return <div className="discovery-visual">
+    <Star className="discovery-doodle-star" size={40} fill="currentColor" aria-hidden="true" />
+    <span className="discovery-visual-note" aria-hidden="true">Good creators,<br />better days!</span>
+    <div className="discovery-preview-paper"><strong>{t('discoveryPreview')}</strong><div>{[0, 1, 2, 3].map(i => <ArtTile key={i} variant={i} />)}</div></div>
+    <div className="discovery-pass"><div className="discovery-pass-label">CREATOR PASS <Ticket size={18} /></div><p className="discovery-example">{t('discoveryExample')}</p><div className="discovery-pass-identity"><ArtTile /><div><h2>Sora’s Atelier</h2><p><span>Example Event</span><span>B-12</span></p><small>Illust · Goods · Stationery</small></div><Heart size={20} fill="currentColor" aria-hidden="true" /></div><div className="discovery-pass-queue"><div><span>{t('discoveryNowServing')}</span><strong>A032</strong></div><div><span>{t('discoveryWaiting')}</span><b>{t('discoveryPeople')}</b><Users size={28} aria-hidden="true" /></div></div><div className="discovery-pass-open"><span className="discovery-open-dot" />{t('discoveryServing')}</div></div>
+    <span className="discovery-see-you" aria-hidden="true">See you<br />at the event! ♡</span><div className="discovery-mini-ticket" aria-hidden="true">MEET<br />SUPPORT<br />COLLECT<br />ENJOY <Heart size={14} /></div>
+  </div>;
+}
+
+function CreatorCard({ creator, liked, onLike }: { creator: DiscoveryRow; liked: boolean; onLike: () => void }) {
   const { t, dateLocale } = useI18n();
-  return (
-    <Link
-      to={`/${creator.slug}/home`}
-      data-testid="creator-card"
-      className={`group block rounded-[1.75rem] border border-pink-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-xl hover:shadow-pink-100 ${
-        compact ? '' : 'min-h-[220px]'
-      }`}
-    >
-      <div className="flex items-start gap-4">
-        <CreatorAvatar creator={creator} compact={compact} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate text-lg font-black text-gray-950">{creator.display_name}</h3>
-            <span
-              className={[
-                'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black',
-                creator.is_booth_open
-                  ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
-                  : 'border-gray-200 bg-white text-slate-600'
-              ].join(' ')}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${creator.is_booth_open ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-              {creator.is_booth_open ? t('creatorCardOpen') : t('creatorCardClosed')}
-            </span>
-          </div>
-          {creator.bio && <p className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-slate-600">{creator.bio}</p>}
-          <div className="mt-3 rounded-2xl bg-[#fff7fb] p-3">
-            <div className="text-sm font-black leading-5 text-gray-900">{creator.event_name || t('creatorCardNoUpcoming')}</div>
-            <div className="mt-2 flex items-start gap-2 text-xs font-bold leading-4 text-pink-900">
-              <MapPin className="mt-0.5 shrink-0 text-pink-500" size={13} />
-              <span>{creator.location || t('creatorCardLocationSoon')}</span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-black text-pink-700">
-              <span>{formatEventDate(creator.start_date, dateLocale, t('creatorCardScheduleSoon'))}</span>
-              {creator.booth_detail && <span className="rounded-full bg-white px-2 py-1">{t('creatorCardBooth')} {creator.booth_detail}</span>}
-            </div>
-          </div>
-          <div className="mt-3 inline-flex items-center gap-2 text-sm font-black text-pink-600">
-            {t('creatorCardView')}
-            <ArrowRight className="transition group-hover:translate-x-0.5" size={15} />
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function CreatorAvatar({ creator, compact }: { creator: DiscoveryRow; compact: boolean }) {
   const [failed, setFailed] = useState(false);
-  const sizeClass = compact ? 'h-20 w-20 rounded-2xl text-2xl' : 'h-24 w-24 rounded-[1.5rem] text-3xl';
-
-  if (creator.image_url && !failed) {
-    return (
-      <img
-        src={creator.image_url}
-        alt={creator.display_name}
-        onError={() => setFailed(true)}
-        className={`${sizeClass} shrink-0 object-cover bg-pink-50`}
-      />
-    );
-  }
-
-  return (
-    <div className={`${sizeClass} flex shrink-0 items-center justify-center bg-pink-100 font-black text-pink-600`}>
-      {creator.display_name.charAt(0)}
-    </div>
-  );
+  const products = creator.products || [];
+  const categories = [...new Set(products.map(product => product.category).filter(Boolean))].slice(0, 3).join(' · ');
+  const images = products.filter(product => product.image_url).slice(0, 4);
+  return <article data-testid="creator-card" className="discovery-card">
+    <div className="discovery-cover">{creator.image_url && !failed ? <img src={creator.image_url} alt="" loading="lazy" onError={() => setFailed(true)} /> : <div className="discovery-cover-art" aria-hidden="true"><Star /><Heart /><Sparkles /></div>}<button type="button" className="discovery-heart" aria-label={`${t('discoveryLike')}: ${creator.display_name}`} aria-pressed={liked} onClick={onLike}><Heart size={19} fill={liked ? 'currentColor' : 'none'} /></button></div>
+    <div className="discovery-compact-body"><div className="discovery-identity"><div className="discovery-avatar">{creator.image_url && !failed ? <img src={creator.image_url} alt="" loading="lazy" onError={() => setFailed(true)} /> : creator.display_name.charAt(0)}</div><div><div className="discovery-name-row"><h3>{creator.display_name}</h3><span className={`discovery-status ${creator.is_booth_open ? 'is-open' : ''}`}>{creator.is_booth_open && <span className="discovery-open-dot" />}{t(creator.is_booth_open ? 'creatorCardOpen' : 'creatorCardClosed')}</span></div><p className="discovery-event-name">{creator.event_name || t('creatorCardNoUpcoming')}{creator.booth_detail && <span>{t('creatorCardBooth')} {creator.booth_detail}</span>}</p>{(categories || creator.bio) && <p className="discovery-bio">{categories || creator.bio}</p>}</div></div>
+    <div className="discovery-card-bottom"><div className="discovery-card-artwork">{images.length ? images.map(product => <div className="discovery-work" key={product.id}><img src={product.image_url!} alt={product.name} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /><ShoppingBag aria-hidden="true" size={20} /></div>) : <span className="discovery-work-placeholder"><Sparkles size={19} />{t('discoveryWorkSoon')}</span>}</div><div className="discovery-card-visit"><span><Users size={18} />{t(creator.accepts_queue ? 'discoveryCheckQueue' : 'discoveryNoQueue')}</span><Link to={`/${creator.slug}/home`} className="public-button public-primary">{t('creatorCardView')}<ArrowRight size={17} /></Link></div></div>
+    <div className="discovery-card-meta">{creator.location && <span><MapPin size={13} />{creator.location}</span>}{creator.start_date && <span><CalendarDays size={13} />{formatEventDate(creator.start_date, dateLocale, t('creatorCardScheduleSoon'))}</span>}</div></div>
+  </article>;
 }

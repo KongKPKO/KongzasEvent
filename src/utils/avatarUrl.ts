@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { resolveStoredImageUrl } from './imageUtils';
 
 const localHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', 'host.docker.internal']);
 const isPrivateIp = (host: string) =>
@@ -34,7 +35,7 @@ export const resolveAvatarUrl = (value?: string | null) => {
   if (value.startsWith('blob:')) return value;
 
   if (value.startsWith('http://') || value.startsWith('https://')) {
-    return rewriteUrlToCurrentHost(value);
+    return rewriteUrlToCurrentHost(resolveStoredImageUrl(value));
   }
 
   const normalizedPath = value.replace(/^\/+/, '');

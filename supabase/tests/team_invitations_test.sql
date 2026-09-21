@@ -1,6 +1,6 @@
 -- supabase/tests/team_invitations_test.sql
 begin;
-select plan(27);
+select plan(37);
 
 -- Fixtures --------------------------------------------------------------------
 
@@ -166,11 +166,11 @@ select throws_ok(
   $$ select public.invite_team_member(
        (select artist_id from _test_ids),
        'manager.cannot.invite@nireq.local',
-       'seller',
+       'manager',
        array[(select event_id from _test_ids)]
      ) $$,
   'permission denied',
-  'Test 9: manager cannot manage team invites'
+  'Test 9: manager cannot appoint another manager'
 );
 
 do $$ begin perform set_jwt_email('test.staff@nireq.local'); end $$;
@@ -379,6 +379,46 @@ select results_eq(
   $$ values ('declined') $$,
   'Test 25: invitee can decline their own invitation'
 );
+
+
+-- v1 manager scope and direct API negatives.
+do $$ begin perform set_jwt_email('test.manager@nireq.local'); end $$;
+select results_eq(
+  $$ select public.invite_team_member((select artist_id from _test_ids), 'manager.seller@nireq.local', 'seller', array[(select event_id from _test_ids)]) ->> 'result' $$,
+  $$ values ('invitation_sent') $$, 'manager can invite seller');
+select results_eq(
+  $$ select public.invite_team_member((select artist_id from _test_ids), 'manager.queue@nireq.local', 'queue_staff', array[(select event_id from _test_ids)]) ->> 'result' $$,
+  $$ values ('invitation_sent') $$, 'manager can invite queue staff');
+select throws_ok(
+  $$ select public.invite_team_member((select artist_id from _test_ids), 'test.owner@nireq.local', 'seller', array[(select event_id from _test_ids)]) $$,
+  'permission denied', 'manager cannot target owner with lower-role invitation');
+select throws_ok(
+  $$ select public.remove_team_member((select id from public.artist_members where artist_id = (select artist_id from _test_ids) and role = 'owner' limit 1)) $$,
+  'forbidden', 'manager cannot remove owner');
+select throws_ok(
+  $$ select public.remove_team_member((select id from public.artist_members where artist_id = (select artist_id from _test_ids) and member_email = 'test.manager@nireq.local')) $$,
+  'forbidden', 'manager cannot remove manager');
+select throws_ok(
+  $$ select public.update_artist_member_role((select id from public.artist_members where artist_id = (select artist_id from _test_ids) and member_email = 'test.staff@nireq.local'), 'manager') $$,
+  'forbidden', 'manager cannot promote through role RPC');
+grant select on _test_ids to authenticated;
+set local role authenticated;
+select results_eq(
+  $$ with changed as (update public.artist_members set role = 'owner' where artist_id = (select artist_id from _test_ids) returning id) select count(*) from changed $$,
+  $$ values (0::bigint) $$, 'manager direct table update cannot elevate roles');
+reset role;
+select results_eq(
+  $$ select public.remove_team_member((select id from public.artist_members where artist_id = (select artist_id from _test_ids) and member_email = 'test.staff@nireq.local')) $$,
+  $$ values (true) $$, 'manager can remove queue staff');
+update public.artist_members set status = 'inactive'
+where artist_id = (select artist_id from _test_ids) and member_email = 'test.manager@nireq.local';
+select throws_ok(
+  $$ select public.invite_team_member((select artist_id from _test_ids), 'revoked@nireq.local', 'seller', array[(select event_id from _test_ids)]) $$,
+  'permission denied', 'revoked manager cannot invite');
+do $$ begin perform set_jwt_email('manager.seller@nireq.local'); end $$;
+select throws_ok(
+  $$ select public.accept_team_invitation((select id from public.artist_member_invitations where invited_email = 'manager.seller@nireq.local')) $$,
+  'inviter no longer authorized', 'invitation cannot restore access after issuer revocation');
 
 select * from finish();
 rollback;

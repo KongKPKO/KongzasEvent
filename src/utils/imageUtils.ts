@@ -1,50 +1,20 @@
 import { supabase } from '../supabaseClient';
 
-/**
- * Transforms a Supabase Storage URL into an ImageKit URL for optimization.
- * 
- * @param url - The original Supabase Storage URL
- * @param width - The desired width for resizing (default: 600)
- * @returns The optimized ImageKit URL or the original URL if not from Supabase
- */
-const IMAGEKIT_ENDPOINT = 'https://ik.imagekit.io/kongzas';
-
-export const getOptimizedImageUrl = (url: string, width: number = 600): string => {
-   if (!url) return '';
-
-   // Check if it's a Supabase Storage URL
-   if (url.includes('supabase.co/storage/v1/object/public/')) {
-      try {
-         // Split specifically at the public folder path to get the relative file path
-         const splitKey = '/storage/v1/object/public/';
-         const parts = url.split(splitKey);
-         
-         // If split was successful, we take the second part (the file path)
-         if (parts.length > 1) {
-            const filePath = parts[1];
-            
-            // Construct ImageKit URL: Endpoint + / + Clean File Path
-            // Append transformation parameters: tr=w-[width],q-80
-            return `${IMAGEKIT_ENDPOINT}/${filePath}?tr=w-${width},q-80`;
-         }
-      } catch (error) {
-         console.error('Error transforming ImageKit URL:', error);
-      }
-   }
-
-   // Fallback: If not a Supabase URL or error occurs, return original
-   return url;
+// Existing records can contain the former image proxy URL. Resolve its origin
+// without fetching through the proxy or rewriting stored customer data.
+export const resolveStoredImageUrl = (value: string): string => {
+  const legacyPrefix = 'https://ik.imagekit.io/kongzas/';
+  if (!value.startsWith(legacyPrefix)) return value;
+  const path = value.slice(legacyPrefix.length).split(/[?#]/)[0].replace(/^tr:[^/]+\//, '');
+  const separator = path.indexOf('/');
+  if (separator < 1) return '';
+  const bucket = path.slice(0, separator);
+  if (bucket !== 'Menu' && bucket !== 'Avatar') return '';
+  return supabase.storage.from(bucket).getPublicUrl(path.slice(separator + 1)).data.publicUrl;
 };
 
-export const getMenuImageUrl = (dbValue: string, width: number = 600): string => {
-   if (!dbValue) return '';
-
-   let path = dbValue;
-   if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-      path = dbValue.split('Menu/')[1] || dbValue;
-   }
-   if (path.includes('http')) return getOptimizedImageUrl(path, width);
-
-   const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-   return getOptimizedImageUrl(data.publicUrl, width);
+export const getMenuImageUrl = (value: string): string => {
+  if (!value) return '';
+  if (/^https?:\/\//.test(value)) return resolveStoredImageUrl(value);
+  return supabase.storage.from('Menu').getPublicUrl(value.replace(/^\/+/, '')).data.publicUrl;
 };

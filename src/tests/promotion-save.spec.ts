@@ -50,7 +50,8 @@ test('promotion edit preserves local time and cancelled conflicts never save', a
     expect(assignment.data?.is_paused).toBe(false);
     page.once('dialog', (dialog) => dialog.accept());
     await form.getByRole('button', { name: /Save changes|บันทึกการแก้ไข/ }).click();
-    await expect(form).toContainText(/Promotion saved and activated|บันทึกและเปิดใช้โปรโมชั่นแล้ว/);
+    await expect(page.locator('.promotion-notice')).toContainText(/Promotion saved\.|บันทึกโปรโมชันแล้ว/);
+    await expect(form).toHaveCount(0);
     const saved = await service.from('promotion_assignments').select('starts_at,ends_at,is_paused').eq('promotion_id', original).single();
     expect(new Date(saved.data!.starts_at).toISOString()).toBe(starts);
     expect(new Date(saved.data!.ends_at).toISOString()).toBe(ends);

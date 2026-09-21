@@ -32,8 +32,8 @@
     "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --only hosting:nireqapp"
   },
   "dependencies": {
+    "@jsquash/webp": "^1.5.0",
     "@supabase/supabase-js": "^2.90.1",
-    "browser-image-compression": "^2.0.2",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
     "firebase": "^12.13.0",

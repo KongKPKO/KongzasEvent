@@ -97,6 +97,8 @@ build/
 playwright-report/
 test-results/
 output/
+tmp/pdfs/
+__pycache__/
 screenshots/
 debug-*.png
 

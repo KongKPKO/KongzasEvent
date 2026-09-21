@@ -32,7 +32,7 @@ const cleanupUser = async (userId: string) => {
 const signInThroughUi = async (page: import('@playwright/test').Page, email: string, password: string) => {
   await page.goto('/manage-login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByTestId('creator-login-submit').click();
   await expect(page.getByText('No workspace role assigned for this account.')).toBeVisible();
 };
@@ -211,6 +211,7 @@ test.describe('Creator Google auth', () => {
     await contactName.fill('Private draft owner');
     await creatorName.fill('Private Draft Booth');
     await primarySocial.fill('https://instagram.com/private-draft');
+    await page.getByText('More social links (optional)', { exact: true }).click();
     await website.fill('https://private.example.com');
     await note.fill('Private event plan that must not cross account identities.');
     await truthful.check();

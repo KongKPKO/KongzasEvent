@@ -1,0 +1,63 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { ensureOwnerArtistFixture } from './helpers/adminFixture';
+
+test('storefront supports variants, stock limits, keyboard details and a persistent cart in both languages', async ({ page }, testInfo) => {
+  const suffix = randomUUID().slice(0, 8), slug = `shop-${suffix}`;
+  const fixture = await ensureOwnerArtistFixture({ email: `${slug}@example.com`, password: 'LocalStorefront123!', slug, displayName: 'Creator Storefront' });
+  const eventId = randomUUID();
+  const ids = [randomUUID(), randomUUID(), randomUUID()];
+  try {
+    const event = await fixture.service.from('events').insert({ id: eventId, artist_id: fixture.userId, event_name: 'Creator Festival', start_date: new Date(Date.now() - 3600000).toISOString(), end_date: new Date(Date.now() + 86400000).toISOString(), status: 'Confirmed', is_booth_open: true });
+    if (event.error) throw event.error;
+    const products = await fixture.service.from('products').insert(ids.map((id, index) => ({ id, artist_id: fixture.userId, name: ['Print Blue', 'Print Pink', 'Sold Out Print'][index], variant_group_name: index < 2 ? 'Festival Print' : null, variant_name: index < 2 ? ['Blue', 'Pink'][index] : null, description: 'Art print, full illustration.', category: 'Prints', price: 100 + index * 50, stock_total: index === 2 ? 0 : 2, is_unlimited: false, status: 'enable', image_url: 'missing-storefront-image.webp' })));
+    if (products.error) throw products.error;
+    const allocations = await fixture.service.from('event_products').insert(ids.map((id, index) => ({ event_id: eventId, artist_id: fixture.userId, product_id: id, stock_total: index === 2 ? 0 : 2, is_unlimited: false, is_enabled: true })));
+    if (allocations.error) throw allocations.error;
+    await page.addInitScript(() => { if (!localStorage.getItem('nireq-language')) localStorage.setItem('nireq-language', 'en'); });
+    await page.goto(`/${slug}/home`);
+    await expect(page.getByRole('heading', { name: 'Creator Storefront' })).toBeVisible();
+    await page.goto(`/${slug}/menu`);
+    const blue = page.getByRole('article', { name: 'Print Blue', exact: true });
+    await expect(blue.getByRole('img', { name: /Image unavailable/ })).toBeVisible();
+    await expect(page.getByRole('article', { name: 'Sold Out Print' }).getByRole('button', { name: 'Add: Sold Out Print' })).toBeDisabled();
+    const details = blue.getByRole('button', { name: 'View details: Print Blue' });
+    await details.press('Enter');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Pink', exact: true }).click();
+    await expect(dialog.getByRole('heading', { name: 'Print Pink' })).toBeVisible();
+    await expect(dialog.getByText('฿150', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Add: Print Pink', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Increase quantity of Print Pink' }).click();
+    await expect(dialog.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await expect(dialog.getByText('Left: 2', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(details).toBeFocused();
+    const search = page.getByRole('textbox', { name: 'Search...' });
+    await search.fill('no such product');
+    await expect(page.getByRole('article')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).first().click();
+    const pink = page.getByRole('article', { name: 'Print Pink', exact: true });
+    await expect(pink.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await page.reload();
+    await expect(pink.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Switch language' }).click();
+    await expect(page.getByText('ร้านครีเอเตอร์', { exact: true })).toBeVisible();
+    await expect(pink.getByRole('button', { name: 'เพิ่มจำนวน Print Pink' })).toBeDisabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('storefront-th.png'), fullPage: true });
+    await page.route('**/rest/v1/rpc/list_event_products', route => route.fulfill({ status: 503, body: '{"message":"test unavailable"}', contentType: 'application/json' }));
+    await page.reload();
+    await expect(page.getByRole('alert')).toContainText('โหลดสินค้าไม่สำเร็จ');
+    await page.unroute('**/rest/v1/rpc/list_event_products');
+    await page.getByRole('button', { name: 'ลองอีกครั้ง' }).click();
+    await expect(pink.getByRole('button', { name: /Increase quantity of Print Pink|เพิ่มจำนวน Print Pink/ })).toBeDisabled();
+  } finally {
+    await fixture.service.from('events').delete().eq('id', eventId);
+    await fixture.service.from('products').delete().in('id', ids);
+    await fixture.service.from('artists').delete().eq('id', fixture.userId);
+    await fixture.service.auth.admin.deleteUser(fixture.userId);
+  }
+});

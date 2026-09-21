@@ -23,6 +23,9 @@ with public_rpc(signature) as (
     ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),
     ('public.estimate_queue_eta(uuid,integer)'),
+    ('public.queue_updates_delayed(uuid)'),
+    ('public.reserve_image_upload(uuid,text,uuid,uuid,text,text)'),
+    ('public.submit_order_problem(uuid,uuid,text,text,text,text,boolean,text[])'),
     ('public.get_customer_order_status(uuid,uuid)'),
     ('public.get_public_order_receipt(uuid,text)'),
     ('public.get_public_online_campaign(text,text)'),
@@ -46,7 +49,7 @@ select is(
     where to_regprocedure(r.signature) is not null
       and has_function_privilege('anon', to_regprocedure(r.signature), 'execute')
   ),
-  22::bigint,
+  25::bigint,
   'anon retains every intentional public RPC and RLS helper'
 );
 
@@ -59,6 +62,9 @@ with public_rpc(signature) as (
     ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),
     ('public.estimate_queue_eta(uuid,integer)'),
+    ('public.queue_updates_delayed(uuid)'),
+    ('public.reserve_image_upload(uuid,text,uuid,uuid,text,text)'),
+    ('public.submit_order_problem(uuid,uuid,text,text,text,text,boolean,text[])'),
     ('public.get_customer_order_status(uuid,uuid)'),
     ('public.get_public_order_receipt(uuid,text)'),
     ('public.get_public_online_campaign(text,text)'),

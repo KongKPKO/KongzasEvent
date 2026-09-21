@@ -1,0 +1,7 @@
+.team-workspace main :is(button,select,input:not([type=checkbox]),summary) { min-height:44px; }
+.team-workspace main :is(button,select,input):focus-visible { outline:2px solid var(--brand-primary); outline-offset:3px; }
+.team-workspace main button:disabled { opacity:.55; cursor:not-allowed; }
+.team-workspace main select { max-width:100%; }
+.team-workspace main input { min-width:0; }
+.team-workspace main label:has(input[type=checkbox]) { min-height:44px; }
+.team-workspace main p { overflow-wrap:anywhere; }

@@ -1,3 +1,5 @@
+import './sales-readiness.css';
+import EvidenceReview from '../../components/EvidenceReview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, Eye, ImageOff, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
@@ -45,7 +47,7 @@ const maskPaymentId = (value?: string | null) => {
 
 export default function OnlineCampaignWorkspace() {
   const { campaignId } = useParams<{ campaignId: string }>();
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, language } = useI18n();
   const [actor, setActor] = useState<ActorContext | null>(null);
   const [artistSlug, setArtistSlug] = useState('');
   const [workspace, setWorkspace] = useState<CampaignWorkspace | null>(null);
@@ -70,7 +72,17 @@ export default function OnlineCampaignWorkspace() {
   const [removeTarget, setRemoveTarget] = useState<{ kind: 'pickup' | 'payment'; id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft | null>(null);
-  const evidenceCloseRef = useRef<HTMLButtonElement | null>(null);
+  const [fulfillmentTarget, setFulfillmentTarget] = useState<{ order: CampaignOrder; action: 'ship' | 'pickup' } | null>(null);
+  const [carrier, setCarrier] = useState('');
+  const [tracking, setTracking] = useState('');
+  const [fulfillmentError, setFulfillmentError] = useState('');
+  const openFulfillment = (order: CampaignOrder, action: 'ship' | 'pickup') => {
+    setCarrier(''); setTracking(''); setFulfillmentError('');
+    setFulfillmentTarget({ order, action });
+  };
+  const [reviewTarget, setReviewTarget] = useState<{ order: CampaignOrder; action: string } | null>(null);
+  const [orderBusy, setOrderBusy] = useState(false);
+  const orderInFlight = useRef(false);
   const canManage = actor?.role === 'owner' || actor?.role === 'manager';
 
   const load = useCallback(async () => {
@@ -105,15 +117,6 @@ export default function OnlineCampaignWorkspace() {
 
   useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    if (!evidencePreview) return;
-    evidenceCloseRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setEvidencePreview(null);
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [evidencePreview]);
 
   const allocatedIds = useMemo(
     () => new Set((workspace?.products || []).filter((product) => product.is_enabled !== false).map((product) => product.product_id)),
@@ -175,7 +178,7 @@ export default function OnlineCampaignWorkspace() {
         || order.status === orderFilter;
       if (!matchesFilter) return false;
       if (!query) return true;
-      return [order.order_code, order.customer_name, order.customer_email, order.customer_phone]
+      return [order.order_code, order.customer_name, order.customer_email, order.customer_phone, order.tracking_number, order.pickup_point?.name]
         .some((value) => String(value || '').toLowerCase().includes(query))
         || order.items.some((item) => [item.name, item.sku].some((value) => String(value || '').toLowerCase().includes(query)));
     });
@@ -386,13 +389,14 @@ export default function OnlineCampaignWorkspace() {
   };
 
   const actOnOrder = async (order: CampaignOrder, action: string) => {
+    if (orderInFlight.current) return;
+    orderInFlight.current = true;
+    setOrderBusy(true);
     try {
       let notificationEvent: 'ready_for_pickup' | 'shipped' | 'payment_rejected' | 'refund_required' | null = null;
       if (action === 'ship') {
-        const carrier = window.prompt(t('campaignCarrierPrompt')) || '';
-        const tracking = window.prompt(t('campaignTrackingPrompt')) || '';
-        if (!tracking) return;
-        await markCampaignOrderShipped(order.id, carrier, tracking);
+        if (!tracking.trim()) return;
+        await markCampaignOrderShipped(order.id, carrier.trim(), tracking.trim());
         notificationEvent = 'shipped';
       } else if (action === 'pickup') {
         await markCampaignOrderPickedUp(order.id);
@@ -410,6 +414,7 @@ export default function OnlineCampaignWorkspace() {
         if (action === 'reject_online_payment') notificationEvent = 'payment_rejected';
         if (action === 'mark_online_refund_required') notificationEvent = 'refund_required';
       }
+      setFulfillmentTarget(null);
       await load();
       if (notificationEvent) {
         const { error } = await notifyOnlineCampaignOrder({ orderId: order.id, event: notificationEvent });
@@ -422,7 +427,8 @@ export default function OnlineCampaignWorkspace() {
     } catch (error) {
       console.error(error);
       setFeedback(t('campaignOrderActionFailed'));
-    }
+      setFulfillmentError(t('campaignOrderActionFailed'));
+    } finally { orderInFlight.current = false; setOrderBusy(false); setReviewTarget(null); }
   };
 
   const openEvidence = async (order: CampaignOrder) => {
@@ -462,6 +468,14 @@ export default function OnlineCampaignWorkspace() {
     pickup_enabled: settingsDraft.pickupEnabled,
   });
   const storefrontUrl = '/' + artistSlug + '/campaign/' + campaign.slug;
+  const readinessChecks: Array<{ label: string; ready: boolean; tab: Tab }> = [
+    { label: language === 'th' ? 'วันเปิด–ปิดขาย' : 'Sales dates', ready: new Date(campaign.closes_at) > new Date(campaign.opens_at), tab: 'settings' },
+    { label: language === 'th' ? 'สินค้าเปิดใช้งาน' : 'Enabled products', ready: workspace.products.some(item => item.is_enabled), tab: 'products' },
+    { label: language === 'th' ? 'สต็อกพร้อมขาย' : 'Stock available', ready: workspace.products.some(item => item.is_enabled && (item.is_unlimited || Number(item.available_quantity ?? Number(item.stock_total || 0) - Number(item.stock_reserved || 0) - Number(item.stock_sold || 0)) > 0)), tab: 'products' },
+    { label: language === 'th' ? 'ช่องทางรับเงิน' : 'Payment method', ready: workspace.payment_methods.some(item => item.is_enabled), tab: 'settings' },
+    { label: language === 'th' ? 'วิธีส่งมอบสินค้า' : 'Fulfillment method', ready: campaign.shipping_enabled || campaign.pickup_enabled, tab: 'settings' },
+    ...(campaign.pickup_enabled ? [{ label: language === 'th' ? 'จุดรับสินค้า' : 'Pickup point', ready: workspace.pickup_points.some(item => item.is_enabled), tab: 'settings' as Tab }] : []),
+  ];
   const actionCount = workspace.orders.filter((order) =>
     ['awaiting_shipment', 'awaiting_pickup'].includes(order.fulfillment_status)
     || (canManage && ['payment_submitted', 'payment_submitted_late', 'refund_pending'].includes(order.payment_status))
@@ -470,29 +484,34 @@ export default function OnlineCampaignWorkspace() {
   return (
     <div className="min-h-screen bg-gray-50 text-slate-800">
       <Toast message={toast} onClose={() => setToast(null)} />
-      {evidencePreview && (
-        <div
-          className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/70 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('campaignEvidencePreview')}
-          onClick={(event) => { if (event.target === event.currentTarget) setEvidencePreview(null); }}
-        >
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
-              <div className="min-w-0">
-                <div className="text-sm font-black text-gray-950">{t('campaignEvidencePreview')}</div>
-                <div className="truncate text-xs font-bold text-gray-500">{evidencePreview.order.order_code} · {evidencePreview.order.customer_name}</div>
-                <div className="mt-1 text-base font-black text-gray-950">{t('campaignExpectedAmount')}: {formatPrice(evidencePreview.order.total_price, evidencePreview.order.currency)}</div>
-              </div>
-              <button ref={evidenceCloseRef} type="button" onClick={() => setEvidencePreview(null)} aria-label={t('campaignCloseEvidence')} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"><X size={18} /></button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-gray-100 p-4">
-              <img src={evidencePreview.url} alt={`${t('campaignEvidencePreview')} ${evidencePreview.order.order_code}`} className="mx-auto max-h-[72vh] max-w-full rounded-xl bg-white object-contain shadow-sm" />
-            </div>
-          </div>
-        </div>
-      )}
+      {evidencePreview && <EvidenceReview title={t('campaignEvidencePreview')} closeLabel={t('campaignCloseEvidence')} code={evidencePreview.order.order_code} customer={evidencePreview.order.customer_name} amount={evidencePreview.order.total_price} currency={evidencePreview.order.currency} url={evidencePreview.url} items={evidencePreview.order.items} onClose={() => setEvidencePreview(null)}>
+        {canManage && evidencePreview.order.payment_status === 'payment_submitted' && <>
+          <button className="review-approve" onClick={() => { setReviewTarget({ order: evidencePreview.order, action: 'confirm_online_payment' }); setEvidencePreview(null); }}>{t('campaignConfirmPayment')}</button>
+          <button className="review-reject" onClick={() => { setReviewTarget({ order: evidencePreview.order, action: 'reject_online_payment' }); setEvidencePreview(null); }}>{t('campaignRejectPayment')}</button>
+        </>}
+      </EvidenceReview>}
+      <ConfirmDialog
+        open={Boolean(fulfillmentTarget)}
+        title={fulfillmentTarget?.action === 'ship' ? t('campaignMarkShipped') : t('campaignMarkPickedUp')}
+        detail={fulfillmentTarget ? `${fulfillmentTarget.order.order_code} · ${fulfillmentTarget.order.customer_name}` : ''}
+        loading={orderBusy}
+        confirmDisabled={fulfillmentTarget?.action === 'ship' && !tracking.trim()}
+        confirmLabel={language === 'th' ? 'ยืนยันรายการนี้' : 'Confirm this order'}
+        onCancel={() => { if (!orderInFlight.current) setFulfillmentTarget(null); }}
+        onConfirm={() => { if (fulfillmentTarget) void actOnOrder(fulfillmentTarget.order, fulfillmentTarget.action); }}
+      >
+        {fulfillmentTarget && <div className="mt-3 max-h-[55vh] space-y-3 overflow-y-auto text-sm">
+          <ul className="rounded-xl bg-pink-50 p-3 text-gray-900">{fulfillmentTarget.order.items.map((item, index) => <li key={index} className="py-1">{item.name} {item.sku && <span className="text-gray-500">({item.sku})</span>} <strong>×{item.quantity}</strong></li>)}</ul>
+          <p className="whitespace-pre-line break-words">{fulfillmentTarget.order.customer_phone}<br />{fulfillmentTarget.action === 'ship' ? fulfillmentTarget.order.shipping_address : fulfillmentTarget.order.pickup_point?.name}</p>
+          {fulfillmentTarget.action === 'ship' ? <>
+            <label className="block">{language === 'th' ? 'ขนส่ง (ไม่บังคับ)' : 'Carrier (optional)'}<input disabled={orderBusy} value={carrier} onChange={event => setCarrier(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border p-3" /></label>
+            <label className="block">{language === 'th' ? 'เลขพัสดุ' : 'Tracking number'}<input required disabled={orderBusy} value={tracking} onChange={event => setTracking(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border p-3" /></label>
+          </> : null}
+          <p className="text-gray-600">{language === 'th' ? 'เทียบรหัสและสินค้าให้ตรงกับลูกค้าหรือพัสดุ บันทึกเมื่อส่งมอบแล้วเท่านั้น' : 'Match the code and items to the customer or parcel. Confirm only after handing over.'}</p>
+          {fulfillmentError && <p role="alert" className="text-red-700">{fulfillmentError}</p>}
+        </div>}
+      </ConfirmDialog>
+      <ConfirmDialog open={Boolean(reviewTarget)} title={reviewTarget?.action === 'reject_online_payment' ? t('campaignRejectPayment') : t('campaignConfirmPayment')} detail={reviewTarget ? `${reviewTarget.order.order_code} · ${formatPrice(reviewTarget.order.total_price, reviewTarget.order.currency)}\n${language === 'th' ? 'ตรวจสอบรายการเงินเข้าก่อนยืนยัน การปฏิเสธจะยกเลิกออเดอร์และคืนสต็อก หากได้รับเงินแล้วให้ติดต่อผู้ซื้อก่อน' : 'Check the received transfer before confirming. Rejection cancels the order and releases stock. Contact the buyer first if money was received.'}` : ''} loading={orderBusy} confirmLabel={reviewTarget?.action === 'reject_online_payment' ? t('campaignRejectPayment') : t('campaignConfirmPayment')} onCancel={() => setReviewTarget(null)} onConfirm={() => { if (reviewTarget) void actOnOrder(reviewTarget.order, reviewTarget.action); }} />
       <ConfirmDialog
         open={Boolean(removeTarget)}
         title={t('campaignRemoveSetting')}
@@ -530,6 +549,12 @@ export default function OnlineCampaignWorkspace() {
         {feedback && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{feedback}</div>}
 
         {tab === 'overview' && (
+          <>
+          {canManage && <section className="sales-readiness" aria-label={language === 'th' ? 'ตรวจความพร้อมก่อนเปิดขาย' : 'Before sales open'}>
+            <header><div><h2>{language === 'th' ? 'ตรวจความพร้อมก่อนเปิดขาย' : 'Before sales open'}</h2><p>{language === 'th' ? 'ตรวจจากข้อมูลที่บันทึกแล้ว รายการนี้ไม่ใช่สถานะเปิดขาย' : 'Based on saved settings. This checklist is not the publication status.'}</p></div><strong>{readinessChecks.filter(item => item.ready).length}/{readinessChecks.length}</strong></header>
+            <ul>{[...readinessChecks].sort((a, b) => Number(a.ready) - Number(b.ready)).map(item => <li key={item.label}><span>{item.label}</span><b>{item.ready ? (language === 'th' ? 'พร้อม' : 'Ready') : (language === 'th' ? 'ตรวจสอบ' : 'Check')}</b><button onClick={() => setTab(item.tab)}>{language === 'th' ? 'ตั้งค่า' : 'Configure'}</button></li>)}</ul>
+            <button onClick={() => setTab('settings')}>{language === 'th' ? 'ตรวจการตั้งค่าและเผยแพร่' : 'Review settings & publish'}</button>
+          </section>}
           <div className="grid gap-4 md:grid-cols-3">
             <section className="rounded-2xl border border-gray-200 bg-white p-5">
               <ShoppingBag className="text-pink-600" />
@@ -546,6 +571,7 @@ export default function OnlineCampaignWorkspace() {
               <div className="mt-3 text-2xl font-black">{formatPrice(workspace.orders.filter((order) => order.payment_status === 'payment_confirmed').reduce((sum, order) => sum + Number(order.total_price), 0), campaign.currency)}</div>
             </section>
           </div>
+          </>
         )}
 
         {tab === 'products' && (
@@ -652,7 +678,7 @@ export default function OnlineCampaignWorkspace() {
                           <td className="px-3 py-2">
                             <div className="flex min-w-[250px] items-center gap-3">
                               <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
-                                {product.image_url ? <img src={getMenuImageUrl(product.image_url, 160)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageOff size={19} />}
+                                {product.image_url ? <img src={getMenuImageUrl(product.image_url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageOff size={19} />}
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
@@ -729,9 +755,15 @@ export default function OnlineCampaignWorkspace() {
         )}
 
         {tab === 'orders' && (
-          <section>
+          <section className="merchant-orders">
+            <div className="merchant-orders-heading"><h2>{t('campaignAllOrders')}</h2><span>{filteredOrders.length} / {workspace.orders.length}</span></div>
+            <div className="merchant-order-filters">
+              {canManage && <button aria-pressed={orderFilter === 'payment'} onClick={() => setOrderFilter('payment')}>{t('campaignPaymentIssues')} <b>{workspace.orders.filter(order => ['payment_submitted', 'payment_submitted_late', 'refund_pending'].includes(order.payment_status)).length}</b></button>}
+              <button aria-pressed={orderFilter === 'shipping'} onClick={() => setOrderFilter('shipping')}>{t('campaignAwaitingShipment')} <b>{workspace.orders.filter(order => order.fulfillment_status === 'awaiting_shipment').length}</b></button>
+              <button aria-pressed={orderFilter === 'pickup'} onClick={() => setOrderFilter('pickup')}>{t('campaignAwaitingPickup')} <b>{workspace.orders.filter(order => order.fulfillment_status === 'awaiting_pickup').length}</b></button>
+            </div>
             <div className="mb-3 grid gap-2 sm:grid-cols-2">
-              <select value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold">
+              <select aria-label={t('campaignAllOrders')} value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold">
                 <option value="needs_action">{t('campaignNeedsAction')}</option>
                 <option value="payment">{t('campaignPaymentIssues')}</option>
                 <option value="shipping">{t('campaignAwaitingShipment')}</option>
@@ -746,23 +778,26 @@ export default function OnlineCampaignWorkspace() {
             <div className="space-y-3">
               {filteredOrders.length === 0 && <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm font-bold text-gray-400">{t('campaignNoOrders')}</div>}
               {filteredOrders.map((order) => (
-                <article key={order.id} className="rounded-2xl border border-gray-200 bg-white p-4">
+                <article key={order.id} className="merchant-order-row">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="font-mono text-sm font-black">{order.order_code}</div>
-                      <div className="text-sm font-bold text-gray-700">{order.customer_name} · {order.fulfillment_method}</div>
+                      <div className="text-sm font-bold text-gray-700">{order.customer_name} · {t(order.fulfillment_method === 'shipping' ? 'campaignShipping' : 'campaignPickup')}</div>
                       <div className="text-xs font-semibold text-gray-500">{order.items.map((item) => item.name + ' ×' + item.quantity).join(', ')}</div>
                     </div>
-                    <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{order.payment_status} · {order.fulfillment_status}</div></div>
+                    <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{t(({ awaiting_payment: 'campaignOrderAwaitingPayment', payment_submitted: 'campaignOrderReview', payment_submitted_late: 'campaignOrderLateReview', payment_confirmed: 'campaignOrderConfirmed', payment_expired: 'campaignOrderExpired', payment_rejected: 'orderStatusRejectedTitle', payment_cancelled: 'orderStatusCancelledTitle', refund_pending: 'campaignOrderRefundPending', refunded: 'campaignOrderRefunded' } as const)[order.payment_status])}</div><div className="text-xs font-bold text-gray-500">{order.fulfillment_status !== 'not_required' && t(({ awaiting_shipment: 'campaignAwaitingShipment', shipped: 'orderStatusShippedTitle', awaiting_pickup: 'campaignAwaitingPickup', picked_up: 'orderStatusPickedUpTitle', cancelled: 'orderStatusCancelledTitle', expired: 'campaignOrderExpired' } as const)[order.fulfillment_status])}</div></div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  {order.shipping_address && <p className="mt-2 whitespace-pre-line break-words text-sm text-gray-600">{order.shipping_address}</p>}
+                  {order.pickup_point && <p className="mt-2 text-sm text-gray-600">{order.pickup_point.name} · {order.pickup_point.address}</p>}
+                  {order.tracking_number && <p className="mt-2 break-words text-sm font-bold">{order.shipping_carrier} · {order.tracking_number}</p>}
+                  <fieldset disabled={orderBusy} className="mt-3 flex flex-wrap gap-2">
                     {canManage && order.slip_url && <button disabled={evidenceLoadingId === order.id} onClick={() => void openEvidence(order)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-4 text-xs font-black text-gray-700 disabled:opacity-50">{evidenceLoadingId === order.id ? <Loader2 className="animate-spin" size={15} /> : <Eye size={15} />}{t('campaignViewEvidence')}</button>}
-                    {canManage && order.payment_status === 'payment_submitted' && <><button onClick={() => void actOnOrder(order, 'confirm_online_payment')} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-xs font-black text-white">{t('campaignConfirmPayment')}</button><button onClick={() => void actOnOrder(order, 'reject_online_payment')} className="min-h-11 rounded-xl border border-red-200 px-4 text-xs font-black text-red-700">{t('campaignRejectPayment')}</button></>}
+                    {canManage && order.payment_status === 'payment_submitted' && <><button onClick={() => setReviewTarget({ order, action: 'confirm_online_payment' })} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-xs font-black text-white">{t('campaignConfirmPayment')}</button><button onClick={() => setReviewTarget({ order, action: 'reject_online_payment' })} className="min-h-11 rounded-xl border border-red-200 px-4 text-xs font-black text-red-700">{t('campaignRejectPayment')}</button></>}
                     {canManage && order.payment_status === 'payment_submitted_late' && <><button onClick={() => void actOnOrder(order, 'accept_late_online_payment')} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-xs font-black text-white">{t('campaignAcceptLate')}</button><button onClick={() => void actOnOrder(order, 'mark_online_refund_required')} className="min-h-11 rounded-xl border border-amber-300 px-4 text-xs font-black text-amber-800">{t('campaignRefundRequired')}</button></>}
                     {canManage && order.payment_status === 'refund_pending' && <button onClick={() => void actOnOrder(order, 'refunded')} className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-black text-white">{t('campaignMarkRefunded')}</button>}
-                    {order.fulfillment_status === 'awaiting_shipment' && <button onClick={() => void actOnOrder(order, 'ship')} className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-black text-white">{t('campaignMarkShipped')}</button>}
-                    {order.fulfillment_status === 'awaiting_pickup' && <button onClick={() => void actOnOrder(order, 'pickup')} className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-black text-white">{t('campaignMarkPickedUp')}</button>}
-                  </div>
+                    {workspace.can_manage_shipping && order.fulfillment_status === 'awaiting_shipment' && <button onClick={() => openFulfillment(order, 'ship')} className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-black text-white">{t('campaignMarkShipped')}</button>}
+                    {order.fulfillment_status === 'awaiting_pickup' && <button onClick={() => openFulfillment(order, 'pickup')} className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-black text-white">{t('campaignMarkPickedUp')}</button>}
+                  </fieldset>
                 </article>
               ))}
             </div>

@@ -29,6 +29,7 @@ with public_rpc(signature) as (
     ('public.get_customer_order_status(uuid,uuid)'),
     ('public.get_public_order_receipt(uuid,text)'),
     ('public.get_public_online_campaign(text,text)'),
+    ('public.list_public_online_campaigns(text)'),
     ('public.get_public_online_order_by_code(text,text)'),
     ('public.get_public_preorder_by_code(text,text)'),
     ('public.has_artist_role(uuid,text[])'),
@@ -49,7 +50,7 @@ select is(
     where to_regprocedure(r.signature) is not null
       and has_function_privilege('anon', to_regprocedure(r.signature), 'execute')
   ),
-  25::bigint,
+  26::bigint,
   'anon retains every intentional public RPC and RLS helper'
 );
 
@@ -68,6 +69,7 @@ with public_rpc(signature) as (
     ('public.get_customer_order_status(uuid,uuid)'),
     ('public.get_public_order_receipt(uuid,text)'),
     ('public.get_public_online_campaign(text,text)'),
+    ('public.list_public_online_campaigns(text)'),
     ('public.get_public_online_order_by_code(text,text)'),
     ('public.get_public_preorder_by_code(text,text)'),
     ('public.has_artist_role(uuid,text[])'),

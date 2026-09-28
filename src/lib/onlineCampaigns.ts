@@ -1,6 +1,7 @@
 import { uploadImage } from './imageUploads';
 import { supabase } from '../supabaseClient';
 import type {
+  DiscoverableOnlineCampaign,
   CampaignOrder,
   CampaignProduct,
   CampaignWorkspace,
@@ -247,3 +248,11 @@ export const notifyOnlineCampaignOrder = (input: {
     event: input.event,
   },
 });
+
+export async function listPublicOnlineCampaigns(artistSlug?: string) {
+  const { data, error } = await supabase.rpc('list_public_online_campaigns', {
+    p_artist_slug: artistSlug || null,
+  });
+  if (error) throwRpcError(error);
+  return (data || []) as DiscoverableOnlineCampaign[];
+}

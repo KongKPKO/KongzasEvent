@@ -2,6 +2,7 @@ import { useEffect, Suspense, lazy, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { ShoppingBag, Users } from 'lucide-react';
 import { useMidnightTick } from '../../hooks/useMidnightTick';
+import OnlineShopSection from '../../components/home/OnlineShopSection';
 import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
@@ -228,6 +229,8 @@ const Home = () => {
         </div>
       </StorefrontHeader>
 
+
+      <OnlineShopSection key={displayArtist.slug} artistSlug={displayArtist.slug} />
 
       {/* Events Section - Lazy Loaded */}
       <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>

@@ -171,7 +171,7 @@ if (isHygieneOnly) {
 
 run('node', ['scripts/validate-env.mjs', mode]);
 run('npm', ['run', 'build']);
-run('npx', ['playwright', 'test', 'src/tests/public-i18n-smoke.spec.ts', '--project=desktop-chromium']);
+run('npx', ['playwright', 'test', 'src/tests/public-i18n-smoke.spec.ts', ...(mode === 'local' ? ['src/tests/online-shop-discovery.spec.ts'] : []), '--project=desktop-chromium']);
 
 if (mode === 'local' || mode === 'lan') {
   run('npm', ['run', 'test:api:smoke']);

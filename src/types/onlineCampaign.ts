@@ -188,3 +188,17 @@ export interface CreatedCampaignOrder {
   stock_hold_expires_at: string;
   pickup_point_snapshot?: CampaignPickupPoint | null;
 }
+
+export interface DiscoverableOnlineCampaign {
+  id: string;
+  artist_id: string;
+  artist_slug: string;
+  slug: string;
+  name: string;
+  description: string;
+  opens_at: string;
+  closes_at: string;
+  campaign_timezone: string;
+  state: 'open' | 'scheduled' | 'sold_out';
+  image_url: string | null;
+}

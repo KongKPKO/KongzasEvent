@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CalendarDays, MapPin, Search, Sparkles, Ticket, ShoppingBag, X, Heart, Users, Zap, Store, Star } from 'lucide-react';
+import { listPublicOnlineCampaigns } from '../../lib/onlineCampaigns';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
@@ -26,6 +27,7 @@ interface DiscoveryProduct { id: string; artist_id: string; name: string; image_
 
 interface DiscoveryRow {
   accepts_queue?: boolean;
+  has_online_shop: boolean;
   products?: DiscoveryProduct[];
   artist_id: string;
   slug: string;
@@ -78,6 +80,8 @@ export default function DiscoveryHome() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
   const queueOnly = searchParams.get('queue') === '1';
+  const onlineOnly = searchParams.get('online') === '1';
+  const [onlineError, setOnlineError] = useState(false);
   const productsOnly = searchParams.get('products') === '1';
   const [productError, setProductError] = useState(false);
   const [liked, setLiked] = useState<Set<string>>(new Set());
@@ -94,10 +98,10 @@ export default function DiscoveryHome() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      setLoading(true); setLoadError(false); setProductError(false);
+      setLoading(true); setLoadError(false); setProductError(false); setOnlineError(false);
       try {
         const today = new Date().toISOString();
-        const [{ data: artists, error: artistsError }, { data: events, error: eventsError }] = await Promise.all([
+        const [{ data: artists, error: artistsError }, { data: events, error: eventsError }, campaigns] = await Promise.all([
           supabase
             .from('artists')
             .select('id, slug, display_name, bio, image_url, published_at, is_queue_open')
@@ -112,11 +116,17 @@ export default function DiscoveryHome() {
             .gte('end_date', today)
             .order('is_booth_open', { ascending: false })
             .order('start_date', { ascending: true }),
+          listPublicOnlineCampaigns().catch(error => {
+            console.error('[DiscoveryHome] online shops failed:', error);
+            if (active) setOnlineError(true);
+            return [];
+          }),
         ]);
 
         if (artistsError) throw artistsError;
         if (eventsError) throw eventsError;
 
+        const onlineArtistIds = new Set(campaigns.map(campaign => campaign.artist_id));
         const publicIds = (artists || []).map(artist => artist.id);
         const productResult = publicIds.length ? await supabase.from('products')
           .select('id, artist_id, name, image_url, category').in('artist_id', publicIds)
@@ -133,6 +143,7 @@ export default function DiscoveryHome() {
             const event = byArtist.get(artist.id);
             return {
               artist_id: artist.id,
+              has_online_shop: onlineArtistIds.has(artist.id),
               accepts_queue: Boolean(event && artist.is_queue_open),
               products: products.filter(product => product.artist_id === artist.id),
               slug: artist.slug,
@@ -174,9 +185,9 @@ export default function DiscoveryHome() {
         (creator.location || '').toLowerCase().includes(query) ||
         `${creator.slug} ${creator.bio || ''} ${creator.booth_detail || ''}`.toLowerCase().includes(query);
       const matchesOpen = !openOnly || creator.is_booth_open;
-      return matchesSearch && matchesOpen && (!queueOnly || creator.accepts_queue) && (!productsOnly || productError || Boolean(creator.products?.length));
+      return matchesSearch && matchesOpen && (!onlineOnly || creator.has_online_shop) && (!queueOnly || creator.accepts_queue) && (!productsOnly || productError || Boolean(creator.products?.length));
     });
-  }, [creators, searchQuery, openOnly, queueOnly, productsOnly, productError]);
+  }, [creators, searchQuery, openOnly, queueOnly, productsOnly, productError, onlineOnly]);
 
   return <PublicShell discovery>
     <main>
@@ -192,13 +203,14 @@ export default function DiscoveryHome() {
       <section id="discover" data-testid="public-discovery" className="discovery-directory public-width">
         <div className="discovery-heading"><span className="discovery-scribble" aria-hidden="true">Find your<br />favorites!</span><div><h2>{t('discoveryHeading')}</h2><p>{t('discoverySearchHint')}</p></div></div>
         <form className="discovery-searchbar" onSubmit={event => { event.preventDefault(); document.getElementById('discovery-results')?.focus(); }}><label className="discovery-search"><span className="sr-only">{th ? 'ค้นหาครีเอเตอร์' : 'Search creators'}</span><Search size={21} aria-hidden="true" /><input id="public-creator-search" name="creator-search" data-testid="public-creator-search" value={searchQuery} onChange={event => setFilter('q', event.target.value)} placeholder={t('discoveryPlaceholder')} autoComplete="off" />{searchQuery && <button type="button" onClick={() => setFilter('q', '')} aria-label={th ? 'ล้างคำค้น' : 'Clear search'}><X size={18} /></button>}</label><button type="submit" className="public-button public-primary">{t('discoverySearch')}</button></form>
-        <div className="discovery-chips"><button type="button" className="public-button" aria-pressed={!openOnly && !queueOnly && !productsOnly} onClick={() => { const next = new URLSearchParams(searchParams); ['open', 'queue', 'products'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); }}><CalendarDays size={17} />{t('discoveryAll')}</button><button type="button" data-testid="public-open-now-filter" aria-pressed={openOnly} onClick={() => setFilter('open', openOnly ? '' : '1')} className="public-button discovery-filter"><span className="discovery-open-dot" />{t('homeOpenNow')}</button><button type="button" className="public-button" aria-pressed={queueOnly} onClick={() => setFilter('queue', queueOnly ? '' : '1')}><Users size={17} />{t('discoveryQueue')}</button><button type="button" className="public-button" disabled={productError} aria-pressed={productsOnly} onClick={() => setFilter('products', productsOnly ? '' : '1')}><ShoppingBag size={17} />{t('discoveryProducts')}</button></div>
+        <div className="discovery-chips"><button type="button" className="public-button" aria-pressed={!openOnly && !queueOnly && !productsOnly && !onlineOnly} onClick={() => { const next = new URLSearchParams(searchParams); ['open', 'queue', 'products', 'online'].forEach(key => next.delete(key)); setSearchParams(next, { replace: true }); }}><CalendarDays size={17} />{t('discoveryAll')}</button><button type="button" data-testid="public-open-now-filter" aria-pressed={openOnly} onClick={() => setFilter('open', openOnly ? '' : '1')} className="public-button discovery-filter"><span className="discovery-open-dot" />{t('homeOpenNow')}</button><button type="button" className="public-button" aria-pressed={queueOnly} onClick={() => setFilter('queue', queueOnly ? '' : '1')}><Users size={17} />{t('discoveryQueue')}</button><button type="button" className="public-button" disabled={productError} aria-pressed={productsOnly} onClick={() => setFilter('products', productsOnly ? '' : '1')}><ShoppingBag size={17} />{t('discoveryProducts')}</button><button type="button" className="public-button" aria-pressed={onlineOnly} onClick={() => setFilter('online', onlineOnly ? '' : '1')}><Store size={17} />{t('onlineShop')}</button></div>
+        {onlineError && !onlineOnly && <p role="alert" className="discovery-filter-note">{t('onlineShopError')} <button type="button" className="public-button" onClick={() => setRetry(value => value + 1)}>{t('onlineShopRetry')}</button></p>}
         {queueOnly && <p className="discovery-filter-note">{t('discoveryQueueHint')}</p>}
         {productError && <p role="status" className="discovery-filter-note">{t('discoveryProductError')}</p>}
         <div id="discovery-results" tabIndex={-1}>
-        {loading ? <p className="discovery-feedback" role="status">{t('homeLoadingCreators')}</p> : loadError ? <div className="discovery-feedback" role="alert"><h3>{th ? 'โหลดรายชื่อครีเอเตอร์ไม่ได้' : 'Could not load creators'}</h3><p>{th ? 'ลองโหลดใหม่อีกครั้งเพื่อดูร้านที่เปิดให้เข้าชม' : 'Try again to see the available shops.'}</p><button className="public-button" onClick={() => setRetry(value => value + 1)}>{th ? 'ลองใหม่' : 'Retry'}</button></div> : <>
+        {loading ? <p className="discovery-feedback" role="status">{t('homeLoadingCreators')}</p> : (loadError || (onlineOnly && onlineError)) ? <div className="discovery-feedback" role="alert"><h3>{th ? 'โหลดรายชื่อครีเอเตอร์ไม่ได้' : 'Could not load creators'}</h3><p>{th ? 'ลองโหลดใหม่อีกครั้งเพื่อดูร้านที่เปิดให้เข้าชม' : 'Try again to see the available shops.'}</p><button className="public-button" onClick={() => setRetry(value => value + 1)}>{th ? 'ลองใหม่' : 'Retry'}</button></div> : <>
           <p className="discovery-result-count" role="status">{th ? `พบ ${filteredCreators.length} ครีเอเตอร์${openOnly ? 'ที่เปิดบูธอยู่' : ''}` : `${filteredCreators.length} creators${openOnly ? ' with open booths' : ''}`}</p>
-          {filteredCreators.length ? <div className="discovery-grid">{filteredCreators.map(creator => <CreatorCard key={creator.artist_id} creator={creator} liked={liked.has(creator.artist_id)} onLike={() => setLiked(current => { const next = new Set(current); if (next.has(creator.artist_id)) next.delete(creator.artist_id); else next.add(creator.artist_id); return next; })} />)}</div> : <div className="discovery-feedback"><Search size={28} aria-hidden="true" /><h3>{th ? 'ยังไม่พบครีเอเตอร์ที่ค้นหา' : 'No creators found yet'}</h3><p>{th ? 'ลองชื่ออื่น หรือดูร้านทั้งหมด บางร้านอาจยังไม่ได้เผยแพร่หน้าร้าน' : 'Try another name or browse all shops. Some creators may not have published their shop yet.'}</p>{(searchQuery || openOnly || queueOnly || productsOnly) && <button className="public-button" onClick={() => setSearchParams({}, { replace: true })}>{th ? 'ดูครีเอเตอร์ทั้งหมด' : 'Show all creators'}</button>}</div>}
+          {filteredCreators.length ? <div className="discovery-grid">{filteredCreators.map(creator => <CreatorCard key={creator.artist_id} creator={creator} liked={liked.has(creator.artist_id)} onLike={() => setLiked(current => { const next = new Set(current); if (next.has(creator.artist_id)) next.delete(creator.artist_id); else next.add(creator.artist_id); return next; })} />)}</div> : <div className="discovery-feedback"><Search size={28} aria-hidden="true" /><h3>{th ? 'ยังไม่พบครีเอเตอร์ที่ค้นหา' : 'No creators found yet'}</h3><p>{th ? 'ลองชื่ออื่น หรือดูร้านทั้งหมด บางร้านอาจยังไม่ได้เผยแพร่หน้าร้าน' : 'Try another name or browse all shops. Some creators may not have published their shop yet.'}</p>{(searchQuery || openOnly || queueOnly || productsOnly || onlineOnly) && <button className="public-button" onClick={() => setSearchParams({}, { replace: true })}>{th ? 'ดูครีเอเตอร์ทั้งหมด' : 'Show all creators'}</button>}</div>}
         </>}
         </div>
       </section>
@@ -230,7 +242,7 @@ function CreatorCard({ creator, liked, onLike }: { creator: DiscoveryRow; liked:
   const images = products.filter(product => product.image_url).slice(0, 4);
   return <article data-testid="creator-card" className="discovery-card">
     <div className="discovery-cover">{creator.image_url && !failed ? <img src={creator.image_url} alt="" loading="lazy" onError={() => setFailed(true)} /> : <div className="discovery-cover-art" aria-hidden="true"><Star /><Heart /><Sparkles /></div>}<button type="button" className="discovery-heart" aria-label={`${t('discoveryLike')}: ${creator.display_name}`} aria-pressed={liked} onClick={onLike}><Heart size={19} fill={liked ? 'currentColor' : 'none'} /></button></div>
-    <div className="discovery-compact-body"><div className="discovery-identity"><div className="discovery-avatar">{creator.image_url && !failed ? <img src={creator.image_url} alt="" loading="lazy" onError={() => setFailed(true)} /> : creator.display_name.charAt(0)}</div><div><div className="discovery-name-row"><h3>{creator.display_name}</h3><span className={`discovery-status ${creator.is_booth_open ? 'is-open' : ''}`}>{creator.is_booth_open && <span className="discovery-open-dot" />}{t(creator.is_booth_open ? 'creatorCardOpen' : 'creatorCardClosed')}</span></div><p className="discovery-event-name">{creator.event_name || t('creatorCardNoUpcoming')}{creator.booth_detail && <span>{t('creatorCardBooth')} {creator.booth_detail}</span>}</p>{(categories || creator.bio) && <p className="discovery-bio">{categories || creator.bio}</p>}</div></div>
+    <div className="discovery-compact-body"><div className="discovery-identity"><div className="discovery-avatar">{creator.image_url && !failed ? <img src={creator.image_url} alt="" loading="lazy" onError={() => setFailed(true)} /> : creator.display_name.charAt(0)}</div><div><div className="discovery-name-row"><h3>{creator.display_name}</h3>{creator.has_online_shop && <span className="discovery-status text-pink-700"><Store size={12} aria-hidden="true" />{t('onlineShop')}</span>}<span className={`discovery-status ${creator.is_booth_open ? 'is-open' : ''}`}>{creator.is_booth_open && <span className="discovery-open-dot" />}{t(creator.is_booth_open ? 'creatorCardOpen' : 'creatorCardClosed')}</span></div><p className="discovery-event-name">{creator.event_name || t('creatorCardNoUpcoming')}{creator.booth_detail && <span>{t('creatorCardBooth')} {creator.booth_detail}</span>}</p>{(categories || creator.bio) && <p className="discovery-bio">{categories || creator.bio}</p>}</div></div>
     <div className="discovery-card-bottom"><div className="discovery-card-artwork">{images.length ? images.map(product => <div className="discovery-work" key={product.id}><img src={product.image_url!} alt={product.name} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /><ShoppingBag aria-hidden="true" size={20} /></div>) : <span className="discovery-work-placeholder"><Sparkles size={19} />{t('discoveryWorkSoon')}</span>}</div><div className="discovery-card-visit"><span><Users size={18} />{t(creator.accepts_queue ? 'discoveryCheckQueue' : 'discoveryNoQueue')}</span><Link to={`/${creator.slug}/home`} className="public-button public-primary">{t('creatorCardView')}<ArrowRight size={17} /></Link></div></div>
     <div className="discovery-card-meta">{creator.location && <span><MapPin size={13} />{creator.location}</span>}{creator.start_date && <span><CalendarDays size={13} />{formatEventDate(creator.start_date, dateLocale, t('creatorCardScheduleSoon'))}</span>}</div></div>
   </article>;

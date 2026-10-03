@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 import { execFileSync } from 'node:child_process';
+import { resolveSupabaseTestEnv } from './src/tests/helpers/localSupabaseEnv';
 
 const envMode = process.env.PLAYWRIGHT_ENV || process.env.MODE || 'local';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173';
@@ -10,7 +11,13 @@ dotenv.config({ path: `.env.${envMode}` });
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '.env' });
 
-if (envMode === 'local' && (process.env.VITE_SUPABASE_URL || '').includes('127.0.0.1')) {
+if (process.env.SUPABASE_WORKDIR) {
+  const local = resolveSupabaseTestEnv();
+  process.env.VITE_SUPABASE_URL = local.url;
+  process.env.VITE_SUPABASE_ANON_KEY = local.anonKey;
+  process.env.VITE_SUPABASE_KEY = local.anonKey;
+  process.env.TEST_SUPABASE_SERVICE_KEY = local.serviceKey;
+} else if (envMode === 'local' && (process.env.VITE_SUPABASE_URL || '').includes('127.0.0.1')) {
   try {
     const statusEnv = execFileSync('supabase', ['status', '-o', 'env'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     const parsed = Object.fromEntries(
@@ -89,7 +96,7 @@ export default defineConfig({
   webServer: usesLocalWebServer ? {
     command: 'npm run dev -- --host 127.0.0.1',
     url: 'http://127.0.0.1:5173',
-    reuseExistingServer: true,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER !== '0',
     env: {
       VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321',
       VITE_SUPABASE_ANON_KEY:

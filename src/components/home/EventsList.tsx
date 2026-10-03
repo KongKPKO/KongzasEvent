@@ -3,6 +3,8 @@ import { MapPin, Ticket, Train, Calendar } from 'lucide-react';
 import { Card } from '../ui';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../i18n';
+import type { EventAppearance } from '../../types/eventAppearance';
+import EventAppearancePreview from './EventAppearancePreview';
 
 interface Event {
   id: string;
@@ -19,9 +21,10 @@ interface Event {
 interface EventsListProps {
   events: Event[];
   nextUpEventId?: string;
+  appearances?: EventAppearance[];
 }
 
-const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
+const EventsList = ({ events, nextUpEventId, appearances = [] }: EventsListProps) => {
   const { t, dateLocale } = useI18n();
 
   const getBoxDate = (dateString: string) => {
@@ -126,6 +129,9 @@ const EventsList = ({ events, nextUpEventId }: EventsListProps) => {
                       </div>
                     </div>
                   </div>
+                  {!isCancelled && (
+                    <EventAppearancePreview appearances={appearances.filter((appearance) => appearance.event_id === event.id)} />
+                  )}
                 </Card>
               </motion.div>
             );

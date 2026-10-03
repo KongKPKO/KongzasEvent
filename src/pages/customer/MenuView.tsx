@@ -472,7 +472,7 @@ const MenuView = () => {
 
         if (error) setCatalogError(true);
         if (!error && data) {
-            setProducts(((data || []) as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
+            setProducts(((data || []) as Product[]).map((product) => normalizeProductRecord(product)));
             setProductsLoaded(true);
         }
 

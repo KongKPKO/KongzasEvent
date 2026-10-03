@@ -274,7 +274,7 @@ export default function POSPanel({
             return;
         }
 
-        if (data) setProducts((data as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
+        if (data) setProducts((data as Product[]).map((product) => normalizeProductRecord(product)));
     }, [activeEvent?.id, canUsePos]);
 
     const fetchPromotions = useCallback(async () => {

@@ -200,13 +200,14 @@ export default function QueuePanel({
             .from('queues')
             .update(updates)
             .eq('id', id).eq('status', ticket.status).eq('last_updated_at', ticket.last_updated_at)
-            .select('id').maybeSingle();
+            .select('id,status,last_updated_at,called_at,served_at,completed_at').maybeSingle();
 
         if (error || !data) {
             setToast({ tone: 'warning', title: 'คิวเปลี่ยนแล้วหรือเชื่อมต่อไม่ได้ / Queue changed or connection unavailable', detail: 'รีเฟรชแล้วตรวจคิวอีกครั้ง / Refresh and review the queue again.' });
             return false;
         }
-        onStatusUpdated?.(id, updates as Partial<QueueItem>);
+        // The database trigger owns the revision used by the next optimistic update.
+        onStatusUpdated?.(id, data);
         return true;
     }, [onStatusUpdated, queues]);
 

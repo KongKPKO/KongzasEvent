@@ -45,7 +45,7 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
   await page.locator('[name="customer_phone"]').fill('0800000000');
   await page.locator('[name="shipping_address"]').fill('Bangkok');
   await page.locator('form button:not([type])').click();
-  await expect(page.getByRole('alert')).toContainText(/entitled to 2, only 1|ได้สิทธิ์ 2 ชิ้น เหลือให้รับ 1/);
+  await expect(page.getByRole('alert').filter({ hasText: /entitled to 2, only 1|ได้สิทธิ์ 2 ชิ้น เหลือให้รับ 1/ })).toBeVisible();
   const partial = page.getByRole('button', { name: /Accept 1 of 2|ยืนยันรับของแถม 1 จาก 2/ });
   await expect(partial).toBeDisabled();
   await page.getByRole('button', { name: /Increase Gift A|เพิ่ม Gift A/ }).click();

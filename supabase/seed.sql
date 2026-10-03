@@ -633,6 +633,8 @@ ON CONFLICT DO NOTHING;
 -- Data for Name: products; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
+-- Product children require the parent and SKU compatibility triggers during seeding.
+SET session_replication_role = origin;
 INSERT INTO "public"."products" ("id", "artist_id", "name", "price", "description", "category", "image_url", "is_out_of_stock", "created_at", "updated_at", "status") VALUES
 	('58bc585f-192a-4935-9296-323a55cb2ec5', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'Mini Figure Wondrous Travels', 1600, 'ตัวละ 1600 บาท ขนาด 11 - 14cm วัสดุ PVC ABS', 'Other', 'public/1769006991421-nr4ony5j1j.jpg', false, '2026-01-21 14:44:27.149539+00', '2026-01-21 14:49:53.642232+00', 'enable'),
 	('3ad2a178-6340-4247-b56b-42864a26955f', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'Yoimiya Frolicking Flames Game Controller', 2800, 'Product Contents: Custom controller, custom joystick caps x2, charging dock, water-sound bell charm, data cable', 'Other', 'public/1769007007202-8skbu72jpse.jpg', false, '2026-01-21 14:44:27.149539+00', '2026-01-21 14:50:08.456904+00', 'enable'),
@@ -642,6 +644,7 @@ INSERT INTO "public"."products" ("id", "artist_id", "name", "price", "descriptio
 	('2057d04f-bdad-4e8e-991e-47ac02ffcdb4', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'ฉากประดับอะคริลิคพระจันทร์ใหม่', 600, 'ขนาด 16.5*17.1cm เรืองแสงในที่มืด', 'Standy', 'public/1769174174290-g90zitvg2um.jpg', false, '2026-01-23 11:36:47.058148+00', '2026-01-23 13:16:15.467087+00', 'enable'),
 	('b21f0d66-bcec-40b9-a349-2397fd990b49', 'b5bc17ad-e050-4f74-9205-5147ec350d83', 'Test Item', 10, 'Test1', 'ตุ๊กตา', 'public/1769174867584-5mlya84dxi4.webp', false, '2026-01-23 13:27:48.828753+00', '2026-01-23 13:28:17.935615+00', 'enable'),
 	('95819ad9-32bd-495a-a937-935bb995500a', 'ffddfce5-26a4-4e57-8f3e-86ace5ef45fe', 'ItemRLS', 1, 'TestItemRLS', '', 'public/1769186119594-lb0um5r5oh.webp', false, '2026-01-23 16:35:21.01421+00', '2026-01-23 16:35:21.01421+00', 'enable');
+SET session_replication_role = replica;
 
 INSERT INTO "public"."event_products" ("event_id", "product_id", "artist_id", "is_enabled", "price_override", "stock_total", "stock_reserved", "stock_sold", "is_unlimited")
 SELECT

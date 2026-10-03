@@ -18,10 +18,10 @@ test('storefront supports variants, stock limits, keyboard details and a persist
     await page.goto(`/${slug}/home`);
     await expect(page.getByRole('heading', { name: 'Creator Storefront' })).toBeVisible();
     await page.goto(`/${slug}/menu`);
-    const blue = page.getByRole('article', { name: 'Print Blue', exact: true });
+    const blue = page.getByRole('article', { name: 'Festival Print', exact: true });
     await expect(blue.getByRole('img', { name: /Image unavailable/ })).toBeVisible();
     await expect(page.getByRole('article', { name: 'Sold Out Print' }).getByRole('button', { name: 'Add: Sold Out Print' })).toBeDisabled();
-    const details = blue.getByRole('button', { name: 'View details: Print Blue' });
+    const details = blue.getByRole('button', { name: 'View details: Festival Print' });
     await details.press('Enter');
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
@@ -39,13 +39,22 @@ test('storefront supports variants, stock limits, keyboard details and a persist
     await search.fill('no such product');
     await expect(page.getByRole('article')).toHaveCount(0);
     await page.getByRole('button', { name: 'Clear filters', exact: true }).first().click();
-    const pink = page.getByRole('article', { name: 'Print Pink', exact: true });
-    await expect(pink.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    const openPink = async () => {
+      await page.getByRole('article', { name: 'Festival Print', exact: true }).getByRole('button', { name: /View details|ดูรายละเอียด/ }).click();
+      await dialog.getByRole('button', { name: 'Pink', exact: true }).click();
+    };
+    await openPink();
+    await expect(dialog.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await page.keyboard.press('Escape');
     await page.reload();
-    await expect(pink.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await openPink();
+    await expect(dialog.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Switch language' }).click();
     await expect(page.getByText('ร้านครีเอเตอร์', { exact: true })).toBeVisible();
-    await expect(pink.getByRole('button', { name: 'เพิ่มจำนวน Print Pink' })).toBeDisabled();
+    await openPink();
+    await expect(dialog.getByRole('button', { name: 'เพิ่มจำนวน Print Pink' })).toBeDisabled();
+    await page.keyboard.press('Escape');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('storefront-th.png'), fullPage: true });
     await page.route('**/rest/v1/rpc/list_event_products', route => route.fulfill({ status: 503, body: '{"message":"test unavailable"}', contentType: 'application/json' }));
@@ -53,7 +62,8 @@ test('storefront supports variants, stock limits, keyboard details and a persist
     await expect(page.getByRole('alert')).toContainText('โหลดสินค้าไม่สำเร็จ');
     await page.unroute('**/rest/v1/rpc/list_event_products');
     await page.getByRole('button', { name: 'ลองอีกครั้ง' }).click();
-    await expect(pink.getByRole('button', { name: /Increase quantity of Print Pink|เพิ่มจำนวน Print Pink/ })).toBeDisabled();
+    await openPink();
+    await expect(dialog.getByRole('button', { name: /Increase quantity of Print Pink|เพิ่มจำนวน Print Pink/ })).toBeDisabled();
   } finally {
     await fixture.service.from('events').delete().eq('id', eventId);
     await fixture.service.from('products').delete().in('id', ids);

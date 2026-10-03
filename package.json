@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "test": "npx playwright test",
     "test:release": "node scripts/release-check.mjs local",
+    "test:release:guard": "node scripts/release-check.mjs local guard",
     "test:release:lan": "node scripts/release-check.mjs lan",
     "test:release:staging": "node scripts/release-check.mjs staging",
     "test:regression": "npx playwright test src/tests/regression/regression.spec.ts",

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
+import EventAppearanceManager from '../../components/creator/EventAppearanceManager';
 import GuidedSetupPanel from '../../components/creator/GuidedSetupPanel';
 import { deriveSetupReadiness } from '../../lib/setupReadiness';
 import { supabase } from '../../supabaseClient';
@@ -1076,6 +1077,10 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             <Clock className="mx-auto mb-3 text-gray-300" size={34} aria-hidden="true" />
             <p className="text-sm font-bold text-gray-600">{copy("No workspace actions are available for your role.")}</p>
           </section>
+        )}
+
+        {canAccessManagementPages(actorContext.role) && (
+          <EventAppearanceManager event={event} />
         )}
 
         {setupReadiness?.complete && setupGroups.length > 0 && (

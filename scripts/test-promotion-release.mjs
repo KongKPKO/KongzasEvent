@@ -2,9 +2,14 @@
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-const env = Object.fromEntries(execFileSync('supabase',['status','-o','env'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split('\n').map(line=>{const i=line.indexOf('=');return [line.slice(0,i),line.slice(i+1).replace(/^"|"$/g,'')];}));
-assert.match(env.API_URL,/^http:\/\/(127\.0\.0\.1|localhost):54321$/);
+const workdir = process.env.SUPABASE_WORKDIR || '.';
+const env = Object.fromEntries(execFileSync('supabase',['status','-o','env','--workdir',workdir],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim().split('\n').map(line=>{const i=line.indexOf('=');return [line.slice(0,i),line.slice(i+1).replace(/^"|"$/g,'')];}));
+assert.match(env.API_URL,/^http:\/\/(127\.0\.0\.1|localhost):\d+$/);
+const projectId = readFileSync(resolve(workdir, 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
+assert.ok(projectId, 'Local Supabase project_id is required');
 const db=createClient(env.API_URL,env.SERVICE_ROLE_KEY,{auth:{persistSession:false}});
 const anon=createClient(env.API_URL,env.ANON_KEY,{auth:{persistSession:false}});
 const email='release-gifts@example.local', password='LocalReleaseGifts123!';
@@ -63,7 +68,7 @@ try{
       assert.equal(lines.reduce((n,x)=>n+x.quantity,0),2);
       assert.equal(lines.filter(x=>x.line_type==='promotion_reward').length,1);
       // Expiry runs twice to prove idempotent release, through the actual DB function.
-      execFileSync('docker',['exec','supabase_db_EventWebQueue','psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',`update public.order_payments set stock_hold_expires_at=now()-interval '1 second' where order_id='${order}'; select private.expire_online_campaign_hold('${order}'); select private.expire_online_campaign_hold('${order}');`],{stdio:'ignore'});
+      execFileSync('docker',['exec',`supabase_db_${projectId}`,'psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',`update public.order_payments set stock_hold_expires_at=now()-interval '1 second' where order_id='${order}'; select private.expire_online_campaign_hold('${order}'); select private.expire_online_campaign_hold('${order}');`],{stdio:'ignore'});
       assert.equal(must(await db.from('online_campaign_products').select('stock_reserved').eq('campaign_id',campaign).single()).stock_reserved,0);
       console.log(`Race ${round+1}: one success, two units held, idempotent expiry PASS`);
     }

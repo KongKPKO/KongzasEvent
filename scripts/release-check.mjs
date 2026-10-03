@@ -4,7 +4,9 @@ import { readFileSync, existsSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const isHygieneOnly = args.includes('hygiene');
-const mode = args.find(a => a !== 'hygiene') || 'local';
+const isGuardOnly = args.includes('guard');
+const mode = args.find(a => !['hygiene', 'guard'].includes(a)) || 'local';
+const workdir = process.env.SUPABASE_WORKDIR;
 
 const checkHygiene = () => {
   console.log('\n> Checking repository hygiene and secrets for public release...');
@@ -74,6 +76,8 @@ const checkHygiene = () => {
               (file.endsWith('.example') && lowerLine.includes('key=')) ||
               // Code references to env vars
               lowerLine.includes('process.env.') ||
+              lowerLine.trimStart().startsWith('delete remoteenv.') ||
+              /\w*[Ee]nv\.SERVICE_ROLE_KEY/.test(line) ||
               (label === 'service_role token' && /^const db\s*=\s*createClient\(env\.API_URL,\s*env\.SERVICE_ROLE_KEY,\s*\{auth:\{persistSession:false\}\}\);$/.test(line)) ||
               lowerLine.includes('deno.env.get') ||
               lowerLine.includes('deno.env.set') ||
@@ -162,6 +166,78 @@ const run = (command, args, options = {}) => {
   }
 };
 
+const readLocalSupabaseEnv = () => {
+  const status = spawnSync('supabase', [
+    'status', '-o', 'env',
+    ...(workdir ? ['--workdir', workdir] : []),
+  ], { encoding: 'utf8' });
+  if (status.status !== 0) {
+    console.error(status.stderr || 'Local Supabase is unavailable.');
+    process.exit(status.status || 1);
+  }
+
+  const env = Object.fromEntries(status.stdout.split('\n').filter(Boolean).map((line) => {
+    const index = line.indexOf('=');
+    return [line.slice(0, index), line.slice(index + 1).replace(/^"|"$/g, '')];
+  }));
+  let apiUrl;
+  try {
+    apiUrl = new URL(env.API_URL || '');
+  } catch {
+    console.error('Local Supabase did not report a valid API URL.');
+    process.exit(1);
+  }
+  if (!['127.0.0.1', 'localhost', '::1'].includes(apiUrl.hostname) || !env.ANON_KEY || !env.SERVICE_ROLE_KEY) {
+    console.error('Release tests require a running local Supabase with anon and service-role credentials.');
+    process.exit(1);
+  }
+
+  for (const [name, expected] of Object.entries({
+    VITE_SUPABASE_URL: env.API_URL,
+    SUPABASE_URL: env.API_URL,
+    VITE_SUPABASE_ANON_KEY: env.ANON_KEY,
+    VITE_SUPABASE_KEY: env.ANON_KEY,
+    SUPABASE_ANON_KEY: env.ANON_KEY,
+    TEST_SUPABASE_SERVICE_KEY: env.SERVICE_ROLE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: env.SERVICE_ROLE_KEY,
+  })) {
+    if (process.env[name] && process.env[name] !== expected) {
+      console.error(`${name} does not match the discovered local Supabase instance.`);
+      process.exit(1);
+    }
+  }
+
+  for (const [name, value] of Object.entries({
+    PLAYWRIGHT_ENV: process.env.PLAYWRIGHT_ENV,
+    PLAYWRIGHT_BASE_URL: process.env.PLAYWRIGHT_BASE_URL,
+  })) {
+    if (value && (name === 'PLAYWRIGHT_ENV' ? value !== 'local' : !['127.0.0.1', 'localhost', '::1'].includes(new URL(value).hostname))) {
+      console.error(`${name} must target the local release environment.`);
+      process.exit(1);
+    }
+  }
+
+  const health = spawnSync('curl', ['--fail', '--silent', '--show-error', `${env.API_URL}/auth/v1/health`]);
+  if (health.status !== 0) {
+    console.error('Local Supabase Auth is unavailable.');
+    process.exit(health.status || 1);
+  }
+
+  console.log(`[release:local] fixture backend ready at ${env.API_URL}`);
+  return {
+    ...process.env,
+    VITE_SUPABASE_URL: env.API_URL,
+    SUPABASE_URL: env.API_URL,
+    VITE_SUPABASE_ANON_KEY: env.ANON_KEY,
+    VITE_SUPABASE_KEY: env.ANON_KEY,
+    SUPABASE_ANON_KEY: env.ANON_KEY,
+    TEST_SUPABASE_SERVICE_KEY: env.SERVICE_ROLE_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: env.SERVICE_ROLE_KEY,
+    PLAYWRIGHT_ENV: 'local',
+    PLAYWRIGHT_REUSE_SERVER: '0',
+  };
+};
+
 // Always check hygiene first
 checkHygiene();
 
@@ -169,12 +245,66 @@ if (isHygieneOnly) {
   process.exit(0);
 }
 
-run('node', ['scripts/validate-env.mjs', mode]);
-run('npm', ['run', 'build']);
-run('npx', ['playwright', 'test', 'src/tests/public-i18n-smoke.spec.ts', ...(mode === 'local' ? ['src/tests/online-shop-discovery.spec.ts'] : []), '--project=desktop-chromium']);
+if (mode === 'local') {
+  const localEnv = readLocalSupabaseEnv();
+  if (isGuardOnly) process.exit(0);
 
-if (mode === 'local' || mode === 'lan') {
-  run('npm', ['run', 'test:api:smoke']);
+  run('node', ['scripts/validate-env.mjs', mode], { env: localEnv });
+  run('npm', ['run', 'build'], { env: localEnv });
+  run('supabase', [
+    'test', 'db', '--local',
+    ...(workdir ? ['--workdir', workdir] : []),
+  ], { env: localEnv });
+  run('node', ['scripts/test-promotion-release.mjs'], { env: localEnv });
+  run('npx', ['playwright', 'test',
+    'src/tests/setup-readiness.spec.ts',
+    'src/tests/production-readiness.spec.ts',
+    'src/tests/public-i18n-smoke.spec.ts',
+    'src/tests/queue-availability.spec.ts',
+    'src/tests/online-shop-discovery.spec.ts',
+    'src/tests/storefront.spec.ts',
+    'src/tests/catalog-stock-retry.spec.ts',
+    'src/tests/image-upload.spec.ts',
+    'src/tests/image-storage.spec.ts',
+    'src/tests/offline-operations.spec.ts',
+    'src/tests/promotion-save.spec.ts',
+    'src/tests/promotion-mixed-rewards.spec.ts',
+    'src/tests/security-rls-regression.spec.ts',
+    'src/tests/e2e/full-service-loop.spec.ts',
+    'src/tests/e2e/pilot-auth.spec.ts',
+    'src/tests/e2e/pilot-preorder.spec.ts',
+    'src/tests/regression/online-campaign.spec.ts',
+    'src/tests/product-presentation.spec.ts',
+    'src/tests/product-families-flow.spec.ts',
+    'src/tests/product-types-flow.spec.ts',
+    'src/tests/product-csv-import.spec.ts',
+    'src/tests/product-csv-import-flow.spec.ts',
+    'src/tests/event-appearances.spec.ts',
+    '--project=desktop-chromium',
+  ], { env: localEnv });
+  run('npm', ['run', 'test:api:smoke'], { env: localEnv });
+} else {
+  if (isGuardOnly) {
+    console.error('The fixture guard is only available for local release tests.');
+    process.exit(1);
+  }
+  const baseUrl = process.env.PLAYWRIGHT_BASE_URL;
+  if (!baseUrl || ['127.0.0.1', 'localhost', '::1'].includes(new URL(baseUrl).hostname)) {
+    console.error(`${mode} release checks require PLAYWRIGHT_BASE_URL for the deployed non-local site.`);
+    process.exit(1);
+  }
+  const remoteEnv = { ...process.env, PLAYWRIGHT_ENV: mode };
+  delete remoteEnv.SUPABASE_WORKDIR;
+  delete remoteEnv.TEST_SUPABASE_SERVICE_KEY;
+  delete remoteEnv.SUPABASE_SERVICE_ROLE_KEY;
+  run('node', ['scripts/validate-env.mjs', mode], { env: remoteEnv });
+  run('npm', ['run', mode === 'staging' ? 'build:staging' : mode === 'production' ? 'build:prod' : 'build'], { env: remoteEnv });
+  run('npx', ['playwright', 'test',
+    'src/tests/production-readiness.spec.ts',
+    'src/tests/public-i18n-smoke.spec.ts',
+    '--project=desktop-chromium',
+    '--grep', 'Production readiness public UX|Public Nireq smoke|Public release assets',
+  ], { env: remoteEnv });
 }
 
 console.log(`\nRelease check passed for ${mode}.`);

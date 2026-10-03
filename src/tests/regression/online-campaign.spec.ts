@@ -130,8 +130,6 @@ test.describe('online campaign', () => {
   test('customer checks out with flat shipping and gets a 15-minute hold', async ({ page }) => {
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
     await expect(page.getByRole('heading', { name: 'Cheki Online E2E' })).toBeVisible();
-    const readiness = page.getByRole('region', { name: /Before sales open|ตรวจความพร้อมก่อนเปิดขาย/ });
-    await expect(readiness).toContainText('6/6');
     for (const width of [320, 375, 414, 768]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -505,6 +503,8 @@ test.describe('online campaign', () => {
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);
     await expect(page.getByRole('heading', { name: 'Cheki Online E2E' })).toBeVisible();
+    const readiness = page.getByRole('region', { name: /Before sales open|ตรวจความพร้อมก่อนเปิดขาย/ });
+    await expect(readiness).toContainText('6/6');
     await expect(page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ })).toBeVisible();
     await page.getByRole('button', { name: /Products|สินค้า/ }).click();
     await expect(page.getByLabel(/Product category|หมวดหมู่สินค้า/)).toContainText('Cheki');
@@ -523,11 +523,11 @@ test.describe('online campaign', () => {
     expect(productCellWidth).toBeGreaterThanOrEqual(250);
 
     await page.goto('/manage-products');
-    await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/i }).first().click();
+    await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/i }).first().click();
     const productName = `Quick Cheki ${randomUUID().slice(0, 6)}`;
     await page.getByLabel(/Product name|ชื่อสินค้า/i).fill(productName);
-    await page.getByLabel(/Price & currency|ราคาและสกุลเงิน/i).fill('120');
-    await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/i }).last().click();
+    await page.getByRole('dialog').getByLabel('Base price *', { exact: true }).fill('120');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create product', exact: true }).click();
     const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
     await expect(handoff).toBeVisible({ timeout: 15_000 });
     await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);
@@ -586,7 +586,7 @@ test.describe('online campaign', () => {
       await login(page);
       await page.goto('/manage-products');
       const productCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
-      await productCard.getByRole('button', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }).click();
+      await productCard.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).click();
 
       const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
       await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);

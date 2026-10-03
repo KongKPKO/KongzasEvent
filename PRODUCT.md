@@ -35,7 +35,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 
 ### Products, SKU and stock
 
-- Each variant is a separately countable product with its own UUID and SKU. A variant group organizes products; it is not a shared stock pool.
+- A product parent owns shared merchandising and has single-dimension child variants. Each child retains its own UUID, SKU and independent stock; the parent is not a shared stock pool. The existing `products` table stores sellable children for compatibility with orders, allocations and promotions. See [product families](docs/specs/2026-10-03-product-families.md).
 - UUID is the reference identity. SKU is a readable merchant-editable identifier unique within the shop; do not parse it to identify products or require a shop-name prefix. Name-derived SKU generation is a heuristic, not semantic recognition.
 - `stock_total` / legacy RPC `on_hand` is the recorded stock total, not a count of unsold physical items in the merchant's possession. This task does not implement physical warehouse custody tracking.
 - Channel commitments include sold units, outstanding holds, and unused allocation while the channel is active. Holds inside active allocation are counted once, not again on top of that allocation.

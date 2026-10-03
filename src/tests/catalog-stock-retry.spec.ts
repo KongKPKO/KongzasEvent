@@ -51,8 +51,9 @@ test('stock receipt survives lost response and reload without a second increment
     await page.getByRole('menuitem', { name: 'Edit product', exact: false }).click();
     // Another staff device receives stock while this metadata form stays open.
     must(await service.from('products').update({ stock_total: 30 }).eq('id', productId));
-    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Edit Product', exact: true })).toHaveCount(0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Save family', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText(/changed|reload|another device/i);
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
     expect((await service.from('products').select('stock_total').eq('id', productId).single()).data?.stock_total).toBe(30);
 
   } finally {

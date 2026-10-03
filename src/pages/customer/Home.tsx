@@ -8,6 +8,7 @@ import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
 import type { CustomerOutletContext } from '../../types/customerContext';
+import type { EventAppearance } from '../../types/eventAppearance';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
@@ -77,6 +78,7 @@ const Home = () => {
     selectedEvent,
   } = useOutletContext<CustomerOutletContext>();
   const [nearbyCreators, setNearbyCreators] = useState<NearbyCreator[]>([]);
+  const [eventAppearances, setEventAppearances] = useState<EventAppearance[]>([]);
   
   const displayArtist = contextArtist;
   
@@ -110,6 +112,40 @@ const Home = () => {
     .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
 
   const nextUpEventId = sortedValidEvents[0]?.id || selectedEvent?.id;
+  const visibleEventIdsKey = visibleEvents.map((event) => event.id).join(',');
+
+  useEffect(() => {
+    let cancelled = false;
+    setEventAppearances([]);
+    const loadEventAppearances = async () => {
+      const visibleEventIds = visibleEventIdsKey ? visibleEventIdsKey.split(',') : [];
+      if (!displayArtist?.id || visibleEventIds.length === 0) {
+        setEventAppearances([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('event_appearances')
+        .select('id, artist_id, event_id, character_name, series_name, image_url, appearance_date, day_label, start_time, end_time, note, booth, zone, is_public, sort_order, created_at')
+        .eq('artist_id', displayArtist.id)
+        .eq('is_public', true)
+        .in('event_id', visibleEventIds)
+        .order('appearance_date', { ascending: true })
+        .order('sort_order', { ascending: true });
+
+      if (cancelled) return;
+      if (error) {
+        console.error('[Home] event appearance load failed:', error);
+        setEventAppearances([]);
+        return;
+      }
+      setEventAppearances((data || []) as EventAppearance[]);
+    };
+
+    void loadEventAppearances();
+    return () => { cancelled = true; };
+  }, [displayArtist?.id, visibleEventIdsKey]);
+
   useEffect(() => {
     const loadNearbyCreators = async () => {
       if (!displayArtist?.id) return;
@@ -234,7 +270,7 @@ const Home = () => {
 
       {/* Events Section - Lazy Loaded */}
       <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
-         <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} />
+         <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} appearances={eventAppearances} />
       </Suspense>
 
       {/* Social Footer - Lazy Loaded */}

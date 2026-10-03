@@ -26,6 +26,12 @@ export const normalizeProductRecord = <T extends UnknownRecord>(record: T) => {
 
   return {
     ...record,
+    parent_product_id: hasText(record.parent_product_id) ? record.parent_product_id : null,
+    product_kind: ['single', 'photo', 'bundle', 'preorder', 'service'].includes(record.product_kind) ? record.product_kind : 'single',
+    gallery_images: Array.isArray(record.gallery_images) ? record.gallery_images.filter(hasText) : [],
+    bundle_items: Array.isArray(record.bundle_items) ? record.bundle_items.filter((item: unknown) =>
+      typeof item === 'object' && item !== null && 'name' in item && hasText(item.name)
+      && 'quantity' in item && typeof item.quantity === 'number' && Number.isInteger(item.quantity) && item.quantity > 0) : [],
     tags,
     status,
     stock_reserved: typeof record.stock_reserved === 'number' ? record.stock_reserved : 0,

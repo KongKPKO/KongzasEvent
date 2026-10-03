@@ -4,16 +4,29 @@ import { useEffect, useMemo, useState } from 'react';
 import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Minus, Plus, ShoppingCart } from 'lucide-react';
+import { ChevronDown, Loader2, Minus, Plus, ShoppingCart, X } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
 import { requiresPromotionReview, quotePromotions } from '../../lib/promotions';
-import type { CampaignFulfillmentMethod, PublicOnlineCampaign } from '../../types/onlineCampaign';
+import type { CampaignFulfillmentMethod, CampaignProduct, PublicOnlineCampaign } from '../../types/onlineCampaign';
+import type { PresentableProduct } from '../../types/productPresentation';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
-import StorefrontHeader, { ShopImage } from '../../components/menu/StorefrontHeader';
+import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 
+import { getMenuImageUrl } from '../../utils/imageUtils';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { ProductGallery, ProductMedia, ProductPresentationSummary } from '../../components/menu/ProductPresentation';
+import { buildProductPresentationEntries, getProductPresentationKind, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
+
+type CampaignDisplayProduct = CampaignProduct & PresentableProduct;
+
+const asDisplayProduct = (product: CampaignProduct): CampaignDisplayProduct => ({
+  ...product,
+  id: product.product_id,
+  image_url: product.image_url || null,
+});
 
 export default function OnlineCampaignStorefront() {
   const { slug, campaignSlug } = useParams<{ slug: string; campaignSlug: string }>();
@@ -38,6 +51,9 @@ export default function OnlineCampaignStorefront() {
   const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
   const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
   const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<CampaignDisplayProduct | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(selectedProduct), () => setSelectedProduct(null));
 
   useEffect(() => {
     if (!slug || !campaignSlug) return;
@@ -77,6 +93,7 @@ export default function OnlineCampaignStorefront() {
   const total = merchandiseTotal + estimatedShipping;
   const exhaustedRewards = quote?.required_choices.filter((choice) => choice.exhausted) || [];
   const unresolvedChoices = quote?.required_choices.filter((choice) => !choice.exhausted) || [];
+
 
   useEffect(() => {
     if (!campaign || cartItems.length === 0) {
@@ -166,6 +183,53 @@ export default function OnlineCampaignStorefront() {
   const saleOpen = campaign.state === 'open';
   const categories = [...new Set(campaign.products.map(product => product.category).filter((value): value is string => Boolean(value)))];
   const visibleProducts = campaign.products.filter(product => (category === 'all' || product.category === category) && `${product.name} ${product.variant_name || ''} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const productEntries = buildProductPresentationEntries(visibleProducts.map(asDisplayProduct));
+  const renderCampaignProduct = (product: CampaignDisplayProduct, index: number) => {
+    const available = product.available_quantity ?? null;
+    const soldOut = isProductPreorderClosed(product) || (available !== null && available <= 0);
+    const soldOutLabel = isProductPreorderClosed(product) ? (language === 'th' ? 'ปิดรับพรีออเดอร์' : 'Pre-order closed') : t('campaignSoldOut');
+    const quantity = cart[product.product_id] || 0;
+    const orderLimit = product.max_quantity_per_order ?? null;
+    const quantityLimit = orderLimit === null
+      ? available
+      : available === null
+        ? orderLimit
+        : Math.min(available, orderLimit);
+    const limitReached = quantityLimit !== null && quantity >= quantityLimit;
+    const kind = getProductPresentationKind(product);
+    const showStock = kind !== 'preorder' && kind !== 'service';
+
+    return (
+      <article key={product.product_id} className="shop-product" aria-label={product.name}>
+        <button type="button" onClick={() => setSelectedProduct(product)} className="block w-full text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-pink-200">
+          <div className="shop-product-picture relative">
+            <ProductMedia product={product} getImageUrl={getMenuImageUrl} eager={index === 0} />
+            {soldOut && <div className="absolute inset-0 grid place-items-center bg-gray-950/50"><span className="rotate-[-8deg] border-2 border-white px-3 py-1 text-xs font-black text-white">{soldOutLabel}</span></div>}
+          </div>
+          <div className="shop-product-copy">
+            <div className="font-black text-gray-950">{product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name}</div>
+            {product.variant_name && product.variant_name !== 'Default' && <div className="text-xs font-bold text-gray-500">{product.name}</div>}
+            <div className="mt-2 text-lg font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</div>
+            <div className="mt-2"><ProductPresentationSummary product={product} language={language} compact /></div>
+            {showStock && <div className="mt-1 text-xs font-semibold text-gray-500">
+              {product.is_unlimited ? t('campaignUnlimited') : t('campaignRemaining', { count: Math.max(available || 0, 0) })}
+            </div>}
+            {orderLimit !== null && <div className="mt-1 text-xs font-bold text-pink-700">{t('campaignProductOrderLimit', { count: orderLimit })}</div>}
+          </div>
+        </button>
+        <div className="px-4 pb-4">
+          {saleOpen && !soldOut && (
+            <div className="shop-quantity mt-1 flex items-center justify-between rounded-xl bg-gray-50 p-1">
+              <button type="button" onClick={() => changeQuantity(product.product_id, -1, quantityLimit)} aria-label={`${t('campaignDecrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
+              <span className="font-black">{quantity}</span>
+              <button type="button" disabled={limitReached} onClick={() => changeQuantity(product.product_id, 1, quantityLimit)} aria-label={`${t('campaignIncrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={16} /></button>
+            </div>
+          )}
+          {soldOut && <div className="mt-1 rounded-xl bg-gray-100 px-3 py-2 text-center text-sm font-black text-gray-500">{soldOutLabel}</div>}
+        </div>
+      </article>
+    );
+  };
 
   return (
     <main className="creator-store min-h-screen pb-28 text-slate-800">
@@ -196,38 +260,27 @@ export default function OnlineCampaignStorefront() {
         </div>
         {visibleProducts.length === 0 && <div className="shop-empty"><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{(search || category !== 'all') && <button className="shop-outline" onClick={() => { setSearch(''); setCategory('all'); }}>{t('menuClearFilters')}</button>}</div>}
         <section className="shop-product-grid shop-campaign-grid">
-          {visibleProducts.map((product) => {
-            const available = product.available_quantity ?? null;
-            const soldOut = available !== null && available <= 0;
-            const quantity = cart[product.product_id] || 0;
-            const orderLimit = product.max_quantity_per_order ?? null;
-            const quantityLimit = orderLimit === null
-              ? available
-              : available === null
-                ? orderLimit
-                : Math.min(available, orderLimit);
-            const limitReached = quantityLimit !== null && quantity >= quantityLimit;
+          {productEntries.map((entry, index) => {
+            if (entry.type === 'product') return renderCampaignProduct(entry.product, index);
+            const variants = entry.products.map((product) => inheritProductPresentation(product, entry.parent));
+            const representative = entry.parent || variants[0];
+            const prices = getProductPriceRange(variants);
+            const expanded = Boolean(expandedGroups[entry.key]);
             return (
-              <article key={product.product_id} className="shop-product" aria-label={product.name}>
-                <div className="shop-product-picture"><ShopImage name={product.name} src={product.image_url} /></div>
-                <div className="shop-product-copy">
-                  <h3 className="break-words font-bold text-gray-950">{product.name}</h3>
-                  {product.description && <details className="my-2 text-sm text-gray-600"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{language === 'th' ? 'รายละเอียดสินค้า' : 'Product details'}</summary><p className="whitespace-pre-line break-words leading-6">{product.description}</p></details>}
-                  {product.variant_name && <div className="text-xs font-bold text-gray-500">{product.variant_name}</div>}
-                  <div className="mt-2 text-lg font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</div>
-                  <div className="mt-1 text-xs font-semibold text-gray-500">
-                    {product.is_unlimited ? t('campaignUnlimited') : t('campaignRemaining', { count: Math.max(available || 0, 0) })}
-                  </div>
-                  {orderLimit !== null && <div className="mt-1 text-xs font-bold text-pink-700">{t('campaignProductOrderLimit', { count: orderLimit })}</div>}
-                  {saleOpen && !soldOut && (
-                    <div className="shop-quantity mt-3">
-                      <button type="button" disabled={quantity === 0} onClick={() => changeQuantity(product.product_id, -1, quantityLimit)} aria-label={`${t('campaignDecrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-gray-700"><Minus size={16} /></button>
-                      <span className="font-black">{quantity}</span>
-                      <button type="button" disabled={limitReached} onClick={() => changeQuantity(product.product_id, 1, quantityLimit)} aria-label={`${t('campaignIncrease')}: ${product.name}`} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={16} /></button>
+              <article key={entry.key} className="overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm sm:col-span-2 lg:col-span-3">
+                <button type="button" onClick={() => setExpandedGroups((current) => ({ ...current, [entry.key]: !expanded }))} aria-expanded={expanded} className="flex min-h-32 w-full text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-pink-200">
+                  <div className="relative w-32 shrink-0 overflow-hidden bg-pink-50 sm:w-40"><ProductMedia product={representative} getImageUrl={getMenuImageUrl} /></div>
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <h2 className="truncate font-black text-gray-950">{entry.label}</h2>
+                      <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {language === 'th' ? 'ตัวเลือก' : variants.length === 1 ? 'variant' : 'variants'}</p>
+                      <div className="mt-2 text-lg font-black text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, campaign.currency) : `${formatPrice(prices.min, campaign.currency)}–${formatPrice(prices.max, campaign.currency)}`}</div>
+                      <div className="mt-2"><ProductPresentationSummary product={representative} language={language} compact /></div>
                     </div>
-                  )}
-                  {soldOut && <div className="mt-3 rounded-xl bg-gray-100 px-3 py-2 text-center text-sm font-black text-gray-500">{t('campaignSoldOut')}</div>}
-                </div>
+                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full bg-pink-50 text-pink-700 transition-transform ${expanded ? 'rotate-180' : ''}`}><ChevronDown size={20} /></span>
+                  </div>
+                </button>
+                {expanded && <div className="grid gap-4 border-t border-pink-100 bg-pink-50/30 p-4 sm:grid-cols-2 lg:grid-cols-3">{variants.map((product, variantIndex) => renderCampaignProduct(product, variantIndex))}</div>}
               </article>
             );
           })}
@@ -239,6 +292,40 @@ export default function OnlineCampaignStorefront() {
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div><div className="text-xs font-bold text-gray-500">{t('campaignCartItems', { count: cartItems.reduce((sum, item) => sum + item.quantity, 0) })}</div><div className="text-lg font-black text-gray-950">{formatPrice(subtotal, campaign.currency)}</div></div>
             <button aria-haspopup="dialog" aria-expanded={checkoutOpen} onClick={() => setCheckoutOpen(true)} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white"><ShoppingCart size={18} />{t('campaignCheckout')}</button>
+          </div>
+        </div>
+      )}
+
+      {selectedProduct && (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-gray-950/55 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={selectedProduct.name} ref={dialogRef} onClick={() => setSelectedProduct(null)}>
+          <div className="relative grid max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-[2rem] bg-white shadow-2xl sm:grid-cols-2 sm:rounded-[2rem]" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={() => setSelectedProduct(null)} aria-label={t('campaignClose')} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/95 text-gray-600 shadow-sm"><X size={20} /></button>
+            <div className="min-h-[320px] overflow-hidden bg-pink-50 sm:border-r sm:border-pink-100">
+              <ProductGallery product={selectedProduct} getImageUrl={getMenuImageUrl} />
+            </div>
+            <div className="p-5 pt-16 sm:p-7 sm:pt-16">
+              <div className="flex flex-wrap gap-2">
+                {selectedProduct.category && <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">{selectedProduct.category}</span>}
+                {selectedProduct.variant_name && <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">{selectedProduct.variant_name}</span>}
+              </div>
+              <h2 className="mt-3 text-2xl font-black leading-tight text-gray-950">{selectedProduct.name}</h2>
+              <div className="mt-2 text-3xl font-black text-pink-700">{formatPrice(selectedProduct.price, campaign.currency)}</div>
+              <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-4"><ProductPresentationSummary product={selectedProduct} language={language} /></div>
+              {selectedProduct.description && <p className="mt-5 whitespace-pre-line text-sm font-semibold leading-6 text-gray-600">{selectedProduct.description}</p>}
+              {saleOpen && !isProductPreorderClosed(selectedProduct) && (selectedProduct.available_quantity === null || selectedProduct.available_quantity === undefined || selectedProduct.available_quantity > 0) && (() => {
+                const quantity = cart[selectedProduct.product_id] || 0;
+                const available = selectedProduct.available_quantity ?? null;
+                const orderLimit = selectedProduct.max_quantity_per_order ?? null;
+                const maximum = orderLimit === null ? available : available === null ? orderLimit : Math.min(available, orderLimit);
+                return (
+                  <div className="mt-6 flex items-center justify-between rounded-2xl bg-pink-50 p-1.5">
+                    <button type="button" onClick={() => changeQuantity(selectedProduct.product_id, -1, maximum)} aria-label={`${t('campaignDecrease')}: ${selectedProduct.name}`} className="grid h-12 w-12 place-items-center rounded-xl bg-white text-pink-700 shadow-sm"><Minus size={18} /></button>
+                    <span className="font-black text-gray-950">{quantity}</span>
+                    <button type="button" onClick={() => changeQuantity(selectedProduct.product_id, 1, maximum)} disabled={maximum !== null && quantity >= maximum} aria-label={`${t('campaignIncrease')}: ${selectedProduct.name}`} className="grid h-12 w-12 place-items-center rounded-xl bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400"><Plus size={18} /></button>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

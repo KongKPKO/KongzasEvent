@@ -30,6 +30,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - An evidence upload begun before the deadline may use the existing two-minute technical grace. It is not an extra payment window or permission to start a new normal upload after expiry.
 - Submitted evidence keeps stock committed pending review. Unsubmitted expired holds release stock once; retrying expiry must not release twice.
 - Late-payment reports do not automatically restore an expired hold or reclaim stock from another buyer. The merchant must resolve payment and fulfillment explicitly.
+- Live queue remains one shared queue for merchandise and cheki/photo service; this pilot does not require separate service queues.
 - Live-day sales have no 15-minute online payment timer. Preserve existing queue reservations; staff payment completion finalizes stock.
 - An order successfully created in its hold window already owns its price/promotion snapshot. Later promotion edits must not reprice that order.
 

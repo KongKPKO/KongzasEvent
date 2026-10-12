@@ -1365,7 +1365,8 @@ export default function POSPanel({
                                                 >
                                                     <button
                                                         onClick={() => addToCart(product)}
-                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                                        disabled={loading || fetchError}
+                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
                                                             {product.image_url ? (
@@ -1425,7 +1426,8 @@ export default function POSPanel({
                                                 >
                                                     <button
                                                     onClick={() => addToCart(product)}
-                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col"
+                                                    disabled={loading || fetchError}
+                                                    className="cursor-pointer transition-all enabled:active:scale-[0.98] text-left h-full flex flex-col disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
                                                     <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
                                                         {product.image_url ? (

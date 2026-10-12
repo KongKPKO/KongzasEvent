@@ -374,7 +374,7 @@ test.describe('online campaign', () => {
     expect(productCellWidth).toBeGreaterThanOrEqual(250);
 
     await page.goto('/manage-products');
-    await page.getByRole('button', { name: /^Add Product$|^เพิ่มสินค้า$/ }).first().click();
+    await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/i }).first().click();
     const productName = `Quick Cheki ${randomUUID().slice(0, 6)}`;
     await page.getByLabel(/Product name|ชื่อสินค้า/i).fill(productName);
     await page.getByLabel(/Price & currency|ราคาและสกุลเงิน/i).fill('120');
@@ -437,7 +437,7 @@ test.describe('online campaign', () => {
       await login(page);
       await page.goto('/manage-products');
       const productCard = page.locator('article').filter({ has: page.getByRole('heading', { name: productName }) });
-      await productCard.getByRole('button', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }).click();
+      await productCard.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).click();
 
       const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
       await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);

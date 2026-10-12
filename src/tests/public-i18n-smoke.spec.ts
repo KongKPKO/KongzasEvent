@@ -43,7 +43,7 @@ const seedPublicRouteFixtures = async () => {
       is_public: false,
       is_verified: false,
     },
-  ]);
+  ]).throwOnError();
 
   await service.from('events').insert({
     id: publicEventId,
@@ -54,7 +54,7 @@ const seedPublicRouteFixtures = async () => {
     status: 'Confirmed',
     is_booth_open: true,
     event_timezone: 'Asia/Bangkok',
-  });
+  }).throwOnError();
 
   await service.from('products').insert({
     id: publicProductId,
@@ -64,27 +64,17 @@ const seedPublicRouteFixtures = async () => {
     status: 'enable',
     currency: 'THB',
     is_unlimited: true,
-  });
+  }).throwOnError();
 };
 
 const cleanupPublicRouteFixtures = async () => {
   if (!service) return;
-  await service.from('products').delete().eq('id', publicProductId);
-  await service.from('events').delete().eq('id', publicEventId);
-  await service.from('artists').delete().in('id', [publicArtistId, privateArtistId]);
+  await service.from('products').delete().eq('id', publicProductId).throwOnError();
+  await service.from('events').delete().eq('id', publicEventId).throwOnError();
+  await service.from('artists').delete().in('id', [publicArtistId, privateArtistId]).throwOnError();
 };
 
 test.describe('Public Nireq smoke', () => {
-  test.beforeAll(async () => {
-    test.skip(!service, 'Supabase service key is required to seed public route smoke fixtures');
-    await cleanupPublicRouteFixtures();
-    await seedPublicRouteFixtures();
-  });
-
-  test.afterAll(async () => {
-    await cleanupPublicRouteFixtures();
-  });
-
   test('home supports discovery locators and language switching', async ({ page }) => {
     await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
     await page.goto('/');
@@ -115,6 +105,18 @@ test.describe('Public Nireq smoke', () => {
     const submit = page.getByTestId('creator-register-submit');
     await expect(submit).toBeDisabled();
     await expect(submit).toContainText(/Complete required fields|กรอกข้อมูลจำเป็นให้ครบ/);
+  });
+});
+
+test.describe('Public Nireq fixture smoke', () => {
+  test.beforeAll(async () => {
+    expect(service, 'Supabase service key is required to seed public route smoke fixtures').toBeTruthy();
+    await cleanupPublicRouteFixtures();
+    await seedPublicRouteFixtures();
+  });
+
+  test.afterAll(async () => {
+    await cleanupPublicRouteFixtures();
   });
 
   test('customer home and menu work anonymously for intentionally public artists', async ({ page }) => {

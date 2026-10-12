@@ -10,6 +10,7 @@ import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
 import { formatDateInTimeZone } from '../utils/timezone';
 import { posSelectedEventStorageKey } from '../utils/customerEvents';
+import { useI18n } from '../i18n';
 
 export interface ActiveEvent {
     id: string;
@@ -67,6 +68,7 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
+    const { t } = useI18n();
     // useSearchParams makes urlEventId reactive: if the URL changes while this
     // component stays mounted (e.g. navigating from one Event Hub to another),
     // the component picks up the new eventId without remounting.
@@ -82,6 +84,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         return window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id));
     });
     const [eventLoading, setEventLoading] = useState(true);
+    const [eventLoadFailed, setEventLoadFailed] = useState(false);
     const [loadingSlow, setLoadingSlow] = useState(false);
     const [boothToggleLoading, setBoothToggleLoading] = useState(false);
     const [nextUpcomingEvent, setNextUpcomingEvent] = useState<UpcomingEvent | null>(null);
@@ -106,6 +109,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const activeEventIdRef = useRef<string | null>(null);
     const activeServiceDateRef = useRef<string | null>(null);
+    const eventRequestRef = useRef(0);
     const activeServiceDate = activeEvent
         ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
         : null;
@@ -145,15 +149,19 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading]);
 
     const fetchActiveEvents = useCallback(async () => {
+        const request = ++eventRequestRef.current;
         try {
             const { data, error } = await supabase.rpc('list_accessible_pos_events');
+            if (request !== eventRequestRef.current) return;
 
             if (error) {
                 console.error('[ManageCombined] Error fetching active events:', error);
+                setEventLoadFailed(true);
                 setAvailableEvents([]);
                 setActiveEvent(null);
             } else {
                 const events = (data || []) as ActiveEvent[];
+                setEventLoadFailed(false);
                 setAvailableEvents(events);
 
                 setSelectedEventId((currentSelectedId) => {
@@ -178,11 +186,13 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 });
             }
         } catch (err) {
+            if (request !== eventRequestRef.current) return;
             console.error('[ManageCombined] Error fetching active events:', err);
+            setEventLoadFailed(true);
             setAvailableEvents([]);
             setActiveEvent(null);
         } finally {
-            setEventLoading(false);
+            if (request === eventRequestRef.current) setEventLoading(false);
         }
     }, [actorContext.artist_id]);
 
@@ -206,12 +216,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     // Trigger the upcoming-event lookup whenever the active event list becomes
     // empty (or clears it when active events exist so stale data is never shown).
     useEffect(() => {
-        if (!eventLoading && availableEvents.length === 0) {
+        if (!eventLoading && !eventLoadFailed && availableEvents.length === 0) {
             void fetchNextUpcomingEvent();
         } else {
             setNextUpcomingEvent(null);
         }
-    }, [eventLoading, availableEvents.length, fetchNextUpcomingEvent]);
+    }, [eventLoading, eventLoadFailed, availableEvents.length, fetchNextUpcomingEvent]);
 
     const fetchQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
@@ -407,6 +417,24 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             </div>
         );
     }
+
+    if (eventLoadFailed) return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+            <div role="alert" className="max-w-md space-y-4 text-center">
+                <p className="font-bold text-red-700">{t('workspaceLoadFailed')}</p>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setEventLoading(true);
+                        void fetchActiveEvents();
+                    }}
+                    className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 font-bold text-white"
+                >
+                    {t('workspaceRetryLoad')}
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">

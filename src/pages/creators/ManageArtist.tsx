@@ -10,6 +10,7 @@ import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
+import { useI18n } from '../../i18n';
 import type { ActorContext } from '../../types/access';
 import type { EventSellingMode, OrderType, PickupStatus } from '../../types/preorder';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
@@ -168,6 +169,7 @@ const formatMoney = (amount: number, currency: string) =>
   }).format(amount || 0);
 
 const ManageArtist = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const browserTimeZone = getBrowserTimeZone();
@@ -178,6 +180,8 @@ const ManageArtist = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [eventMetrics, setEventMetrics] = useState<Record<string, EventMetric>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishingPublicLink, setIsPublishingPublicLink] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -204,19 +208,23 @@ const ManageArtist = () => {
 
     const fetchData = async () => {
       try {
-        if (isMounted) setIsLoading(true);
+        if (isMounted) {
+          setIsLoading(true);
+          setLoadError(false);
+        }
 
         // 1. Get User
         const user = await getAuthUserSafe();
+        if (!isMounted) return;
         if (!user) {
            navigate('/manage-login'); // Force redirect
            return;
         }
 
         const ctx = await fetchActorContext();
+        if (!isMounted) return;
         if (!ctx?.artist_id) {
-          navigate('/manage-login');
-          return;
+          throw new Error('Could not load artist workspace access.');
         }
         if (isMounted) setActorContext(ctx);
 
@@ -328,6 +336,7 @@ const ManageArtist = () => {
         }
       } catch (error) {
         console.error("Error fetching data:", error);
+        if (isMounted) setLoadError(true);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -336,7 +345,7 @@ const ManageArtist = () => {
     fetchData();
 
     return () => { isMounted = false; };
-  }, [browserTimeZone]);
+  }, [browserTimeZone, loadAttempt, navigate]);
 
 
 
@@ -725,6 +734,16 @@ const ManageArtist = () => {
 
 
   if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">Loading Artist Center...</div>;
+  if (loadError) return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div role="alert" className="max-w-md space-y-4 text-center">
+        <p className="font-bold text-red-700">{t('workspaceLoadFailed')}</p>
+        <Button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+          {t('workspaceRetryLoad')}
+        </Button>
+      </div>
+    </div>
+  );
   if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">Artist not found.</div>;
 
   const publicPageUrl = artist.slug ? `${window.location.origin}/${artist.slug}/home` : '';

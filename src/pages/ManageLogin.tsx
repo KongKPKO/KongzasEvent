@@ -15,7 +15,7 @@ interface AccessibleEvent {
 
 type LoginMode = 'creator' | 'staff';
 
-const ManageLogin = () => {
+const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<void> }) => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -35,6 +35,8 @@ const ManageLogin = () => {
   });
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showCreatorApply, setShowCreatorApply] = useState(false);
+  const [workspaceCheckFailed, setWorkspaceCheckFailed] = useState(false);
+  const [checkingWorkspace, setCheckingWorkspace] = useState(false);
   const [magicMsg, setMagicMsg] = useState<string | null>(null);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -63,14 +65,29 @@ const ManageLogin = () => {
   const routeAfterAuth = useCallback(async (options?: { allowAdminFallback?: boolean }) => {
     if (routeInFlightRef.current) return;
     routeInFlightRef.current = true;
+    setCheckingWorkspace(true);
+    setWorkspaceCheckFailed(false);
 
     try {
       const signupCompletionStatus = await completePendingVerifiedCreatorSignup();
       const ctx = await fetchActorContext();
-      const [{ data: isAdmin }, { data: invites }] = await Promise.all([
+      const wantsAdminPage = ['/admin/applications', '/admin/support'].includes(redirectTo || '');
+      if (!wantsAdminPage && canAccessManagementPages(ctx?.role)) {
+        navigate('/manage-events');
+        return;
+      }
+      if (!wantsAdminPage && canAccessQueuePages(ctx?.role)) {
+        navigate(await getLivePathForRole(ctx?.role));
+        return;
+      }
+      const [adminResult, invitationResult] = await Promise.all([
         supabase.rpc('is_platform_admin'),
         supabase.rpc('list_my_pending_invitations'),
       ]);
+      if (adminResult.error) throw adminResult.error;
+      if (invitationResult.error) throw invitationResult.error;
+      const isAdmin = adminResult.data;
+      const invites = invitationResult.data;
 
       if (['/admin/applications', '/admin/support'].includes(redirectTo || '') && isAdmin) {
         navigate(redirectTo!);
@@ -82,13 +99,20 @@ const ManageLogin = () => {
         navigate('/invitations');
       } else if (isAdmin && options?.allowAdminFallback) {
         navigate('/admin/applications');
+      } else if (signupCompletionStatus === 'error') {
+        throw new Error('Could not complete creator signup');
       } else if (signupCompletionStatus === 'email_unconfirmed') {
         setErrorMsg(t('loginConfirmEmailFirst'));
       } else if (!isAdmin) {
         setShowCreatorApply(true);
         setErrorMsg(t('loginNoWorkspace'));
       }
+    } catch {
+      setShowCreatorApply(false);
+      setWorkspaceCheckFailed(true);
+      setErrorMsg(t('workspaceLoadFailed'));
     } finally {
+      setCheckingWorkspace(false);
       routeInFlightRef.current = false;
     }
   }, [getLivePathForRole, navigate, redirectTo, t]);
@@ -338,10 +362,29 @@ const ManageLogin = () => {
           </h2>
 
           {errorMsg && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-2 text-sm font-medium border border-red-100 animate-fade-in">
+            <div role="alert" className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-2 text-sm font-medium border border-red-100 animate-fade-in">
               <AlertCircle size={18} className="mt-0.5 shrink-0" />
               {errorMsg}
             </div>
+          )}
+
+          {workspaceCheckFailed && (
+            <Button
+              type="button"
+              disabled={checkingWorkspace}
+              onClick={async () => {
+                setCheckingWorkspace(true);
+                try {
+                  await refreshWorkspace();
+                  await routeAfterAuth({ allowAdminFallback: true });
+                } finally {
+                  setCheckingWorkspace(false);
+                }
+              }}
+              className="mb-5 min-h-11 w-full"
+            >
+              {t('workspaceRetryLoad')}
+            </Button>
           )}
 
           {showCreatorApply && (

@@ -237,6 +237,8 @@ const translations = {
     signOut: 'Sign out',
     workspaceNotAssigned: 'Workspace Not Assigned',
     workspaceNotAssignedBody: 'This account is signed in but has no artist workspace role.',
+    workspaceLoadFailed: 'Could not load your workspace. Please try again.',
+    workspaceRetryLoad: 'Retry loading workspace',
 
     navDiscover: 'Discover',
     navCreatorLogin: 'Creator login',
@@ -973,6 +975,8 @@ const translations = {
     signOut: 'ออกจากระบบ',
     workspaceNotAssigned: 'ยังไม่มี Workspace',
     workspaceNotAssignedBody: 'บัญชีนี้เข้าสู่ระบบแล้ว แต่ยังไม่มี role สำหรับ artist workspace.',
+    workspaceLoadFailed: 'โหลดหน้าจัดการร้านไม่สำเร็จ กรุณาลองอีกครั้ง',
+    workspaceRetryLoad: 'ลองโหลดหน้าจัดการร้านอีกครั้ง',
 
     navDiscover: 'ค้นหาบูธ',
     navCreatorLogin: 'เข้าสู่ระบบ Creator',

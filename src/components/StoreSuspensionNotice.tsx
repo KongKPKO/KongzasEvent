@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { useI18n } from '../i18n';
+import { uiText, useI18n } from '../i18n';
 
 export default function StoreSuspensionNotice({ artistId }: { artistId: string }) {
   const { language } = useI18n();
@@ -17,7 +17,5 @@ export default function StoreSuspensionNotice({ artistId }: { artistId: string }
     return () => { alive = false; window.removeEventListener('focus', refresh); };
   }, [artistId]);
   if (!suspended) return null;
-  return <p role="status" className="my-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">{language === 'th'
-    ? 'ร้านนี้ถูกระงับการรับออเดอร์และคิวใหม่ ออเดอร์เดิมยังดูสถานะและดำเนินการต่อได้'
-    : 'This store is not accepting new orders or queue tickets. Existing orders remain accessible and can be processed.'}</p>;
+  return <p role="status" className="my-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">{uiText(language, 'This store is not accepting new orders or queue tickets. Existing orders remain accessible and can be processed.')}</p>;
 }

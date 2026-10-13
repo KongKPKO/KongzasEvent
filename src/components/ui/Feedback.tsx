@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { useI18n } from '../../i18n';
+import { useI18n, uiText } from '../../i18n';
 
 interface ToastMessage {
   tone?: 'info' | 'success' | 'warning' | 'error';
@@ -35,7 +35,7 @@ const toneClasses = {
 };
 
 export function Toast({ message, onClose }: ToastProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   if (!message) return null;
 
   return (
@@ -43,7 +43,7 @@ export function Toast({ message, onClose }: ToastProps) {
       <div className={`rounded-xl border p-3 shadow-lg ${toneClasses[message.tone || 'info']}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-sm font-black">{message.title}</div>
+            <div className="text-sm font-black">{uiText(language, message.title)}</div>
             {message.detail && <div className="mt-0.5 whitespace-pre-line text-xs font-medium opacity-90">{message.detail}</div>}
           </div>
           <button type="button" onClick={onClose} className="pointer-events-auto min-h-11 shrink-0 rounded-md px-3 text-xs font-bold opacity-70 hover:opacity-100">
@@ -68,7 +68,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
   // Parents recreate onCancel on every keystroke; depending on it would re-run
@@ -96,7 +96,7 @@ export function ConfirmDialog({
       aria-labelledby={titleId}
     >
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-        <h2 id={titleId} className="text-lg font-black text-gray-900">{title}</h2>
+        <h2 id={titleId} className="text-lg font-black text-gray-900">{uiText(language, title)}</h2>
         {detail && <p className="mt-2 whitespace-pre-line text-sm font-medium text-gray-600">{detail}</p>}
         {children}
         <div className="mt-5 grid grid-cols-2 gap-2">

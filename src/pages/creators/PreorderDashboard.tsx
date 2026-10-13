@@ -18,6 +18,7 @@ import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
 import type { PaymentStatus, PreorderPaymentReviewRow, PreorderProductionSummaryRow } from '../../types/preorder';
 import { formatPrice } from '../../utils/currency';
+import { uiText, useI18n } from '../../i18n';
 
 interface PreorderDashboardProps {
   actorContext: ActorContext;
@@ -65,6 +66,7 @@ const toNumber = (value: unknown) => Number(value || 0);
 
 export default function PreorderDashboard({ actorContext, scope = 'preorder' }: PreorderDashboardProps) {
   const { eventId } = useParams();
+  const { language } = useI18n();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
   const [orders, setOrders] = useState<PreorderPaymentReviewRow[]>([]);
@@ -105,11 +107,11 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setSummary(summaryData);
       setOrders(reviewData.filter((order) => (scope === 'post_event' ? order.order_type === 'post_event' : order.order_type !== 'post_event')));
     } catch (error) {
-      setToast({ tone: 'error', title: 'Could not load pre-order dashboard', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Could not load pre-order dashboard'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [actorContext.artist_id, eventId, scope]);
+  }, [actorContext.artist_id, eventId, language, scope]);
 
   useEffect(() => {
     void load();
@@ -207,7 +209,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setSignedUrls((prev) => ({ ...prev, [order.slip_url as string]: url }));
       setSlipPreview({ order, url });
     } catch (error) {
-      setToast({ tone: 'error', title: 'Could not open slip', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Could not open slip'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setSlipLoadingId(null);
     }
@@ -215,7 +217,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
 
   const exportCsv = () => {
     const rows = [
-      ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'],
+      ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'].map((heading) => uiText(language, heading)),
       ...summary.map((row) => [
         row.product_name,
         row.category || '',
@@ -255,20 +257,20 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         )));
         const { error: notifyError } = await notifyPreorderPayment({ orderId: targetOrder.order_id, event: 'confirmed' });
         setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'confirmed', pickupCode: targetOrder.pickup_code } : null);
-        const readyMessage = targetOrder.order_type === 'post_event'
-          ? `${targetOrder.pickup_code} is ready for shipment.`
-          : `${targetOrder.pickup_code} is ready for pickup.`;
+        const readyMessage = language === 'th'
+          ? targetOrder.order_type === 'post_event' ? `${targetOrder.pickup_code} พร้อมจัดส่งแล้ว` : `${targetOrder.pickup_code} พร้อมให้รับสินค้าแล้ว`
+          : targetOrder.order_type === 'post_event' ? `${targetOrder.pickup_code} is ready for shipment.` : `${targetOrder.pickup_code} is ready for pickup.`;
         setToast({
           tone: notifyError ? 'warning' : 'success',
-          title: 'Payment confirmed',
+          title: uiText(language, 'Payment confirmed'),
           detail: notifyError
-            ? `${readyMessage} Email was not sent. Use Retry email; the payment will not be confirmed twice.`
-            : `${readyMessage} Customer email was sent.`,
+            ? `${readyMessage} ${uiText(language, 'Email was not sent. Use Retry email; the payment will not be confirmed twice.')}`
+            : `${readyMessage} ${uiText(language, 'Customer email was sent.')}`,
         });
       } else if (reviewAction.type === 'reject') {
         const note = reviewNote.trim();
         if (!note) {
-          setToast({ tone: 'warning', title: 'Reject reason required', detail: 'Add a short explanation for the customer before rejecting.' });
+          setToast({ tone: 'warning', title: uiText(language, 'Reject reason required'), detail: uiText(language, 'Add a short explanation for the customer before rejecting.') });
           return;
         }
         await rejectPreorderPayment(targetOrder.order_id, note);
@@ -281,16 +283,16 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'rejected', pickupCode: targetOrder.pickup_code } : null);
         setToast({
           tone: notifyError ? 'warning' : 'success',
-          title: 'Payment rejected',
+          title: uiText(language, 'Payment rejected'),
           detail: notifyError
-            ? 'Reserved stock was released. Email was not sent; use Retry email.'
-            : 'Reserved stock was released and the customer email was sent.',
+            ? uiText(language, 'Reserved stock was released. Email was not sent; use Retry email.')
+            : uiText(language, 'Reserved stock was released and the customer email was sent.'),
         });
       } else {
         const tracking = trackingNumber.trim();
         const carrier = shippingCarrier.trim();
         if (!tracking) {
-          setToast({ tone: 'warning', title: 'Tracking number required', detail: 'Add the shipment tracking number before marking this order shipped.' });
+          setToast({ tone: 'warning', title: uiText(language, 'Tracking number required'), detail: uiText(language, 'Add the shipment tracking number before marking this order shipped.') });
           return;
         }
         const result = await markOrderShipped(targetOrder.order_id, tracking, carrier);
@@ -307,7 +309,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         )));
         setToast({
           tone: 'success',
-          title: 'Order marked shipped',
+          title: uiText(language, 'Order marked shipped'),
           detail: `${targetOrder.pickup_code} · ${tracking}`,
         });
       }
@@ -317,7 +319,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setShippingCarrier('');
       void load(true);
     } catch (error) {
-      setToast({ tone: 'error', title: 'Review failed', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Review failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setActionLoading(false);
     }
@@ -332,10 +334,10 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     });
     setNotificationRetrying(false);
     if (error) {
-      setToast({ tone: 'warning', title: 'Email still not sent', detail: 'The order state is already saved. Try the email again later.' });
+      setToast({ tone: 'warning', title: uiText(language, 'Email still not sent'), detail: uiText(language, 'The order state is already saved. Try the email again later.') });
       return;
     }
-    setToast({ tone: 'success', title: 'Customer email sent', detail: `${failedNotification.pickupCode} notification delivered without repeating the payment action.` });
+    setToast({ tone: 'success', title: uiText(language, 'Customer email sent'), detail: language === 'th' ? `ส่งการแจ้งเตือนของ ${failedNotification.pickupCode} แล้ว โดยไม่ทำรายการชำระเงินซ้ำ` : `${failedNotification.pickupCode} notification delivered without repeating the payment action.` });
     setFailedNotification(null);
   };
 
@@ -381,7 +383,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     return (
       <div className="min-h-screen bg-gray-50">
         <AdminHeader activePage="events" actorRole={actorContext.role} userEmail={actorContext.member_email} />
-        <div className="p-10 text-center text-sm font-bold text-gray-400">Loading pre-order dashboard...</div>
+        <div className="p-10 text-center text-sm font-bold text-gray-400">{uiText(language, 'Loading pre-order dashboard...')}</div>
       </div>
     );
   }
@@ -399,26 +401,28 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         open={Boolean(reviewAction)}
         title={
           reviewAction?.type === 'confirm'
-            ? 'Confirm transfer received?'
+            ? uiText(language, 'Confirm transfer received?')
             : reviewAction?.type === 'ship'
-              ? 'Mark order shipped?'
-              : 'Reject payment?'
+              ? uiText(language, 'Mark order shipped?')
+              : uiText(language, 'Reject payment?')
         }
         detail={
           reviewAction
             ? reviewAction.type === 'confirm'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Nireq does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
+              ? language === 'th'
+                ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nคุณกำลังยืนยันว่าได้ตรวจหลักฐานและได้รับเงินโอนแล้ว Nireq ไม่ได้ตรวจสอบธุรกรรมธนาคาร ออเดอร์จะย้ายไป${reviewAction.order.order_type === 'post_event' ? 'รายการจัดส่ง' : 'รายการรับสินค้า'}`
+                : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Nireq does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
               : reviewAction.type === 'ship'
-                ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
-                : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
+                ? language === 'th' ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nเพิ่มเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์` : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
+                : language === 'th' ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nการปฏิเสธจะยกเลิกออเดอร์และคืนสต็อกที่จองไว้ หากลูกค้าชำระเงินจริงแล้ว โปรดติดต่อลูกค้าก่อนแทนการปฏิเสธ` : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
             : ''
         }
         confirmLabel={
           reviewAction?.type === 'confirm'
-            ? 'Confirm transfer received'
+            ? uiText(language, 'Confirm transfer received')
             : reviewAction?.type === 'ship'
-              ? 'Mark shipped'
-              : 'Reject payment'
+              ? uiText(language, 'Mark shipped')
+              : uiText(language, 'Reject payment')
         }
         tone={reviewAction?.type === 'reject' ? 'danger' : 'default'}
         loading={actionLoading}
@@ -436,12 +440,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       >
         {reviewAction?.type === 'reject' && (
           <label className="mt-4 block">
-            <span className="text-xs font-black uppercase tracking-wide text-red-700">Reject reason (sent to the customer)</span>
+            <span className="text-xs font-black uppercase tracking-wide text-red-700">{uiText(language, 'Reject reason (sent to the customer)')}</span>
             <textarea
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
               rows={3}
-              placeholder="Example: Transfer amount does not match, duplicate slip, or payment not found."
+              placeholder={uiText(language, 'Example: Transfer amount does not match, duplicate slip, or payment not found.')}
               className="mt-1 w-full resize-none rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm font-bold text-red-950 outline-none focus:border-red-300 focus:ring-4 focus:ring-red-100"
             />
           </label>
@@ -449,20 +453,20 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         {reviewAction?.type === 'ship' && (
           <div className="mt-4 grid gap-3">
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wide text-emerald-700">Tracking number</span>
+              <span className="text-xs font-black uppercase tracking-wide text-emerald-700">{uiText(language, 'Tracking number')}</span>
               <input
                 value={trackingNumber}
                 onChange={(event) => setTrackingNumber(event.target.value)}
-                placeholder="Tracking number"
+                placeholder={uiText(language, 'Tracking number')}
                 className="mt-1 min-h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 text-sm font-bold text-emerald-950 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
             <label className="block">
-              <span className="text-xs font-black uppercase tracking-wide text-gray-600">Carrier (e.g. Kerry, Flash, ไปรษณีย์ไทย)</span>
+              <span className="text-xs font-black uppercase tracking-wide text-gray-600">{uiText(language, 'Carrier (e.g. Kerry, Flash, Thai Post)')}</span>
               <input
                 value={shippingCarrier}
                 onChange={(event) => setShippingCarrier(event.target.value)}
-                placeholder="Carrier"
+                placeholder={uiText(language, 'Carrier')}
                 className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 outline-none focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
@@ -474,7 +478,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/70 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
-          aria-label={`Payment slip for ${slipPreview.order.pickup_code}`}
+          aria-label={language === 'th' ? `สลิปชำระเงินสำหรับ ${slipPreview.order.pickup_code}` : `Payment slip for ${slipPreview.order.pickup_code}`}
           onClick={(event) => {
             if (event.target === event.currentTarget) setSlipPreview(null);
           }}
@@ -482,12 +486,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div className="min-w-0">
-                <div className="text-sm font-black text-gray-950">Payment slip</div>
+                <div className="text-sm font-black text-gray-950">{uiText(language, 'Payment slip')}</div>
                 <div className="truncate text-xs font-bold text-gray-500">
                   {slipPreview.order.pickup_code} · {slipPreview.order.customer_name}
                 </div>
                 <div className="mt-0.5 text-base font-black text-gray-950">
-                  Amount expected: {formatPrice(slipPreview.order.total_price, slipPreview.order.currency)}
+                  {uiText(language, 'Amount expected')}: {formatPrice(slipPreview.order.total_price, slipPreview.order.currency)}
                 </div>
               </div>
               <button
@@ -495,7 +499,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                 type="button"
                 onClick={() => setSlipPreview(null)}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50"
-                aria-label="Close slip preview"
+                aria-label={uiText(language, 'Close slip preview')}
               >
                 <X size={18} />
               </button>
@@ -503,7 +507,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <div className="min-h-0 flex-1 overflow-auto bg-gray-100 p-4">
               <img
                 src={slipPreview.url}
-                alt={`Payment slip for ${slipPreview.order.pickup_code}`}
+                alt={language === 'th' ? `สลิปชำระเงินสำหรับ ${slipPreview.order.pickup_code}` : `Payment slip for ${slipPreview.order.pickup_code}`}
                 className="mx-auto max-h-[64vh] max-w-full rounded-xl bg-white object-contain shadow-sm"
               />
             </div>
@@ -518,7 +522,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                   }}
                   className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-black text-red-700 hover:bg-red-100"
                 >
-                  <XCircle size={15} /> Reject
+                  <XCircle size={15} /> {uiText(language, 'Reject')}
                 </button>
                 <button
                   type="button"
@@ -529,7 +533,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                   }}
                   className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-sm font-black text-white hover:bg-emerald-700"
                 >
-                  <CheckCircle size={15} /> Confirm
+                  <CheckCircle size={15} /> {uiText(language, 'Confirm')}
                 </button>
               </div>
             )}
@@ -545,14 +549,14 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
               onClick={() => void load()}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50"
             >
-              <RefreshCw size={15} /> Refresh
+              <RefreshCw size={15} /> {uiText(language, 'Refresh')}
             </button>
             <button
               onClick={exportCsv}
               disabled={summary.length === 0}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-950 px-3 text-xs font-black text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download size={15} /> Export CSV
+              <Download size={15} /> {uiText(language, 'Export CSV')}
             </button>
           </div>
         </div>
@@ -560,25 +564,25 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ReceiptText className="text-pink-600" size={24} />
-            <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard'}</h1>
+            <h1 className="text-2xl font-black text-gray-900">{uiText(language, scope === 'post_event' ? 'Post-order Dashboard' : 'Pre-order Dashboard')}</h1>
           </div>
-          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || 'Event'} · {scope === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production'}</p>
-          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.</p>
+          <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || uiText(language, 'Event')} · {uiText(language, scope === 'post_event' ? 'Review transfers, then ship orders' : 'Review transfers, then prepare production')}</p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">{uiText(language, 'Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.')}</p>
         </section>
 
         {failedNotification && (
           <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
             <div>
-              <p className="text-sm font-black text-amber-900">Order saved · email not sent</p>
-              <p className="mt-1 text-xs font-semibold text-amber-800">Retry only sends the email for {failedNotification.pickupCode}; it does not repeat payment, stock, or fulfillment changes.</p>
+              <p className="text-sm font-black text-amber-900">{uiText(language, 'Order saved · email not sent')}</p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">{language === 'th' ? `การลองใหม่จะส่งเฉพาะอีเมลของ ${failedNotification.pickupCode} โดยไม่ทำรายการชำระเงิน สต็อก หรือการจัดส่งซ้ำ` : `Retry only sends the email for ${failedNotification.pickupCode}; it does not repeat payment, stock, or fulfillment changes.`}</p>
             </div>
             <button type="button" onClick={retryFailedNotification} disabled={notificationRetrying} className="min-h-11 rounded-xl bg-amber-900 px-4 text-sm font-black text-white hover:bg-amber-950 disabled:opacity-60">
-              {notificationRetrying ? 'Sending…' : 'Retry email'}
+              {uiText(language, notificationRetrying ? 'Sending…' : 'Retry email')}
             </button>
           </section>
         )}
 
-        <section aria-label="Order status filters" className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
+        <section aria-label={uiText(language, 'Order status filters')} className={`mb-5 grid grid-cols-2 gap-3 ${scope === 'post_event' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           {statCards.map((card) => (
             <button
               key={card.key}
@@ -587,7 +591,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
               aria-pressed={filter === card.key}
               className={`rounded-xl border p-4 text-left transition-shadow hover:shadow-md ${card.classes} ${filter === card.key ? card.activeClasses : ''}`}
             >
-              <div className="text-xs font-black uppercase tracking-wide">{card.label}</div>
+              <div className="text-xs font-black uppercase tracking-wide">{uiText(language, card.label)}</div>
               <div className="mt-1 text-2xl font-black text-gray-950">{card.value}</div>
             </button>
           ))}
@@ -596,15 +600,19 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         <section className="mb-5 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-black text-gray-900">
-              {filter === 'needs_review' ? `Review queue (${visibleOrders.length})` : filter === 'to_ship' ? `Shipping queue (${visibleOrders.length})` : 'Orders'}
+              {filter === 'needs_review'
+                ? language === 'th' ? `คิวรอตรวจ (${visibleOrders.length})` : `Review queue (${visibleOrders.length})`
+                : filter === 'to_ship'
+                  ? language === 'th' ? `คิวรอจัดส่ง (${visibleOrders.length})` : `Shipping queue (${visibleOrders.length})`
+                  : uiText(language, 'Orders')}
             </h2>
             <label className="relative block md:w-72">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search code, name, contact, product"
-                aria-label="Search orders"
+                placeholder={uiText(language, 'Search code, name, contact, product')}
+                aria-label={uiText(language, 'Search orders')}
                 className="min-h-11 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm font-bold outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
               />
             </label>
@@ -612,10 +620,10 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           {visibleOrders.length === 0 ? (
             <div className="p-6 text-sm font-bold text-gray-400">
               {filter === 'needs_review' && !search
-                ? 'No slips waiting for review — all caught up.'
+                ? uiText(language, 'No slips waiting for review — all caught up.')
                 : filter === 'to_ship' && !search
-                  ? 'Nothing waiting to ship.'
-                  : 'No orders match this view.'}
+                  ? uiText(language, 'Nothing waiting to ship.')
+                  : uiText(language, 'No orders match this view.')}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -625,24 +633,24 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-lg font-black tracking-[0.12em] text-gray-950">{order.pickup_code}</span>
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-black ${statusClasses[order.payment_status]}`}>
-                        {statusLabels[order.payment_status]}
+                        {uiText(language, statusLabels[order.payment_status])}
                       </span>
                       {order.order_type === 'post_event' && (
                         <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-black text-violet-700">
-                          Post · ship
+                          {uiText(language, 'Post · ship')}
                         </span>
                       )}
                     </div>
                     <div className="mt-1 text-sm font-black text-gray-900">{order.customer_name}</div>
                     <div className="mt-1 text-xs font-bold text-gray-500">
-                      {[order.customer_phone, order.customer_social, order.customer_email].filter(Boolean).join(' · ') || order.customer_contact || 'No contact'}
+                      {[order.customer_phone, order.customer_social, order.customer_email].filter(Boolean).join(' · ') || order.customer_contact || uiText(language, 'No contact')}
                     </div>
                     {order.order_type === 'post_event' && order.shipping_address && (
                       <div
                         className="mt-1 max-w-xl truncate text-xs font-bold text-sky-700"
                         title={order.shipping_address}
                       >
-                        Ship to: {order.shipping_address}
+                        {uiText(language, 'Ship to')}: {order.shipping_address}
                       </div>
                     )}
                     <div className="mt-2 text-xs font-semibold text-gray-600">
@@ -650,18 +658,18 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     </div>
                     {order.order_type === 'post_event' && order.pickup_status === 'shipped' && order.tracking_number && (
                       <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">
-                        <Truck size={13} /> <span className="truncate">Shipped · {order.tracking_number}</span>
+                        <Truck size={13} /> <span className="truncate">{uiText(language, 'Shipped')} · {order.tracking_number}</span>
                       </div>
                     )}
                     {order.review_note && CLOSED_STATUSES.includes(order.payment_status) && (
                       <div className="mt-2 rounded-lg border border-red-100 bg-red-50/60 px-2 py-1 text-xs font-bold text-red-700">
-                        Reason: {order.review_note}
+                        {uiText(language, 'Reason')}: {order.review_note}
                       </div>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="mr-2 text-right">
-                      <div className="text-xs font-bold text-gray-500">Amount</div>
+                      <div className="text-xs font-bold text-gray-500">{uiText(language, 'Amount')}</div>
                       <div className="text-sm font-black text-gray-950">{formatPrice(order.total_price, order.currency)}</div>
                     </div>
                     {order.slip_url && (
@@ -671,7 +679,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                         disabled={slipLoadingId === order.order_id}
                         className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
-                        <Eye size={14} /> {slipLoadingId === order.order_id ? 'Opening…' : 'Slip'}
+                        <Eye size={14} /> {uiText(language, slipLoadingId === order.order_id ? 'Opening…' : 'Slip')}
                       </button>
                     )}
                     {order.payment_status === 'payment_submitted' && (
@@ -680,13 +688,13 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                           onClick={() => setReviewAction({ type: 'reject', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 hover:bg-red-100"
                         >
-                          <XCircle size={15} /> Reject
+                          <XCircle size={15} /> {uiText(language, 'Reject')}
                         </button>
                         <button
                           onClick={() => setReviewAction({ type: 'confirm', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white hover:bg-emerald-700"
                         >
-                          <CheckCircle size={15} /> Confirm
+                          <CheckCircle size={15} /> {uiText(language, 'Confirm')}
                         </button>
                       </>
                     )}
@@ -697,7 +705,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                           onClick={() => setReviewAction({ type: 'ship', order })}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white hover:bg-emerald-700"
                         >
-                          <Truck size={15} /> Mark shipped
+                          <Truck size={15} /> {uiText(language, 'Mark shipped')}
                         </button>
                     )}
                   </div>
@@ -709,31 +717,31 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
 
         <section className="mb-5 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-pink-100 bg-pink-50 p-4">
-            <div className="text-xs font-black uppercase tracking-wide text-pink-700">Expected revenue</div>
+            <div className="text-xs font-black uppercase tracking-wide text-pink-700">{uiText(language, 'Expected revenue')}</div>
             <div className="mt-1 text-2xl font-black text-gray-950">{formatPrice(totals.expectedAmount, totals.currency)}</div>
           </div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">Confirmed revenue</div>
+            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">{uiText(language, 'Confirmed revenue')}</div>
             <div className="mt-1 text-2xl font-black text-gray-950">{formatPrice(totals.confirmedAmount, totals.currency)}</div>
           </div>
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-4 py-3">
-            <h2 className="text-lg font-black text-gray-900">Production Summary</h2>
+            <h2 className="text-lg font-black text-gray-900">{uiText(language, 'Production Summary')}</h2>
           </div>
           {summary.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-400">No submitted or confirmed pre-orders yet.</div>
+            <div className="p-6 text-sm font-bold text-gray-400">{uiText(language, 'No submitted or confirmed pre-orders yet.')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-gray-50 text-xs font-black uppercase tracking-wide text-gray-500">
                   <tr>
-                    <th className="px-4 py-3">Product</th>
-                    <th className="px-4 py-3">Needs review</th>
-                    <th className="px-4 py-3">Confirmed</th>
-                    <th className="px-4 py-3">To prepare</th>
-                    <th className="px-4 py-3">Expected</th>
+                    <th className="px-4 py-3">{uiText(language, 'Product')}</th>
+                    <th className="px-4 py-3">{uiText(language, 'Needs review')}</th>
+                    <th className="px-4 py-3">{uiText(language, 'Confirmed')}</th>
+                    <th className="px-4 py-3">{uiText(language, 'To prepare')}</th>
+                    <th className="px-4 py-3">{uiText(language, 'Expected')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -741,7 +749,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     <tr key={row.product_id}>
                       <td className="px-4 py-3">
                         <div className="font-black text-gray-900">{row.product_name}</div>
-                        <div className="text-xs font-semibold text-gray-500">{row.category || 'Uncategorized'}</div>
+                        <div className="text-xs font-semibold text-gray-500">{row.category || uiText(language, 'Uncategorized')}</div>
                       </td>
                       <td className="px-4 py-3 font-bold text-amber-700">{row.submitted_quantity}</td>
                       <td className="px-4 py-3 font-bold text-emerald-700">{row.confirmed_quantity}</td>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { uiText, type Language } from '../i18n';
 import { captureObservabilityMessage } from '../lib/observability';
 
 interface ErrorBoundaryState {
@@ -24,19 +25,20 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 
   render() {
     if (this.state.hasError) {
+      const language: Language = window.localStorage.getItem('nireq-language') === 'th' ? 'th' : 'en';
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
           <div className="max-w-md rounded-xl border border-red-100 bg-white p-6 text-center shadow-sm">
-            <h1 className="text-lg font-black text-gray-900 mb-2">Something went wrong</h1>
+            <h1 className="text-lg font-black text-gray-900 mb-2">{uiText(language, 'Something went wrong')}</h1>
             <p className="text-sm text-gray-600 mb-4">
-              Please refresh the page. If this keeps happening, contact the booth owner or support.
+              {uiText(language, 'Please refresh the page. If this keeps happening, contact the booth owner or support.')}
             </p>
             <button
               type="button"
               onClick={() => window.location.reload()}
               className="rounded-lg bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700"
             >
-              Reload Page
+              {uiText(language, 'Reload Page')}
             </button>
           </div>
         </div>

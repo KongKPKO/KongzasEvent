@@ -11,7 +11,7 @@ const ProductList = lazy(() => import('../../components/menu/ProductList'));
 import { formatPrice } from '../../utils/currency';
 import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import {
@@ -52,6 +52,10 @@ interface Product {
 
 type CartItems = Record<string, number>;
 type CartItemNames = Record<string, string>;
+const ALL_CATEGORIES = '__nireq_all_categories__';
+const UNCATEGORIZED = '__nireq_uncategorized__';
+const ALL_TAGS = '__nireq_all_tags__';
+const MORE_CATEGORIES = '__nireq_more_categories__';
 type PreorderCustomerForm = { name: string; phone: string; social: string; email: string; shippingAddress: string; note: string };
 type PreorderReceiptState = {
   orderId: string;
@@ -132,8 +136,8 @@ const MenuView = () => {
 
   // Filter & Sort State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedTag, setSelectedTag] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
+  const [selectedTag, setSelectedTag] = useState(ALL_TAGS);
   const [sortOption, setSortOption] = useState('name_asc');
 
   // Order Submission State - Initialize from localStorage
@@ -187,13 +191,13 @@ const MenuView = () => {
 
   // --- 1. Derived Data ---
   const uniqueCategories = useMemo(() => {
-      const cats = products.map(p => p.category || 'Other').filter(Boolean);
-      return ['All', ...Array.from(new Set(cats)).sort()];
+      const cats = products.map(p => p.category || UNCATEGORIZED).filter(Boolean);
+      return [ALL_CATEGORIES, ...Array.from(new Set(cats)).sort()];
   }, [products]);
 
   const uniqueTags = useMemo(() => {
       const tags = products.flatMap((p) => p.tags || []).map((tag) => tag.trim()).filter(Boolean);
-      return ['All', ...Array.from(new Set(tags)).sort()];
+      return [ALL_TAGS, ...Array.from(new Set(tags)).sort()];
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -208,8 +212,8 @@ const MenuView = () => {
             (product.variant_group_name || '').toLowerCase().includes(query) ||
             (product.variant_name || '').toLowerCase().includes(query) ||
             tagHaystack.includes(query);
-         const matchesCategory = selectedCategory === 'All' || (product.category || 'Other') === selectedCategory;
-         const matchesTag = selectedTag === 'All' || (product.tags || []).some((tag) => tag.trim() === selectedTag);
+         const matchesCategory = selectedCategory === ALL_CATEGORIES || (product.category || UNCATEGORIZED) === selectedCategory;
+         const matchesTag = selectedTag === ALL_TAGS || (product.tags || []).some((tag) => tag.trim() === selectedTag);
          const isVisible = product.status !== 'disable';
          return matchesSearch && matchesCategory && matchesTag && isVisible;
       }).sort((a, b) => {
@@ -227,8 +231,8 @@ const MenuView = () => {
   const pricing = useMemo(() => calculatePromotionPricing(cartItems, promotions), [cartItems, promotions]);
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
-    selectedCategory !== 'All' ||
-    selectedTag !== 'All' ||
+    selectedCategory !== ALL_CATEGORIES ||
+    selectedTag !== ALL_TAGS ||
     sortOption !== 'name_asc';
   const promoProductCount = useMemo(
     () => products.filter((product) => getPromotionBadgesForProduct(product, promotions).length > 0).length,
@@ -298,7 +302,7 @@ const MenuView = () => {
         rewardChoices,
         promotionChoices,
       }).then((nextQuote) => { if (active) setPromotionQuote(nextQuote); })
-        .catch((error) => { console.error(error); if (active) setToast({ tone: 'error', title: language === 'th' ? 'คำนวณโปรโมชั่นไม่สำเร็จ' : 'Could not calculate promotions' }); })
+        .catch((error) => { console.error(error); if (active) setToast({ tone: 'error', title: uiText(language, 'Could not calculate promotions') }); })
         .finally(() => { if (active) setPromotionQuoteLoading(false); });
     }, 150);
     return () => { active = false; window.clearTimeout(timer); };
@@ -465,7 +469,7 @@ const MenuView = () => {
         const { data, error } = await productRequest;
 
         if (!error && data) {
-            setProducts(((data || []) as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
+            setProducts(((data || []) as Product[]).map((product) => normalizeProductRecord(product)));
             setProductsLoaded(true);
         }
 
@@ -737,7 +741,7 @@ const MenuView = () => {
         if (orderError) throw orderError;
 
         const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
-        if (!orderId) throw new Error('Order creation failed');
+        if (!orderId) throw new Error(uiText(language, 'Order creation failed'));
 
         setSentOrderId(orderId);
         setIsOrderSent(true);
@@ -746,7 +750,7 @@ const MenuView = () => {
         setToast({ tone: 'success', title: t('menuOrderSentToast'), detail: t('menuOrderSentDetail') });
 
     } catch (err: any) {
-        setToast({ tone: 'error', title: t('menuOrderSendError'), detail: err.message });
+        setToast({ tone: 'error', title: t('menuOrderSendError'), detail: uiText(language, err.message) });
         console.error(err);
     } finally {
         setSubmitting(false);
@@ -852,7 +856,7 @@ const MenuView = () => {
         setRewardChoices([]);
         setAcceptExhaustedRewards(false);
       }
-      setToast({ tone: 'error', title: t('menuPreorderFailed'), detail: getPreorderErrorMessage(err) });
+      setToast({ tone: 'error', title: t('menuPreorderFailed'), detail: uiText(language, getPreorderErrorMessage(err)) });
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -888,7 +892,7 @@ const MenuView = () => {
             setToast({ tone: 'success', title: t('menuOrderCancelled') });
           }
       } catch (err: any) {
-          setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: err.message });
+      setToast({ tone: 'error', title: t('menuOrderCancelError'), detail: uiText(language, err.message) });
       } finally {
           setSubmitting(false);
       }
@@ -997,8 +1001,8 @@ const MenuView = () => {
 
   const clearFilters = () => {
     setSearchQuery('');
-    setSelectedCategory('All');
-    setSelectedTag('All');
+    setSelectedCategory(ALL_CATEGORIES);
+    setSelectedTag(ALL_TAGS);
     setSortOption('name_asc');
   };
 
@@ -1064,7 +1068,7 @@ const MenuView = () => {
                   {displayArtist?.image_url ? (
                      <img
                         src={displayArtist.image_url}
-                        alt={displayArtist?.display_name || 'Creator'}
+                        alt={displayArtist?.display_name || uiText(language, 'Creator')}
                         className="h-11 w-11 shrink-0 rounded-2xl border border-pink-100 bg-pink-50 object-cover shadow-sm"
                      />
                   ) : (
@@ -1075,7 +1079,7 @@ const MenuView = () => {
                   <div className="min-w-0">
                      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-pink-700">{t('customerNavMerch')}</div>
                      <h1 className="truncate text-lg font-black leading-6 text-gray-950">
-                        {displayArtist?.display_name || 'Menu'}
+                        {displayArtist?.display_name || uiText(language, 'Menu')}
                      </h1>
                   </div>
                </div>
@@ -1130,7 +1134,7 @@ const MenuView = () => {
                      aria-label={t('menuCategory')}
                   >
                      {uniqueCategories.map((cat) => (
-                        <option key={cat} value={cat}>{cat === 'All' ? t('menuAll') : cat}</option>
+                        <option key={cat} value={cat}>{cat === ALL_CATEGORIES ? t('menuAll') : cat === UNCATEGORIZED ? uiText(language, 'Other') : cat}</option>
                      ))}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -1143,7 +1147,7 @@ const MenuView = () => {
                      aria-label={t('menuFilterByTag')}
                   >
                      {uniqueTags.map(tag => (
-                        <option key={tag} value={tag}>{tag === 'All' ? t('menuAllTags') : tag}</option>
+                        <option key={tag} value={tag}>{tag === ALL_TAGS ? t('menuAllTags') : tag}</option>
                      ))}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -1197,24 +1201,24 @@ const MenuView = () => {
                               : 'border border-gray-200 bg-white text-gray-600'
                         }`}
                      >
-                        {cat === 'All' ? t('menuAll') : cat}
+                        {cat === ALL_CATEGORIES ? t('menuAll') : cat === UNCATEGORIZED ? uiText(language, 'Other') : cat}
                      </button>
                   ))}
                </div>
                {hasMoreCategories && (
                   <div className="relative w-[128px] shrink-0">
                      <select
-                        value={quickCategoryChips.includes(selectedCategory) ? 'More' : selectedCategory}
+                        value={quickCategoryChips.includes(selectedCategory) ? MORE_CATEGORIES : selectedCategory}
                         onChange={(e) => {
                            const nextValue = e.target.value;
-                           if (nextValue !== 'More') setSelectedCategory(nextValue);
+                           if (nextValue !== MORE_CATEGORIES) setSelectedCategory(nextValue);
                         }}
                         className="min-h-11 w-full appearance-none rounded-full border border-gray-200 bg-white px-3 pr-7 text-xs font-black text-gray-700 outline-none focus:ring-4 focus:ring-pink-100"
                         aria-label={t('menuMoreCategories')}
                      >
-                        <option value="More" disabled>{t('menuMore')}</option>
+                        <option value={MORE_CATEGORIES} disabled>{t('menuMore')}</option>
                         {uniqueCategories.filter((cat) => !quickCategoryChips.includes(cat)).map((cat) => (
-                           <option key={cat} value={cat}>{cat === 'All' ? t('menuAll') : cat}</option>
+                           <option key={cat} value={cat}>{cat === ALL_CATEGORIES ? t('menuAll') : cat === UNCATEGORIZED ? uiText(language, 'Other') : cat}</option>
                         ))}
                      </select>
                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
@@ -1232,7 +1236,7 @@ const MenuView = () => {
                         aria-label={t('menuFilterByTag')}
                      >
                         {uniqueTags.map(tag => (
-                           <option key={tag} value={tag}>{tag === 'All' ? t('menuAllTags') : tag}</option>
+                           <option key={tag} value={tag}>{tag === ALL_TAGS ? t('menuAllTags') : tag}</option>
                         ))}
                      </select>
                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-pink-400" size={14} />
@@ -1242,12 +1246,12 @@ const MenuView = () => {
 
             {hasActiveFilters && (
                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {selectedCategory !== 'All' && (
+                  {selectedCategory !== ALL_CATEGORIES && (
                      <span className="rounded-full border border-pink-100 bg-pink-50 px-2.5 py-1 text-[11px] font-black text-pink-700">
-                        {t('menuCategory')} {selectedCategory}
+                        {t('menuCategory')} {selectedCategory === UNCATEGORIZED ? uiText(language, 'Other') : selectedCategory}
                      </span>
                   )}
-                  {selectedTag !== 'All' && (
+                  {selectedTag !== ALL_TAGS && (
                      <span className="rounded-full border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-black text-pink-700">
                         {t('menuTag')} {selectedTag}
                      </span>
@@ -1384,7 +1388,7 @@ const MenuView = () => {
                                     <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2"><Sparkles size={12} /> {t('menuAppliedPromotions')}</div>
                                     <div className="space-y-1.5">
                                       {promotionQuote.applied_promotions.map((promotion) => <div key={promotion.id} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px]"><div className="flex justify-between gap-2"><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <strong className="text-emerald-700">- {formatPrice(promotion.discount_amount, cartCurrency)}</strong>}</div></div>)}
-                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</div>)}
+                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
                                     </div>
                                 </div>
                             )}
@@ -1398,7 +1402,7 @@ const MenuView = () => {
             </div>)}
 
                             {isAdvanceOrderFlow && exhaustedPromotionChoices.length > 0 && (
-                              <label className="mt-3 flex cursor-pointer gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-0.5" /><span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion before continuing.'}</span></label>
+                              <label className="mt-3 flex cursor-pointer gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-0.5" /><span><strong className="block">{uiText(language, 'All gifts for this promotion are out of stock.')}</strong>{uiText(language, 'Review the new total without this promotion before continuing.')}</span></label>
                             )}
 
                             <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-1.5">

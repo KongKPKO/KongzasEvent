@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { LanguageToggle, useI18n } from '../i18n';
+import { LanguageToggle, useI18n , uiText} from '../i18n';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
@@ -57,7 +57,7 @@ const isExistingAccountResponse = (errorMessage: string | null | undefined) => {
 };
 
 export default function CreatorRegister() {
-  const { t } = useI18n();
+  const { t , language} = useI18n();
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(initialForm);
   const [loading, setLoading] = useState(false);
@@ -474,9 +474,9 @@ export default function CreatorRegister() {
               />
               <span>
                 {t('registerTruthful')}{' '}
-                <Link to="/terms" className="font-bold text-pink-700 underline underline-offset-2">ข้อกำหนด</Link>
-                {' '}และ{' '}
-                <Link to="/privacy" className="font-bold text-pink-700 underline underline-offset-2">นโยบายความเป็นส่วนตัว</Link>
+                <Link to="/terms" className="font-bold text-pink-700 underline underline-offset-2">{uiText(language, "ข้อกำหนด")}</Link>
+                {' '}{uiText(language, "และ")}{' '}
+                <Link to="/privacy" className="font-bold text-pink-700 underline underline-offset-2">{uiText(language, "นโยบายความเป็นส่วนตัว")}</Link>
               </span>
             </label>
 

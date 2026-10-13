@@ -10,7 +10,7 @@ import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
 import { formatDateInTimeZone } from '../utils/timezone';
 import { posSelectedEventStorageKey } from '../utils/customerEvents';
-import { useI18n } from '../i18n';
+import { uiText, useI18n } from '../i18n';
 
 export interface ActiveEvent {
     id: string;
@@ -51,11 +51,11 @@ interface UpcomingEvent {
 
 // Formats a UTC ISO start_date string into a human-readable local time string
 // using the event's configured timezone.  Used only for the upcoming-event hint.
-const formatEventStart = (startDate: string, timezone: string | null): string => {
+const formatEventStart = (startDate: string, timezone: string | null, locale: string): string => {
     const tz = timezone || 'Asia/Bangkok';
     const date = new Date(startDate);
     if (Number.isNaN(date.getTime())) return startDate;
-    return new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat(locale, {
         timeZone: tz,
         weekday: 'short',
         day: 'numeric',
@@ -68,7 +68,7 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
-    const { t } = useI18n();
+    const { t, language, dateLocale } = useI18n();
     // useSearchParams makes urlEventId reactive: if the URL changes while this
     // component stays mounted (e.g. navigating from one Event Hub to another),
     // the component picks up the new eventId without remounting.
@@ -127,7 +127,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!activeEvent?.id || boothToggleLoading) return;
-        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(`Close booth for ${activeEvent.event_name}? Customers will see the booth as closed.`)) {
+        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(uiText(language, 'Close booth for {event}? Customers will see the booth as closed.').replace('{event}', activeEvent.event_name))) {
             return;
         }
 
@@ -142,11 +142,11 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
         } catch (error) {
             console.error('[ManageCombined] Error updating booth status:', error);
-            setToast({ tone: 'warning', title: 'Booth update failed', detail: 'Please try again.' });
+            setToast({ tone: 'warning', title: uiText(language, 'Booth update failed'), detail: uiText(language, 'Please try again.') });
         } finally {
             setBoothToggleLoading(false);
         }
-    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading]);
+    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading, language]);
 
     const fetchActiveEvents = useCallback(async () => {
         const request = ++eventRequestRef.current;
@@ -332,7 +332,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [activeEvent?.id]);
 
     const handleSelectedEventChange = (eventId: string) => {
-        if (selectedQueueId && eventId && eventId !== activeEvent?.id && !window.confirm('Switch event and clear the selected queue/order context?')) {
+        if (selectedQueueId && eventId && eventId !== activeEvent?.id && !window.confirm(uiText(language, 'Switch event and clear the selected queue/order context?'))) {
             return;
         }
         setSelectedEventId(eventId || null);
@@ -412,7 +412,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
                 <p className="text-gray-500 text-sm font-medium">
-                    {loadingSlow ? 'Taking longer than usual — check your connection.' : 'Loading workspace...'}
+                    {uiText(language, loadingSlow ? 'Taking longer than usual — check your connection.' : 'Loading workspace...')}
                 </p>
             </div>
         );
@@ -444,7 +444,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Booth Status</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Booth Status')}</div>
                         <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
                                 activeEvent?.is_booth_open
@@ -453,7 +453,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}>
                                 <span className={`h-2 w-2 rounded-full ${activeEvent?.is_booth_open ? 'bg-green-500' : 'bg-gray-400'}`} />
                                 <span data-testid="booth-status">
-                                    {activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed'}
+                                    {uiText(language, activeEvent?.is_booth_open ? 'Booth Open' : 'Booth Closed')}
                                 </span>
                             </span>
                             {activeEvent ? (
@@ -462,12 +462,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                     onClick={() => navigate(`/manage-events/${activeEvent.id}/workspace`)}
                                     className="inline-flex min-h-9 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 hover:bg-pink-100"
                                 >
-                                    {`Active Event: ${activeEvent.event_name}`}
+                                    {uiText(language, 'Active Event: {event}').replace('{event}', activeEvent.event_name)}
                                     <ArrowUpRight size={13} aria-hidden="true" />
                                 </button>
                             ) : (
                                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">
-                                    No active event
+                                    {uiText(language, 'No active event')}
                                 </span>
                             )}
                         </div>
@@ -476,16 +476,16 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 lg:justify-end">
                         <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                             <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />
-                            <span className="sr-only">Select POS event</span>
+                            <span className="sr-only">{uiText(language, 'Select POS event')}</span>
                             <select
                                 value={activeEvent?.id || ''}
                                 onChange={(event) => handleSelectedEventChange(event.target.value)}
                                 disabled={availableEvents.length === 0}
                                 data-testid="pos-event-selector"
                                 className="min-w-0 w-full sm:w-[240px] bg-transparent text-sm font-bold text-gray-800 outline-none disabled:text-gray-400"
-                                aria-label="Select POS event"
+                                aria-label={uiText(language, 'Select POS event')}
                             >
-                                {availableEvents.length === 0 && <option value="">No active event</option>}
+                                {availableEvents.length === 0 && <option value="">{uiText(language, 'No active event')}</option>}
                                 {availableEvents.map((event) => (
                                     <option key={event.id} value={event.id}>
                                         {event.event_name}
@@ -506,10 +506,10 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             }`}
                         >
                             {boothToggleLoading
-                                ? 'Updating...'
+                                ? uiText(language, 'Updating...')
                                 : activeEvent?.is_booth_open
-                                    ? 'Close Booth'
-                                    : 'Open Booth'}
+                                    ? uiText(language, 'Close Booth')
+                                    : uiText(language, 'Open Booth')}
                         </button>
                     </div>
                 </div>
@@ -524,7 +524,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                 >
-                    Queue Control
+                    {uiText(language, 'Queue Control')}
                 </button>
                 {hasPosPermission && (
                     <button
@@ -536,7 +536,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         }`}
                         data-testid="pos-tab"
                     >
-                        POS / Order
+                        {uiText(language, 'POS / Order')}
                     </button>
                 )}
             </div>
@@ -549,34 +549,34 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                 <CalendarDays size={26} className="text-pink-400" aria-hidden="true" />
                             </div>
 
-                            <h2 className="text-lg font-black text-gray-900">No event running right now</h2>
+                            <h2 className="text-lg font-black text-gray-900">{uiText(language, 'No event running right now')}</h2>
 
                             {nextUpcomingEvent ? (
                                 <>
                                     <p className="mt-2 text-sm font-medium text-gray-500">
-                                        Your next event starts soon.
+                                        {uiText(language, 'Your next event starts soon.')}
                                     </p>
                                     <div className="mt-5 rounded-2xl border border-pink-100 bg-white p-5 text-left shadow-sm">
                                         <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-500">
-                                            Up next
+                                            {uiText(language, 'Up next')}
                                         </div>
                                         <div className="text-base font-black text-gray-900 leading-snug">
                                             {nextUpcomingEvent.event_name}
                                         </div>
                                         <div className="mt-2 flex items-center gap-1.5 text-sm font-bold text-gray-600">
                                             <Clock size={14} className="shrink-0 text-gray-400" aria-hidden="true" />
-                                            <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone)}</span>
+                                            <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone, dateLocale)}</span>
                                         </div>
                                         <p className="mt-3 text-xs font-medium text-gray-400 leading-relaxed">
-                                            This event will appear in the POS dashboard automatically after it starts.
+                                            {uiText(language, 'This event will appear in the POS dashboard automatically after it starts.')}
                                         </p>
                                     </div>
                                 </>
                             ) : (
                                 <p className="mt-3 text-sm font-medium text-gray-500">
-                                    No upcoming events found.{' '}
+                                    {uiText(language, 'No upcoming events found.')} {' '}
                                     <a href="/manage-events" className="font-bold text-pink-600 hover:underline">
-                                        Create one in Event Management.
+                                        {uiText(language, 'Create one in Event Management.')}
                                     </a>
                                 </p>
                             )}
@@ -616,10 +616,10 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             type="button"
                             onClick={() => setIsQueuePanelExpanded((prev) => !prev)}
                             className="hidden md:inline-flex absolute top-6 -left-px z-20 rounded-r-lg border border-l-0 border-gray-200 bg-white/95 backdrop-blur px-1.5 py-2 text-[10px] font-bold text-gray-700 shadow-sm hover:bg-white"
-                            aria-label={isQueuePanelExpanded ? 'Collapse queue control' : 'Expand queue control'}
-                            title={isQueuePanelExpanded ? 'Hide Queue Control' : 'Expand Queue Control'}
+                            aria-label={uiText(language, isQueuePanelExpanded ? 'Collapse queue control' : 'Expand queue control')}
+                            title={uiText(language, isQueuePanelExpanded ? 'Hide Queue Control' : 'Expand Queue Control')}
                         >
-                            <span className="[writing-mode:vertical-rl] rotate-180 leading-none tracking-tight">{isQueuePanelExpanded ? '< Hide Queue' : '> Queue'}</span>
+                            <span className="[writing-mode:vertical-rl] rotate-180 leading-none tracking-tight">{isQueuePanelExpanded ? `< ${uiText(language, 'Hide Queue')}` : `> ${uiText(language, 'Queue')}`}</span>
                         </button>
                     )}
 

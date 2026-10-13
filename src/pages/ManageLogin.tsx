@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
 import type { ActorRole } from '../types/access';
-import { LanguageToggle, useI18n } from '../i18n';
+import { LanguageToggle, useI18n , uiText} from '../i18n';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
 interface AccessibleEvent {
@@ -16,7 +16,7 @@ interface AccessibleEvent {
 type LoginMode = 'creator' | 'staff';
 
 const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<void> }) => {
-  const { t } = useI18n();
+  const { t , language} = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect');
@@ -327,7 +327,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
         </div>
 
         <Card className="p-8 shadow-xl border-gray-100 bg-white">
-          <div role="tablist" aria-label="Login mode" className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+          <div role="tablist" aria-label={uiText(language, "Login mode")} className="mb-6 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
             <button
               type="button"
               role="tab"
@@ -338,9 +338,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
                   ? 'bg-white text-pink-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
-            >
-              Creator / Manager
-            </button>
+            >{uiText(language, " Creator / Manager ")}</button>
             <button
               type="button"
               role="tab"
@@ -351,9 +349,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
                   ? 'bg-white text-pink-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
-            >
-              Staff
-            </button>
+            >{uiText(language, " Staff ")}</button>
           </div>
 
           <h2 className="text-xl font-bold mb-6 text-gray-800 flex items-center gap-2">
@@ -364,7 +360,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
           {errorMsg && (
             <div role="alert" className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-2 text-sm font-medium border border-red-100 animate-fade-in">
               <AlertCircle size={18} className="mt-0.5 shrink-0" />
-              {errorMsg}
+              {uiText(language, errorMsg)}
             </div>
           )}
 
@@ -482,12 +478,10 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
               </form>
             </>
           ) : (
-            <form onSubmit={handleStaffMagicLogin} aria-label="Staff magic link login" className="space-y-3">
-              <p className="text-xs leading-5 text-gray-500">
-                Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation.
-              </p>
+            <form onSubmit={handleStaffMagicLogin} aria-label={uiText(language, "Staff magic link login")} className="space-y-3">
+              <p className="text-xs leading-5 text-gray-500">{uiText(language, " Seller and queue staff can sign back in without a password. Use the same email that accepted the invitation. ")}</p>
               <div>
-                <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">Staff email</label>
+                <label htmlFor="staff-login-email" className="block text-sm font-bold text-gray-700 mb-1">{uiText(language, "Staff email")}</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input
@@ -506,7 +500,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
               </div>
               {magicMsg && (
                 <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                  {magicMsg}
+                  {uiText(language, magicMsg)}
                 </p>
               )}
               <Button
@@ -515,7 +509,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
                 disabled={magicLoading || staffEmail.trim().length < 4}
               >
                 <Send size={16} />
-                {magicLoading ? 'Sending magic link…' : 'Send staff magic link'}
+                {uiText(language, magicLoading ? 'Sending magic link…' : 'Send staff magic link')}
               </Button>
             </form>
           )}
@@ -527,22 +521,20 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
             {t('loginApplyAccess')}
           </Link>
         </div>
-        <nav aria-label="Legal" className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
-          <Link to="/privacy" className="hover:text-pink-700">Privacy</Link>
-          <Link to="/terms" className="hover:text-pink-700">Terms</Link>
-          <Link to="/cookies" className="hover:text-pink-700">Cookies</Link>
+        <nav aria-label={uiText(language, "Legal")} className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-bold text-gray-500">
+          <Link to="/privacy" className="hover:text-pink-700">{uiText(language, "Privacy")}</Link>
+          <Link to="/terms" className="hover:text-pink-700">{uiText(language, "Terms")}</Link>
+          <Link to="/cookies" className="hover:text-pink-700">{uiText(language, "Cookies")}</Link>
         </nav>
       </div>
 
       {isResetModalOpen && (
         <div ref={resetDialogRef} className="fixed inset-0 z-[130] flex items-center justify-center bg-gray-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
           <form onSubmit={handleForgotPassword} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-            <h2 id="reset-password-title" className="text-lg font-black text-gray-900">Reset password</h2>
-            <p className="mt-2 text-sm font-medium text-gray-600">
-              Enter your creator or manager email and we'll send a reset link.
-            </p>
+            <h2 id="reset-password-title" className="text-lg font-black text-gray-900">{uiText(language, "Reset password")}</h2>
+            <p className="mt-2 text-sm font-medium text-gray-600">{uiText(language, " Enter your creator or manager email and we'll send a reset link. ")}</p>
             <div className="mt-4">
-              <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">Reset email</label>
+              <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">{uiText(language, "Reset email")}</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
@@ -570,7 +562,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
             )}
             {resetMsg && (
               <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">
-                {resetMsg}
+                {uiText(language, resetMsg)}
               </div>
             )}
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -579,15 +571,13 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
                 onClick={closeResetModal}
                 disabled={resetLoading}
                 className="min-h-11 rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
+              >{uiText(language, " Cancel ")}</button>
               <button
                 type="submit"
                 disabled={resetLoading}
                 className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-50"
               >
-                {resetLoading ? t('sendPasswordReset') : 'Send reset link'}
+                {resetLoading ? t('sendPasswordReset') : uiText(language, 'Send reset link')}
               </button>
             </div>
           </form>

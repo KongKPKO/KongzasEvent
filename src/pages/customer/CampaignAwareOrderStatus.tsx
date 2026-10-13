@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Check, CheckCircle, Clock, Copy, Loader2, PackageCheck, Truck, Upload, XCircle } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n, LanguageToggle } from '../../i18n';
 import {
   beginCampaignPaymentUpload,
   getPublicCampaignOrder,
@@ -14,7 +14,7 @@ import OrderStatus from './OrderStatus';
 
 function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
   const { slug, code } = useParams<{ slug: string; code: string }>();
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, language } = useI18n();
   const [order, setOrder] = useState(initialOrder);
   const [now, setNow] = useState(Date.now());
   const [file, setFile] = useState<File | null>(null);
@@ -101,7 +101,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
           <div className="text-xs font-black uppercase tracking-wide text-pink-600">{order.artist_name}</div>
           <h1 className="mt-1 text-xl font-black text-gray-950">{t('campaignOrderTitle')}</h1>
           <div className="mt-1 font-mono text-sm font-black text-gray-600">{order.order_code}</div>
-        </header>
+        <LanguageToggle className="ml-auto shrink-0" /></header>
 
         <section className={'rounded-2xl border p-4 ' + status.tone}>
           <div className="flex items-center gap-3">{status.icon}<div><h2 className="font-black">{status.title}</h2><p className="text-sm font-semibold opacity-80">{order.review_note || t('campaignOrderStatusHint')}</p></div></div>
@@ -120,7 +120,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
               {(order.payment_methods || []).map((method) => (
                 <div key={method.id} className="rounded-xl bg-gray-50 p-3">
                   <div className="font-black">{method.display_name || method.method_type}</div>
-                  {method.promptpay_id && <div className="mt-1 text-lg font-black">PromptPay: {method.promptpay_id}</div>}
+                  {method.promptpay_id && <div className="mt-1 text-lg font-black">{uiText(language, 'PromptPay')}: {method.promptpay_id}</div>}
                   {method.account_number && <div className="mt-1 font-black">{method.bank_name} · {method.account_number}</div>}
                   {method.qr_image_url && <img src={method.qr_image_url} alt="" className="mt-2 h-44 w-44 rounded-xl object-contain" />}
                   {method.instructions && <p className="mt-1 text-sm font-semibold text-gray-600">{method.instructions}</p>}
@@ -144,11 +144,11 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
         <section className="rounded-2xl border border-gray-200 bg-white p-4">
           <h2 className="font-black">{t('campaignOrderItems')}</h2>
           <div className="mt-2 divide-y divide-gray-100">
-            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-700">ของแถม</span>}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
+            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-700">{uiText(language, 'Free gift')}</span>}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
           </div>
           <div className="mt-2 space-y-1 border-t border-gray-200 pt-2 text-sm">
             <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(order.subtotal_price, order.currency)}</strong></div>
-            {order.discount_total > 0 && <div className="flex justify-between text-emerald-700"><span>ส่วนลดโปรโมชั่น</span><strong>−{formatPrice(order.discount_total, order.currency)}</strong></div>}
+            {order.discount_total > 0 && <div className="flex justify-between text-emerald-700"><span>{uiText(language, 'Promotion discount')}</span><strong>−{formatPrice(order.discount_total, order.currency)}</strong></div>}
             <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(order.shipping_fee, order.currency)}</strong></div>
             <div className="flex justify-between text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(order.total_price, order.currency)}</strong></div>
           </div>

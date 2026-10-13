@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Upload, Plus, FileText, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, Copy, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
+import { Loader, Upload, Plus, FileText, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import Papa from 'papaparse';
-import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { parseProductCsv, formatProductCsvIssue } from '../../lib/productCsvImport';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import { formatPrice, DEFAULT_CURRENCY, CURRENCIES } from '../../utils/currency';
@@ -12,11 +13,14 @@ import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
 import type { ActorContext } from '../../types/access';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { listMyOnlineCampaigns, saveCampaignProducts } from '../../lib/onlineCampaigns';
 import type { OnlineCampaignSummary } from '../../types/onlineCampaign';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
+import ProductFamilyEditor, { type ProductFamilySaveInput } from '../../components/products/ProductFamilyEditor';
+import ProductFamilyCatalog, { type CatalogProductFamily } from '../../components/products/ProductFamilyCatalog';
+import type { FamilyVariant, ProductParent } from '../../types/productFamily';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import {
    addCatalogStock,
@@ -48,6 +52,9 @@ interface Product {
   product_template_id?: string | null;
   product_template_variant_id?: string | null;
   sku?: string | null;
+  parent_product_id?: string | null;
+  price_override?: number | null;
+  updated_at?: string;
 }
 
 interface ProductTemplateVariant {
@@ -217,67 +224,6 @@ const parseTemplateVariantsInput = (value: string, existingNames: string[] = [],
       } => Boolean(variant));
 };
 
-const parseDuplicateVariantRows = (value: string, existingNames: string[] = []) => {
-   const seen = new Set(existingNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
-   const errors: string[] = [];
-   const rows = value
-      .split(/\r?\n/)
-      .map((line, index) => {
-         const parts = line.split('|').map((part) => part.trim());
-         const variantName = normalizeOptionalText(parts[0] || '');
-         if (!variantName) return null;
-
-         const key = variantName.toLowerCase();
-         if (seen.has(key)) {
-            errors.push(`Line ${index + 1}: duplicate variant "${variantName}"`);
-            return null;
-         }
-         seen.add(key);
-
-         const stockRaw = parts[1] || '';
-         let stockTotal: number | null = null;
-         let stockMode: 'copy' | 'limited' | 'unlimited' = 'copy';
-
-         if (stockRaw) {
-            if (stockRaw.toLowerCase() === 'unlimited') {
-               stockMode = 'unlimited';
-            } else {
-               const parsedStock = Number(stockRaw);
-               if (!Number.isInteger(parsedStock) || parsedStock < 0) {
-                  errors.push(`Line ${index + 1}: stock must be a whole number or Unlimited`);
-                  return null;
-               }
-               stockMode = 'limited';
-               stockTotal = parsedStock;
-            }
-         }
-
-         const priceRaw = parts[3] || '';
-         const priceOverride = priceRaw && Number.isFinite(Number(priceRaw))
-            ? Number(priceRaw)
-            : null;
-
-         return {
-            variantName,
-            stockMode,
-            stockTotal,
-            tags: parseTagsInput(parts[2] || ''),
-            priceOverride,
-            sortOrder: index + 1,
-         };
-      })
-      .filter((row): row is {
-         variantName: string;
-         stockMode: 'copy' | 'limited' | 'unlimited';
-         stockTotal: number | null;
-         tags: string[];
-         priceOverride: number | null;
-         sortOrder: number;
-      } => Boolean(row));
-
-   return { rows, errors };
-};
-
 const getEventCatalogSaveErrorMessage = (error: unknown) => {
    const message = error instanceof Error ? error.message : String(error || '');
    if (message.includes('event_stock_exceeds_catalog_stock')) {
@@ -288,16 +234,6 @@ const getEventCatalogSaveErrorMessage = (error: unknown) => {
 
 const isDuplicateSkuError = (error: { code?: string; message?: string }) =>
    error.code === '23505' && String(error.message || '').includes('products_artist_sku_unique');
-
-const getCsvValue = (row: Record<string, unknown>, aliases: string[]) => {
-   for (const alias of aliases) {
-      const value = row[alias];
-      if (value !== undefined && value !== null && String(value).trim() !== '') {
-         return value;
-      }
-   }
-   return '';
-};
 
 const buildProductDuplicateKey = (input: {
    name?: string;
@@ -322,16 +258,20 @@ const buildProductDuplicateKey = (input: {
 };
 
 const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
-   const { language, t } = useI18n();
+   const { language, t, dateLocale } = useI18n();
    const navigate = useNavigate();
    const { eventId: routeEventId } = useParams();
    const [searchParams] = useSearchParams();
    const [products, setProducts] = useState<Product[]>([]);
+   const [catalogLoadError, setCatalogLoadError] = useState('');
+   const [csvMessages, setCsvMessages] = useState<string[]>([]);
+   const [csvFailed, setCsvFailed] = useState(false);
+   const [productParents, setProductParents] = useState<ProductParent[]>([]);
    const [productTemplates, setProductTemplates] = useState<ProductTemplate[]>([]);
    const [loading, setLoading] = useState(true);
    const [uploading, setUploading] = useState(false);
    const [compressing, setCompressing] = useState(false);
-   
+
    // Form State
    const [name, setName] = useState('');
    const [price, setPrice] = useState('');
@@ -349,7 +289,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [file, setFile] = useState<File | null>(null);
    const [cropRequest, setCropRequest] = useState<{ file: File; target: ProductImageTarget } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
-   
+
    // Filter & Sort State
    const [searchQuery, setSearchQuery] = useState('');
    const [selectedCategory, setSelectedCategory] = useState('All');
@@ -401,9 +341,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [templateVariantsInput, setTemplateVariantsInput] = useState('');
    const [templateVariantDrafts, setTemplateVariantDrafts] = useState<Record<string, string>>({});
    const [templateVariantSavingId, setTemplateVariantSavingId] = useState('');
-   const [variantSourceProduct, setVariantSourceProduct] = useState<Product | null>(null);
-   const [duplicateVariantsInput, setDuplicateVariantsInput] = useState('');
-   const [duplicateVariantsSaving, setDuplicateVariantsSaving] = useState(false);
    const [addToSaleProduct, setAddToSaleProduct] = useState<Product | null>(null);
    const [addToSaleType, setAddToSaleType] = useState<'event' | 'campaign'>('campaign');
    const [addToSaleId, setAddToSaleId] = useState('');
@@ -411,6 +348,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [addToSalePrice, setAddToSalePrice] = useState('');
    const [addToSaleSaving, setAddToSaleSaving] = useState(false);
    const [campaignOptions, setCampaignOptions] = useState<OnlineCampaignSummary[]>([]);
+   const [familyEditorParentId, setFamilyEditorParentId] = useState<string | 'new' | null>(null);
+   const [familyEditorSaving, setFamilyEditorSaving] = useState(false);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -418,17 +357,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [editFile, setEditFile] = useState<File | null>(null);
    const editFileInputRef = useRef<HTMLInputElement>(null);
    const csvInputRef = useRef<HTMLInputElement>(null);
-   
+
    const [artistId, setArtistId] = useState<string>('');
    const [artistName, setArtistName] = useState<string>('');
    const [actorContext, setActorContext] = useState<ActorContext | null>(null);
    const isEventScopedWorkspace = Boolean(routeEventId);
 
    const categories = [
-      "A3", "A4", "Badge", "Cheki", "Keychain", 
+      "A3", "A4", "Badge", "Cheki", "Keychain",
       "Photo4*6", "Photocard", "Shaker", "Standy", "Sticker"
    ].sort().concat(["Other"]);
-   
+
    // Derived Data for Suggestions (Unique Categories from Products + Defaults)
    // We use this for the datalist suggestions
    const allCategorySuggestions = Array.from(new Set([
@@ -514,7 +453,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    // Derived Data for Filter Chips (includes "All")
    const uniqueCategories = ['All', ...Array.from(new Set(products.map(p => p.category || 'Other'))).sort()];
-   
+
    // ✅ NEW: Unique currencies from products for filter
    const uniqueCurrencies = ['All', ...Array.from(new Set(products.map(p => p.currency || DEFAULT_CURRENCY))).sort()];
    const uniqueTags = ['All', ...Array.from(new Set(products.flatMap((p) => p.tags || []).map(normalizeTag).filter(Boolean))).sort()];
@@ -605,12 +544,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          return (
             <div className={compact ? 'space-y-1' : 'min-w-[220px] space-y-1.5'}>
                <div className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">
-                  Central unlimited
+                  {uiText(language, 'Central unlimited')}
                </div>
                <div className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ${
                   draft.is_unlimited ? 'bg-pink-50 text-pink-700' : 'bg-gray-100 text-gray-600'
                }`}>
-                  Event {draft.is_unlimited ? 'unlimited' : `${Number(draft.stock_total || 0)} allocated`}
+                  {uiText(language, 'Event')} {draft.is_unlimited ? uiText(language, 'unlimited') : `${Number(draft.stock_total || 0)} ${uiText(language, 'allocated')}`}
                </div>
             </div>
          );
@@ -631,15 +570,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
                <div>
                   <div className="font-black text-emerald-700">{centralAvailable}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">Central</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Central')}</div>
                </div>
                <div>
                   <div className="font-black text-pink-700">{eventAllocated}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">Event</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Event')}</div>
                </div>
                <div>
                   <div className="font-black text-amber-700">{reservedSold}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">Sold/held</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Sold/held')}</div>
                </div>
             </div>
             <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
@@ -648,7 +587,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                {reservedSold > 0 && <div className="bg-amber-400" style={{ width: `${reservedPct}%` }} />}
             </div>
             <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-400'}>
-               Pool {pool} · Move central stock into this event
+               {uiText(language, 'Pool')} {pool} · {uiText(language, 'Move central stock into this event')}
             </div>
          </div>
       );
@@ -681,7 +620,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setLoading(true);
       try {
          const ctx = actorContext || await resolveWorkspaceContext();
-         if (!ctx) throw new Error('Not authenticated');
+         if (!ctx) throw new Error(uiText(language, 'Not authenticated'));
 
          // 1. Enable targets
          await supabase
@@ -697,12 +636,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             .update({ status: 'disable' })
             .eq('artist_id', ctx.artist_id)
             .neq('currency', targetCurrency);
-         
+
          await fetchProducts();
-         showToast({ tone: 'success', title: 'Active currency switched', detail: `Only ${targetCurrency} products are enabled now.` });
+         showToast({ tone: 'success', title: uiText(language, 'Active currency switched'), detail: uiText(language, 'Only {currency} products are enabled now.').replace('{currency}', targetCurrency) });
       } catch (error: any) {
          console.error(error);
-         showToast({ tone: 'error', title: 'Failed to switch currency', detail: error.message });
+         showToast({ tone: 'error', title: uiText(language, 'Failed to switch currency'), detail: error.message });
       } finally {
          setLoading(false);
       }
@@ -737,6 +676,43 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       if (sortOption === 'price_desc') return b.price - a.price;
       return 0;
    });
+
+   const filteredProductFamilies: Array<CatalogProductFamily<Product>> = (() => {
+      const parentById = new Map(productParents.map((parent) => [parent.id, parent]));
+      const families = new Map<string, CatalogProductFamily<Product>>();
+
+      const matchingFamilies = new Set(filteredProducts.map((product) => product.parent_product_id || product.id));
+      for (const product of products.filter((product) => matchingFamilies.has(product.parent_product_id || product.id))) {
+         const parentId = product.parent_product_id || `legacy-${product.id}`;
+         const storedParent = product.parent_product_id ? parentById.get(product.parent_product_id) : undefined;
+         const parent: ProductParent = storedParent || {
+            id: parentId,
+            artist_id: artistId,
+            name: product.variant_group_name || product.name,
+            description: product.description || '',
+            category: product.category || 'Other',
+            tags: product.tags || [],
+            image_url: product.image_url || null,
+            currency: product.currency || DEFAULT_CURRENCY,
+            base_price: product.price,
+            product_kind: 'single',
+            gallery_images: [],
+            bundle_items: [],
+         };
+         const family = families.get(parentId);
+         if (family) family.variants.push(product);
+         else families.set(parentId, { parent, variants: [product] });
+      }
+
+      return Array.from(families.values()).map((family) => ({
+         ...family,
+         variants: family.variants.sort((a, b) => (a.variant_sort_order || 0) - (b.variant_sort_order || 0)),
+      })).sort((a, b) => {
+         if (sortOption === 'price_asc') return a.parent.base_price - b.parent.base_price;
+         if (sortOption === 'price_desc') return b.parent.base_price - a.parent.base_price;
+         return a.parent.name.localeCompare(b.parent.name);
+      });
+   })();
 
    const hasActiveFilters =
       searchQuery.trim().length > 0 ||
@@ -929,7 +905,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setEventCurrencySaved(nextEventCurrency);
       } catch (error) {
          console.error('[ManageProducts] fetchEventCatalog failed:', error);
-         showToast({ tone: 'error', title: 'Event catalog failed to load' });
+         showToast({ tone: 'error', title: uiText(language, 'Event catalog failed to load') });
       } finally {
          setEventCatalogLoading(false);
       }
@@ -983,7 +959,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       });
 
       if (invalidProduct) {
-         showToast({ tone: 'warning', title: 'Invalid event catalog value', detail: `Check price/stock for ${invalidProduct.name}.` });
+         showToast({ tone: 'warning', title: uiText(language, 'Invalid event catalog value'), detail: uiText(language, 'Check price/stock for {name}.').replace('{name}', invalidProduct.name) });
          return;
       }
 
@@ -998,14 +974,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          const stockLimit = getEventCatalogStockLimit(overAllocatedProduct);
          showToast({
             tone: 'warning',
-            title: 'Event stock exceeds available stock',
-            detail: `${overAllocatedProduct.name} can allocate up to ${stockLimit} for this event.`,
+            title: uiText(language, 'Event stock exceeds available stock'),
+            detail: uiText(language, '{name} can allocate up to {count} for this event.').replace('{name}', overAllocatedProduct.name).replace('{count}', String(stockLimit)),
          });
          return;
       }
 
       if (!hasPendingEventCatalogChanges) {
-         showToast({ tone: 'success', title: 'Event catalog already saved' });
+         showToast({ tone: 'success', title: uiText(language, 'Event catalog already saved') });
          return;
       }
 
@@ -1060,7 +1036,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             if (error) throw error;
          }
 
-         showToast({ tone: 'success', title: 'Event catalog saved', detail: 'POS will use this event-specific menu and stock.' });
+         showToast({ tone: 'success', title: uiText(language, 'Event catalog saved'), detail: uiText(language, 'POS will use this event-specific menu and stock.') });
          await fetchEventOptions(artistId);
          await fetchEventCatalog(selectedEventId);
       } catch (error: any) {
@@ -1068,9 +1044,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          showToast({
             tone: 'error',
             title: error?.message?.includes('event_stock_exceeds_catalog_stock')
-               ? 'Cannot edit allocated event stock directly'
-               : 'Failed to save event catalog',
-            detail: getEventCatalogSaveErrorMessage(error),
+               ? uiText(language, 'Cannot edit allocated event stock directly')
+               : uiText(language, 'Failed to save event catalog'),
+            detail: uiText(language, getEventCatalogSaveErrorMessage(error)),
          });
       } finally {
          setEventCatalogSaving(false);
@@ -1109,6 +1085,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const fetchProducts = async () => {
       setLoading(true);
+      setCatalogLoadError('');
       try {
          const ctx = await resolveWorkspaceContext();
          if (!ctx) return;
@@ -1121,23 +1098,34 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             .select('display_name')
             .eq('id', ctx.artist_id)
             .maybeSingle();
-         
+
          if (artist) setArtistName(artist.display_name);
 
-         const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('artist_id', ctx.artist_id)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false });
+         const [{ data, error }, parentResult] = await Promise.all([
+            supabase
+               .from('products')
+               .select('*')
+               .eq('artist_id', ctx.artist_id)
+               .is('deleted_at', null)
+               .order('created_at', { ascending: false }),
+            supabase
+               .from('product_parents')
+               .select('*')
+               .eq('artist_id', ctx.artist_id)
+               .order('updated_at', { ascending: false }),
+         ]);
 
-         if (!error && data) {
+         if (error) throw error;
+         if (data) {
+            if (parentResult.error) throw parentResult.error;
             setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
+            setProductParents((parentResult.data || []) as ProductParent[]);
             const summaries = await fetchProductStockSummaries(ctx.artist_id);
             setStockSummaries(Object.fromEntries(summaries.map((summary) => [summary.product_id, summary])));
          }
       } catch (error) {
          console.error('[ManageProducts] fetchProducts failed:', error);
+         setCatalogLoadError(uiText(language, 'Could not load products. Please retry.'));
       } finally {
          setLoading(false);
       }
@@ -1262,19 +1250,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       setEventCurrencySaved(nextEventCurrency);
    }, [selectedEventId, selectedEventOption?.currency_override]);
 
-   const getProductImageUrl = (dbValue: string, width: number = 400) => {
-      if (!dbValue) return '';
-      let path = dbValue;
-      if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-         const parts = dbValue.split('Menu/');
-         if (parts.length > 1) path = parts[1];
-      }
-      const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-      
-      // Use ImageKit Utility
-      return getOptimizedImageUrl(data.publicUrl, width);
-   };
-
+   const getProductImageUrl = getMenuImageUrl;
 
    const handleImageCompression = async (imageFile: File): Promise<File> => {
       // Options for compression
@@ -1292,7 +1268,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
       // Skip if already small enough (e.g. < 200KB)
       if (imageFile.size / 1024 / 1024 < 0.2) {
-         return imageFile; 
+         return imageFile;
       }
 
       try {
@@ -1309,7 +1285,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const prepareImageForCrop = async (selectedFile: File, target: ProductImageTarget) => {
       if (!isAllowedProductImage(selectedFile)) {
-         showToast({ tone: 'warning', title: 'Unsupported image type', detail: 'Use JPG, PNG, WebP, HEIC, or HEIF.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Unsupported image type'), detail: uiText(language, 'Use JPG, PNG, WebP, HEIC, or HEIF.') });
          return;
       }
 
@@ -1319,7 +1295,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setCropRequest({ file: editableFile, target });
       } catch (error) {
          console.error('[ManageProducts] HEIC conversion failed:', error);
-         showToast({ tone: 'error', title: 'Could not read this iPhone image', detail: 'Please try saving it as JPG, PNG, or WebP.' });
+         showToast({ tone: 'error', title: uiText(language, 'Could not read this iPhone image'), detail: uiText(language, 'Please try saving it as JPG, PNG, or WebP.') });
       } finally {
          setCompressing(false);
       }
@@ -1354,6 +1330,99 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setCropRequest(null);
       } finally {
          setCompressing(false);
+      }
+   };
+
+   const familyEditorParent = familyEditorParentId && familyEditorParentId !== 'new'
+      ? productParents.find((parent) => parent.id === familyEditorParentId) || null
+      : null;
+   const familyEditorVariants: FamilyVariant[] = useMemo(() => familyEditorParent
+      ? products
+         .filter((product) => product.parent_product_id === familyEditorParent.id)
+         .sort((a, b) => (a.variant_sort_order || 0) - (b.variant_sort_order || 0))
+         .map((product) => ({
+            id: product.id,
+            parent_product_id: product.parent_product_id || undefined,
+            variant_name: product.variant_name || (products.filter((item) => item.parent_product_id === familyEditorParent.id).length === 1 ? 'Default' : product.name),
+            sku: product.sku,
+            price_override: product.price_override,
+            stock_total: product.stock_total,
+            is_unlimited: product.is_unlimited,
+            image_url: product.image_url === familyEditorParent.image_url ? null : product.image_url,
+            status: product.status,
+            variant_sort_order: product.variant_sort_order,
+            updated_at: product.updated_at,
+         }))
+      : [], [familyEditorParent, products]);
+
+   const openFamilyEditor = (family?: CatalogProductFamily<Product>) => {
+      setCatalogActionMenuKey(null);
+      setFamilyEditorParentId(family?.parent.id || 'new');
+   };
+
+   const openFamilyEditorForProduct = (product: Product) => {
+      const family = filteredProductFamilies.find((item) => item.parent.id === product.parent_product_id)
+         || (() => {
+            const parent = productParents.find((item) => item.id === product.parent_product_id);
+            return parent ? { parent, variants: products.filter((item) => item.parent_product_id === parent.id) } : undefined;
+         })();
+      if (family) openFamilyEditor(family);
+      else handleEditClick(product);
+   };
+
+   const uploadFamilyImage = async (selectedFile: File) => {
+      if (!isAllowedProductImage(selectedFile)) throw new Error(language === 'th' ? 'ใช้รูป JPG, PNG, WebP, HEIC หรือ HEIF' : 'Use JPG, PNG, WebP, HEIC, or HEIF.');
+      const editableFile = await convertHeicToEditableImage(selectedFile);
+      const compressedFile = await handleImageCompression(editableFile);
+      const fileExt = compressedFile.name.split('.').pop() || 'webp';
+      const filePath = `public/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const { error } = await supabase.storage.from('Menu').upload(filePath, compressedFile);
+      if (error) throw error;
+      return filePath;
+   };
+
+   const saveProductFamily = async ({ parent, variants }: ProductFamilySaveInput) => {
+      setFamilyEditorSaving(true);
+      try {
+         const ctx = await resolveWorkspaceContext();
+         if (!ctx) throw new Error(language === 'th' ? 'เซสชันร้านหมดอายุ กรุณาเข้าสู่ระบบแล้วลองอีกครั้ง' : 'Your shop session expired. Sign in and try again.');
+         const { data: savedParentId, error } = await supabase.rpc('save_product_family', {
+            p_parent_id: parent.id || null,
+            p_parent: { ...parent, artist_id: ctx.artist_id },
+            p_variants: variants,
+         });
+         if (error) throw error;
+         const savedName = parent.name;
+         setFamilyEditorParentId(null);
+         await fetchProducts();
+         showToast({ tone: 'success', title: parent.id ? (language === 'th' ? 'อัปเดตสินค้าแล้ว' : 'Product family updated') : (language === 'th' ? 'เพิ่มสินค้าแล้ว' : 'Product created'), detail: savedName });
+         if (!parent.id && variants.length === 1) {
+            const created = await supabase.from('products').select('*').eq('parent_product_id', savedParentId).is('deleted_at', null).single();
+            if (created.error) {
+               showToast({ tone: 'warning', title: uiText(language, 'Product created'), detail: uiText(language, 'Choose a sales channel from the catalog when you are ready.') });
+            } else {
+               await openAddToSale(normalizeProductRecord(created.data) as Product);
+            }
+         }
+      } catch (error: any) {
+         console.error('[ManageProducts] save product family failed:', error);
+         const messages: Record<string, string> = language === 'th' ? {
+            product_family_changed_reload: 'ข้อมูลสินค้าหรือสต็อกเปลี่ยนระหว่างแก้ไข กรุณาปิดหน้าต่าง โหลดใหม่ แล้วลองอีกครั้ง',
+            product_variant_changed_reload: 'สต็อกเปลี่ยนระหว่างแก้ไข กรุณาปิดหน้าต่าง โหลดใหม่ แล้วลองอีกครั้ง',
+            variant_in_use_disable_in_channels_first: 'ตัวเลือกที่ลบยังเปิดขายอยู่ในอีเวนต์หรือแคมเปญ กรุณาปิดในช่องทางขายก่อน',
+            allocated_variant_stock_mode_locked: 'ตัวเลือกที่จัดสรรให้ช่องทางขายแล้ว เปลี่ยนโหมดสต็อกไม่ได้',
+            insufficient_catalog_available_stock: 'ลดสต็อกต่ำกว่าจำนวนที่ขาย จอง หรือจัดสรรแล้วไม่ได้',
+            forbidden: 'ไม่มีสิทธิ์แก้ไขสินค้าของร้านนี้',
+         } : {
+            product_family_changed_reload: 'This product changed in another tab. Close the editor, reload, and try again.',
+            product_variant_changed_reload: 'Stock changed while this editor was open. Close the editor, reload, and try again.',
+            variant_in_use_disable_in_channels_first: 'A removed variant is still active in an event or campaign. Hide it from those sales channels first.',
+            allocated_variant_stock_mode_locked: 'An allocated variant cannot switch between finite and unlimited stock.',
+            insufficient_catalog_available_stock: 'Stock cannot be reduced below committed or allocated quantities.',
+         };
+         throw new Error(isDuplicateSkuError(error) ? t('catalogDuplicateSkuDetail') : messages[error?.message] || (language === 'th' ? 'บันทึกสินค้าไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองอีกครั้ง' : error?.message || 'Could not save this product family.'));
+      } finally {
+         setFamilyEditorSaving(false);
       }
    };
 
@@ -1432,7 +1501,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       if (!isUnlimited && (stockTotal === '' || Number(stockTotal) < 0 || !Number.isInteger(Number(stockTotal)))) {
-         showToast({ tone: 'warning', title: 'Invalid stock quantity', detail: 'Enter a whole number greater than or equal to 0, or mark the item as Unlimited.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Invalid stock quantity'), detail: uiText(language, 'Enter a whole number greater than or equal to 0, or mark the item as Unlimited.') });
          return;
       }
 
@@ -1460,14 +1529,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
 
       if (hasDuplicate) {
-         showToast({ tone: 'warning', title: 'Duplicate product', detail: 'A product with the same name, category, currency, and tags already exists.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Duplicate product'), detail: uiText(language, 'A product with the same name, category, currency, and tags already exists.') });
          return;
       }
 
       setUploading(true);
       try {
          const ctx = actorContext || await resolveWorkspaceContext();
-         if (!ctx) throw new Error('Not authenticated');
+         if (!ctx) throw new Error(uiText(language, 'Not authenticated'));
 
          // 1. Upload image if provided
          let filePath = '';
@@ -1525,7 +1594,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setSku('');
          setFile(null);
          if (fileInputRef.current) fileInputRef.current.value = '';
-         
+
          await fetchProducts();
          showToast({ tone: 'success', title: t('catalogProductAdded'), detail: name });
          setIsAddProductModalOpen(false);
@@ -1535,7 +1604,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          console.error(error);
          showToast(isDuplicateSkuError(error)
             ? { tone: 'error', title: t('catalogDuplicateSku'), detail: t('catalogDuplicateSkuDetail') }
-            : { tone: 'error', title: 'Error adding product', detail: error.message });
+            : { tone: 'error', title: uiText(language, 'Error adding product'), detail: error.message });
       } finally {
          setUploading(false);
       }
@@ -1554,111 +1623,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          // Note: We do NOT delete the image from storage to preserve history for past orders.
 
          await fetchProducts();
-         showToast({ tone: 'success', title: 'Product deleted' });
+         showToast({ tone: 'success', title: uiText(language, 'Product deleted') });
 
       } catch (error) {
          console.error('Error deleting product', error);
-         showToast({ tone: 'error', title: 'Failed to delete product' });
+         showToast({ tone: 'error', title: uiText(language, 'Failed to delete product') });
       }
    };
 
    const requestDeleteProduct = (product: Product) => {
       setConfirmAction({ type: 'delete_product', id: product.id, name: product.name });
    };
-
-   const openDuplicateVariants = (product: Product) => {
-      setVariantSourceProduct(product);
-      setDuplicateVariantsInput('');
-   };
-
-   const closeDuplicateVariants = () => {
-      setVariantSourceProduct(null);
-      setDuplicateVariantsInput('');
-      setDuplicateVariantsSaving(false);
-   };
-
-   const handleCreateVariantDuplicates = async (event: React.FormEvent) => {
-      event.preventDefault();
-      if (!variantSourceProduct) return;
-
-      const variantGroupName = normalizeOptionalText(variantSourceProduct.variant_group_name || '') || variantSourceProduct.name.trim();
-      const existingVariantNames = products
-         .filter((product) => (product.variant_group_name || product.name).trim().toLowerCase() === variantGroupName.toLowerCase())
-         .map((product) => product.variant_name || product.name.replace(new RegExp(`^${variantGroupName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i'), ''));
-      const { rows, errors } = parseDuplicateVariantRows(duplicateVariantsInput, existingVariantNames);
-
-      if (errors.length > 0) {
-         showToast({ tone: 'warning', title: 'Check variant rows', detail: errors[0] });
-         return;
-      }
-
-      if (rows.length === 0) {
-         showToast({ tone: 'warning', title: 'No options', detail: 'Add at least one option name.' });
-         return;
-      }
-
-      const existingProductNames = new Set(products.map((product) => product.name.trim().toLowerCase()));
-      const duplicateProduct = rows.find((row) => existingProductNames.has(`${variantGroupName} ${row.variantName}`.trim().toLowerCase()));
-      if (duplicateProduct) {
-         showToast({ tone: 'warning', title: 'Duplicate product', detail: `${variantGroupName} ${duplicateProduct.variantName} already exists.` });
-         return;
-      }
-
-      setDuplicateVariantsSaving(true);
-      try {
-         const ctx = actorContext || await resolveWorkspaceContext();
-         if (!ctx) throw new Error('Not authenticated');
-
-         const baseTags = variantSourceProduct.tags || [];
-         const payload = rows.map((row) => {
-            const isUnlimited = row.stockMode === 'copy'
-               ? variantSourceProduct.is_unlimited ?? true
-               : row.stockMode === 'unlimited';
-            const stockTotal = row.stockMode === 'copy'
-               ? variantSourceProduct.stock_total ?? null
-               : row.stockMode === 'unlimited'
-                 ? null
-                 : row.stockTotal;
-
-            return {
-               artist_id: ctx.artist_id,
-               name: `${variantGroupName} ${row.variantName}`.trim(),
-               price: row.priceOverride ?? variantSourceProduct.price,
-               description: variantSourceProduct.description || '',
-               category: variantSourceProduct.category || 'Other',
-               tags: Array.from(new Set([...baseTags, ...row.tags].map(normalizeTag).filter(Boolean))),
-               status: variantSourceProduct.status || 'enable',
-               currency: variantSourceProduct.currency || DEFAULT_CURRENCY,
-               stock_total: isUnlimited ? null : stockTotal ?? 0,
-               is_unlimited: isUnlimited,
-               variant_group_name: variantGroupName,
-               variant_name: row.variantName,
-               variant_sort_order: row.sortOrder,
-               image_url: '',
-            };
-         });
-
-         const { error } = await supabase
-            .from('products')
-            .insert(payload);
-
-         if (error) throw error;
-
-         await fetchProducts();
-         showToast({
-            tone: 'success',
-            title: 'Variants created',
-            detail: `${rows.length} product${rows.length === 1 ? '' : 's'} duplicated from ${variantSourceProduct.name}.`,
-         });
-         closeDuplicateVariants();
-      } catch (error: any) {
-         console.error('[ManageProducts] duplicate variants failed:', error);
-         showToast({ tone: 'error', title: 'Could not create variants', detail: error.message });
-      } finally {
-         setDuplicateVariantsSaving(false);
-      }
-   };
-
 
    const handleEditClick = (product: Product) => {
       setEditingProduct(product);
@@ -1689,7 +1664,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const handleUpdateProduct = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingProduct || !name || !price) {
-         showToast({ tone: 'warning', title: 'Required fields missing', detail: 'Please fill in all required fields.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Required fields missing'), detail: uiText(language, 'Please fill in all required fields.') });
          return;
       }
 
@@ -1763,243 +1738,83 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          setVariantName('');
          setVariantSortOrder('0');
          setSku('');
-         
+
          await fetchProducts();
-         showToast({ tone: 'success', title: 'Product updated', detail: name });
+         showToast({ tone: 'success', title: uiText(language, 'Product updated'), detail: name });
 
       } catch (error: any) {
          console.error(error);
          showToast(isDuplicateSkuError(error)
             ? { tone: 'error', title: t('catalogDuplicateSku'), detail: t('catalogDuplicateSkuDetail') }
-            : { tone: 'error', title: 'Error updating product', detail: error.message });
+            : { tone: 'error', title: uiText(language, 'Error updating product'), detail: error.message });
       } finally {
          setUploading(false);
       }
    };
 
-   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-         showToast({ tone: 'warning', title: 'Invalid file type', detail: 'Please upload a CSV file.' });
+   const handleBulkUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file || uploading) return;
+      const thai = language === 'th';
+      setCsvMessages([]);
+      setCsvFailed(false);
+      if (!file.name.toLowerCase().endsWith('.csv') || file.size > 5 * 1024 * 1024) {
+         setCsvFailed(true);
+         setCsvMessages([thai ? 'เลือกไฟล์ CSV ขนาดไม่เกิน 5 MB' : 'Choose a CSV file up to 5 MB.']);
          return;
       }
-
-      Papa.parse(file, {
+      setUploading(true);
+      Papa.parse<Record<string, string>>(file, {
          header: true,
-         skipEmptyLines: true,
-         transformHeader: (header: string) => {
-            return header.trim().toLowerCase().replace(/[\s-]+/g, '_');
-         },
-         complete: async (results: Papa.ParseResult<Record<string, string>>) => {
-            const rows = results.data as any[];
-            if (!rows || rows.length === 0) {
-               showToast({ tone: 'warning', title: 'CSV is empty' });
-               return;
-            }
-
-            const validItems: any[] = [];
-            const errors: string[] = [];
-
-            const existingKeys = new Set(
-               products.map(product => buildProductDuplicateKey({
-                  name: product.name,
-                  category: product.category || 'Other',
-                  currency: product.currency || DEFAULT_CURRENCY,
-                  tags: product.tags || [],
-                  variantGroupName: product.variant_group_name,
-                  variantName: product.variant_name
-               }))
-            );
-            const importedKeys = new Set<string>();
-
-            const ctx = actorContext || await resolveWorkspaceContext();
-            if (!ctx) {
-               showToast({ tone: 'error', title: 'Not authenticated' });
-               return;
-            }
-
-            rows.forEach((row: any, index: number) => {
-               // Sanitize: trim all string values
-               const sanitizedRow: any = {};
-               Object.keys(row).forEach(key => {
-                  const value = row[key];
-                  sanitizedRow[key] = typeof value === 'string' ? value.trim() : value;
-               });
-
-               // Extract fields (case-insensitive)
-               const name = getCsvValue(sanitizedRow, ['name', 'product_name', 'item_name', 'product', 'item']);
-               const priceRaw = getCsvValue(sanitizedRow, ['price', 'unit_price']);
-               const category = getCsvValue(sanitizedRow, ['category', 'product_category', 'type']);
-               const tagsRaw = getCsvValue(sanitizedRow, ['tags', 'tag', 'product_tag', 'product_tags']);
-               const description = getCsvValue(sanitizedRow, ['description', 'details', 'note']);
-               const currencyRaw = getCsvValue(sanitizedRow, ['currency']);
-               const status = getCsvValue(sanitizedRow, ['status']);
-               const stockRaw = getCsvValue(sanitizedRow, ['stock', 'stock_total', 'stocktotal', 'qty', 'quantity']);
-               const unlimitedRaw = getCsvValue(sanitizedRow, ['is_unlimited', 'unlimited', 'isunlimited']);
-               const variantGroupRaw = getCsvValue(sanitizedRow, ['product_line', 'variant_group_name', 'variant_group', 'folder', 'folder_name']);
-               const variantNameRaw = getCsvValue(sanitizedRow, ['variant_name', 'variant', 'option', 'option_name']);
-               const variantSortRaw = getCsvValue(sanitizedRow, ['variant_sort_order', 'variant_sort', 'sort_order']);
-
-               // Validate required fields
-               if (!name || !priceRaw) {
-                  const missing = [];
-                  if (!name) missing.push('name');
-                  if (!priceRaw) missing.push('price');
-                  errors.push(`Row ${index + 2}: Missing required field(s): ${missing.join(', ')}`);
+         skipEmptyLines: 'greedy',
+         transformHeader: (header) => header.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+         complete: async (results) => {
+            try {
+               if ('renamedHeaders' in results.meta && results.meta.renamedHeaders && Object.keys(results.meta.renamedHeaders).length) {
+                  setCsvFailed(true);
+                  setCsvMessages([thai ? 'ชื่อคอลัมน์ CSV ซ้ำกัน กรุณาใช้ชื่อคอลัมน์แต่ละชื่อเพียงครั้งเดียว' : 'Duplicate CSV headers. Use each column name once.']);
                   return;
                }
-
-               // Sanitize price: remove commas and parse
-               const priceClean = priceRaw.toString().replace(/,/g, '');
-               const price = parseFloat(priceClean);
-
-               if (isNaN(price) || price <= 0) {
-                  errors.push(`Row ${index + 2}: Invalid price value "${priceRaw}"`);
+               if (results.errors.length) {
+                  setCsvFailed(true);
+                  setCsvMessages(results.errors.map((error) => `${thai ? 'อ่าน CSV ไม่สำเร็จ แถว' : 'CSV parse error at row'} ${(error.row ?? 0) + 2}: ${error.code}`));
                   return;
                }
-
-               // ✅ FIX: Validate and use currency from CSV (default to THB if missing)
-               const validCurrencies = Object.keys(CURRENCIES);
-               const normalizedCurrencyRaw = String(currencyRaw || '').trim().toUpperCase();
-               const currency = normalizedCurrencyRaw && validCurrencies.includes(normalizedCurrencyRaw) 
-                  ? normalizedCurrencyRaw
-                  : DEFAULT_CURRENCY;
-
-               // ✅ NEW: Optional stock columns
-               const parseBoolean = (value: unknown): boolean | null => {
-                  if (value === undefined || value === null || value === '') return null;
-                  const normalized = String(value).trim().toLowerCase();
-                  if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
-                  if (['false', '0', 'no', 'n'].includes(normalized)) return false;
-                  return null;
-               };
-
-               const hasStockValue = stockRaw !== undefined && stockRaw !== null && String(stockRaw).trim() !== '';
-               let parsedStock: number | null = null;
-               if (hasStockValue) {
-                  const stockClean = String(stockRaw).replace(/,/g, '');
-                  const stockNumber = Number(stockClean);
-                  if (!Number.isInteger(stockNumber) || stockNumber < 0) {
-                     errors.push(`Row ${index + 2}: Invalid stock value "${stockRaw}" (must be integer >= 0)`);
-                     return;
-                  }
-                  parsedStock = stockNumber;
-               }
-
-               const parsedUnlimited = parseBoolean(unlimitedRaw);
-               if (unlimitedRaw !== undefined && unlimitedRaw !== null && String(unlimitedRaw).trim() !== '' && parsedUnlimited === null) {
-                  errors.push(`Row ${index + 2}: Invalid is_unlimited value "${unlimitedRaw}" (use true/false, 1/0, yes/no)`);
+               if (!results.data.length) {
+                  setCsvFailed(true);
+                  setCsvMessages([thai ? 'ไฟล์ CSV ไม่มีข้อมูลสินค้า' : 'CSV contains no products.']);
                   return;
                }
-
-               let isUnlimitedItem = true;
-               let stockTotalItem: number | null = null;
-
-               if (parsedUnlimited === true) {
-                  isUnlimitedItem = true;
-                  stockTotalItem = null;
-               } else if (parsedUnlimited === false) {
-                  if (parsedStock === null) {
-                     errors.push(`Row ${index + 2}: Missing stock value while is_unlimited is false`);
-                     return;
-                  }
-                  isUnlimitedItem = false;
-                  stockTotalItem = parsedStock;
-               } else if (parsedStock !== null) {
-                  isUnlimitedItem = false;
-                  stockTotalItem = parsedStock;
-               }
-               
-               // Validate status
-               const validStatuses = ['enable', 'disable', 'soldout'];
-               const normalizedStatus = String(status || '').trim().toLowerCase();
-               const productStatus = normalizedStatus && validStatuses.includes(normalizedStatus)
-                  ? normalizedStatus
-                  : 'enable';
-
-               const normalizedTags = parseTagsInput(String(tagsRaw || ''));
-               const normalizedVariantGroupName = normalizeOptionalText(String(variantGroupRaw || ''));
-               const normalizedVariantName = normalizeOptionalText(String(variantNameRaw || ''));
-               const normalizedVariantSortOrder = parseSortOrder(String(variantSortRaw || '0'));
-               const duplicateKey = buildProductDuplicateKey({
-                  name: String(name),
-                  category: String(category || 'Other'),
-                  currency: String(currency),
-                  tags: normalizedTags,
-                  variantGroupName: normalizedVariantGroupName,
-                  variantName: normalizedVariantName
-               });
-
-               if (existingKeys.has(duplicateKey)) {
-                  errors.push(`Row ${index + 2}: Duplicate product already exists`);
+               const ctx = await resolveWorkspaceContext();
+               if (!ctx) throw new Error(thai ? 'กรุณาเข้าสู่ระบบอีกครั้ง' : 'Sign in again to import products.');
+               const parsed = parseProductCsv(results.data, ctx.artist_id);
+               if (parsed.issues.length) {
+                  setCsvFailed(true);
+                  setCsvMessages(parsed.issues.map((issue) => formatProductCsvIssue(issue, language)));
                   return;
                }
-
-               if (importedKeys.has(duplicateKey)) {
-                  errors.push(`Row ${index + 2}: Duplicate row in CSV upload`);
-                  return;
-               }
-
-               importedKeys.add(duplicateKey);
-
-               validItems.push({
-                  artist_id: ctx.artist_id,
-                  name: name,
-                  price: price,
-                  currency: currency, // ✅ FIX: Now uses currency from CSV
-                  category: category || 'Other',
-                  tags: normalizedTags,
-                  description: description || '',
-                  status: productStatus,
-                  is_unlimited: isUnlimitedItem,
-                  stock_total: stockTotalItem,
-                  variant_group_name: normalizedVariantGroupName,
-                  variant_name: normalizedVariantName,
-                  variant_sort_order: normalizedVariantSortOrder,
-                  image_url: ''
-               });
-            });
-
-            // Log errors to console for debugging
-            if (errors.length > 0) {
-               console.warn('CSV Upload Validation Errors:');
-               errors.forEach(err => console.warn(err));
-            }
-
-            if (validItems.length > 0) {
-               try {
-                  setUploading(true);
-                  const { error } = await supabase.from('products').insert(validItems);
-                  
-                  if (error) throw error;
-
-                  const message = `Successfully uploaded ${validItems.length} item(s)!${errors.length > 0 ? `\n\n${errors.length} row(s) skipped. Check console for details.` : ''}`;
-                  showToast({ tone: 'success', title: 'CSV upload complete', detail: message });
-                  if (csvInputRef.current) csvInputRef.current.value = '';
-                  await fetchProducts();
-               } catch (err: any) {
-                  console.error('File upload error:', err);
-                  showToast({ tone: 'error', title: 'Failed to upload items', detail: err.message });
-               } finally {
-                  setUploading(false);
-               }
-            } else {
-               showToast({
-                  tone: 'warning',
-                  title: 'No valid rows found',
-                  detail: errors.length > 0
-                     ? errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n... and ${errors.length - 5} more errors.` : '')
-                     : "Ensure CSV has 'name' and 'price' columns (optional: stock, is_unlimited)."
-               });
+               const result = await supabase.rpc('import_product_families', { p_artist_id: ctx.artist_id, p_families: parsed.families });
+               if (result.error) throw result.error;
+               const imported = result.data as { imported_products: number; imported_variants: number; skipped_products: string[] };
+               if (!imported || !Number.isInteger(imported.imported_products) || !Number.isInteger(imported.imported_variants) || !Array.isArray(imported.skipped_products)) throw new Error(thai ? 'ผลการนำเข้าไม่ถูกต้อง กรุณาโหลดรายการสินค้าใหม่ก่อนลองอีกครั้ง' : 'Unexpected import result. Reload the catalog before retrying.');
+               const summary = thai ? `นำเข้า ${imported.imported_products} สินค้า / ${imported.imported_variants} รายการสต็อก` : `Imported ${imported.imported_products} products / ${imported.imported_variants} inventory items.`;
+               setCsvMessages([summary, ...imported.skipped_products.map((name) => thai ? `ข้ามสินค้าที่มีอยู่แล้ว: ${name} (ข้อมูลและสต็อกเดิมไม่เปลี่ยน)` : `Skipped existing product: ${name} (existing data and stock unchanged).`)]);
+               showToast({ tone: 'success', title: thai ? 'นำเข้า CSV เสร็จแล้ว' : 'CSV import complete', detail: summary });
+               await fetchProducts();
+            } catch (error) {
+               setCsvFailed(true);
+               const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
+               setCsvMessages([isDuplicateSkuError({ message, code: typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '' }) ? t('catalogDuplicateSkuDetail') : (thai ? 'ยืนยันผลการนำเข้าไม่สำเร็จ กรุณาโหลดรายการสินค้าใหม่ ตรวจข้อมูลหรือ SKU แล้วลองอีกครั้ง' : 'Could not confirm the import. Reload the catalog, check the data or SKU and retry.')]);
+            } finally {
+               setUploading(false);
             }
          },
-         error: (err: Error) => {
-            console.error('CSV Parse Error:', err);
-            showToast({ tone: 'error', title: 'Failed to parse CSV file' });
-         }
-   });
+         error: () => {
+            setUploading(false); setCsvFailed(true);
+            setCsvMessages([thai ? 'อ่านไฟล์ CSV ไม่สำเร็จ กรุณาตรวจไฟล์และลองอีกครั้ง' : 'Could not read the CSV file. Check the file and retry.']);
+         },
+      });
    };
 
    const resetTemplateForm = () => {
@@ -2018,18 +1833,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       event.preventDefault();
 
       if (!templateName.trim() || !templateCategory.trim() || !templatePrice.trim()) {
-         showToast({ tone: 'warning', title: 'Template fields missing', detail: 'Fill in template name, category, and price.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Template fields missing'), detail: uiText(language, 'Fill in template name, category, and price.') });
          return;
       }
 
       if (!templateIsUnlimited && (templateStockTotal === '' || Number(templateStockTotal) < 0 || !Number.isInteger(Number(templateStockTotal)))) {
-         showToast({ tone: 'warning', title: 'Invalid template stock', detail: 'Enter a whole number greater than or equal to 0, or mark the template as Unlimited.' });
+         showToast({ tone: 'warning', title: uiText(language, 'Invalid template stock'), detail: uiText(language, 'Enter a whole number greater than or equal to 0, or mark the template as Unlimited.') });
          return;
       }
 
       const parsedVariants = parseTemplateVariantsInput(templateVariantsInput);
       if (parsedVariants.length === 0) {
-         showToast({ tone: 'warning', title: 'No options', detail: 'Add at least one option name.' });
+         showToast({ tone: 'warning', title: uiText(language, 'No options'), detail: uiText(language, 'Add at least one option name.') });
          return;
       }
 
@@ -2037,7 +1852,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       let createdTemplateId: string | null = null;
       try {
          const ctx = actorContext || await resolveWorkspaceContext();
-         if (!ctx) throw new Error('Not authenticated');
+         if (!ctx) throw new Error(uiText(language, 'Not authenticated'));
 
          const { data: templateData, error: templateError } = await supabase
             .from('product_templates')
@@ -2076,13 +1891,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          resetTemplateForm();
          setIsTemplateModalOpen(false);
          setActiveWorkspaceTab('templates');
-         showToast({ tone: 'success', title: 'Product Template created', detail: `${parsedVariants.length} variant${parsedVariants.length === 1 ? '' : 's'} ready.` });
+         showToast({ tone: 'success', title: uiText(language, 'Product Template created'), detail: uiText(language, parsedVariants.length === 1 ? '{count} variant ready.' : '{count} variants ready.').replace('{count}', String(parsedVariants.length)) });
       } catch (error: any) {
          if (createdTemplateId) {
             await supabase.from('product_templates').delete().eq('id', createdTemplateId);
          }
          console.error('[ManageProducts] create template failed:', error);
-         showToast({ tone: 'error', title: 'Template failed', detail: error.message });
+         showToast({ tone: 'error', title: uiText(language, 'Template failed'), detail: error.message });
       } finally {
          setTemplateSaving(false);
       }
@@ -2099,14 +1914,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
 
       if (parsedVariants.length === 0) {
-         showToast({ tone: 'warning', title: 'No new options', detail: 'Add at least one new option name that is not already in this template.' });
+         showToast({ tone: 'warning', title: uiText(language, 'No new options'), detail: uiText(language, 'Add at least one new option name that is not already in this template.') });
          return;
       }
 
       setTemplateVariantSavingId(template.id);
       try {
          const ctx = actorContext || await resolveWorkspaceContext();
-         if (!ctx) throw new Error('Not authenticated');
+         if (!ctx) throw new Error(uiText(language, 'Not authenticated'));
 
          const variantPayload = parsedVariants.map((variant) => ({
             ...variant,
@@ -2124,12 +1939,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          await fetchProductTemplates(ctx.artist_id);
          showToast({
             tone: 'success',
-            title: 'Variants added',
-            detail: `${parsedVariants.length} variant${parsedVariants.length === 1 ? '' : 's'} added to ${template.name}.`,
+            title: uiText(language, 'Variants added'),
+            detail: uiText(language, parsedVariants.length === 1 ? '{count} variant added to {name}.' : '{count} variants added to {name}.').replace('{count}', String(parsedVariants.length)).replace('{name}', template.name),
          });
       } catch (error: any) {
          console.error('[ManageProducts] add template variants failed:', error);
-         showToast({ tone: 'error', title: 'Variants failed', detail: error.message });
+         showToast({ tone: 'error', title: uiText(language, 'Variants failed'), detail: error.message });
       } finally {
          setTemplateVariantSavingId('');
       }
@@ -2155,14 +1970,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          await fetchProducts();
          showToast({
             tone: 'success',
-            title: eventId ? 'Template applied to event' : 'Products created from template',
+            title: uiText(language, eventId ? 'Template applied to event' : 'Products created from template'),
             detail: eventId
-               ? `${rows.length} variant${rows.length === 1 ? '' : 's'} linked. ${eventRows} new event row${eventRows === 1 ? '' : 's'} created.`
-               : `${createdProducts} new product${createdProducts === 1 ? '' : 's'} created. Existing variants were skipped.`,
+               ? uiText(language, `${rows.length === 1 ? '{variants} variant' : '{variants} variants'} linked. ${eventRows === 1 ? '{rows} new event row' : '{rows} new event rows'} created.`).replace('{variants}', String(rows.length)).replace('{rows}', String(eventRows))
+               : uiText(language, `${createdProducts === 1 ? '{count} new product' : '{count} new products'} created. Existing variants were skipped.`).replace('{count}', String(createdProducts)),
          });
       } catch (error: any) {
          console.error('[ManageProducts] apply template failed:', error);
-         showToast({ tone: 'error', title: 'Template apply failed', detail: error.message });
+         showToast({ tone: 'error', title: uiText(language, 'Template apply failed'), detail: error.message });
       } finally {
          setTemplateApplySaving(false);
       }
@@ -2184,7 +1999,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
    };
 
-   const renderCatalogActions = (product: Product, surface: 'card' | 'mobile' | 'table') => {
+   const renderCatalogActions = (product: Product, surface: 'card' | 'mobile' | 'table', onAction?: () => void) => {
       const menuKey = `${surface}:${product.id}`;
       const menuOpen = catalogActionMenuKey === menuKey;
       const compact = surface !== 'card';
@@ -2200,7 +2015,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <div className={surface === 'table' ? 'grid gap-1' : 'contents'}>
                <button
                   type="button"
-                  onClick={(event) => { event.stopPropagation(); void openAddToSale(product); }}
+                  onClick={(event) => { event.stopPropagation(); onAction?.(); void openAddToSale(product); }}
                   className={primaryButtonClass}
                >
                   {t('catalogChooseSalesChannel')}
@@ -2208,7 +2023,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                {!product.is_unlimited && (
                   <button
                      type="button"
-                     onClick={(event) => { event.stopPropagation(); openStockAction({ scope: 'catalog', kind: 'add', product }); }}
+                     onClick={(event) => { event.stopPropagation(); onAction?.(); openStockAction({ scope: 'catalog', kind: 'add', product }); }}
                      className={secondaryButtonClass}
                   >
                      {t('catalogAdjustStock')}
@@ -2245,23 +2060,23 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <button
                         type="button"
                         role="menuitem"
-                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); openDuplicateVariants(product); }}
+                        onClick={(event) => { event.stopPropagation(); onAction?.(); openFamilyEditorForProduct(product); }}
                         className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-pink-700"
                      >
-                        {t('catalogAddProductOption')}
+                        {uiText(language, 'Manage variants')}
                      </button>
                      <button
                         type="button"
                         role="menuitem"
-                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); handleEditClick(product); }}
+                        onClick={(event) => { event.stopPropagation(); onAction?.(); openFamilyEditorForProduct(product); }}
                         className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50"
                      >
-                        {t('catalogEditProduct')}
+                        {uiText(language, 'Edit product family')}
                      </button>
                      <button
                         type="button"
                         role="menuitem"
-                        onClick={(event) => { event.stopPropagation(); setCatalogActionMenuKey(null); requestDeleteProduct(product); }}
+                        onClick={(event) => { event.stopPropagation(); onAction?.(); setCatalogActionMenuKey(null); requestDeleteProduct(product); }}
                         className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-red-600 hover:bg-red-50"
                      >
                         {t('catalogDeleteProduct')}
@@ -2273,10 +2088,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
-   const selectedEventName = selectedEventOption?.event_name || 'Event';
+   const selectedEventName = selectedEventOption?.event_name || uiText(language, 'Event');
    const pageTitle = isEventScopedWorkspace
-      ? activeWorkspaceTab === 'promotions' ? 'Event Promotion' : 'Event Catalog'
-      : activeWorkspaceTab === 'promotions' ? 'Promotion Workspace' : 'Catalog Workspace';
+      ? activeWorkspaceTab === 'promotions' ? uiText(language, 'Event Promotion') : uiText(language, 'Event Catalog')
+      : activeWorkspaceTab === 'promotions' ? uiText(language, 'Promotion Workspace') : uiText(language, 'Catalog Workspace');
    const pageSubtitle = isEventScopedWorkspace ? selectedEventName : artistName;
 
    return (
@@ -2292,17 +2107,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             open={!!confirmAction}
             title={
                confirmAction?.type === 'switch_currency'
-                  ? `Enable only ${confirmAction.currency}?`
-                  : 'Delete product?'
+                  ? uiText(language, 'Enable only {currency}?').replace('{currency}', confirmAction.currency)
+                  : uiText(language, 'Delete product?')
             }
             detail={
                confirmAction?.type === 'switch_currency'
-                  ? `Products in other currencies will be disabled. Sold out items stay unchanged.`
+                  ? uiText(language, 'Products in other currencies will be disabled. Sold out items stay unchanged.')
                   : confirmAction?.type === 'delete_product'
-                    ? `${confirmAction.name} will be hidden from the active catalog. Past orders keep their history.`
+                    ? uiText(language, '{name} will be hidden from the active catalog. Past orders keep their history.').replace('{name}', confirmAction.name)
                     : undefined
             }
-            confirmLabel={confirmAction?.type === 'delete_product' ? 'Delete' : 'Confirm'}
+            confirmLabel={uiText(language, confirmAction?.type === 'delete_product' ? 'Delete' : 'Confirm')}
             tone={confirmAction?.type === 'delete_product' ? 'danger' : 'default'}
             loading={loading || uploading}
             onConfirm={() => void handleConfirmAction()}
@@ -2313,9 +2128,19 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                file={cropRequest.file}
                onCancel={() => setCropRequest(null)}
                onConfirm={handleCroppedImage}
-               onError={(message) => showToast({ tone: 'error', title: 'Image export failed', detail: message })}
+               onError={(message) => showToast({ tone: 'error', title: uiText(language, 'Image export failed'), detail: message })}
             />
          )}
+         <ProductFamilyEditor
+            open={familyEditorParentId !== null}
+            artistId={artistId}
+            parent={familyEditorParent}
+            variants={familyEditorVariants}
+            saving={familyEditorSaving}
+            onClose={() => setFamilyEditorParentId(null)}
+            onSave={saveProductFamily}
+            onUploadImage={uploadFamilyImage}
+         />
          {stockAction && (
             <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
                <section
@@ -2452,7 +2277,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                </section>
             </div>
          )}
-         
+
          {addToSaleProduct && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
                <form onSubmit={handleAddToSale} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
@@ -2475,111 +2300,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignPriceOverride')}</span><input type="number" min="0" step="0.01" value={addToSalePrice} onChange={(e) => setAddToSalePrice(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" placeholder={formatPrice(addToSaleProduct.price, addToSaleProduct.currency)} /></label>
                   <button disabled={addToSaleSaving || !addToSaleId} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
                </form>
-            </div>
-         )}
-
-         {variantSourceProduct && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-               <section className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                  <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
-                     <div>
-                        <h2 className="flex items-center gap-2 text-lg font-black text-gray-900">
-                           <Copy className="text-pink-500" size={18} />
-                           Duplicate Variants
-                        </h2>
-                        <p className="mt-1 text-xs font-semibold text-gray-500">
-                           Copy category, tags, price, and status from {variantSourceProduct.name}. Add each variant image later.
-                        </p>
-                     </div>
-                     <button
-                        type="button"
-                        onClick={closeDuplicateVariants}
-                        className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        aria-label="Close duplicate variants"
-                     >
-                        <X size={20} />
-                     </button>
-                  </div>
-
-                  <form onSubmit={handleCreateVariantDuplicates} className="space-y-4 p-5">
-                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                           <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white">
-                              {variantSourceProduct.image_url ? (
-                                 <img
-                                    src={getProductImageUrl(variantSourceProduct.image_url, 160)}
-                                    alt={variantSourceProduct.name}
-                                    className="h-full w-full object-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                 />
-                              ) : (
-                                 <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-gray-400">No image</div>
-                              )}
-                           </div>
-                           <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                 <h3 className="truncate text-base font-black text-gray-900">{variantSourceProduct.name}</h3>
-                                 <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-gray-600 ring-1 ring-gray-100">
-                                    {variantSourceProduct.category || 'Other'}
-                                 </span>
-                                 <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-black text-pink-700">
-                                    {formatPrice(variantSourceProduct.price, variantSourceProduct.currency)}
-                                 </span>
-                              </div>
-                              <p className="mt-1 text-xs font-semibold text-gray-500">
-                                 New option names will stay under product line: <span className="font-black text-gray-800">{variantSourceProduct.variant_group_name || variantSourceProduct.name}</span>
-                              </p>
-                              {!!variantSourceProduct.tags?.length && (
-                                 <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {variantSourceProduct.tags.slice(0, 6).map((tag) => (
-                                       <span key={`duplicate-base-${tag}`} className="rounded bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-600">#{tag}</span>
-                                    ))}
-                                    {variantSourceProduct.tags.length > 6 && <span className="text-[10px] font-bold text-gray-400">+{variantSourceProduct.tags.length - 6}</span>}
-                                 </div>
-                              )}
-                           </div>
-                        </div>
-                     </div>
-
-                     <div className="space-y-2">
-                        <div className="flex items-end justify-between gap-3">
-                           <label htmlFor="duplicate-variants-input" className="block text-xs font-black uppercase tracking-wide text-gray-500">Option names and stock</label>
-                           <span className="text-xs font-black text-pink-600">
-                              {parseDuplicateVariantRows(duplicateVariantsInput).rows.length} parsed
-                           </span>
-                        </div>
-                        <textarea
-                           id="duplicate-variants-input"
-                           value={duplicateVariantsInput}
-                           onChange={(event) => setDuplicateVariantsInput(event.target.value)}
-                           className="h-56 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 font-mono text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                           placeholder={`Paimon | 30\nAether | 30\nLumine | 30`}
-                           required
-                        />
-                        <p className="text-[11px] font-semibold text-gray-400">
-                           Format: option name | stock. Optional: option name | stock | extra tags | price override. Leave stock blank to copy this product's stock mode.
-                        </p>
-                     </div>
-
-                     <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
-                        <Button
-                           type="button"
-                           onClick={closeDuplicateVariants}
-                           className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-                        >
-                           Cancel
-                        </Button>
-                        <Button
-                           type="submit"
-                           disabled={duplicateVariantsSaving}
-                           className="rounded-lg bg-pink-600 px-5 py-2 text-sm font-black text-white hover:bg-pink-700 disabled:bg-pink-300"
-                        >
-                           {duplicateVariantsSaving ? <Loader className="animate-spin" size={16} /> : 'Create Variants'}
-                        </Button>
-                     </div>
-                  </form>
-               </section>
             </div>
          )}
 
@@ -2633,7 +2353,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                            <button
                               type="button"
-                              onClick={() => setIsAddProductModalOpen(true)}
+                              onClick={() => openFamilyEditor()}
                               className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                            >
                               <Plus size={16} aria-hidden="true" />
@@ -2653,7 +2373,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                </div>
             </section>
             )}
-            
+
             {isAddProductModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
                <section className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -2669,7 +2389,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         type="button"
                         onClick={() => setIsAddProductModalOpen(false)}
                         className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        aria-label="Close add product"
+                        aria-label={uiText(language, 'Close add product')}
                      >
                         <X size={20} />
                      </button>
@@ -2680,25 +2400,25 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div className="space-y-1">
                         <label htmlFor="add-product-name" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogProductName')} *</label>
-                        <input 
+                        <input
                            id="add-product-name"
-                           type="text" 
+                           type="text"
                            value={name}
                            onChange={(e) => setName(e.target.value)}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="e.g. Iced Latte"
+                           placeholder={uiText(language, 'e.g. Iced Latte')}
                            required
                         />
                      </div>
-                     
+
                      <div className="space-y-1">
                         <label htmlFor="add-product-price" className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
                            <Coins size={12} /> {t('catalogPriceCurrency')} *
                         </label>
                         <div className="flex flex-col md:flex-row gap-2">
-                           <input 
+                           <input
                               id="add-product-price"
-                              type="number" 
+                              type="number"
                               value={price}
                               onChange={(e) => setPrice(e.target.value)}
                               className="flex-1 w-full min-w-0 px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
@@ -2711,7 +2431,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               value={currency}
                               onChange={(e) => setCurrency(e.target.value)}
                               className="w-full md:w-24 shrink-0 px-2 py-1.5 text-sm font-semibold text-gray-600 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all bg-white cursor-pointer"
-                              aria-label="Currency"
+                              aria-label={uiText(language, 'Currency')}
                            >
                               {Object.entries(CURRENCIES).map(([code, info]) => (
                                  <option key={code} value={code}>{info.symbol} {code}</option>
@@ -2738,14 +2458,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         value={tagsInput}
                         onChange={(e) => setTagsInput(e.target.value)}
                         className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                        placeholder="e.g. Genshin Impact, Flins, Fontaine"
+                        placeholder={uiText(language, 'e.g. Genshin Impact, Flins, Fontaine')}
                      />
                      <datalist id="tag-suggestions">
                         {allTagSuggestions.map(tag => (
                            <option key={tag} value={tag} />
                         ))}
                      </datalist>
-                     <p className="text-[11px] text-gray-400">Separate tags with comma, pipe, or semicolon.</p>
+                     <p className="text-[11px] text-gray-400">{uiText(language, 'Separate tags with comma, pipe, or semicolon.')}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px] gap-4">
@@ -2757,7 +2477,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            value={variantGroupName}
                            onChange={(e) => setVariantGroupName(e.target.value)}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="e.g. Sticker Bualoi"
+                           placeholder={uiText(language, 'e.g. Sticker Bualoi')}
                         />
                         <datalist id="variant-group-suggestions">
                            {allVariantGroupSuggestions.map(group => (
@@ -2772,7 +2492,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            value={variantName}
                            onChange={(e) => setVariantName(e.target.value)}
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all"
-                           placeholder="e.g. Paimon / Blue / 57mm"
+                           placeholder={uiText(language, 'e.g. Paimon / Blue / 57mm')}
                         />
                      </div>
                      <div className="space-y-1">
@@ -2813,16 +2533,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="space-y-1">
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('catalogImage')}</label>
                         <div className="relative">
-                           <input 
-                              type="file" 
+                           <input
+                              type="file"
                               ref={fileInputRef}
                               onChange={handleFileChange}
                               className="hidden"
                               id="file-upload"
                               accept={PRODUCT_IMAGE_ACCEPT}
                            />
-                           <label 
-                              htmlFor="file-upload" 
+                           <label
+                              htmlFor="file-upload"
                               className={[
                                  'w-full flex items-center justify-center px-3 py-1.5 border border-dashed rounded cursor-pointer transition-colors',
                                  file
@@ -2836,8 +2556,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               </span>
                            </label>
                         </div>
-                        <p className="text-[10px] text-gray-400">JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.</p>
-                        {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">Preparing image...</p>}
+                        <p className="text-[10px] text-gray-400">{uiText(language, 'JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.')}</p>
+                        {compressing && <p className="text-[10px] text-pink-500 font-bold mt-1 animate-pulse">{uiText(language, 'Preparing image...')}</p>}
                      </div>
 
                      <div className="space-y-1">
@@ -2859,15 +2579,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            min="0"
                            step="1"
                            className="w-full px-3 py-1.5 text-sm font-semibold text-gray-700 rounded border border-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500 transition-all disabled:bg-gray-100 disabled:text-gray-400"
-                           placeholder={isUnlimited ? 'Unlimited stock' : 'Enter stock quantity'}
+                           placeholder={uiText(language, isUnlimited ? 'Unlimited stock' : 'Enter stock quantity')}
                            required={!isUnlimited}
                         />
                      </div>
                   </div>
 
                   <div className="flex justify-end">
-                     <Button 
-                        type="submit" 
+                     <Button
+                        type="submit"
                         disabled={uploading}
                         className="bg-pink-500 hover:bg-pink-600 text-white py-2 px-6 rounded shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 text-xs font-bold h-9"
                      >
@@ -2888,15 +2608,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div>
                         <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
                            <Sparkles className="text-pink-500" size={18} />
-                           New Product Template
+                           {uiText(language, 'New Product Template')}
                         </h2>
-                        <p className="mt-1 text-xs text-gray-500">Create one reusable product shape, then paste many variants under it.</p>
+                        <p className="mt-1 text-xs text-gray-500">{uiText(language, 'Create one reusable product shape, then paste many variants under it.')}</p>
                      </div>
                      <button
                         type="button"
                         onClick={() => setIsTemplateModalOpen(false)}
                         className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        aria-label="Close product template"
+                        aria-label={uiText(language, 'Close product template')}
                      >
                         <X size={20} />
                      </button>
@@ -2905,17 +2625,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <form onSubmit={handleCreateTemplate} className="space-y-5 p-5">
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
-                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Template Name *</label>
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Template Name')} *</label>
                            <input
                               value={templateName}
                               onChange={(event) => setTemplateName(event.target.value)}
                               className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                              placeholder="Sticker Bualoi"
+                              placeholder={uiText(language, 'Sticker Bualoi')}
                               required
                            />
                         </div>
                         <div className="space-y-1">
-                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Category *</label>
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Category')} *</label>
                            <input
                               list="category-suggestions"
                               value={templateCategory}
@@ -2927,13 +2647,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  }
                               }}
                               className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                              placeholder="Sticker"
+                              placeholder={uiText(language, 'Sticker')}
                               required
                            />
                         </div>
                         <div className="space-y-1">
                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                              <Coins size={12} /> Default price *
+                              <Coins size={12} /> {uiText(language, 'Default price')} *
                            </label>
                            <div className="flex gap-2">
                               <input
@@ -2950,7 +2670,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  value={templateCurrency}
                                  onChange={(event) => setTemplateCurrency(event.target.value)}
                                  className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                                 aria-label="Template currency"
+                                 aria-label={uiText(language, 'Template currency')}
                               >
                                  {Object.entries(CURRENCIES).map(([code, info]) => (
                                     <option key={code} value={code}>{info.symbol} {code}</option>
@@ -2962,17 +2682,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-4">
                         <div className="space-y-1">
-                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Default tags</label>
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Default tags')}</label>
                            <input
                               list="tag-suggestions"
                               value={templateTagsInput}
                               onChange={(event) => setTemplateTagsInput(event.target.value)}
                               className="w-full px-3 py-2 text-sm font-semibold text-gray-700 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                              placeholder="Genshin Impact, Hoyoverse"
+                              placeholder={uiText(language, 'Genshin Impact, Hoyoverse')}
                            />
                         </div>
                         <div className="space-y-1">
-                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Default stock</label>
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Default stock')}</label>
                            <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
                               <input
                                  id="template-unlimited"
@@ -2981,7 +2701,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  onChange={(event) => setTemplateIsUnlimited(event.target.checked)}
                                  className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200"
                               />
-                              <label htmlFor="template-unlimited" className="text-xs font-bold text-gray-600">Unlimited</label>
+                              <label htmlFor="template-unlimited" className="text-xs font-bold text-gray-600">{uiText(language, 'Unlimited')}</label>
                               <input
                                  type="number"
                                  min="0"
@@ -2990,26 +2710,26 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  onChange={(event) => setTemplateStockTotal(event.target.value)}
                                  disabled={templateIsUnlimited}
                                  className="ml-auto w-24 rounded border border-gray-200 px-2 py-1 text-xs font-bold text-gray-700 disabled:bg-gray-100 disabled:text-gray-400"
-                                 placeholder="Qty"
+                                 placeholder={uiText(language, 'Qty')}
                               />
                            </div>
                         </div>
                      </div>
 
                      <div className="space-y-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Description</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Description')}</label>
                         <textarea
                            value={templateDescription}
                            onChange={(event) => setTemplateDescription(event.target.value.slice(0, 200))}
                            className="h-16 w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                           placeholder="A6 sized, hologram laminated, 3cm add-on, etc."
+                           placeholder={uiText(language, 'A6 sized, hologram laminated, 3cm add-on, etc.')}
                         />
                      </div>
 
                      <div className="space-y-1">
                         <div className="flex items-end justify-between gap-3">
-                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Variants *</label>
-                           <span className="text-xs font-black text-pink-600">{parseTemplateVariantsInput(templateVariantsInput).length} parsed</span>
+                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{uiText(language, 'Variants')} *</label>
+                           <span className="text-xs font-black text-pink-600">{parseTemplateVariantsInput(templateVariantsInput).length} {uiText(language, 'parsed')}</span>
                         </div>
                         <textarea
                            value={templateVariantsInput}
@@ -3018,7 +2738,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            placeholder={`Durin | Genshin Impact | | 1\nWanderer | Genshin Impact | | 2\nTamonUtage | Tamon-kun Devotion | 12 | 3`}
                            required
                         />
-                        <p className="text-[11px] font-semibold text-gray-400">Format: name | tags | price override | sort. One name per line also works.</p>
+                        <p className="text-[11px] font-semibold text-gray-400">{uiText(language, 'Format: name | tags | price override | sort. One name per line also works.')}</p>
                      </div>
 
                      <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
@@ -3027,14 +2747,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            onClick={() => setIsTemplateModalOpen(false)}
                            className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
                         >
-                           Cancel
+                           {uiText(language, 'Cancel')}
                         </Button>
                         <Button
                            type="submit"
                            disabled={templateSaving}
                            className="rounded-lg bg-pink-600 px-5 py-2 text-sm font-black text-white hover:bg-pink-700 disabled:bg-pink-300"
                         >
-                           {templateSaving ? <Loader className="animate-spin" size={16} /> : 'Create Template'}
+                           {templateSaving ? <Loader className="animate-spin" size={16} /> : uiText(language, 'Create Template')}
                         </Button>
                      </div>
                   </form>
@@ -3059,27 +2779,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div>
                         <h2 className="flex items-center gap-2 text-base font-bold text-gray-800">
                            <Sparkles className="text-pink-500" size={18} />
-                           Product Templates
+                           {uiText(language, 'Product Templates')}
                         </h2>
-                        <p className="mt-1 text-xs font-semibold text-gray-500">Reusable product shapes for high-variant merch like stickers, keyrings, and add-on characters.</p>
+                        <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Reusable product shapes for high-variant merch like stickers, keyrings, and add-on characters.')}</p>
                      </div>
                      <button
                         type="button"
                         onClick={() => setIsTemplateModalOpen(true)}
                         className="workspace-action inline-flex items-center justify-center gap-2 rounded-lg border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                      >
-                        <Plus size={16} /> New Template
+                        <Plus size={16} /> {uiText(language, 'New Template')}
                      </button>
                   </div>
                </div>
 
                {templatesLoading ? (
-                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-bold text-gray-400">Loading templates...</div>
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm font-bold text-gray-400">{uiText(language, 'Loading templates...')}</div>
                ) : productTemplates.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center">
                      <Sparkles className="mx-auto text-pink-200" size={34} />
-                     <p className="mt-3 text-sm font-black text-gray-700">No Product Templates yet</p>
-                     <p className="mt-1 text-xs font-semibold text-gray-500">Start with one template such as Sticker Bualoi, then paste variants in bulk.</p>
+                     <p className="mt-3 text-sm font-black text-gray-700">{uiText(language, 'No Product Templates yet')}</p>
+                     <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Start with one template such as Sticker Bualoi, then paste variants in bulk.')}</p>
                   </div>
                ) : (
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -3099,7 +2819,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  </div>
                                  <div className="rounded-lg bg-pink-50 px-3 py-2 text-right">
                                     <div className="text-lg font-black text-pink-700">{variants.length}</div>
-                                    <div className="text-[10px] font-black uppercase tracking-wide text-pink-500">Variants</div>
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-pink-500">{uiText(language, 'Variants')}</div>
                                  </div>
                               </div>
 
@@ -3114,8 +2834,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                               <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
                                  <div className="mb-2 flex items-center justify-between gap-2">
-                                    <span className="text-xs font-black uppercase tracking-wide text-gray-500">Preview</span>
-                                    <span className="text-xs font-bold text-gray-500">{existingProducts}/{variants.length} products created</span>
+                                    <span className="text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Preview')}</span>
+                                    <span className="text-xs font-bold text-gray-500">{existingProducts}/{variants.length} {uiText(language, 'products created')}</span>
                                  </div>
                                  <div className="flex flex-wrap gap-1.5">
                                     {variants.slice(0, 12).map((variant) => (
@@ -3129,8 +2849,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                               <div className="mt-3 rounded-lg border border-dashed border-pink-100 bg-pink-50/30 p-3">
                                  <div className="mb-2 flex items-center justify-between gap-2">
-                                    <label htmlFor={`template-variants-${template.id}`} className="text-xs font-black uppercase tracking-wide text-pink-700">Add variants</label>
-                                    <span className="text-[11px] font-bold text-gray-400">Creates missing products later</span>
+                                    <label htmlFor={`template-variants-${template.id}`} className="text-xs font-black uppercase tracking-wide text-pink-700">{uiText(language, 'Add variants')}</label>
+                                    <span className="text-[11px] font-bold text-gray-400">{uiText(language, 'Creates missing products later')}</span>
                                  </div>
                                  <textarea
                                     id={`template-variants-${template.id}`}
@@ -3140,7 +2860,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     placeholder={`Paimon | Genshin Impact\nAether | Genshin Impact\nLumine | Genshin Impact`}
                                  />
                                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                    <p className="text-[11px] font-semibold text-gray-400">Format: name | tags | price override | sort</p>
+                                    <p className="text-[11px] font-semibold text-gray-400">{uiText(language, 'Format: name | tags | price override | sort')}</p>
                                     <button
                                        type="button"
                                        onClick={() => void handleAddTemplateVariants(template)}
@@ -3148,14 +2868,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 hover:bg-pink-50 disabled:text-gray-400"
                                     >
                                        {templateVariantSavingId === template.id ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
-                                       Add variants
+                                       {uiText(language, 'Add variants')}
                                     </button>
                                  </div>
                               </div>
 
                               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                  <div className="text-xs font-semibold text-gray-500">
-                                    Stock: {template.is_unlimited ? 'Unlimited' : `${template.stock_total || 0} default`}
+                                    {uiText(language, 'Stock')}: {template.is_unlimited ? uiText(language, 'Unlimited') : `${template.stock_total || 0} ${uiText(language, 'default')}`}
                                  </div>
                                  <button
                                     type="button"
@@ -3164,7 +2884,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     className="workspace-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-black text-white hover:bg-slate-800 disabled:bg-gray-300"
                                  >
                                     {templateApplySaving && templateApplyId === template.id ? <Loader className="animate-spin" size={14} /> : <Plus size={14} />}
-                                    Create products
+                                    {uiText(language, 'Create products')}
                                  </button>
                               </div>
                            </article>
@@ -3181,9 +2901,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <FileText className="text-pink-500" size={18} />
-                        Import CSV
+                        {t('catalogImportCsv')}
                      </h2>
-                     <p className="mt-1 text-xs text-gray-500">Import many items at once. Duplicate rows are skipped automatically.</p>
+                     <p className="mt-1 text-xs text-gray-500">{language === 'th' ? 'หนึ่งแถวต่อรายการสต็อก ใช้ product_key เดียวกันเพื่อรวมตัวเลือกในสินค้าหลักเดียว' : 'One row per inventory item. Use the same product_key to group variants under one product.'}</p>
                   </div>
                   <button
                      type="button"
@@ -3199,9 +2919,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
                            <p className="text-xs text-gray-500">
-                              CSV columns: <span className="font-semibold">name, price</span> (optional: category, tags, description, currency, status, stock, is_unlimited, product_line/variant_group, option_name/variant_name, sort_order)
+                              {language === 'th' ? 'คอลัมน์หลัก:' : 'Main columns:'} <span className="font-semibold">product_key, name, base_price, product_kind, variant_name, price_override, stock, is_unlimited</span>
                            </p>
-                           <p className="mt-1 text-[11px] text-gray-400">Use this for large catalog setup. Existing duplicates will be ignored instead of inserted twice.</p>
+                           <p className="mt-1 text-[11px] text-gray-400">{language === 'th' ? 'เว้น price_override เพื่อใช้ราคาหลัก รองรับรูป ชุดสินค้า พรีออเดอร์ และบริการตามไฟล์ตัวอย่าง สินค้าที่มีชื่อ/หมวดหมู่/สกุลเงินเดิมจะถูกข้ามทั้งกลุ่ม โดยไม่แก้สต็อกเดิม' : 'Leave price_override blank to inherit base price. The sample includes galleries, bundles, preorders and services. Existing name/category/currency matches are skipped as whole products without changing stock.'}</p>
+                           <p className="mt-1 text-[11px] text-gray-500">{language === 'th' ? 'พาธรูปในไฟล์ตัวอย่างต้องเปลี่ยนเป็นรูปของคุณเอง ข้อมูลหลักต้องตรงกันทุกแถวของ product_key เดียวกัน ถ้าข้อมูลผิดจะไม่บันทึกทั้งไฟล์' : 'Replace sample image paths with your own images. Shared fields must agree for each product_key. Invalid data prevents the whole file from being saved.'}</p>
                         </div>
                         <div className="flex items-center gap-2">
                            <a
@@ -3210,7 +2931,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               className="inline-flex h-9 items-center gap-2 rounded-lg border border-pink-200 bg-white px-4 py-2 text-xs font-bold text-pink-700 shadow-sm transition-all active:scale-95 hover:bg-pink-50"
                            >
                               <Download size={14} aria-hidden="true" />
-                              Download sample
+                              {language === 'th' ? 'ดาวน์โหลดไฟล์ตัวอย่าง' : 'Download sample'}
                            </a>
                            <input
                               type="file"
@@ -3226,10 +2947,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               className="bg-pink-600 hover:bg-pink-700 text-white py-2 px-4 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95 flex items-center gap-2 text-xs font-bold"
                            >
                               {uploading ? <Loader className="animate-spin" size={14} /> : <Upload size={14} />}
-                              {uploading ? 'Uploading...' : 'Upload CSV'}
+                              {uploading ? (language === 'th' ? 'กำลังนำเข้า...' : 'Importing...') : (language === 'th' ? 'อัปโหลด CSV' : 'Upload CSV')}
                            </Button>
                         </div>
                      </div>
+                     {csvMessages.length > 0 && <div role={csvFailed ? 'alert' : 'status'} data-testid="csv-import-result" className={`mt-4 rounded-xl border p-3 text-xs ${csvFailed ? 'border-red-200 bg-red-50 text-red-800' : 'border-green-200 bg-green-50 text-green-800'}`}><p className="font-black">{csvFailed ? (language === 'th' ? 'ตรวจรายละเอียดการนำเข้าต่อไปนี้ก่อนลองอีกครั้ง' : 'Check these import issues before retrying.') : (language === 'th' ? 'ผลการนำเข้า' : 'Import result')}</p><ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">{csvMessages.slice(0, 100).map((message, index) => <li key={index}>{message}</li>)}</ul>{csvMessages.length > 100 && <p className="mt-2">{language === 'th' ? `และอีก ${csvMessages.length - 100} รายการ` : `${csvMessages.length - 100} more issues`}</p>}</div>}
                   </div>
             </section>
             )}
@@ -3240,12 +2962,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div>
                      <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                         <Sparkles className="text-pink-500" size={18} />
-                        {isEventScopedWorkspace ? 'Event Promotion' : 'Promotions'}
+                        {uiText(language, isEventScopedWorkspace ? 'Event Promotion' : 'Promotions')}
                      </h2>
                      <p className="mt-1 text-xs text-gray-500">
                         {isEventScopedWorkspace
-                           ? 'Manage pricing rules for this event only.'
-                           : 'Manage shared pricing rules separately from daily product maintenance.'}
+                           ? uiText(language, 'Manage pricing rules for this event only.')
+                           : uiText(language, 'Manage shared pricing rules separately from daily product maintenance.')}
                      </p>
                   </div>
                </div>
@@ -3269,12 +2991,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="border-b border-gray-100 px-4 py-4">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                      <div className="min-w-0">
-                        <p className="text-xs font-black uppercase tracking-wide text-pink-600">Event Catalog Setup</p>
+                        <p className="text-xs font-black uppercase tracking-wide text-pink-600">{uiText(language, 'Event Catalog Setup')}</p>
                         <h2 className="mt-1 flex items-center gap-2 text-lg font-black text-gray-900">
                            <CalendarDays className="text-pink-500" size={18} />
                            {selectedEventName}
                         </h2>
-                        <p className="mt-1 text-sm font-semibold text-gray-500">Choose which library products sell in this event, then set event price and event stock.</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-500">{uiText(language, 'Choose which library products sell in this event, then set event price and event stock.')}</p>
                      </div>
                      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         {([
@@ -3290,8 +3012,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                    ? 'border-pink-200 bg-pink-50 text-pink-700'
                                    : 'border-gray-100 bg-gray-50 text-gray-600'
                            }`}>
-                              <div className="text-lg font-black leading-none">{item.value}</div>
-                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
+                              <div className="text-lg font-black leading-none">{typeof item.value === 'string' ? uiText(language, item.value) : item.value}</div>
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-wide">{uiText(language, item.label)}</div>
                            </div>
                         ))}
                      </div>
@@ -3302,7 +3024,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_auto] xl:items-end">
                         <div className="grid gap-3 md:grid-cols-2">
                            <div className="space-y-1">
-                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event</label>
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Event')}</label>
                               {isEventScopedWorkspace ? (
                                  <div className="min-h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-black text-gray-800">
                                     {selectedEventName}
@@ -3313,9 +3035,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     onChange={(event) => setSelectedEventId(event.target.value)}
                                     className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                     disabled={eventOptions.length === 0}
-                                    aria-label="Select event catalog"
+                                    aria-label={uiText(language, 'Select event catalog')}
                                  >
-                                    {eventOptions.length === 0 && <option value="">No confirmed events</option>}
+                                    {eventOptions.length === 0 && <option value="">{uiText(language, 'No confirmed events')}</option>}
                                     {eventOptions.map((event) => (
                                        <option key={event.id} value={event.id}>{event.event_name}</option>
                                     ))}
@@ -3323,20 +3045,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               )}
                               {selectedEventOption && (
                                  <p className="text-[11px] font-bold text-pink-700">
-                                    Event starts {new Date(selectedEventOption.start_date).toLocaleDateString('en-GB')}
+                                    {uiText(language, 'Event starts')} {new Date(selectedEventOption.start_date).toLocaleDateString(dateLocale)}
                                  </p>
                               )}
                            </div>
                            <div className="space-y-1">
-                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">Event currency</label>
+                              <label className="text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Event currency')}</label>
                               <select
                                  value={eventCurrencyDraft}
                                  onChange={(event) => setEventCurrencyDraft(event.target.value)}
                                  className="min-h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                  disabled={!selectedEventId}
-                                 aria-label="Select event currency"
+                                 aria-label={uiText(language, 'Select event currency')}
                               >
-                                 <option value="">Use product currency</option>
+                                 <option value="">{uiText(language, 'Use product currency')}</option>
                                  {Object.keys(CURRENCIES).sort().map((code) => (
                                     <option key={code} value={code}>{code}</option>
                                  ))}
@@ -3349,8 +3071,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               : 'border-emerald-100 bg-emerald-50 text-emerald-700'
                         }`}>
                            {hasPendingEventCatalogChanges
-                              ? 'Unsaved changes will not show in POS or customer menu yet.'
-                              : 'Saved setup is ready for POS and customer menu.'}
+                              ? uiText(language, 'Unsaved changes will not show in POS or customer menu yet.')
+                              : uiText(language, 'Saved setup is ready for POS and customer menu.')}
                         </div>
                         <button
                            type="button"
@@ -3359,7 +3081,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 text-xs font-black text-white shadow-md shadow-pink-100 transition-colors hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
                         >
                            {eventCatalogSaving ? <Loader className="animate-spin" size={14} /> : <Save size={14} />}
-                           {hasPendingEventCatalogChanges ? 'Save Changes' : 'Saved'}
+                           {uiText(language, hasPendingEventCatalogChanges ? 'Save Changes' : 'Saved')}
                         </button>
                      </div>
 
@@ -3370,29 +3092,29 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               value={eventCatalogSearch}
                               onChange={(event) => setEventCatalogSearch(event.target.value)}
                               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-pink-200"
-                              placeholder="Search event products..."
+                              placeholder={uiText(language, 'Search event products...')}
                            />
                         </div>
                         <select
                            value={eventCatalogCategory}
                            onChange={(event) => setEventCatalogCategory(event.target.value)}
                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label="Filter event catalog category"
+                           aria-label={uiText(language, 'Filter event catalog category')}
                         >
-                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === 'All' ? 'All categories' : item}</option>)}
+                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === 'All' ? uiText(language, 'All categories') : item}</option>)}
                         </select>
                         <select
                            value={eventCatalogTag}
                            onChange={(event) => setEventCatalogTag(event.target.value)}
                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label="Filter event catalog tag"
+                           aria-label={uiText(language, 'Filter event catalog tag')}
                         >
-                           {uniqueTags.map((item) => <option key={item} value={item}>{item === 'All' ? 'All tags' : item}</option>)}
+                           {uniqueTags.map((item) => <option key={item} value={item}>{item === 'All' ? uiText(language, 'All tags') : item}</option>)}
                         </select>
                      </div>
 
                      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
-                        <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-500">Show</span>
+                        <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Show')}</span>
                         {([
                            ['all', 'All'],
                            ['selling', 'Selling'],
@@ -3409,7 +3131,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                               }`}
                            >
-                              {label}
+                              {uiText(language, label)}
                            </button>
                         ))}
                         <div className="ml-0 inline-grid grid-cols-2 rounded-lg border border-gray-200 bg-white p-1 sm:ml-2">
@@ -3429,19 +3151,19 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  aria-pressed={eventCatalogDisplayMode === mode}
                               >
                                  <Icon size={14} aria-hidden="true" />
-                                 {label}
+                                 {uiText(language, label)}
                               </button>
                            ))}
                         </div>
                         <span className="ml-auto rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-600">
-                           {filteredEventCatalogProducts.length} of {products.length}
+                           {filteredEventCatalogProducts.length} {uiText(language, 'of')} {products.length}
                         </span>
                      </div>
 
                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                           <span className="text-xs font-black uppercase tracking-wide text-gray-500">Bulk actions for visible rows</span>
-                           <span className="text-[11px] font-bold text-gray-400">Uses current search and filters</span>
+                           <span className="text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Bulk actions for visible rows')}</span>
+                           <span className="text-[11px] font-bold text-gray-400">{uiText(language, 'Uses current search and filters')}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                            <button
@@ -3449,28 +3171,28 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               onClick={() => updateFilteredEventCatalogDraft({ is_enabled: true })}
                               className="workspace-action min-h-9 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-black text-pink-700 hover:bg-pink-50"
                            >
-                              Sell visible
+                              {uiText(language, 'Sell visible')}
                            </button>
                            <button
                               type="button"
                               onClick={() => updateFilteredEventCatalogDraft({ is_enabled: false })}
                               className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
                            >
-                              Hide visible
+                              {uiText(language, 'Hide visible')}
                            </button>
                            <button
                               type="button"
                               onClick={() => updateFilteredEventCatalogDraft({ price_override: '' })}
                               className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
                            >
-                              Reset visible prices
+                              {uiText(language, 'Reset visible prices')}
                            </button>
                         </div>
                      </div>
 
                      {!selectedEventId ? (
                         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm font-semibold text-gray-500">
-                           Create or confirm an event before assigning products.
+                           {uiText(language, 'Create or confirm an event before assigning products.')}
                         </div>
                      ) : (
                         <>
@@ -3511,7 +3233,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                   decoding="async"
 	                                                />
 	                                             ) : (
-	                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">No image</div>
+		                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">{uiText(language, 'No image')}</div>
 	                                             )}
 	                                             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
 	                                                <button
@@ -3523,11 +3245,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         : 'bg-white/90 text-gray-500 ring-1 ring-gray-200'
 	                                                   }`}
 	                                                >
-	                                                   {draft.is_enabled ? 'Selling' : 'Hidden'}
+		                                                   {uiText(language, draft.is_enabled ? 'Selling' : 'Hidden')}
 	                                                </button>
 	                                                {hasCustomSetup && (
 	                                                   <span className="rounded-full bg-amber-50/95 px-3 py-1.5 text-[11px] font-black text-amber-700 shadow-sm ring-1 ring-amber-100 backdrop-blur">
-	                                                      Custom
+		                                                      {uiText(language, 'Custom')}
 	                                                   </span>
 	                                                )}
 	                                             </div>
@@ -3555,13 +3277,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                             <div className={`rounded-xl p-3 ${stockOverLimit ? 'bg-red-50 ring-1 ring-red-100' : 'bg-gray-50 ring-1 ring-gray-100'}`}>
 	                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
 	                                                {stockOverLimit && (
-	                                                   <p className="mt-2 text-[11px] font-bold text-red-600">Max {stockLimit} available for this event.</p>
+		                                                   <p className="mt-2 text-[11px] font-bold text-red-600">{uiText(language, 'Max {count} available for this event.').replace('{count}', String(stockLimit))}</p>
 	                                                )}
 	                                             </div>
 
 	                                             <div className="grid grid-cols-2 gap-2">
 	                                                <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event price</span>
+		                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{uiText(language, 'Event price')}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3570,11 +3292,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
 	                                                      className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-black text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-200"
 	                                                      placeholder={String(product.price)}
-	                                                      aria-label={`Event price for ${product.name}`}
+		                                                      aria-label={uiText(language, 'Event price for {name}').replace('{name}', product.name)}
 	                                                   />
 	                                                </label>
 	                                                <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">Event stock</span>
+		                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{uiText(language, 'Event stock')}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3586,8 +3308,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-black text-gray-900 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
 	                                                         stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
 	                                                      }`}
-	                                                      placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
-	                                                      aria-label={`Event stock for ${product.name}`}
+		                                                      placeholder={uiText(language, draft.is_unlimited ? 'Unlimited' : 'Qty')}
+		                                                      aria-label={uiText(language, 'Event stock for {name}').replace('{name}', product.name)}
 	                                                   />
 	                                                </label>
 	                                             </div>
@@ -3601,7 +3323,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      disabled={!product.is_unlimited || hasAllocatedEventStock}
 	                                                      className="h-3.5 w-3.5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-40"
 	                                                   />
-	                                                   Unlimited
+		                                                   {uiText(language, 'Unlimited')}
 	                                                </label>
 	                                                {draft.id && !draft.is_unlimited ? (
 	                                                   <>
@@ -3610,18 +3332,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
 	                                                         className="min-h-9 rounded-full bg-emerald-50 px-3 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100"
 	                                                      >
-	                                                         Add stock
+		                                                         {uiText(language, 'Add stock')}
 	                                                      </button>
 	                                                      <button
 	                                                         type="button"
 	                                                         onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
 	                                                         className="min-h-9 rounded-full bg-white px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
 	                                                      >
-	                                                         Remove
+		                                                         {uiText(language, 'Remove')}
 	                                                      </button>
 	                                                   </>
 	                                                ) : (
-	                                                   <span className="text-[11px] font-bold text-gray-400">Save first to move stock.</span>
+		                                                   <span className="text-[11px] font-bold text-gray-400">{uiText(language, 'Save first to move stock.')}</span>
 	                                                )}
 	                                             </div>
 	                                          </div>
@@ -3632,11 +3354,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            ) : (
                               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
                                  <div className="hidden xl:grid xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
-                                    <div>Product</div>
-                                    <div>Sell / Price</div>
-                                    <div>Central to event</div>
-                                    <div>Event stock</div>
-                                    <div>Actions</div>
+                                    <div>{uiText(language, 'Product')}</div>
+                                    <div>{uiText(language, 'Sell / Price')}</div>
+                                    <div>{uiText(language, 'Central to event')}</div>
+                                    <div>{uiText(language, 'Event stock')}</div>
+                                    <div>{uiText(language, 'Actions')}</div>
                                  </div>
                                  <div className="divide-y divide-gray-100">
                                     {filteredEventCatalogProducts.map((product) => {
@@ -3667,7 +3389,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                          decoding="async"
                                                       />
                                                    ) : (
-                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">No image</div>
+                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">{uiText(language, 'No image')}</div>
                                                    )}
                                                 </div>
                                                 <div className="min-w-0">
@@ -3676,7 +3398,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
                                                          draft.is_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
                                                       }`}>
-                                                         {draft.is_enabled ? 'Selling' : 'Hidden'}
+                                                         {uiText(language, draft.is_enabled ? 'Selling' : 'Hidden')}
                                                       </span>
                                                       {product.category && (
                                                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">{product.category}</span>
@@ -3687,7 +3409,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                                              <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
-                                                   <span>Sell</span>
+                                                   <span>{uiText(language, 'Sell')}</span>
                                                    <input
                                                       type="checkbox"
                                                       checked={draft.is_enabled}
@@ -3703,7 +3425,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                    onChange={(event) => updateEventCatalogDraft(product.id, { price_override: event.target.value })}
                                                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                                    placeholder={String(product.price)}
-                                                   aria-label={`Event price for ${product.name}`}
+                                                   aria-label={uiText(language, 'Event price for {name}').replace('{name}', product.name)}
                                                 />
                                              </div>
 
@@ -3713,7 +3435,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                                              <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
-                                                   <span>Unlimited</span>
+                                                   <span>{uiText(language, 'Unlimited')}</span>
                                                    <input
                                                       type="checkbox"
                                                       checked={draft.is_unlimited}
@@ -3733,8 +3455,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                    className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:text-gray-400 ${
                                                       stockOverLimit ? 'border-red-300 bg-red-50 focus:ring-red-100' : 'border-gray-200 focus:ring-pink-200'
                                                    }`}
-                                                   placeholder={draft.is_unlimited ? 'Unlimited' : 'Qty'}
-                                                   aria-label={`Event stock for ${product.name}`}
+                                                   placeholder={uiText(language, draft.is_unlimited ? 'Unlimited' : 'Qty')}
+                                                   aria-label={uiText(language, 'Event stock for {name}').replace('{name}', product.name)}
                                                 />
                                              </div>
 
@@ -3746,18 +3468,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                          onClick={() => openStockAction({ scope: 'event', kind: 'add', product, eventProductId: draft.id! })}
                                                          className="rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-black text-emerald-700 hover:bg-emerald-100"
                                                       >
-                                                         Add stock
+                                                         {uiText(language, 'Add stock')}
                                                       </button>
                                                       <button
                                                          type="button"
                                                          onClick={() => openStockAction({ scope: 'event', kind: 'remove', product, eventProductId: draft.id! })}
                                                          className="rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-black text-gray-700 hover:bg-gray-200"
                                                       >
-                                                         Remove
+                                                         {uiText(language, 'Remove')}
                                                       </button>
                                                    </div>
                                                 ) : (
-                                                   <div className="text-[11px] font-semibold text-gray-400">Save first</div>
+                                                   <div className="text-[11px] font-semibold text-gray-400">{uiText(language, 'Save first')}</div>
                                                 )}
                                              </div>
                                           </div>
@@ -3776,8 +3498,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="sticky bottom-4 z-30 mb-6 rounded-2xl border border-pink-200 bg-white/95 p-3 shadow-xl shadow-pink-100/70 backdrop-blur">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                      <div>
-                        <p className="text-sm font-black text-gray-900">Unsaved event catalog</p>
-                        <p className="text-xs font-semibold text-gray-500">Save before using POS or sharing the customer menu for this event.</p>
+                        <p className="text-sm font-black text-gray-900">{uiText(language, 'Unsaved event catalog')}</p>
+                        <p className="text-xs font-semibold text-gray-500">{uiText(language, 'Save before using POS or sharing the customer menu for this event.')}</p>
                      </div>
                      <button
                         type="button"
@@ -3786,7 +3508,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-black text-white shadow-md shadow-pink-100 hover:bg-pink-700 disabled:bg-gray-300"
                      >
                         {eventCatalogSaving ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
-                        Save catalog
+                        {uiText(language, 'Save catalog')}
                      </button>
                   </div>
                </div>
@@ -3802,23 +3524,23 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         <AlertTriangle size={20} />
                      </div>
                      <div>
-                        <h3 className="text-sm font-bold text-amber-800">Multiple Currencies Enabled</h3>
+                        <h3 className="text-sm font-bold text-amber-800">{uiText(language, 'Multiple Currencies Enabled')}</h3>
                         <p className="text-xs text-amber-600 mt-1">
-                           You have products enabled in multiple currencies ({enabledCurrencies.join(', ')}). 
-                           <br/>Please enable only one currency to avoid issues.
+                           {uiText(language, 'You have products enabled in multiple currencies ({currencies}).').replace('{currencies}', enabledCurrencies.join(', '))}
+                           <br/>{uiText(language, 'Please enable only one currency to avoid issues.')}
                         </p>
                      </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 bg-white p-1.5 rounded-lg border border-amber-100 shadow-sm">
-                     <span className="text-xs font-bold text-gray-500 pl-2">Enable Only:</span>
-                     <select 
+                     <span className="text-xs font-bold text-gray-500 pl-2">{uiText(language, 'Enable Only:')}</span>
+                     <select
                         className="text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded px-2 py-1 focus:outline-none cursor-pointer hover:bg-amber-100 transition-colors"
                         onChange={(e) => {
                            if (e.target.value) setConfirmAction({ type: 'switch_currency', currency: e.target.value });
                         }}
                         value=""
                      >
-                        <option value="" disabled>Select Currency...</option>
+                        <option value="" disabled>{uiText(language, 'Select Currency...')}</option>
                         {enabledCurrencies.map(c => (
                            <option key={c} value={c}>{c}</option>
                         ))}
@@ -3871,7 +3593,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            onClick={clearAllFilters}
                            className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-bold text-pink-600 hover:bg-pink-100 transition-colors"
                         >
-                           Clear all filters
+                           {uiText(language, 'Clear all filters')}
                         </button>
                      )}
                   </div>
@@ -3880,15 +3602,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
                   <div className="relative flex-1">
                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                     <input 
+                     <input
                         type="text"
-                        placeholder="Search products..."
+                        placeholder={uiText(language, 'Search products...')}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm"
                      />
                   </div>
-                  
+
                   <div className="relative min-w-[200px]">
                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <ArrowUpDown className="text-gray-400" size={16} />
@@ -3898,9 +3620,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         onChange={(e) => setSortOption(e.target.value)}
                         className="w-full pl-10 pr-8 py-2.5 appearance-none rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm font-medium text-sm"
                      >
-                        <option value="name_asc">Name (A-Z)</option>
-                        <option value="price_asc">Price (Low to High)</option>
-                        <option value="price_desc">Price (High to Low)</option>
+                        <option value="name_asc">{uiText(language, 'Name (A-Z)')}</option>
+                        <option value="price_asc">{uiText(language, 'Price (Low to High)')}</option>
+                        <option value="price_desc">{uiText(language, 'Price (High to Low)')}</option>
                      </select>
                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
@@ -3912,10 +3634,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         value={selectedCategory}
                         onChange={(e) => setSelectedCategory(e.target.value)}
                         className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label="Filter by category"
+                        aria-label={uiText(language, 'Filter by category')}
                      >
                         {uniqueCategories.map((cat) => (
-                           <option key={cat} value={cat}>{cat === 'All' ? 'All categories' : cat}</option>
+                           <option key={cat} value={cat}>{cat === 'All' ? uiText(language, 'All categories') : cat}</option>
                         ))}
                      </select>
                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
@@ -3926,10 +3648,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         value={selectedTag}
                         onChange={(e) => setSelectedTag(e.target.value)}
                         className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label="Filter by tag"
+                        aria-label={uiText(language, 'Filter by tag')}
                      >
                         {uniqueTags.map(tag => (
-                           <option key={tag} value={tag}>{tag === 'All' ? 'All tags' : tag}</option>
+                           <option key={tag} value={tag}>{tag === 'All' ? uiText(language, 'All tags') : tag}</option>
                         ))}
                      </select>
                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
@@ -3940,12 +3662,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         value={catalogFocus}
                         onChange={(e) => setCatalogFocus(e.target.value as typeof catalogFocus)}
                         className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label="Filter by catalog focus"
+                        aria-label={uiText(language, 'Filter by catalog focus')}
                      >
-                        <option value="all">All stock/image states</option>
-                        <option value="missing-images">Need images ({catalogMissingImages})</option>
-                        <option value="low-stock">Low stock ({catalogLowStock})</option>
-                        <option value="inactive">Inactive ({catalogInactive})</option>
+                        <option value="all">{uiText(language, 'All stock/image states')}</option>
+                        <option value="missing-images">{uiText(language, 'Need images')} ({catalogMissingImages})</option>
+                        <option value="low-stock">{uiText(language, 'Low stock')} ({catalogLowStock})</option>
+                        <option value="inactive">{uiText(language, 'Inactive')} ({catalogInactive})</option>
                      </select>
                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
@@ -3956,10 +3678,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            value={selectedCurrency}
                            onChange={(e) => setSelectedCurrency(e.target.value)}
                            className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label="Filter by currency"
+                           aria-label={uiText(language, 'Filter by currency')}
                         >
                            {uniqueCurrencies.map((curr) => (
-                              <option key={curr} value={curr}>{curr === 'All' ? 'All currencies' : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}</option>
+                              <option key={curr} value={curr}>{curr === 'All' ? uiText(language, 'All currencies') : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}</option>
                            ))}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
@@ -3973,315 +3695,61 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div className="flex flex-wrap gap-2">
                      {searchQuery.trim() && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                           Search: {searchQuery.trim()}
+                           {uiText(language, 'Search')}: {searchQuery.trim()}
                         </span>
                      )}
                      {selectedCategory !== 'All' && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-600">
-                           Category: {selectedCategory}
+                           {uiText(language, 'Category')}: {selectedCategory}
                         </span>
                      )}
                      {selectedCurrency !== 'All' && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                           Currency: {selectedCurrency}
+                           {uiText(language, 'Currency')}: {selectedCurrency}
                         </span>
                      )}
                      {selectedTag !== 'All' && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                           Tag: {selectedTag}
+                           {uiText(language, 'Tag')}: {selectedTag}
                         </span>
                      )}
                      {catalogFocus !== 'all' && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-700">
-                           Focus: {catalogFocus.replace('-', ' ')}
+                           {uiText(language, 'Focus')}: {uiText(language, ({ 'missing-images': 'Missing images', 'low-stock': 'Low stock', inactive: 'Inactive', all: 'All' } as const)[catalogFocus])}
                         </span>
                      )}
                   </div>
                )}
             </div>
 
+            {catalogLoadError && <div role="alert" className="mb-4 flex items-center justify-between rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{catalogLoadError}</span><button type="button" onClick={() => void fetchProducts()} className="min-h-11 px-3 underline">{uiText(language, 'Retry')}</button></div>}
             {/* PRODUCT LIST */}
             <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Catalog items ({filteredProducts.length})</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{uiText(language, 'Catalog products')} ({filteredProductFamilies.length})</h2>
                   <p className="text-xs font-semibold text-gray-500">
                      {catalogDisplayMode === 'visual'
-                        ? 'Visual check for product photos, names, price, and stock before customers see them.'
-                        : 'Operations view for dense stock and maintenance actions.'}
+                        ? uiText(language, 'Visual check for product photos, names, price, and stock before customers see them.')
+                        : uiText(language, 'Operations view for dense stock and maintenance actions.')}
                   </p>
                </div>
             </div>
-            
+
             {loading ? (
-               <div className="text-center py-12 text-gray-400">Loading products...</div>
-            ) : filteredProducts.length > 0 ? (
-               <>
-                  {catalogDisplayMode === 'visual' ? (
-                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {filteredProducts.map(product => {
-                           const effectiveStatus = getEffectiveStatus(product);
-                           const hasImage = Boolean(product.image_url);
-                           return (
-                              <article key={product.id} data-testid={`catalog-card-${product.id}`} className="group relative rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/60">
-                                 <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-gray-100">
-                                    {hasImage ? (
-                                       <img
-                                          src={getProductImageUrl(product.image_url, 600)}
-                                          alt={product.name}
-                                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                                          loading="lazy"
-                                          decoding="async"
-                                       />
-                                    ) : (
-                                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400">
-                                          <PackageSearch size={28} aria-hidden="true" />
-                                          <span className="text-xs font-black uppercase tracking-wide">{t('catalogMissingImage')}</span>
-                                       </div>
-                                    )}
-
-                                    <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-                                       <span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">
-                                          {product.category || 'Other'}
-                                       </span>
-                                       {effectiveStatus === 'disable' && (
-                                          <span className="rounded-full bg-gray-900/85 px-2 py-1 text-[10px] font-black text-white shadow-sm">{t('catalogDisabled')}</span>
-                                       )}
-                                       {effectiveStatus === 'soldout' && (
-                                          <span className="rounded-full bg-red-600/90 px-2 py-1 text-[10px] font-black text-white shadow-sm">{t('catalogSoldOut')}</span>
-                                       )}
-                                    </div>
-
-                                 </div>
-
-                                 <div className="space-y-3 p-4">
-                                    <div className="min-h-[76px]">
-                                       <h3 className="line-clamp-2 text-base font-black leading-tight text-gray-900">{product.name}</h3>
-                                       {product.sku && <div className="mt-1 font-mono text-[10px] font-bold text-gray-400">{product.sku}</div>}
-                                       {product.variant_group_name && (
-                                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                             <span className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-black text-pink-700">
-                                                {product.variant_group_name}
-                                             </span>
-                                             {product.variant_name && (
-                                                <span className="text-[11px] font-bold text-gray-500">{product.variant_name}</span>
-                                             )}
-                                          </div>
-                                       )}
-                                       <div className="mt-2 text-xl font-black text-pink-600">
-                                          {formatPrice(product.price, product.currency)}
-                                       </div>
-                                    </div>
-
-                                    {!!product.tags?.length && (
-                                       <div className="flex min-h-6 flex-wrap gap-1">
-                                          {product.tags.slice(0, 3).map((tag) => (
-                                             <span key={`${product.id}-grid-${tag}`} className="rounded-full bg-pink-50 px-2 py-1 text-[10px] font-black text-pink-600">
-                                                #{tag}
-                                             </span>
-                                          ))}
-                                          {product.tags.length > 3 && (
-                                             <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-500">+{product.tags.length - 3}</span>
-                                          )}
-                                       </div>
-                                    )}
-
-                                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                                       {renderCatalogStockFlow(product, true)}
-                                    </div>
-
-                                    {renderCatalogActions(product, 'card')}
-                                 </div>
-                              </article>
-                           );
-                        })}
-                     </div>
-                  ) : (
-                     <>
-                     {/* MOBILE VIEW: List/Cards (<768px) */}
-                     <div className="flex flex-col gap-3 md:hidden">
-                        {filteredProducts.map(product => {
-                           const effectiveStatus = getEffectiveStatus(product);
-                           const hasImage = Boolean(product.image_url);
-                           return (
-                           <div key={product.id} data-testid={`catalog-list-${product.id}`} className="relative flex min-h-36 flex-row overflow-visible rounded-xl border border-white/40 bg-white/70 shadow-sm backdrop-blur-md">
-                              {/* Image */}
-                              <div className="relative w-[100px] shrink-0 overflow-hidden rounded-l-xl bg-gray-100">
-                                 {hasImage ? (
-                                    <img
-                                       src={getProductImageUrl(product.image_url, 400)}
-                                       alt={product.name}
-                                       className="w-full h-full object-cover"
-                                       loading="lazy"
-                                       decoding="async"
-                                    />
-                                 ) : (
-                                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-gray-400">
-                                       <PackageSearch size={20} aria-hidden="true" />
-                                       <span className="text-[10px] font-black">{t('catalogMissingImage')}</span>
-                                    </div>
-                                 )}
-                                 {(effectiveStatus === 'disable' || effectiveStatus === 'soldout') && (
-                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                       <span className={`text-[10px] font-black tracking-wider border px-1 -rotate-12 ${
-                                          effectiveStatus === 'soldout' ? 'text-red-400 border-red-400' : 'text-white border-white'
-                                       }`}>
-                                          {effectiveStatus === 'soldout' ? t('catalogSoldOut') : t('catalogDisabled')}
-                                       </span>
-                                    </div>
-                                 )}
-                              </div>
-                              
-                              {/* Content */}
-                              <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
-                                 <div>
-                                    <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 pr-8">{product.name}</h3>
-                                    {product.sku && <div className="font-mono text-[9px] font-bold text-gray-400">{product.sku}</div>}
-                                    {product.variant_group_name && (
-                                       <div className="mt-1 flex items-center gap-1">
-                                          <span className="truncate rounded bg-pink-50 px-1.5 py-0.5 text-[9px] font-black text-pink-700">
-                                             {product.variant_group_name}
-                                          </span>
-                                          <span className="truncate text-[9px] font-bold text-gray-500">
-                                             {product.variant_name || product.name}
-                                          </span>
-                                       </div>
-                                    )}
-                                    <div className="mt-1 flex items-baseline gap-2">
-                                       <span className="text-pink-600 font-black text-sm">{formatPrice(product.price, product.currency)}</span>
-                                       {product.category && (
-                                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] font-bold uppercase rounded">
-                                             {product.category}
-                                          </span>
-                                       )}
-                                    </div>
-                                    {!!product.tags?.length && (
-                                       <div className="mt-1 flex flex-wrap gap-1">
-                                          {product.tags.slice(0, 3).map((tag) => (
-                                             <span key={`${product.id}-${tag}`} className="px-1.5 py-0.5 bg-pink-50 text-pink-600 text-[9px] font-bold rounded">
-                                                #{tag}
-                                             </span>
-                                          ))}
-                                          {product.tags.length > 3 && (
-                                             <span className="text-[9px] font-bold text-gray-400">+{product.tags.length - 3}</span>
-                                          )}
-                                       </div>
-                                    )}
-                                    {renderCatalogStockFlow(product, true)}
-                                 </div>
-
-                                 <div className="mt-3 flex justify-end">
-                                    {renderCatalogActions(product, 'mobile')}
-                                 </div>
-                              </div>
-                           </div>
-                        )})}
-                     </div>
-
-                     {/* DESKTOP VIEW: Table (>=768px) */}
-                     <div className="hidden rounded-xl border border-gray-200 bg-white shadow-sm md:block animate-fade-in">
-                     <table className="w-full table-fixed border-collapse text-left">
-                        <thead>
-                           <tr className="border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
-                              <th className="w-[29%] rounded-tl-xl px-3 py-3 font-bold">{t('catalogProducts')}</th>
-                              <th className="w-[9%] px-3 py-3 font-bold">{t('catalogCategory')}</th>
-                              <th className="w-[8%] px-3 py-3 font-bold">{t('catalogPriceCurrency')}</th>
-                              <th className="w-[9%] px-3 py-3 text-center font-bold">{t('catalogTotalStock')}</th>
-                              <th className="w-[10%] px-3 py-3 text-center font-bold">{t('catalogReadyToAllocate')}</th>
-                              <th className="w-[11%] px-3 py-3 text-center font-bold">{t('catalogInSalesChannels')}</th>
-                              <th className="w-[8%] px-3 py-3 font-bold">{t('catalogStatus')}</th>
-                              <th className="w-[16%] rounded-tr-xl px-3 py-3 text-right font-bold">{t('catalogActions')}</th>
-                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                           {filteredProducts.map(product => {
-                              const effectiveStatus = getEffectiveStatus(product);
-                              const stock = getCatalogStockValues(product);
-                              const hasImage = Boolean(product.image_url);
-                              return (
-                              <tr key={product.id} data-testid={`catalog-row-${product.id}`} className="hover:bg-gray-50/50 transition-colors group">
-                                 <td className="px-3 py-3 align-top">
-                                    <div className="flex min-w-0 items-start gap-3">
-                                       <div className="w-12 h-12 rounded-lg bg-gray-100 relative overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
-                                          {hasImage ? (
-                                             <img
-                                                src={getProductImageUrl(product.image_url, 100)}
-                                                alt={product.name}
-                                                className="h-full w-full object-cover"
-                                                loading="lazy"
-                                                decoding="async"
-                                             />
-                                          ) : (
-                                             <div className="flex h-full w-full items-center justify-center text-gray-300">
-                                                <PackageSearch size={18} aria-hidden="true" />
-                                             </div>
-                                          )}
-                                          {effectiveStatus === 'soldout' && <div className="absolute inset-0 bg-black/50" />}
-                                       </div>
-                                       <div className="min-w-0">
-                                          <h4 className="break-words text-sm font-bold leading-snug text-gray-800">{product.name}</h4>
-                                          {product.sku && <div className="font-mono text-[10px] font-bold text-gray-400">{product.sku}</div>}
-                                          {product.variant_group_name && (
-                                             <div className="mt-1 flex flex-wrap items-center gap-1">
-                                                <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[10px] font-black text-pink-700">
-                                                   {product.variant_group_name}
-                                                </span>
-                                                <span className="text-[10px] font-bold text-gray-500">
-                                                   {product.variant_name || product.name}
-                                                </span>
-                                             </div>
-                                          )}
-                                          {!!product.tags?.length && (
-                                             <div className="mt-1 flex max-w-[260px] flex-wrap gap-1">
-                                                {product.tags.slice(0, 3).map((tag) => (
-                                                   <span key={`${product.id}-${tag}`} className="px-1.5 py-0.5 rounded bg-pink-50 text-pink-600 text-[10px] font-bold">
-                                                      #{tag}
-                                                   </span>
-                                                ))}
-                                             </div>
-                                          )}
-                                       </div>
-                                    </div>
-                                 </td>
-                                 <td className="px-3 py-3 align-top">
-                                    <span className="inline-flex max-w-full break-words rounded-lg bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">
-                                       {product.category || 'Other'}
-                                    </span>
-                                 </td>
-                                 <td className="px-3 py-3 align-top">
-                                    <span className="text-sm font-bold text-gray-900">{formatPrice(product.price, product.currency)}</span>
-                                 </td>
-                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-gray-900">
-                                    {product.is_unlimited ? t('catalogUnlimited') : stock.total}
-                                 </td>
-                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-emerald-700">
-                                    {product.is_unlimited ? t('catalogUnlimited') : stock.available}
-                                 </td>
-                                 <td className="px-3 py-3 text-center align-top text-sm font-black text-pink-700">
-                                    <div>{product.is_unlimited ? t('catalogUnlimited') : stock.allocated}</div>
-                                    {!product.is_unlimited && stock.reserved > 0 && (
-                                       <div className="mt-1 text-[10px] font-bold text-amber-700">{t('catalogReserved')} {stock.reserved}</div>
-                                    )}
-                                 </td>
-                                 <td className="px-3 py-3 align-top">
-                                    {effectiveStatus === 'enable' && <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-bold text-green-700">{t('catalogActive')}</span>}
-                                    {effectiveStatus === 'disable' && <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-500">{t('catalogDisabled')}</span>}
-                                    {effectiveStatus === 'soldout' && <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-600">{t('catalogSoldOut')}</span>}
-                                 </td>
-                                 <td className="px-3 py-3 text-right align-top">
-                                    {renderCatalogActions(product, 'table')}
-                                 </td>
-                              </tr>
-                           )})}
-                        </tbody>
-                     </table>
-                     </div>
-                     </>
-                  )}
-               </>
+               <div className="text-center py-12 text-gray-400">{uiText(language, 'Loading products...')}</div>
+            ) : filteredProductFamilies.length > 0 ? (
+               <ProductFamilyCatalog
+                  families={filteredProductFamilies}
+                  displayMode={catalogDisplayMode}
+                  getImageUrl={(path, width) => getProductImageUrl(path || '', width)}
+                  renderVariantStock={renderCatalogStockFlow}
+                  renderVariantActions={renderCatalogActions}
+                  onEditFamily={openFamilyEditor}
+               />
             ) : (
                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
-                  <span className="material-icons-outlined text-4xl text-gray-300 mb-2">restaurant_menu</span>
-                  <p className="text-gray-500">No items available. Use Add Product to create the first catalog item.</p>
+                  <PackageSearch className="mx-auto mb-2 text-gray-300" size={36} />
+                  <p className="text-gray-500">{uiText(language, 'No items available. Use Add Product to create the first catalog item.')}</p>
                </div>
             )}
             </>
@@ -4294,40 +3762,41 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                   <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                     <h2 className="text-xl font-bold text-gray-800">Edit Product</h2>
-                     <button 
+                     <h2 className="text-xl font-bold text-gray-800">{uiText(language, 'Edit Product')}</h2>
+                     <button
                         onClick={() => {
                            setIsEditModalOpen(false);
                            setEditingProduct(null);
                            setEditFile(null);
                         }}
                         className="text-gray-400 hover:text-gray-600 transition-colors"
+                        aria-label={uiText(language, 'Close edit product')}
                      >
                         <X size={24} />
                      </button>
                   </div>
-                  
+
                   <form onSubmit={handleUpdateProduct} className="p-6 space-y-4">
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
-                           <input 
-                              type="text" 
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Product Name')} *</label>
+                           <input
+                              type="text"
                               value={name}
                               onChange={(e) => setName(e.target.value)}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="e.g. Iced Latte"
+                              placeholder={uiText(language, 'e.g. Iced Latte')}
                               required
                            />
                         </div>
 
                         <div>
                            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                              <Coins size={14} /> Price & Currency *
+                              <Coins size={14} /> {uiText(language, 'Price & Currency')} *
                            </label>
                            <div className="flex gap-2">
-                              <input 
-                                 type="number" 
+                              <input
+                                 type="number"
                                  value={price}
                                  onChange={(e) => setPrice(e.target.value)}
                                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
@@ -4340,7 +3809,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  value={currency}
                                  onChange={(e) => setCurrency(e.target.value)}
                                  className="w-28 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white font-bold cursor-pointer"
-                                 aria-label="Currency"
+                                 aria-label={uiText(language, 'Currency')}
                               >
                                  {Object.entries(CURRENCIES).map(([code, info]) => (
                                     <option key={code} value={code}>{info.symbol} {code}</option>
@@ -4350,7 +3819,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Category')}</label>
                            <input
                               list="category-suggestions"
                               type="text"
@@ -4363,7 +3832,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  }
                               }}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="Select or type category..."
+                              placeholder={uiText(language, 'Select or type category...')}
                            />
                            {/* Datalist is reusable, defined above in the Add form */}
                         </div>
@@ -4374,27 +3843,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Tags')}</label>
                            <input
                               list="tag-suggestions"
                               type="text"
                               value={tagsInput}
                               onChange={(e) => setTagsInput(e.target.value)}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="e.g. Genshin Impact, Flins"
+                              placeholder={uiText(language, 'e.g. Genshin Impact, Flins')}
                            />
-                           <p className="mt-1 text-xs text-gray-400">Separate tags with comma, pipe, or semicolon.</p>
+                           <p className="mt-1 text-xs text-gray-400">{uiText(language, 'Separate tags with comma, pipe, or semicolon.')}</p>
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Product line</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Product line')}</label>
                            <input
                               list="edit-variant-group-suggestions"
                               type="text"
                               value={variantGroupName}
                               onChange={(e) => setVariantGroupName(e.target.value)}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                              placeholder="e.g. Sticker Bualoi"
+                              placeholder={uiText(language, 'e.g. Sticker Bualoi')}
                            />
                            <datalist id="edit-variant-group-suggestions">
                               {allVariantGroupSuggestions.map(group => (
@@ -4405,17 +3874,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                         <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Option name</label>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Option name')}</label>
                               <input
                                  type="text"
                                  value={variantName}
                                  onChange={(e) => setVariantName(e.target.value)}
                                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
-                                 placeholder="e.g. Paimon / Blue / 57mm"
+                                 placeholder={uiText(language, 'e.g. Paimon / Blue / 57mm')}
                               />
                            </div>
                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Sort</label>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Sort')}</label>
                               <input
                                  type="number"
                                  value={variantSortOrder}
@@ -4427,18 +3896,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Product Image')}</label>
                            <div className="relative">
-                              <input 
-                                 type="file" 
+                              <input
+                                 type="file"
                                  ref={editFileInputRef}
                                  onChange={handleEditFileChange}
                                  className="hidden"
                                  id="edit-file-upload"
                                  accept={PRODUCT_IMAGE_ACCEPT}
                               />
-                              <label 
-                                 htmlFor="edit-file-upload" 
+                              <label
+                                 htmlFor="edit-file-upload"
                                  className={[
                                     'w-full flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer transition-colors',
                                     editFile
@@ -4448,52 +3917,52 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               >
                                  <Upload size={18} className="mr-2" />
                                  <span className="truncate text-sm">
-                                    {compressing ? 'Compressing...' : (editFile ? editFile.name : 'Choose New Image')}
+                                    {compressing ? uiText(language, 'Compressing...') : (editFile ? editFile.name : uiText(language, 'Choose New Image'))}
                                  </span>
                               </label>
                            </div>
-                           <p className="mt-1 text-xs text-gray-400">JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.</p>
-                           {compressing && <p className="text-xs text-pink-500 font-bold mt-1 animate-pulse">Preparing image...</p>}
+                           <p className="mt-1 text-xs text-gray-400">{uiText(language, 'JPG, PNG, WebP, HEIC, or HEIF. Crop before upload.')}</p>
+                           {compressing && <p className="text-xs text-pink-500 font-bold mt-1 animate-pulse">{uiText(language, 'Preparing image...')}</p>}
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Status')}</label>
                            <select
                               value={status}
                               onChange={(e) => setStatus(e.target.value)}
                               className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all bg-white"
                            >
-                              <option value="enable">Enable</option>
-                              <option value="disable">Disable</option>
-                              <option value="soldout">Sold Out</option>
+                              <option value="enable">{uiText(language, 'Enable')}</option>
+                              <option value="disable">{uiText(language, 'Disable')}</option>
+                              <option value="soldout">{uiText(language, 'Sold Out')}</option>
                            </select>
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Stock</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Stock')}</label>
                            {editingProduct.is_unlimited ? (
-                              <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-600">Unlimited</div>
+                              <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-600">{uiText(language, 'Unlimited')}</div>
                            ) : (() => {
                               const summary = getProductStockSummary(editingProduct);
                               return (
                                  <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700">
-                                    <div>On hand: {summary.on_hand}</div>
-                                    <div>Allocated: {summary.allocated}</div>
-                                    <div>Available: {summary.available}</div>
+                                    <div>{uiText(language, 'On hand')}: {summary.on_hand}</div>
+                                    <div>{uiText(language, 'Allocated')}: {summary.allocated}</div>
+                                    <div>{uiText(language, 'Available')}: {summary.available}</div>
                                     <div className="mt-3 flex gap-2">
                                        <Button
                                           type="button"
                                           onClick={() => openStockAction({ scope: 'catalog', kind: 'add', product: editingProduct })}
                                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                                        >
-                                          Add stock
+                                          {uiText(language, 'Add stock')}
                                        </Button>
                                        <Button
                                           type="button"
                                           onClick={() => openStockAction({ scope: 'catalog', kind: 'remove', product: editingProduct })}
                                           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100"
                                        >
-                                          Remove stock
+                                          {uiText(language, 'Remove stock')}
                                        </Button>
                                     </div>
                                  </div>
@@ -4504,24 +3973,24 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                           Description 
+                           {uiText(language, 'Description')}
                            <span className="text-xs text-gray-400 ml-2">({description.length}/200)</span>
                         </label>
-                        <textarea 
+                        <textarea
                            value={description}
                            onChange={(e) => setDescription(e.target.value.slice(0, 200))}
                            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all h-24 resize-none"
-                           placeholder="Brief description of the product..."
+                           placeholder={uiText(language, 'Brief description of the product...')}
                         />
                      </div>
 
                      {editingProduct.image_url && !editFile && (
                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-2">Current Image</label>
+                           <label className="block text-sm font-medium text-gray-700 mb-2">{uiText(language, 'Current Image')}</label>
                            <div className="flex items-end gap-3">
-                              <img 
-                                 src={getProductImageUrl(editingProduct.image_url, 200)} 
-                                 alt="Current"
+                              <img
+                                 src={getProductImageUrl(editingProduct.image_url, 200)}
+                                 alt={uiText(language, 'Current')}
                                  loading="lazy"
                                  decoding="async"
                                  className="h-32 w-32 rounded-lg border border-gray-200 bg-gray-100 object-cover"
@@ -4532,14 +4001,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  onClick={() => editFileInputRef.current?.click()}
                                  className="rounded-lg border border-pink-600 bg-pink-600 px-4 py-2 text-sm font-bold text-white hover:bg-pink-700"
                               >
-                                 Change image
+                                 {uiText(language, 'Change image')}
                               </Button>
                            </div>
                         </div>
                      )}
 
                      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                        <Button 
+                        <Button
                            type="button"
                            onClick={() => {
                               setIsEditModalOpen(false);
@@ -4548,14 +4017,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            }}
                            className="rounded-lg border border-gray-700 bg-gray-700 px-6 py-2 text-white transition-colors hover:bg-gray-800"
                         >
-                           Cancel
+                           {uiText(language, 'Cancel')}
                         </Button>
-                        <Button 
-                           type="submit" 
+                        <Button
+                           type="submit"
                            disabled={uploading}
                            className="bg-pink-600 hover:bg-pink-700 text-white py-2 px-8 rounded-lg shadow-md shadow-pink-200 disabled:bg-pink-300 transition-all active:scale-95"
                         >
-                           {uploading ? <Loader className="animate-spin mx-auto" size={20} /> : 'Save Changes'}
+                           {uploading ? <Loader className="animate-spin mx-auto" size={20} /> : uiText(language, 'Save Changes')}
                         </Button>
                      </div>
                   </form>

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
 import { resolveAvatarUrl } from '../utils/avatarUrl';
+import { uiText, useI18n } from '../i18n';
 
 interface AvatarUploadProps {
   currentImageUrl?: string;
@@ -10,6 +11,7 @@ interface AvatarUploadProps {
 }
 
 const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUploadProps) => {
+  const { language } = useI18n();
   const [previewUrl, setPreviewUrl] = useState<string | null>(resolveAvatarUrl(currentImageUrl) || null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -24,7 +26,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
   const handleImageCompression = async (imageFile: File): Promise<File> => {
     // 1. Validation: Allow large raw files (e.g., up to 10MB) to support camera uploads
     if (imageFile.size > 10 * 1024 * 1024) {
-       throw new Error("File too large. Maximum size is 10MB.");
+       throw new Error(uiText(language, 'File too large. Maximum size is 10MB.'));
     }
 
     // 2. Skip Condition: If the original file is already smaller than 0.2MB, skip compression
@@ -101,7 +103,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
 
     } catch (err: any) {
       console.error('Upload failed:', err);
-      setError(err.message || 'Failed to upload image');
+      setError(err.message || uiText(language, 'Failed to upload image'));
       // Revert preview if needed, or just keep the old one
     } finally {
       setIsCompressing(false);
@@ -129,7 +131,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
         {previewUrl ? (
           <img 
             src={previewUrl} 
-            alt="Profile Avatar" 
+            alt={uiText(language, 'Profile Avatar')}
             className="w-full h-full object-cover bg-gray-100"
           />
         ) : (
@@ -146,12 +148,12 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
           {isCompressing ? (
             <>
               <Loader2 className="animate-spin mb-1" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wide">Optimizing</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide">{uiText(language, 'Optimizing')}</span>
             </>
           ) : isUploading ? (
             <>
               <Loader2 className="animate-spin mb-1" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wide">Uploading</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide">{uiText(language, 'Uploading')}</span>
             </>
           ) : (
             <Camera size={32} />

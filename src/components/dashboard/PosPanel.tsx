@@ -11,6 +11,7 @@ import { calculatePromotionPricing, getPromotionBadgesForProduct, type Promotion
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
+import { uiText, useI18n } from '../../i18n';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
 // "status unknown."  Each individual fetch already has a 15 s per-request
@@ -161,6 +162,7 @@ export default function POSPanel({
     onClearQueue,
     onQueueCompleted,
 }: POSPanelProps) {
+    const { language } = useI18n();
     const [products, setProducts] = useState<Product[]>([]);
     const [promotions, setPromotions] = useState<PromotionRule[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
@@ -247,7 +249,7 @@ export default function POSPanel({
             return;
         }
 
-        if (data) setProducts((data as Record<string, any>[]).map((product) => normalizeProductRecord(product) as Product));
+        if (data) setProducts((data as Product[]).map((product) => normalizeProductRecord(product)));
     }, [activeEvent?.id, canUsePos]);
 
     const fetchPromotions = useCallback(async () => {
@@ -509,16 +511,17 @@ export default function POSPanel({
                 .filter((item) => overdraftProductIds.has(item.product.id))
                 .slice(0, 2)
                 .map((item) => item.product.name);
-            const extra = overdraftProductIds.size > 2 ? ` +${overdraftProductIds.size - 2} more` : '';
+            const extra = overdraftProductIds.size > 2 ? ` +${overdraftProductIds.size - 2} ${uiText(language, 'more')}` : '';
             setToast({
                 tone: 'warning',
-                title: 'Stock updated',
-                detail: `${affectedNames.join(', ')}${extra} — reduce quantity or remove before charging.`,
+                title: uiText(language, 'Stock updated'),
+                detail: uiText(language, '{products} — reduce quantity or remove before charging.').replace('{products}', `${affectedNames.join(', ')}${extra}`),
             });
         }
-    }, [overdraftProductIds]);
+    }, [language, overdraftProductIds]);
 
     const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
+    const itemCountLabel = (count: number) => uiText(language, count === 1 ? '{count} item' : '{count} items').replace('{count}', String(count));
     const effectiveViewMode: ViewMode = viewPreference === 'auto'
         ? (isQueuePanelExpanded ? 'compact' : 'visual')
         : viewPreference;
@@ -638,39 +641,39 @@ export default function POSPanel({
     const toPaymentErrorMessage = (err: unknown): string => {
         const raw = err instanceof Error ? err.message : String(err);
         if (raw.includes('insufficient_stock')) {
-            return 'One or more items just sold out. Remove unavailable items and try again.';
+            return uiText(language, 'One or more items just sold out. Remove unavailable items and try again.');
         }
         if (raw.includes('order_not_editable')) {
-            return 'This order was already processed. Refresh the page before retrying.';
+            return uiText(language, 'This order was already processed. Refresh the page before retrying.');
         }
         if (raw.includes('order_cancelled')) {
-            return 'This order was cancelled. Start a new transaction.';
+            return uiText(language, 'This order was cancelled. Start a new transaction.');
         }
         if (raw.includes('event_not_active')) {
-            return 'The event is no longer active.';
+            return uiText(language, 'The event is no longer active.');
         }
         if (raw.includes('booth_closed')) {
-            return 'The booth is closed. Open it before charging.';
+            return uiText(language, 'The booth is closed. Open it before charging.');
         }
         if (raw.includes('forbidden')) {
-            return 'Permission denied. Your role cannot complete this action.';
+            return uiText(language, 'Permission denied. Your role cannot complete this action.');
         }
-        return 'Payment failed. Check order history before retrying to avoid a duplicate charge.';
+        return uiText(language, 'Payment failed. Check order history before retrying to avoid a duplicate charge.');
     };
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (paymentInFlightRef.current) return;
         if (loading || fetchError) return;
         if (!canUsePos) {
-            setToast({ tone: 'error', title: 'Charge not allowed', detail: 'Your role does not have permission to charge orders.' });
+            setToast({ tone: 'error', title: uiText(language, 'Charge not allowed'), detail: uiText(language, 'Your role does not have permission to charge orders.') });
             return;
         }
         if (!activeEvent) {
-            setToast({ tone: 'warning', title: 'No active event', detail: 'Select or activate an event first.' });
+            setToast({ tone: 'warning', title: uiText(language, 'No active event'), detail: uiText(language, 'Select or activate an event first.') });
             return;
         }
         if (cart.length === 0) {
-            setToast({ tone: 'warning', title: 'Cart is empty', detail: 'Select products before charging.' });
+            setToast({ tone: 'warning', title: uiText(language, 'Cart is empty'), detail: uiText(language, 'Select products before charging.') });
             return;
         }
 
@@ -768,7 +771,7 @@ export default function POSPanel({
             }
             onClearQueue();
             await fetchProducts();
-            setToast({ tone: 'success', title: 'Payment completed' });
+            setToast({ tone: 'success', title: uiText(language, 'Payment completed') });
         };
 
         // Outer timeout races against the entire sequence.  If the venue WiFi stalls
@@ -805,8 +808,8 @@ export default function POSPanel({
                 setPaymentUnknownEventId(eventId);
                 setToast({
                     tone: 'warning',
-                    title: 'Payment status unknown',
-                    detail: 'Network interrupted. Check order history before retrying to avoid a duplicate charge.',
+                    title: uiText(language, 'Payment status unknown'),
+                    detail: uiText(language, 'Network interrupted. Check order history before retrying to avoid a duplicate charge.'),
                 });
             } else {
                 // Known error (insufficient_stock, order_cancelled, etc.): DB did
@@ -819,7 +822,7 @@ export default function POSPanel({
                     setAcceptExhaustedRewards(false);
                     setIsPaymentModalOpen(false);
                 }
-                setToast({ tone: 'error', title: 'Payment failed', detail: toPaymentErrorMessage(err) });
+                setToast({ tone: 'error', title: uiText(language, 'Payment failed'), detail: toPaymentErrorMessage(err) });
             }
         } finally {
             setLoading(false);
@@ -828,11 +831,11 @@ export default function POSPanel({
     };
 
     const quickFilters: Array<{ id: QuickFilter; label: string; count: number; icon: typeof Sparkles }> = [
-        { id: 'all', label: 'All items', count: products.length, icon: Grid2x2 },
-        { id: 'promo', label: 'Promo', count: highlightedCounts.promo, icon: Sparkles },
-        { id: 'low_stock', label: 'Low stock', count: highlightedCounts.lowStock, icon: PackageX },
-        { id: 'recent', label: 'Recent', count: highlightedCounts.recent, icon: Clock3 },
-        { id: 'pinned', label: 'Pinned', count: highlightedCounts.pinned, icon: Pin },
+        { id: 'all', label: uiText(language, 'All items'), count: products.length, icon: Grid2x2 },
+        { id: 'promo', label: uiText(language, 'Promo'), count: highlightedCounts.promo, icon: Sparkles },
+        { id: 'low_stock', label: uiText(language, 'Low stock'), count: highlightedCounts.lowStock, icon: PackageX },
+        { id: 'recent', label: uiText(language, 'Recent'), count: highlightedCounts.recent, icon: Clock3 },
+        { id: 'pinned', label: uiText(language, 'Pinned'), count: highlightedCounts.pinned, icon: Pin },
     ];
 
     const renderPromoHelper = () => {
@@ -842,7 +845,7 @@ export default function POSPanel({
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                 <div className="flex items-center gap-2 text-amber-800 text-xs font-black uppercase tracking-wide mb-2">
                     <Flame size={14} />
-                    Promo helper
+                    {uiText(language, 'Promo helper')}
                 </div>
                 <div className="space-y-2">
                     {promoInsights.map((insight) => (
@@ -850,10 +853,14 @@ export default function POSPanel({
                             <div className="flex items-center justify-between gap-2 mb-1">
                                 <span className="text-[11px] font-bold text-gray-800">{insight.label}</span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${insight.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {insight.status === 'ready' ? 'Ready' : 'In progress'}
+                                    {uiText(language, insight.status === 'ready' ? 'Ready' : 'In progress')}
                                 </span>
                             </div>
-                            <div className="text-[10px] text-gray-600">{insight.message}</div>
+                            <div className="text-[10px] text-gray-600">{language === 'th'
+                                ? insight.message
+                                    .replace(/^Bundle ready\. (\d+) promotion sets? in cart\.$/, 'โปรพร้อมใช้แล้ว มี $1 ชุดโปรโมชันในตะกร้า')
+                                    .replace(/^Add (\d+) more items? to trigger this promotion\.$/, 'เพิ่มอีก $1 ชิ้นเพื่อใช้โปรโมชันนี้')
+                                : insight.message}</div>
                         </div>
                     ))}
                 </div>
@@ -868,7 +875,7 @@ export default function POSPanel({
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                 <div className="flex items-center gap-2 text-emerald-800 text-xs font-black uppercase tracking-wide mb-2">
                     <Sparkles size={14} />
-                    Applied promotions
+                    {uiText(language, 'Applied promotions')}
                 </div>
                 <div className="space-y-2">
                     {promotionQuote.applied_promotions.map((promotion) => (
@@ -880,7 +887,7 @@ export default function POSPanel({
                             {promotion.discount_amount > 0 && <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discount_amount, cart[0]?.product.currency)}</div>}
                         </div>
                     ))}
-                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">Free gift: {reward.name} × {reward.quantity}</div>)}
+                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
                 </div>
             </div>
         );
@@ -894,7 +901,7 @@ export default function POSPanel({
                 setChoices((current) => [...current.filter((item) => item.promotion_id !== choice.promotion_id || (item.tier_id || null) !== (choice.tier_id || null)), selection]);
               }} />
             </div>)}
-        {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">All gifts for this promotion are out of stock.</strong>Review the new total without this promotion before charging.</span></label>}
+        {exhaustedPromotionChoices.length > 0 && <label className="flex cursor-pointer gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950"><input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} /><span><strong className="block">{uiText(language, 'All gifts for this promotion are out of stock.')}</strong>{uiText(language, 'Review the new total without this promotion before charging.')}</span></label>}
     </>;
 
     const renderCartItems = () => {
@@ -910,8 +917,8 @@ export default function POSPanel({
                         </div>
                     )}
                     <span className="text-4xl mb-2">🛒</span>
-                    <p className="font-medium text-sm">{loading ? 'Loading...' : 'Cart is empty'}</p>
-                    <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">Select products first. Promotions and totals update automatically.</p>
+                    <p className="font-medium text-sm">{uiText(language, loading ? 'Loading...' : 'Cart is empty')}</p>
+                    <p className="mt-1 text-xs text-gray-400 text-center max-w-[220px]">{uiText(language, 'Select products first. Promotions and totals update automatically.')}</p>
                 </div>
             );
         }
@@ -925,8 +932,8 @@ export default function POSPanel({
                 )}
                 {!loading && fetchError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-20 backdrop-blur-[1px] gap-2 px-4">
-                        <span className="text-red-500 font-bold text-sm text-center">Failed to load order</span>
-                        <span className="text-xs text-gray-500 text-center">Select this queue again or wait for an update.</span>
+                        <span className="text-red-500 font-bold text-sm text-center">{uiText(language, 'Failed to load order')}</span>
+                        <span className="text-xs text-gray-500 text-center">{uiText(language, 'Select this queue again or wait for an update.')}</span>
                     </div>
                 )}
                 {renderPromoHelper()}
@@ -964,7 +971,7 @@ export default function POSPanel({
                                     <span className="text-[10px] text-gray-500">{formatPrice(item.product.price, item.product.currency)}</span>
                                     {isOverdraft && (
                                         <span className="text-[9px] font-bold text-red-600 mt-0.5">
-                                            Only {availableNow} left — reduce or remove
+                                            {uiText(language, 'Only {count} left — reduce or remove').replace('{count}', String(availableNow))}
                                         </span>
                                     )}
                                     {!isOverdraft && !!promoBadges.length && (
@@ -988,21 +995,21 @@ export default function POSPanel({
                                             disabled={loading || fetchError}
                                             onClick={() => decreaseQuantity(item.product.id)}
                                             className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-red-600 text-[11px] disabled:opacity-50"
-                                            aria-label={`Decrease quantity of ${item.product.name}`}
+                                            aria-label={uiText(language, 'Decrease quantity of {name}').replace('{name}', item.product.name)}
                                         >-</button>
                                         <span className={`min-w-[18px] text-center font-bold text-[10px] ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
                                         <button
                                             disabled={loading || fetchError}
                                             onClick={() => addToCart(item.product)}
                                             className="w-6 h-full flex items-center justify-center text-gray-500 hover:text-green-600 text-[11px] disabled:opacity-50"
-                                            aria-label={`Increase quantity of ${item.product.name}`}
+                                            aria-label={uiText(language, 'Increase quantity of {name}').replace('{name}', item.product.name)}
                                         >+</button>
                                     </div>
                                     <button
                                         disabled={loading || fetchError}
                                         onClick={() => removeFromCart(item.product.id)}
                                         className="text-[9px] text-gray-500 hover:text-red-500 disabled:opacity-50"
-                                        aria-label={`Remove ${item.product.name} from cart`}
+                                        aria-label={uiText(language, 'Remove {name} from cart').replace('{name}', item.product.name)}
                                     >✕</button>
                                 </div>
                             </div>
@@ -1017,24 +1024,24 @@ export default function POSPanel({
         <>
             <div className="space-y-1.5 mb-2">
                 <div className="flex justify-between items-baseline">
-                    <span className="text-gray-500 font-medium text-sm">Subtotal</span>
+                    <span className="text-gray-500 font-medium text-sm">{uiText(language, 'Subtotal')}</span>
                     <span className="text-sm font-bold text-gray-700">{formatPrice(displayedSubtotal, cart[0]?.product.currency)}</span>
                 </div>
                 {displayedDiscount > 0 && (
                     <div className="flex justify-between items-baseline">
-                        <span className="text-emerald-700 font-medium text-sm">Discount</span>
+                        <span className="text-emerald-700 font-medium text-sm">{uiText(language, 'Discount')}</span>
                         <span className="text-sm font-black text-emerald-700">- {formatPrice(displayedDiscount, cart[0]?.product.currency)}</span>
                     </div>
                 )}
                 <div className="flex justify-between items-baseline pt-1 border-t border-gray-100">
-                    <span className="text-gray-500 font-medium text-sm">Total</span>
+                    <span className="text-gray-500 font-medium text-sm">{uiText(language, 'Total')}</span>
                     <span className={`${mobile ? 'text-xl' : 'text-2xl'} font-extrabold text-gray-900`}>{formatPrice(displayedTotal, cart[0]?.product.currency)}</span>
                 </div>
             </div>
 
             {!activeEvent && (
                 <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600 font-bold text-center">
-                    No active event
+                    {uiText(language, 'No active event')}
                 </div>
             )}
 
@@ -1044,11 +1051,10 @@ export default function POSPanel({
                         <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-black text-amber-900 uppercase tracking-wide">
-                                Payment status unknown
+                                {uiText(language, 'Payment status unknown')}
                             </div>
                             <div className="mt-1 text-[11px] font-medium text-amber-800 leading-snug">
-                                The network timed out. This payment may or may not have gone through.
-                                Check order history before charging again to avoid a duplicate.
+                                {uiText(language, 'The network timed out. This payment may or may not have gone through. Check order history before charging again to avoid a duplicate.')}
                             </div>
                             <div className="mt-2 flex items-center gap-3">
                                 <a
@@ -1057,14 +1063,14 @@ export default function POSPanel({
                                     rel="noopener noreferrer"
                                     className="text-[11px] font-black text-amber-900 underline underline-offset-2 hover:text-amber-700"
                                 >
-                                    Open order history ↗
+                                    {uiText(language, 'Open order history')} ↗
                                 </a>
                                 <button
                                     type="button"
                                     onClick={() => setPaymentUnknownEventId(null)}
                                     className="text-[10px] font-bold text-amber-700 hover:text-amber-900 border border-amber-300 rounded px-2 py-0.5 hover:bg-amber-100"
                                 >
-                                    Dismiss
+                                    {uiText(language, 'Dismiss')}
                                 </button>
                             </div>
                         </div>
@@ -1074,7 +1080,7 @@ export default function POSPanel({
 
             {overdraftProductIds.size > 0 && (
                 <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 font-bold text-center">
-                    ⚠️ Remove unavailable items before charging
+                    ⚠️ {uiText(language, 'Remove unavailable items before charging')}
                 </div>
             )}
 
@@ -1087,16 +1093,16 @@ export default function POSPanel({
                 className="w-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-pink-200 disabled:bg-gray-200 disabled:[color:#475569] disabled:hover:bg-gray-200 disabled:cursor-not-allowed disabled:shadow-none transition-all active:scale-95"
             >
                 {loading
-                    ? 'Processing...'
+                    ? uiText(language, 'Processing...')
                     : fetchError
-                    ? 'Order load failed'
+                    ? uiText(language, 'Order load failed')
                     : !activeEvent
-                    ? 'Event Ended'
+                    ? uiText(language, 'Event Ended')
                     : overdraftProductIds.size > 0
-                    ? 'Cart has unavailable items'
+                    ? uiText(language, 'Cart has unavailable items')
                     : cart.length === 0
-                    ? 'Charge ' + formatPrice(0, cart[0]?.product.currency)
-                    : 'Charge ' + formatPrice(displayedTotal, cart[0]?.product.currency)}
+                    ? `${uiText(language, 'Charge')} ${formatPrice(0, cart[0]?.product.currency)}`
+                    : `${uiText(language, 'Charge')} ${formatPrice(displayedTotal, cart[0]?.product.currency)}`}
             </button>
         </>
     );
@@ -1105,8 +1111,8 @@ export default function POSPanel({
         return (
             <div className="h-full flex items-center justify-center p-6">
                 <div className="max-w-md w-full bg-white border border-gray-200 rounded-xl p-6 text-center">
-                    <h3 className="text-lg font-bold text-gray-800 mb-2">POS Access Restricted</h3>
-                    <p className="text-sm text-gray-600">Your account role is queue-only. You can manage queue flow but cannot charge orders.</p>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">{uiText(language, 'POS Access Restricted')}</h3>
+                    <p className="text-sm text-gray-600">{uiText(language, 'Your account role is queue-only. You can manage queue flow but cannot charge orders.')}</p>
                 </div>
             </div>
         );
@@ -1117,7 +1123,7 @@ export default function POSPanel({
             <Toast message={toast} onClose={() => setToast(null)} />
             <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
                 <div className="px-4 py-2">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Select Customer</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">{uiText(language, 'Select Customer')}</div>
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={onClearQueue}
@@ -1128,7 +1134,7 @@ export default function POSPanel({
                             }`}
                         >
                             <User size={16} />
-                            <span>Walk-in</span>
+                            <span>{uiText(language, 'Walk-in')}</span>
                         </button>
 
                         <div className="min-w-0">
@@ -1147,7 +1153,7 @@ export default function POSPanel({
                                                 }`}
                                             >
                                                 <CheckCircle size={14} className={isSelected ? 'text-white' : 'text-green-500'} />
-                                                <span>Queue #{queue.queue_number}</span>
+                                                <span>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</span>
                                             </button>
                                         );
                                     })}
@@ -1157,7 +1163,7 @@ export default function POSPanel({
                                     disabled
                                     className="flex min-h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-400"
                                 >
-                                    From Queue
+                                    {uiText(language, 'From Queue')}
                                 </button>
                             )}
                         </div>
@@ -1171,25 +1177,25 @@ export default function POSPanel({
                     <div className="px-3 py-3 border-b border-gray-100 bg-gradient-to-r from-white to-pink-50/40 shrink-0">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Cart Summary</div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Cart Summary')}</div>
                                 <div className="mt-1 text-sm font-bold text-gray-800">
-                                    {cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU
+                                    {itemCountLabel(cartItemCount)} · {cart.length} SKU
                                 </div>
                             </div>
                             {displayedDiscount > 0 && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 border border-emerald-100">
-                                    Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}
+                                    {uiText(language, 'Save')} {formatPrice(displayedDiscount, cart[0]?.product.currency)}
                                 </span>
                             )}
                         </div>
                         {selectedQueueId ? (
-                            <p className="mt-1 text-xs text-gray-500">Editing preselected order for Queue #{selectedQueueNumber}.</p>
+                            <p className="mt-1 text-xs text-gray-500">{uiText(language, 'Editing preselected order for Queue #{number}.').replace('{number}', String(selectedQueueNumber))}</p>
                         ) : (
-                            <p className="mt-1 text-xs text-gray-500">Walk-in checkout. Add items, review promotions, then charge.</p>
+                            <p className="mt-1 text-xs text-gray-500">{uiText(language, 'Walk-in checkout. Add items, review promotions, then charge.')}</p>
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[120px]" tabIndex={0} role="region" aria-label="Shopping cart">
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[120px]" tabIndex={0} role="region" aria-label={uiText(language, 'Shopping cart')}>
                         {renderCartItems()}
                     </div>
 
@@ -1202,12 +1208,12 @@ export default function POSPanel({
                     <div className="bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
                         <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Product Browser</div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Product Browser')}</div>
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
                                         {filteredProducts.length} / {products.length}
                                     </span>
-                                    <div className="hidden md:block text-xs text-gray-500">Search by name or tag, then narrow with quick filters, category, and tags.</div>
+                                    <div className="hidden md:block text-xs text-gray-500">{uiText(language, 'Search by name or tag, then narrow with quick filters, category, and tags.')}</div>
                                 </div>
                             </div>
                             <div className="hidden md:flex items-center gap-2">
@@ -1216,7 +1222,7 @@ export default function POSPanel({
                                         onClick={clearProductFilters}
                                         className="rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-600 hover:bg-pink-100 transition-colors"
                                     >
-                                        Clear filters
+                                        {uiText(language, 'Clear filters')}
                                     </button>
                                 )}
                             </div>
@@ -1224,45 +1230,45 @@ export default function POSPanel({
                         <div className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="Search by name or tag..."
+                                placeholder={uiText(language, 'Search by name or tag...')}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 text-sm"
-                                aria-label="Search products"
+                                aria-label={uiText(language, 'Search products')}
                             />
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value as SortType)}
                                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer font-medium w-[110px] md:w-auto"
-                                aria-label="Sort products by"
+                                aria-label={uiText(language, 'Sort products by')}
                             >
-                                <option value="name">Name</option>
-                                <option value="price_low">Price ↑</option>
-                                <option value="price_high">Price ↓</option>
+                                <option value="name">{uiText(language, 'Name')}</option>
+                                <option value="price_low">{uiText(language, 'Price')} ↑</option>
+                                <option value="price_high">{uiText(language, 'Price')} ↓</option>
                             </select>
-                            <div className="hidden md:flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label="Product browser layout">
+                            <div className="hidden md:flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label={uiText(language, 'Product browser layout')}>
                                 <button
                                     onClick={() => setViewPreference('auto')}
                                     className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black ${viewPreference === 'auto' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Auto product layout"
+                                    aria-label={uiText(language, 'Auto product layout')}
                                 >
-                                    Auto
+                                    {uiText(language, 'Auto')}
                                 </button>
                                 <button
                                     onClick={() => setViewPreference('visual')}
                                     className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'visual' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Fast grid product view"
+                                    aria-label={uiText(language, 'Fast grid product view')}
                                 >
                                     <Grid2x2 size={16} />
-                                    Grid
+                                    {uiText(language, 'Grid')}
                                 </button>
                                 <button
                                     onClick={() => setViewPreference('compact')}
                                     className={`min-h-9 px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center gap-1.5 ${viewPreference === 'compact' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-                                    aria-label="Detail list product view"
+                                    aria-label={uiText(language, 'Detail list product view')}
                                 >
                                     <Rows3 size={16} />
-                                    List
+                                    {uiText(language, 'List')}
                                 </button>
                             </div>
                         </div>
@@ -1289,7 +1295,7 @@ export default function POSPanel({
                                     onClick={() => setSelectedCategory(cat.label)}
                                     className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat.label ? 'bg-pink-600 text-white shadow-md' : 'bg-gray-100 text-pink-900 hover:bg-gray-200'}`}
                                 >
-                                    {cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-slate-500'}`}>{cat.count}</span>
+                                    {cat.label === 'All' ? uiText(language, 'All') : cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-slate-500'}`}>{cat.count}</span>
                                 </button>
                             ))}
                         </div>
@@ -1301,7 +1307,7 @@ export default function POSPanel({
                                         onClick={() => setSelectedTag(tag.label)}
                                         className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedTag === tag.label ? 'bg-sky-600 text-white shadow-md' : 'bg-sky-50 text-sky-700 hover:bg-sky-100'}`}
                                     >
-                                        {tag.label} <span className={`ml-1 ${selectedTag === tag.label ? 'text-sky-100' : 'text-sky-400'}`}>{tag.count}</span>
+                                        {tag.label === 'All' ? uiText(language, 'All') : tag.label} <span className={`ml-1 ${selectedTag === tag.label ? 'text-sky-100' : 'text-sky-400'}`}>{tag.count}</span>
                                     </button>
                                 ))}
                             </div>
@@ -1310,31 +1316,31 @@ export default function POSPanel({
                             <div className="flex flex-wrap gap-2 pt-1">
                                 {selectedQuickFilter !== 'all' && (
                                     <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
-                                        Quick: {quickFilters.find((filter) => filter.id === selectedQuickFilter)?.label}
+                                        {uiText(language, 'Quick')}: {quickFilters.find((filter) => filter.id === selectedQuickFilter)?.label}
                                     </span>
                                 )}
                                 {selectedCategory !== 'All' && (
                                     <span className="rounded-full bg-pink-50 px-3 py-1 text-[11px] font-semibold text-pink-600">
-                                        Category: {selectedCategory}
+                                        {uiText(language, 'Category')}: {selectedCategory}
                                     </span>
                                 )}
                                 {selectedTag !== 'All' && (
                                     <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
-                                        Tag: {selectedTag}
+                                        {uiText(language, 'Tag')}: {selectedTag}
                                     </span>
                                 )}
                                 {searchQuery.trim() && (
                                     <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
-                                        Search: {searchQuery.trim()}
+                                        {uiText(language, 'Search')}: {searchQuery.trim()}
                                     </span>
                                 )}
                             </div>
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'}>
+                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={uiText(language, isVisualProductGrid ? 'Product grid' : 'Product list')}>
                         {filteredProducts.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>No products found.</p></div>
+                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>{uiText(language, 'No products found.')}</p></div>
                         ) : (
                             <div className={effectiveViewMode === 'compact' ? 'space-y-2' : (isQueuePanelExpanded ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3')}>
                                 {filteredProducts.map((product, productIndex) => {
@@ -1347,7 +1353,7 @@ export default function POSPanel({
                                         {showVariantHeader && (
                                             <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-pink-100 bg-pink-50 px-3 py-2' : 'col-span-full rounded-xl border border-pink-100 bg-pink-50 px-3 py-2'}>
                                                 <div className="text-sm font-black text-pink-950">{groupName}</div>
-                                                <div className="text-[11px] font-bold text-pink-800">Variants</div>
+                                                <div className="text-[11px] font-bold text-pink-800">{uiText(language, 'Variants')}</div>
                                             </div>
                                         )}
                                     {(() => {
@@ -1391,7 +1397,7 @@ export default function POSPanel({
                                                                 </div>
                                                                 <div className="text-right shrink-0">
                                                                     <div className="font-black text-pink-600 text-sm">{formatPrice(product.price, product.currency)}</div>
-                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? `${available} left` : 'Unlimited'}</div>
+                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}</div>
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
@@ -1402,7 +1408,7 @@ export default function POSPanel({
                                                                 ))}
                                                                 {lowStock && (
                                                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-100">
-                                                                        Low stock
+                                                                        {uiText(language, 'Low stock')}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1411,7 +1417,7 @@ export default function POSPanel({
                                                     <button
                                                         onClick={() => togglePinnedProduct(product.id)}
                                                         className={`p-2 rounded-lg border ${isPinned ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200'}`}
-                                                        aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
+                                                        aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
                                                     >
                                                         <Pin size={14} />
                                                     </button>
@@ -1452,12 +1458,12 @@ export default function POSPanel({
                                                                 {promoBadges.slice(0, 2).map((badge) => (
                                                                     <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
                                                                 ))}
-                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">Low</span>}
+                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">{uiText(language, 'Low')}</span>}
                                                             </div>
                                                         </div>
                                                         <div className="mt-3 flex items-end justify-between gap-2">
                                                             <div className="text-[10px] font-bold text-gray-500">
-                                                                {Number.isFinite(available) ? `${available} left` : 'Unlimited'}
+                                                                {Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}
                                                             </div>
                                                             <div className="text-base font-black text-pink-600">
                                                                 {formatPrice(product.price, product.currency)}
@@ -1468,7 +1474,7 @@ export default function POSPanel({
                                                 <button
                                                     onClick={() => togglePinnedProduct(product.id)}
                                                     className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
-                                                    aria-label={isPinned ? `Unpin ${product.name}` : `Pin ${product.name}`}
+                                                    aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
                                                 >
                                                     <Pin size={12} />
                                                 </button>
@@ -1491,18 +1497,18 @@ export default function POSPanel({
                 >
                     <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">Cart</div>
-                            <div className="text-sm font-bold text-gray-800">{cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{uiText(language, 'Cart')}</div>
+                            <div className="text-sm font-bold text-gray-800">{itemCountLabel(cartItemCount)} · {cart.length} SKU</div>
                             <div className="text-[11px] text-gray-500 truncate">
-                                {selectedQueueId ? `Queue #${selectedQueueNumber}` : 'Walk-in checkout'}
+                                {selectedQueueId ? uiText(language, 'Queue #{number}').replace('{number}', String(selectedQueueNumber)) : uiText(language, 'Walk-in checkout')}
                             </div>
                         </div>
                         <div className="text-right shrink-0">
                             {displayedDiscount > 0 && (
-                                <div className="text-[11px] font-bold text-emerald-600">Save {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
+                                <div className="text-[11px] font-bold text-emerald-600">{uiText(language, 'Save')} {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
                             )}
                             <div className="text-lg font-extrabold text-gray-900">{formatPrice(displayedTotal, cart[0]?.product.currency)}</div>
-                            <div className="text-[11px] font-bold text-pink-600">{cart.length === 0 ? 'Select items' : 'View cart'}</div>
+                            <div className="text-[11px] font-bold text-pink-600">{uiText(language, cart.length === 0 ? 'Select items' : 'View cart')}</div>
                         </div>
                     </div>
                 </button>
@@ -1512,7 +1518,7 @@ export default function POSPanel({
                 <div className="md:hidden fixed inset-0 z-40">
                     <button
                         className="absolute inset-0 bg-gray-900/45 backdrop-blur-[1px]"
-                        aria-label="Close mobile cart"
+                        aria-label={uiText(language, 'Close mobile cart')}
                         onClick={() => setIsMobileCartOpen(false)}
                     />
                     <div className="absolute inset-x-0 bottom-0 max-h-[78dvh] rounded-t-3xl bg-white shadow-2xl border-t border-pink-100 flex flex-col overflow-hidden">
@@ -1520,19 +1526,19 @@ export default function POSPanel({
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-gray-200" />
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Cart Summary</div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Cart Summary')}</div>
                                     <div className="mt-1 text-sm font-bold text-gray-800">
-                                        {cartItemCount} item{cartItemCount === 1 ? '' : 's'} · {cart.length} SKU
+                                        {itemCountLabel(cartItemCount)} · {cart.length} SKU
                                     </div>
                                     <div className="mt-1 text-xs text-gray-500">
-                                        {selectedQueueId ? `Editing Queue #${selectedQueueNumber}` : 'Walk-in checkout'}
+                                        {selectedQueueId ? uiText(language, 'Editing Queue #{number}').replace('{number}', String(selectedQueueNumber)) : uiText(language, 'Walk-in checkout')}
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setIsMobileCartOpen(false)}
                                     className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600"
                                 >
-                                    Close
+                                    {uiText(language, 'Close')}
                                 </button>
                             </div>
                         </div>
@@ -1549,8 +1555,8 @@ export default function POSPanel({
             {isPaymentModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
-                        <h3 className="text-2xl font-black text-gray-800 text-center mb-2">Record payment</h3>
-                        <p className="text-gray-500 text-center mb-6">Confirm what you received directly from the customer. Nireq does not check your bank account.<br />Amount: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
+                        <h3 className="text-2xl font-black text-gray-800 text-center mb-2">{uiText(language, 'Record payment')}</h3>
+                        <p className="text-gray-500 text-center mb-6">{uiText(language, 'Confirm what you received directly from the customer. Nireq does not check your bank account.')}<br />{uiText(language, 'Amount')}: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
@@ -1558,7 +1564,7 @@ export default function POSPanel({
                                 className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
-                                <span className="font-bold text-emerald-700">CASH</span>
+                                <span className="font-bold text-emerald-700">{uiText(language, 'CASH')}</span>
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
@@ -1566,14 +1572,14 @@ export default function POSPanel({
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>
-                                <span className="text-center font-bold text-sky-700">Confirm transfer received</span>
+                                <span className="text-center font-bold text-sky-700">{uiText(language, 'Confirm transfer received')}</span>
                             </button>
                         </div>
                         <button
                             onClick={() => setIsPaymentModalOpen(false)}
                             className="w-full py-2 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
                         >
-                            Cancel
+                            {uiText(language, 'Cancel')}
                         </button>
                     </div>
                 </div>

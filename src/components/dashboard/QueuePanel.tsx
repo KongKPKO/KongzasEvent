@@ -7,6 +7,7 @@ import {
     Coffee, AlertCircle, PauseCircle, X 
 } from 'lucide-react';
 import { Toast } from '../ui/Feedback';
+import { uiText, useI18n } from '../../i18n';
 
 // --- TYPES ---
 interface QueueItem {
@@ -67,6 +68,7 @@ export default function QueuePanel({
     onSelectQueue,
     onStatusUpdated 
 }: QueuePanelProps) {
+    const { language } = useI18n();
     const [isBoothActive, setIsBoothActive] = useState(false);
     const [isQueueOpen, setIsQueueOpen] = useState(true);
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
@@ -152,7 +154,7 @@ export default function QueuePanel({
 
     const handleToggleBooth = async () => {
         if (!activeEvent) {
-            setToast({ tone: 'warning', title: 'No active event', detail: 'Activate an event to open the booth.' });
+            setToast({ tone: 'warning', title: uiText(language, 'No active event'), detail: uiText(language, 'Activate an event to open the booth.') });
             return;
         }
         if (boothToggleInFlightRef.current) return;
@@ -238,14 +240,14 @@ export default function QueuePanel({
                 <div className="flex items-center justify-between mb-3">
                     <h2 className="text-base font-bold flex items-center gap-2 text-gray-800">
                         <LayoutDashboard className="text-pink-500" size={18} />
-                        Queue Control
+                        {uiText(language, 'Queue Control')}
                     </h2>
                 </div>
 
                 {/* Broadcast Controls */}
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <div className="basis-full text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">
-                        Status shown to customers
+                        {uiText(language, 'Status shown to customers')}
                     </div>
                     {/* ✅ Stop Queue - RED when active to indicate CLOSED */}
                     <button
@@ -254,11 +256,11 @@ export default function QueuePanel({
                             ? "bg-gray-200 text-gray-700 border-gray-300 ring-2 ring-gray-500 ring-offset-1"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200"
                         }`}
-                        aria-label="Stop queue temporarily"
-                        title="Pause new queue tickets on the customer queue page."
+                        aria-label={uiText(language, 'Stop queue temporarily')}
+                        title={uiText(language, 'Pause new queue tickets on the customer queue page.')}
                     >
                         <PauseCircle size={14} aria-hidden="true" />
-                        <span className="hidden sm:inline">หยุดรับคิว</span>
+                        <span className="hidden sm:inline">{uiText(language, 'Stop queue')}</span>
                     </button>
                     <button
                         onClick={() => handleSetBroadcast("Break time")}
@@ -266,11 +268,11 @@ export default function QueuePanel({
                             ? "bg-pink-100 text-pink-700 border-pink-200 ring-2 ring-pink-500 ring-offset-1"
                             : "bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200"
                         }`}
-                        aria-label="Set break time message"
-                        title="Show customers that the booth is taking a short break."
+                        aria-label={uiText(language, 'Set break time message')}
+                        title={uiText(language, 'Show customers that the booth is taking a short break.')}
                     >
                         <Coffee size={14} aria-hidden="true" />
-                        <span className="hidden sm:inline">พักเบรค</span>
+                        <span className="hidden sm:inline">{uiText(language, 'Break')}</span>
                     </button>
                     <button
                         onClick={() => handleSetBroadcast("Urgent matter, sorry for the inconvenience")}
@@ -278,20 +280,20 @@ export default function QueuePanel({
                             ? "bg-orange-100 text-orange-700 border-orange-200 ring-2 ring-orange-500 ring-offset-1"
                             : "bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200"
                         }`}
-                        aria-label="Set urgent message"
-                        title="Show customers that service is delayed by an urgent matter."
+                        aria-label={uiText(language, 'Set urgent message')}
+                        title={uiText(language, 'Show customers that service is delayed by an urgent matter.')}
                     >
                         <AlertCircle size={14} aria-hidden="true" />
-                        <span className="hidden sm:inline">ติดธุระ</span>
+                        <span className="hidden sm:inline">{uiText(language, 'Urgent delay')}</span>
                     </button>
                     {broadcastMessage && (
                         <button
                             onClick={() => handleSetBroadcast(null)}
                             className="p-1.5 rounded-lg border border-green-200 hover:bg-green-50 text-green-700 transition-colors flex items-center gap-1 touch-manipulation"
-                            title="Clear message & Re-open queue"
+                            title={uiText(language, 'Clear message & Re-open queue')}
                         >
                             <X size={14} />
-                            <span className="text-[9px] font-bold">CLEAR</span>
+                            <span className="text-[9px] font-bold">{uiText(language, 'CLEAR')}</span>
                         </button>
                     )}
                 </div>
@@ -301,12 +303,12 @@ export default function QueuePanel({
 
                     <div className="flex items-center gap-2">
                         <span className={`font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-700' : 'text-gray-500'}`}>
-                            {isBoothActive ? 'BOOTH OPEN' : 'BOOTH CLOSED'}
+                            {uiText(language, isBoothActive ? 'BOOTH OPEN' : 'BOOTH CLOSED')}
                         </span>
                         <button
                             onClick={handleToggleBooth}
                             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isBoothActive ? 'bg-green-500' : 'bg-gray-300'}`}
-                            aria-label={isBoothActive ? 'Close booth' : 'Open booth'}
+                            aria-label={uiText(language, isBoothActive ? 'Close booth' : 'Open booth')}
                             role="switch"
                             aria-checked={isBoothActive}
                         >
@@ -317,7 +319,7 @@ export default function QueuePanel({
 
                 {!activeEvent && (
                     <div className="mt-3 bg-gray-50 border border-gray-200 rounded p-1.5 text-center text-xs text-gray-500">
-                        No Active Event Today
+                        {uiText(language, 'No Active Event Today')}
                     </div>
                 )}
             </div>
@@ -325,15 +327,15 @@ export default function QueuePanel({
             {/* Stats Row */}
             <div className="grid grid-cols-3 gap-2 p-3 text-center border-b border-gray-100 bg-gray-50/50 shrink-0">
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-500 uppercase">Total</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">{uiText(language, 'Total')}</div>
                     <div className="mt-0.5 text-xl font-black text-gray-900">{totalInQueue}</div>
                 </div>
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-500 uppercase">Next</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">{uiText(language, 'Next')}</div>
                     <div className="mt-0.5 text-xl font-black text-pink-500">#{nextTicket ? nextTicket.queue_number : '-'}</div>
                 </div>
                 <div className="py-0.5">
-                    <div className="text-[10px] font-medium text-gray-500 uppercase">Waiting</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase">{uiText(language, 'Waiting')}</div>
                     <div className="mt-0.5 text-xl font-black text-gray-900">{waitingTickets.length}</div>
                 </div>
             </div>
@@ -350,18 +352,18 @@ export default function QueuePanel({
                     }`}
                 >
                     <Play size={18} fill="currentColor" />
-                    <span className="font-black">Call Next {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>
+                    <span className="font-black">{uiText(language, 'Call Next')} {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>
                 </Button>
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3" tabIndex={0} role="region" aria-label="Queue list">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3" tabIndex={0} role="region" aria-label={uiText(language, 'Queue list')}>
                 {/* Calling Section */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                     <div className="p-3">
                         <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                             <Bell className="text-yellow-500" size={14} />
-                            Calling ({readyTickets.length})
+                            {uiText(language, 'Calling')} ({readyTickets.length})
                         </h3>
                         {readyTickets.length > 0 ? (
                             <div className="space-y-1.5">
@@ -371,19 +373,19 @@ export default function QueuePanel({
                                         className={`bg-yellow-50 border rounded-md p-2 flex flex-col items-center text-center ${selectedQueueId === ticket.id ? 'border-pink-400 ring-2 ring-pink-200' : 'border-yellow-100'}`}
                                     >
                                         <div className="text-2xl font-black text-gray-900 leading-none">#{ticket.queue_number}</div>
-                                        <div className="text-[9px] text-gray-500 mb-1.5">{formatElapsedTime(ticket.called_at || ticket.last_updated_at)} ago</div>
+                                        <div className="text-[9px] text-gray-500 mb-1.5">{formatElapsedTime(ticket.called_at || ticket.last_updated_at)} {uiText(language, 'ago')}</div>
                                         <Button
                                             onClick={() => handleConfirmArrival(ticket)}
                                             className="w-full bg-pink-500 hover:bg-pink-600 text-white border-none shadow-sm h-7 text-[10px] font-bold tracking-wide rounded"
                                         >
-                                            ARRIVED
+                                            {uiText(language, 'ARRIVED')}
                                         </Button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
                             <div className="flex-1 flex items-center justify-center text-gray-500 text-[10px] py-4 italic border border-dashed border-gray-100 rounded-md">
-                                No one called yet
+                                {uiText(language, 'No one called yet')}
                             </div>
                         )}
                     </div>
@@ -394,7 +396,7 @@ export default function QueuePanel({
                 {/* Waiting List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-3 py-2 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                        <h3 className="font-bold text-xs text-gray-900">Waiting List</h3>
+                        <h3 className="font-bold text-xs text-gray-900">{uiText(language, 'Waiting List')}</h3>
                         <span className="bg-gray-200 text-gray-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{waitingTickets.length}</span>
                     </div>
                     <div className="max-h-[min(300px,40dvh)] overflow-y-auto overscroll-contain">
@@ -408,10 +410,10 @@ export default function QueuePanel({
                                             </div>
                                             <div>
                                                 <p className="text-[11px] font-bold text-gray-800 leading-none">
-                                                    {idx === 0 ? 'Next' : 'Wait'}
+                                                    {uiText(language, idx === 0 ? 'Next' : 'Wait')}
                                                 </p>
                                                 <p className="text-[9px] text-gray-500 leading-none mt-0.5">
-                                                    {t.created_at ? formatElapsedTime(t.created_at) : 'Queued'}
+                                                    {t.created_at ? formatElapsedTime(t.created_at) : uiText(language, 'Queued')}
                                                 </p>
                                             </div>
                                         </div>
@@ -419,7 +421,7 @@ export default function QueuePanel({
                                 ))}
                             </ul>
                         ) : (
-                            <div className="p-4 text-center text-gray-500 text-[10px]">No customers waiting</div>
+                            <div className="p-4 text-center text-gray-500 text-[10px]">{uiText(language, 'No customers waiting')}</div>
                         )}
                     </div>
                 </div>
@@ -430,7 +432,7 @@ export default function QueuePanel({
                         <div className="px-3 py-1.5 border-b border-gray-100 flex justify-between items-center bg-red-50/30">
                             <h3 className="font-bold text-xs text-gray-900 flex items-center gap-1.5">
                                 <RotateCcw size={12} className="text-red-400" />
-                                Missed
+                                {uiText(language, 'Missed')}
                             </h3>
                             <span className="bg-red-100 text-red-600 text-[9px] px-1.5 py-0.5 rounded-full font-bold">{expiredTickets.length}</span>
                         </div>
@@ -441,7 +443,7 @@ export default function QueuePanel({
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-bold text-red-400">#{t.queue_number}</span>
                                             <span className="text-[9px] text-gray-500">
-                                                {t.status === 'expired' ? 'Expired' : 'Cancelled'}
+                                                {uiText(language, t.status === 'expired' ? 'Expired' : 'Cancelled')}
                                             </span>
                                         </div>
                                         <button
@@ -454,7 +456,7 @@ export default function QueuePanel({
                                             }}
                                             className="text-[9px] text-pink-500 font-bold hover:underline"
                                         >
-                                            Recall
+                                            {uiText(language, 'Recall')}
                                         </button>
                                     </li>
                                 ))}

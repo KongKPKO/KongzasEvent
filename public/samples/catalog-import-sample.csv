@@ -1,5 +1,8 @@
-name,price,category,tags,description,currency,status,stock,is_unlimited,variant_group,variant_name,variant_sort_order
-Mini Acrylic Stand,350,Standy,"genshin, acrylic","Acrylic stand 10cm",THB,enable,30,false,Acrylic Stand Set,Default,1
-Blind Box Keychain,180,Gacha,"keychain|blind box","Random character keychain",THB,enable,,true,Keychain Blind Box,Random,1
-A3 Poster Set,500,A3,"poster; print","Set of 3 matte posters",THB,enable,15,false,,,
-Sold Out Sample,200,Other,sample,"Example sold out item",THB,soldout,0,false,,,
+﻿product_key,name,base_price,product_kind,category,tags,description,currency,cover_image,gallery_images,bundle_items,preorder_closes_at,preorder_eta,service_kind,service_duration_minutes,service_slots,variant_name,sku,price_override,stock,is_unlimited,status,variant_sort_order,image_url
+traveler-acrylic,Traveler Acrylic Stand,120,single,Standy,"genshin,acrylic",Acrylic stand 10 cm,THB,/samples/replace-me/traveler-cover.jpg,[],,,,,,,Aether,TRV-AETHER-001,,10,false,enable,1,/samples/replace-me/aether.jpg
+traveler-acrylic,Traveler Acrylic Stand,120,single,Standy,"genshin,acrylic",Acrylic stand 10 cm,THB,/samples/replace-me/traveler-cover.jpg,[],,,,,,,Lumine,TRV-LUMINE-002,130,8,false,enable,2,/samples/replace-me/lumine.jpg
+free-bonus,Event Bonus Card,100,single,Card,"bonus,promo",Example with an explicit zero-price variant,THB,/samples/replace-me/bonus.jpg,[],,,,,,,Free bonus,BONUS-FREE-001,0,,true,enable,1,
+photo-set,Cosplay Photo Set,180,photo,Photo,"cosplay,photo",Five-photo digital set,THB,/samples/replace-me/photo-01.jpg,"[""/samples/replace-me/photo-01.jpg"",""/samples/replace-me/photo-02.jpg"",""/samples/replace-me/photo-03.jpg"",""/samples/replace-me/photo-04.jpg"",""/samples/replace-me/photo-05.jpg""]",,,,,,,Default,PHOTO-SET-001,,20,false,enable,1,
+fan-bundle,Fan Meeting Bundle,450,bundle,Bundle,"event,bundle",Creator event bundle,THB,/samples/replace-me/bundle.jpg,[],"[{""name"":""Postcard"",""quantity"":3},{""name"":""Badge"",""quantity"":1}]",,,,,,Default,BUNDLE-001,,15,false,enable,1,
+december-preorder,December Acrylic Preorder,300,preorder,Preorder,"preorder,acrylic",Made after orders close,THB,/samples/replace-me/preorder.jpg,[],,2027-12-01T23:59:00+07:00,Ships in December 2027,,,,Default,PREORDER-001,,50,false,enable,1,
+cheki-service,Cheki Session,200,service,Service,"cheki,photo",One cheki photo session,THB,/samples/replace-me/cheki.jpg,[],,,,cheki,10,12,Default,CHEKI-001,,,true,enable,1,

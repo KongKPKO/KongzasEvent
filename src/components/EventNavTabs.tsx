@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Monitor, Users } from 'lucide-react';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../types/access';
 import type { ActorRole } from '../types/access';
+import { uiText, useI18n } from '../i18n';
 
 export type EventTabKey = 'overview' | 'dashboard' | 'catalog' | 'promotion' | 'preorder' | 'postorder' | 'pickup' | 'history';
 
@@ -20,6 +21,7 @@ interface EventNavTabsProps {
 // post-event store opens.
 export default function EventNavTabs({ eventId, active, actorRole }: EventNavTabsProps) {
   const navigate = useNavigate();
+  const { language } = useI18n();
   // Pages that render this without an actorContext are management-only routes.
   const role = actorRole ?? 'manager';
 
@@ -40,7 +42,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
   ];
 
   return (
-    <nav aria-label="Event sections" className="mb-5 flex flex-wrap items-center gap-2">
+    <nav aria-label={uiText(language, 'Event sections')} className="mb-5 flex flex-wrap items-center gap-2">
       <div className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
         {tabs.filter((tab) => tab.visible).map((tab) => (
           <button
@@ -54,7 +56,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
                 : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
             }`}
           >
-            {tab.label}
+            {uiText(language, tab.label)}
           </button>
         ))}
       </div>
@@ -66,7 +68,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
             onClick={() => navigate(action.path)}
             className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
           >
-            <action.icon size={15} /> {action.label}
+            <action.icon size={15} /> {uiText(language, action.label)}
           </button>
         ))}
       </div>

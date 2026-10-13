@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
+import EventAppearanceManager from '../../components/creator/EventAppearanceManager';
 import GuidedSetupPanel from '../../components/creator/GuidedSetupPanel';
 import { deriveSetupReadiness } from '../../lib/setupReadiness';
 import { supabase } from '../../supabaseClient';
@@ -37,6 +38,7 @@ import {
   getEventTimeZoneOptions,
   parseDateTimeInputInTimeZone,
 } from '../../utils/timezone';
+import { uiText, useI18n, type Language } from '../../i18n';
 
 interface EventWorkspaceProps {
   actorContext: ActorContext;
@@ -239,16 +241,38 @@ const formatMoney = (amount: number, currency: string) =>
     maximumFractionDigits: currency === 'THB' ? 0 : 2,
   }).format(amount || 0);
 
-const formatEventDate = (event: WorkspaceEvent) => {
+const formatEventDate = (event: WorkspaceEvent, locale: string) => {
   const date = new Date(event.start_date);
   if (Number.isNaN(date.getTime())) return '-';
 
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: event.event_timezone || getBrowserTimeZone(),
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   }).format(date);
+};
+
+const workspaceText = (language: Language, text: string) => {
+  if (language !== 'th') return text;
+  let match = text.match(/^(\d+) awaiting pickup$/);
+  if (match) return `รอรับสินค้า ${match[1]} รายการ`;
+  match = text.match(/^(\d+) orders? waiting for pickup$/);
+  if (match) return `มีออเดอร์รอรับสินค้า ${match[1]} รายการ`;
+  match = text.match(/^(\d+) queue tickets? need live attention\.$/);
+  if (match) return `มีคิว ${match[1]} รายการที่ต้องดูแลทันที`;
+  match = text.match(/^(\d+) completed orders? · (.+) revenue\.$/);
+  if (match) return `ออเดอร์สำเร็จ ${match[1]} รายการ · รายได้ ${match[2]}`;
+  match = text.match(/^(\d+) products? selling$/);
+  if (match) return `มีสินค้าวางขาย ${match[1]} รายการ`;
+  match = text.match(/^(\d+) waiting$/);
+  if (match) return `รอคิว ${match[1]} รายการ`;
+  match = text.match(/^(\d+) completed · (.+)$/);
+  if (match) return `สำเร็จ ${match[1]} รายการ · ${match[2]}`;
+  match = text.match(/^(\d+) orders? need staff confirmation\.$/);
+  if (match) return `มีออเดอร์ ${match[1]} รายการที่ต้องให้พนักงานยืนยัน`;
+  if (text.endsWith(' schedule is set')) return `ตั้งเวลากำหนด${uiText(language, text.replace(' schedule is set', ''))}แล้ว`;
+  return uiText(language, text);
 };
 
 const isWithinScheduleWindow = (opensAt: string | null | undefined, closesAt: string | null | undefined, now: Date) => {
@@ -657,6 +681,7 @@ const buildSetupGroups = (
 export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { language, dateLocale } = useI18n();
   const [event, setEvent] = useState<WorkspaceEvent | null>(null);
   const [metrics, setMetrics] = useState<WorkspaceMetrics>(emptyMetrics);
   const [artistSetup, setArtistSetup] = useState<WorkspaceArtistSetup | null>(null);
@@ -755,11 +780,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       });
     } catch (err) {
       console.error('[EventWorkspace] fetch failed:', err);
-      setError(err instanceof Error ? err.message : 'Could not load event workspace.');
+      setError(uiText(language, err instanceof Error ? err.message : 'Could not load event workspace.'));
     } finally {
       setLoading(false);
     }
-  }, [actorContext.role, eventId]);
+  }, [actorContext.role, eventId, language]);
 
   useEffect(() => {
     void fetchWorkspace();
@@ -868,7 +893,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
   const handleEventSave = async () => {
     if (!event || !eventDraft.event_name || !eventDraft.start_date) {
-      alert('Please fill in required fields (Name, Start Date).');
+      alert(uiText(language, 'Please fill in required fields (Name, Start Date).'));
       return;
     }
 
@@ -878,7 +903,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       const parsedStart = parseDateTimeInputInTimeZone(eventDraft.start_date || '', eventTimeZone);
 
       if (!parsedStart) {
-        alert('Invalid start date/time. Please check the selected timezone and date.');
+        alert(uiText(language, 'Invalid start date/time. Please check the selected timezone and date.'));
         return;
       }
 
@@ -927,7 +952,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       void fetchWorkspace();
     } catch (err) {
       console.error('[EventWorkspace] event save failed:', err);
-      alert('Failed to save event.');
+      alert(uiText(language, 'Failed to save event.'));
     } finally {
       setEventSaving(false);
     }
@@ -948,7 +973,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
     return (
       <div className="min-h-screen bg-gray-50 text-slate-800">
         <AdminHeader activePage="events" actorRole={actorContext.role} userEmail={actorContext.member_email} />
-        <main className="mx-auto max-w-6xl px-4 py-12 text-center text-sm font-bold text-gray-600">Loading event workspace...</main>
+        <main className="mx-auto max-w-6xl px-4 py-12 text-center text-sm font-bold text-gray-600">{uiText(language, 'Loading event workspace...')}</main>
       </div>
     );
   }
@@ -960,11 +985,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         <main className="mx-auto max-w-3xl px-4 py-12">
           <button onClick={goToAllEvents} className="workspace-action mb-5 inline-flex items-center gap-2 border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50">
             <ArrowLeft size={16} aria-hidden="true" />
-            ดู event ทั้งหมด
+            {uiText(language, 'View all events')}
           </button>
           <div className="workspace-card p-8 text-center">
-            <h1 className="text-xl font-black text-gray-900">Event workspace unavailable</h1>
-            <p className="mt-2 text-sm font-semibold text-gray-500">{error || 'Event not found.'}</p>
+            <h1 className="text-xl font-black text-gray-900">{uiText(language, 'Event workspace unavailable')}</h1>
+            <p className="mt-2 text-sm font-semibold text-gray-500">{error || uiText(language, 'Event not found.')}</p>
           </div>
         </main>
       </div>
@@ -996,30 +1021,29 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-5 md:px-6">
-        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
         <section className="mb-5 border-b border-gray-200 pb-5">
           <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
             <ArrowLeft size={15} aria-hidden="true" />
-            ดู event ทั้งหมด
+            {uiText(language, 'View all events')}
           </button>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${contextBadgeClass}`}>
-                  {contextLabel}
+                  {workspaceText(language, contextLabel)}
                 </span>
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black text-gray-600">
-                  {salesPhaseLabel[salesPhase]}
+                  {uiText(language, salesPhaseLabel[salesPhase])}
                 </span>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${boothBadgeClass}`}>
-                  {event.is_booth_open ? 'Booth open' : 'Booth closed'}
+                  {uiText(language, event.is_booth_open ? 'Booth open' : 'Booth closed')}
                 </span>
               </div>
               <h1 className="mt-3 truncate text-2xl font-black tracking-tight text-gray-900 md:text-3xl">{event.event_name}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-gray-600">
-                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event)}</span>
+                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event, dateLocale)}</span>
                 {event.location && <span className="inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" />{event.location}</span>}
-                {event.booth_detail && <span>Booth {event.booth_detail}</span>}
+                {event.booth_detail && <span>{uiText(language, 'Booth')} {event.booth_detail}</span>}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-4 lg:min-w-[520px]">
@@ -1031,6 +1055,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           </div>
         </section>
 
+        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
+
         {setupReadiness && !setupReadiness.complete && (
           <GuidedSetupPanel
             readiness={setupReadiness}
@@ -1041,16 +1067,16 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         )}
 
         {primaryAction ? (
-          <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label="Current event status">
+          <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label={uiText(language, 'Current event status')}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 gap-3">
                 <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${primaryActionClasses.icon}`}>
                   <primaryAction.icon size={22} aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <p className={`text-xs font-black uppercase tracking-wide ${primaryActionClasses.text}`}>{primaryAction.eyebrow}</p>
-                  <h2 className="mt-1 text-xl font-black tracking-tight text-gray-950 md:text-2xl">{primaryAction.title}</h2>
-                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-gray-700">{primaryAction.detail}</p>
+                  <p className={`text-xs font-black uppercase tracking-wide ${primaryActionClasses.text}`}>{workspaceText(language, primaryAction.eyebrow)}</p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-gray-950 md:text-2xl">{workspaceText(language, primaryAction.title)}</h2>
+                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-gray-700">{workspaceText(language, primaryAction.detail)}</p>
                 </div>
               </div>
               <button
@@ -1058,7 +1084,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 onClick={() => handleOverviewAction(primaryAction)}
                 className={`workspace-action inline-flex shrink-0 items-center justify-center gap-2 px-4 text-sm font-black ${primaryActionClasses.cta}`}
               >
-                {primaryAction.cta}
+                {workspaceText(language, primaryAction.cta)}
                 <ArrowRight size={16} aria-hidden="true" />
               </button>
             </div>
@@ -1066,15 +1092,19 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         ) : (
           <section className="mb-5 rounded-xl border border-gray-200 bg-white p-5 text-center shadow-sm">
             <Clock className="mx-auto mb-3 text-gray-300" size={34} aria-hidden="true" />
-            <p className="text-sm font-bold text-gray-600">No workspace actions are available for your role.</p>
+            <p className="text-sm font-bold text-gray-600">{uiText(language, 'No workspace actions are available for your role.')}</p>
           </section>
         )}
 
+        {canAccessManagementPages(actorContext.role) && (
+          <EventAppearanceManager event={event} />
+        )}
+
         {setupReadiness?.complete && setupGroups.length > 0 && (
-          <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event setup checklist">
+          <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={uiText(language, 'Event setup checklist')}>
             <div className="mb-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Setup</p>
-              <h2 className="text-lg font-black text-gray-900">Before sales open</h2>
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{uiText(language, 'Setup')}</p>
+              <h2 className="text-lg font-black text-gray-900">{uiText(language, 'Before sales open')}</h2>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
               {setupGroups.map((group) => (
@@ -1085,11 +1115,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         )}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.9fr)]">
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Event timeline">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={uiText(language, 'Event timeline')}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-gray-400">Event timeline</p>
-                <h2 className="text-lg font-black text-gray-900">Progress at a glance</h2>
+                <p className="text-xs font-black uppercase tracking-wide text-gray-400">{uiText(language, 'Event timeline')}</p>
+                <h2 className="text-lg font-black text-gray-900">{uiText(language, 'Progress at a glance')}</h2>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-5">
@@ -1099,10 +1129,10 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             </div>
           </section>
 
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Attention items">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={uiText(language, 'Attention items')}>
             <div className="mb-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">Attention</p>
-              <h2 className="text-lg font-black text-gray-900">Needs action</h2>
+              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{uiText(language, 'Attention')}</p>
+              <h2 className="text-lg font-black text-gray-900">{uiText(language, 'Needs action')}</h2>
             </div>
             {attentionItems.length > 0 ? (
               <div className="space-y-3">
@@ -1115,8 +1145,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" />
                   <div>
-                    <p className="text-sm font-black text-emerald-900">No urgent items</p>
-                    <p className="mt-1 text-sm font-semibold leading-5 text-emerald-800/80">Use the event tabs when you need deeper setup, sales, or order details.</p>
+                    <p className="text-sm font-black text-emerald-900">{uiText(language, 'No urgent items')}</p>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-emerald-800/80">{uiText(language, 'Use the event tabs when you need deeper setup, sales, or order details.')}</p>
                   </div>
                 </div>
               </div>
@@ -1134,11 +1164,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
           >
             <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
-              <h3 id="workspace-event-form-title" className="text-lg font-bold text-slate-800">Edit Event</h3>
+              <h3 id="workspace-event-form-title" className="text-lg font-bold text-slate-800">{uiText(language, 'Edit Event')}</h3>
               <button
                 onClick={() => setIsEventModalOpen(false)}
                 className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-800"
-                aria-label="Close event form"
+                aria-label={uiText(language, 'Close event form')}
               >
                 <X size={20} aria-hidden="true" />
               </button>
@@ -1146,12 +1176,12 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
             <div className="space-y-4 overflow-y-auto p-6 text-sm">
               <div className="rounded-xl border border-pink-100 bg-pink-50 p-3">
-                <p className="text-xs font-black uppercase tracking-wide text-pink-700">Event timing</p>
-                <p className="mt-1 text-xs font-semibold text-pink-800/80">Queue days reset using this event timezone, so choose the timezone where the booth is actually running.</p>
+                <p className="text-xs font-black uppercase tracking-wide text-pink-700">{uiText(language, 'Event timing')}</p>
+                <p className="mt-1 text-xs font-semibold text-pink-800/80">{uiText(language, 'Queue days reset using this event timezone, so choose the timezone where the booth is actually running.')}</p>
               </div>
 
               <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                <label className="text-xs font-bold uppercase text-gray-600" htmlFor="workspace-event-status">Status</label>
+                <label className="text-xs font-bold uppercase text-gray-600" htmlFor="workspace-event-status">{uiText(language, 'Status')}</label>
                 <select
                   id="workspace-event-status"
                   name="status"
@@ -1159,25 +1189,25 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   onChange={handleEventDraftChange}
                   className="mt-1 min-h-11 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-pink-500"
                 >
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Cancelled">Cancelled</option>
-                  <option value="Ended">Ended</option>
+                  <option value="Confirmed">{uiText(language, 'Confirmed')}</option>
+                  <option value="Cancelled">{uiText(language, 'Cancelled')}</option>
+                  <option value="Ended">{uiText(language, 'Ended')}</option>
                 </select>
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Event Name *</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Event Name *')}</span>
                 <input
                   name="event_name"
                   value={eventDraft.event_name || ''}
                   onChange={handleEventDraftChange}
                   className="w-full rounded-lg border border-gray-200 p-3 font-semibold outline-none focus:border-pink-500 focus:ring-pink-500"
-                  placeholder="e.g. Cosplay Festival 2026"
+                  placeholder={uiText(language, 'e.g. Cosplay Festival 2026')}
                 />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Time Zone *</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Time Zone *')}</span>
                 <select
                   name="event_timezone"
                   value={eventDraft.event_timezone || browserTimeZone}
@@ -1190,12 +1220,12 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                     </option>
                   ))}
                 </select>
-                <span className="block text-xs font-semibold text-gray-500">Used for end-of-day and daily queue reset.</span>
+                <span className="block text-xs font-semibold text-gray-500">{uiText(language, 'Used for end-of-day and daily queue reset.')}</span>
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Start Date *</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Start Date *')}</span>
                   <input
                     type="datetime-local"
                     name="start_date"
@@ -1205,7 +1235,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">End Date *</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'End Date *')}</span>
                   <input
                     type="datetime-local"
                     name="end_date"
@@ -1217,58 +1247,58 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Location</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Location')}</span>
                 <input
                   name="location"
                   value={eventDraft.location || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. 5th Floor, Siam Paragon"
+                  placeholder={uiText(language, 'e.g. 5th Floor, Siam Paragon')}
                 />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Booth Detail</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Booth Detail')}</span>
                 <input
                   name="booth_detail"
                   value={eventDraft.booth_detail || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. Booth A12, Zone Creator Hall"
+                  placeholder={uiText(language, 'e.g. Booth A12, Zone Creator Hall')}
                 />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Queueing Area</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Queueing Area')}</span>
                 <input
                   name="queueing_area"
                   value={eventDraft.queueing_area || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. Queue lane beside Booth A12"
+                  placeholder={uiText(language, 'e.g. Queue lane beside Booth A12')}
                 />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Entrance Fee</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Entrance Fee')}</span>
                 <input
                   name="entrance_fee"
                   value={eventDraft.entrance_fee || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. 300 THB / Free"
+                  placeholder={uiText(language, 'e.g. 300 THB / Free')}
                 />
               </label>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Transit Info</span>
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Transit Info')}</span>
                 <textarea
                   name="transit_info"
                   rows={3}
                   value={eventDraft.transit_info || ''}
                   onChange={handleEventDraftChange}
                   className="w-full resize-none rounded-lg border border-gray-200 p-2.5 outline-none focus:border-pink-500"
-                  placeholder="BTS Bangna..."
+                  placeholder={uiText(language, 'BTS Bangna...')}
                 />
               </label>
             </div>
@@ -1278,14 +1308,14 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 onClick={() => setIsEventModalOpen(false)}
                 className="workspace-action inline-flex items-center justify-center px-4 text-sm font-black text-gray-700 hover:bg-gray-100"
               >
-                Cancel
+                {uiText(language, 'Cancel')}
               </button>
               <button
                 onClick={handleEventSave}
                 disabled={eventSaving}
                 className="workspace-action inline-flex items-center justify-center bg-pink-600 px-6 text-sm font-black text-white shadow-md shadow-pink-200 hover:bg-pink-700 disabled:opacity-60"
               >
-                {eventSaving ? 'Saving...' : 'Save Event'}
+                {uiText(language, eventSaving ? 'Saving...' : 'Save Event')}
               </button>
             </div>
           </div>
@@ -1296,15 +1326,17 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 }
 
 function MetricTile({ label, value }: { label: string; value: string }) {
+  const { language } = useI18n();
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-left shadow-sm">
-      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{uiText(language, label)}</p>
       <p className="mt-1 truncate text-base font-black text-gray-900">{value}</p>
     </div>
   );
 }
 
 function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => void }) {
+  const { language } = useI18n();
   const Icon = step.icon;
   const statusStyles: Record<TimelineStatus, { shell: string; dot: string; label: string; icon: typeof CheckCircle2 }> = {
     done: {
@@ -1341,12 +1373,12 @@ function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => 
           <StatusIcon size={15} aria-hidden="true" />
         </div>
         <span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-gray-600">
-          {styles.label}
+          {uiText(language, styles.label)}
         </span>
       </div>
       <Icon size={18} className="mb-2 text-gray-500" aria-hidden="true" />
-      <h3 className="text-sm font-black text-gray-900">{step.title}</h3>
-      <p className="mt-1 min-h-[40px] text-xs font-semibold leading-5 text-gray-600">{step.detail}</p>
+      <h3 className="text-sm font-black text-gray-900">{workspaceText(language, step.title)}</h3>
+      <p className="mt-1 min-h-[40px] text-xs font-semibold leading-5 text-gray-600">{workspaceText(language, step.detail)}</p>
     </>
   );
 
@@ -1366,11 +1398,12 @@ function TimelineStepCard({ step, onOpen }: { step: TimelineStep; onOpen: () => 
 }
 
 function SetupGroupPanel({ group, onOpen }: { group: SetupGroup; onOpen: (target?: { href?: string; action?: 'edit-event' }) => void }) {
+  const { language } = useI18n();
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
       <div className="mb-3">
-        <h3 className="text-sm font-black text-gray-900">{group.title}</h3>
-        <p className="mt-1 text-xs font-semibold text-gray-500">{group.detail}</p>
+        <h3 className="text-sm font-black text-gray-900">{workspaceText(language, group.title)}</h3>
+        <p className="mt-1 text-xs font-semibold text-gray-500">{workspaceText(language, group.detail)}</p>
       </div>
       <div className="space-y-2">
         {group.items.map((item) => (
@@ -1382,6 +1415,7 @@ function SetupGroupPanel({ group, onOpen }: { group: SetupGroup; onOpen: (target
 }
 
 function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void }) {
+  const { language } = useI18n();
   const Icon = item.icon;
   const statusClasses: Record<TimelineStatus, { pill: string; label: string; icon: typeof CheckCircle2 }> = {
     done: {
@@ -1420,13 +1454,13 @@ function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void })
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-black text-gray-900">{item.title}</p>
+            <p className="text-sm font-black text-gray-900">{workspaceText(language, item.title)}</p>
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${status.pill}`}>
               <StatusIcon size={11} aria-hidden="true" />
-              {status.label}
+              {uiText(language, status.label)}
             </span>
           </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{item.detail}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{workspaceText(language, item.detail)}</p>
         </div>
         <ArrowRight className="mt-2 shrink-0 text-gray-400" size={15} aria-hidden="true" />
       </div>
@@ -1435,6 +1469,7 @@ function SetupItemRow({ item, onOpen }: { item: SetupItem; onOpen: () => void })
 }
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: () => void }) {
+  const { language } = useI18n();
   const classes = toneClasses[item.tone];
 
   return (
@@ -1446,8 +1481,8 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: () => voi
       <div className="flex items-start gap-3">
         <AlertCircle className={`mt-0.5 shrink-0 ${classes.text}`} size={18} aria-hidden="true" />
         <div className="min-w-0">
-          <p className="text-sm font-black text-gray-900">{item.title}</p>
-          <p className="mt-1 text-sm font-semibold leading-5 text-gray-700">{item.detail}</p>
+          <p className="text-sm font-black text-gray-900">{workspaceText(language, item.title)}</p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-gray-700">{workspaceText(language, item.detail)}</p>
         </div>
         <ArrowRight className="ml-auto mt-1 shrink-0 text-gray-400" size={15} aria-hidden="true" />
       </div>

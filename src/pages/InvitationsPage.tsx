@@ -1,3 +1,4 @@
+import { useI18n, uiText, LanguageToggle } from '../i18n';
 // src/pages/InvitationsPage.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
@@ -11,6 +12,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function InvitationsPage() {
+  const { language, dateLocale } = useI18n();
   const [invitations, setInvitations] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -74,17 +76,15 @@ export default function InvitationsPage() {
       <main className="max-w-2xl mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-6">
           <Bell size={18} className="text-gray-600" />
-          <h1 className="text-xl font-black text-gray-800">My Invitations</h1>
+          <h1 className="text-xl font-black text-gray-800">{uiText(language, "My Invitations")}</h1><LanguageToggle className="ml-auto" />
         </div>
 
         {loading ? (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <p className="text-sm text-gray-500">{uiText(language, "Loading…")}</p>
         ) : fetchError ? (
-          <p className="text-sm text-red-500">{fetchError}</p>
+          <p className="text-sm text-red-500">{uiText(language, fetchError)}</p>
         ) : invitations.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center text-sm text-gray-400">
-            No pending invitations.
-          </div>
+          <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center text-sm text-gray-400">{uiText(language, " No pending invitations. ")}</div>
         ) : (
           <div className="flex flex-col gap-3">
             {invitations.map((inv) => (
@@ -95,11 +95,10 @@ export default function InvitationsPage() {
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{inv.artist_name}</p>
                   <p className="text-xs text-gray-500">
-                    {ROLE_LABELS[inv.role] ?? inv.role} ·{' '}
-                    Invited {new Date(inv.invited_at).toLocaleDateString('en-GB')}
+                    {uiText(language, ROLE_LABELS[inv.role] ?? inv.role)} ·{' '}{uiText(language, " Invited ")}{new Date(inv.invited_at).toLocaleDateString(dateLocale)}
                   </p>
                   {messages[inv.id] && (
-                    <p className="text-xs text-red-500 mt-1">{messages[inv.id]}</p>
+                    <p className="text-xs text-red-500 mt-1">{uiText(language, messages[inv.id])}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -109,16 +108,14 @@ export default function InvitationsPage() {
                     disabled={actionId === inv.id}
                     className="px-4 py-1.5 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
                   >
-                    {actionId === inv.id ? 'Processing…' : 'Accept'}
+                    {uiText(language, actionId === inv.id ? 'Processing…' : 'Accept')}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDecline(inv)}
                     disabled={actionId === inv.id}
                     className="px-4 py-1.5 text-sm border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Decline
-                  </button>
+                  >{uiText(language, " Decline ")}</button>
                 </div>
               </div>
             ))}

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, MapPin, Search, Sparkles, Ticket, UsersRound } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-import { LanguageToggle, useI18n } from '../../i18n';
+import { LanguageToggle, uiText, useI18n } from '../../i18n';
 
 interface DiscoveryEventRecord {
   id: string;
@@ -80,7 +80,7 @@ function NireqWordmark() {
 }
 
 export default function DiscoveryHome() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [openOnly, setOpenOnly] = useState(false);
@@ -126,7 +126,7 @@ export default function DiscoveryHome() {
               bio: artist.bio,
               image_url: resolveAvatarUrl(artist.image_url),
               event_id: event?.id || `artist-${artist.id}`,
-              event_name: event?.event_name || 'No upcoming event',
+              event_name: event?.event_name || uiText(language, 'No upcoming event'),
               location: normalizeEventLocation(event),
               booth_detail: normalizeEventBooth(event),
               is_booth_open: !!event?.is_booth_open,
@@ -147,7 +147,7 @@ export default function DiscoveryHome() {
     };
 
     void load();
-  }, []);
+  }, [language]);
 
   const filteredCreators = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -169,7 +169,7 @@ export default function DiscoveryHome() {
     <div className="min-h-screen bg-[#fff7fb] text-gray-950">
       <header className="sticky top-0 z-30 border-b border-pink-100 bg-white/88 backdrop-blur-xl" data-testid="public-topbar">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link to="/" aria-label="Nireq home" className="inline-flex min-h-11 items-center">
+          <Link to="/" aria-label={uiText(language, 'Nireq home')} className="inline-flex min-h-11 items-center">
             <NireqWordmark />
           </Link>
           <nav className="flex items-center gap-2">

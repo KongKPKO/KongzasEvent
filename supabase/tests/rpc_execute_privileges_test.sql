@@ -32,6 +32,7 @@ with public_rpc(signature) as (
     ('public.has_event_role(uuid,text[])'),
     ('public.is_creator_slug_available(text)'),
     ('public.is_platform_admin()'),
+    ('public.is_public_event_appearance_visible(uuid,uuid)'),
     ('public.leave_queue_ticket(uuid,text)'),
     ('public.list_event_products(uuid)'),
     ('public.quote_sale_promotions(uuid,text,uuid,jsonb,jsonb,jsonb)'),
@@ -46,7 +47,7 @@ select is(
     where to_regprocedure(r.signature) is not null
       and has_function_privilege('anon', to_regprocedure(r.signature), 'execute')
   ),
-  22::bigint,
+  23::bigint,
   'anon retains every intentional public RPC and RLS helper'
 );
 
@@ -68,6 +69,7 @@ with public_rpc(signature) as (
     ('public.has_event_role(uuid,text[])'),
     ('public.is_creator_slug_available(text)'),
     ('public.is_platform_admin()'),
+    ('public.is_public_event_appearance_visible(uuid,uuid)'),
     ('public.leave_queue_ticket(uuid,text)'),
     ('public.list_event_products(uuid)'),
     ('public.quote_sale_promotions(uuid,text,uuid,jsonb,jsonb,jsonb)'),

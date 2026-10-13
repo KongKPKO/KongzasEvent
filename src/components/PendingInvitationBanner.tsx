@@ -1,3 +1,4 @@
+import { useI18n, uiText } from '../i18n';
 // src/components/PendingInvitationBanner.tsx
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -47,6 +48,7 @@ interface Props {
 }
 
 export default function PendingInvitationBanner({ invitations, onAccepted }: Props) {
+  const { language } = useI18n();
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [acceptedIds, setAcceptedIds] = useState<string[]>([]);
   const [localDismissed, setLocalDismissed] = useState<string[]>(getDismissed);
@@ -86,7 +88,7 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
   };
 
   return (
-    <div role="region" aria-label="Pending team invitations" className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
+    <div role="region" aria-label={uiText(language, "Pending team invitations")} className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
       {shown.map((inv) => (
         <div
           key={inv.id}
@@ -95,15 +97,13 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
           <div className="flex items-start gap-3">
             <Bell size={16} className="text-pink-500 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-800 leading-snug">
-                You've been invited to join{' '}
+              <p className="text-sm font-semibold text-gray-800 leading-snug">{uiText(language, " You've been invited to join")}{' '}
                 <span className="text-pink-600">{inv.artist_name}</span>
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Role: {ROLE_LABELS[inv.role] ?? inv.role}
+              <p className="text-xs text-gray-500 mt-0.5">{uiText(language, " Role: ")}{uiText(language, ROLE_LABELS[inv.role] ?? inv.role)}
               </p>
               {errorId === inv.id && (
-                <p className="text-xs text-red-500 mt-1">Failed to accept. Please try again.</p>
+                <p className="text-xs text-red-500 mt-1">{uiText(language, "Failed to accept. Please try again.")}</p>
               )}
             </div>
           </div>
@@ -113,27 +113,23 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
               onClick={() => handleAccept(inv)}
               disabled={acceptingId === inv.id}
               aria-busy={acceptingId === inv.id}
-              aria-label={`Accept invitation to join ${inv.artist_name}`}
+              aria-label={language === 'th' ? `ตอบรับคำเชิญเข้าร่วม ${inv.artist_name}` : `Accept invitation to join ${inv.artist_name}`}
               className="flex-1 py-1.5 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <Check size={13} />
-              {acceptingId === inv.id ? 'Accepting…' : 'Accept'}
+              {uiText(language, acceptingId === inv.id ? 'Accepting…' : 'Accept')}
             </button>
             <button
               type="button"
               onClick={() => handleNotNow(inv)}
-              aria-label={`Dismiss invitation from ${inv.artist_name} for now`}
+              aria-label={language === 'th' ? `เก็บคำเชิญจาก ${inv.artist_name} ไว้ก่อน` : `Dismiss invitation from ${inv.artist_name} for now`}
               className="flex-1 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              Not now
-            </button>
+            >{uiText(language, " Not now ")}</button>
           </div>
           <Link
             to="/invitations"
             className="text-xs text-center text-gray-400 hover:text-gray-600 underline"
-          >
-            Manage invitations
-          </Link>
+          >{uiText(language, " Manage invitations ")}</Link>
         </div>
       ))}
     </div>

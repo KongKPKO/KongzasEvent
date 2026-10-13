@@ -1,6 +1,6 @@
 
 import { Instagram, Facebook, Music2, Mail } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 
 interface SocialFooterProps {
   artist: {
@@ -19,13 +19,13 @@ const XIcon = ({ size = 20, className = "" }: { size?: number, className?: strin
 );
 
 const SocialFooter = ({ artist }: SocialFooterProps) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const socialLinks = [
     { icon: <XIcon size={20} />, url: artist.x_url, label: 'X', hoverClass: 'hover:bg-black' },
     { icon: <Instagram size={20} />, url: artist.ig_url, label: 'Instagram', hoverClass: 'hover:bg-[#d62976]' },
     { icon: <Facebook size={20} />, url: artist.facebook_url, label: 'Facebook', hoverClass: 'hover:bg-[#1877f2]' },
     { icon: <Music2 size={20} />, url: artist.tiktok_url, label: 'TikTok', hoverClass: 'hover:bg-black' },
-    { icon: <Mail size={20} />, url: artist.email ? `mailto:${artist.email}` : '', label: 'Email', hoverClass: 'hover:bg-[#ea4335]' },
+    { icon: <Mail size={20} />, url: artist.email ? `mailto:${artist.email}` : '', label: uiText(language, 'Email'), hoverClass: 'hover:bg-[#ea4335]' },
   ].filter(link => link.url);
 
   if (socialLinks.length === 0) return null;

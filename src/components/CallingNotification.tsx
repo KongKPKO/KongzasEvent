@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Bell, ChevronRight, Coffee, Info, AlertTriangle, PauseCircle } from 'lucide-react';
-import { useI18n } from '../i18n';
+import { uiText, useI18n } from '../i18n';
 import { formatDateInTimeZone } from '../utils/timezone';
 import {
   TICKET_UPDATED_EVENT,
@@ -18,7 +18,7 @@ interface CallingNotificationProps {
 }
 
 const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcastMessage }: CallingNotificationProps) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const navigate = useNavigate();
   const [isCalling, setIsCalling] = useState(false);
   const [ticketNumber, setTicketNumber] = useState<string | null>(null);
@@ -178,7 +178,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   // 🎨 RENDER LOGIC
   const proceedDestination = queueingArea?.trim();
   const proceedMessage = proceedDestination
-    ? `Please proceed to ${proceedDestination}`
+    ? `${uiText(language, 'Please proceed to')} ${proceedDestination}`
     : t('notificationProceedBooth');
   
   // Priority 1: Calling Notification

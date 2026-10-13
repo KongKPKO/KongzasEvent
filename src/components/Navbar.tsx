@@ -1,8 +1,10 @@
 // import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Coffee, Users } from 'lucide-react';
+import { uiText, useI18n } from '../i18n';
 
 export const Navbar = () => {
+  const { language } = useI18n();
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b border-gray-200 z-50 pb-2">
       <div className="max-w-md mx-auto flex flex-col items-center px-4 pt-3 pb-2">
@@ -27,7 +29,7 @@ export const Navbar = () => {
             })}
           >
             <Home size={28} />
-            <span className="text-xs font-bold mt-1">Home</span>
+            <span className="text-xs font-bold mt-1">{uiText(language, 'Home')}</span>
           </NavLink>
 
           <NavLink 
@@ -46,7 +48,7 @@ export const Navbar = () => {
             })}
           >
             <Coffee size={28} />
-            <span className="text-xs font-bold mt-1">Menu</span>
+            <span className="text-xs font-bold mt-1">{uiText(language, 'Menu')}</span>
           </NavLink>
 
           <NavLink 
@@ -65,7 +67,7 @@ export const Navbar = () => {
             })}
           >
             <Users size={28} />
-            <span className="text-xs font-bold mt-1">Queue</span>
+            <span className="text-xs font-bold mt-1">{uiText(language, 'Queue')}</span>
           </NavLink>
         </div>
       </div>

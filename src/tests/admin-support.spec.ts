@@ -1,9 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { execFileSync } from 'node:child_process';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
+
+const projectId = readFileSync(resolve(process.env.SUPABASE_WORKDIR || '.', 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
+if (!projectId) throw new Error('Local Supabase project_id is required');
+const localDatabaseContainer = `supabase_db_${projectId}`;
 
 test('admin support reads a foreign store/order without changing commerce data', async ({ page }) => {
   test.setTimeout(90000);
@@ -52,13 +58,13 @@ test('admin support reads a foreign store/order without changing commerce data',
     await expect(page.locator('vite-error-overlay')).toHaveCount(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({path:`/tmp/admin-support-${test.info().project.name}.png`,fullPage:true});
-    await page.getByRole('button',{name:'Switch language',exact:true}).click();
+    await page.getByRole('combobox',{name:'Language',exact:true}).selectOption('th');
     await expect(page.getByRole('heading',{name:'ช่วยเหลือร้าน',exact:true})).toBeVisible();
     await expect(page.getByRole('region',{name:'รายละเอียด',exact:true})).toContainText('ไม่ใช่หลักฐานว่าคืนสต็อกแล้ว');
     expect((await service.from('orders').select('*').eq('id',order).single()).data).toEqual(before);
     expect((await service.from('order_payments').select('payment_status').eq('order_id',order).single()).data?.payment_status).toBe('awaiting_payment');
     // Read audit evidence through local postgres only; no API grants to audit data.
-    const audit=execFileSync('docker',['exec','supabase_db_EventWebQueue','psql','-U','postgres','-d','postgres','-At','-c',`select count(*) from private.admin_support_access where actor_id='${userId}' and order_id='${order}';`],{encoding:'utf8'});
+    const audit=execFileSync('docker',['exec',localDatabaseContainer,'psql','-U','postgres','-d','postgres','-At','-c',`select count(*) from private.admin_support_access where actor_id='${userId}' and order_id='${order}';`],{encoding:'utf8'});
     expect(Number(audit.trim())).toBe(1);
     const original={order_id:order,delivery_key:'submitted:original',notification_event:'submitted',status:'delivered',attempts:1,delivered_at:new Date().toISOString(),last_error:'SECRET PROVIDER DATA'};
     must(await service.from('preorder_notification_deliveries').insert(original));
@@ -88,9 +94,9 @@ test('admin support reads a foreign store/order without changing commerce data',
     const simultaneous=await Promise.all([1,2].map(()=>api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})));
     expect(simultaneous.filter(r=>r.data?.status==='accepted')).toHaveLength(1);
     expect(simultaneous.filter(r=>r.error)).toHaveLength(1);
-    const mails=await fetch(`http://localhost:54324/api/v1/search?query=${encodeURIComponent(`to:private+${order}@example.test`)}`).then(r=>r.json());
+    const mails=await fetch(`${env.mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:private+${order}@example.test`)}`).then(r=>r.json());
     expect(mails.messages).toHaveLength(2);
-    const message=await fetch(`http://localhost:54324/api/v1/message/${mails.messages[0].ID}`).then(r=>r.json());
+    const message=await fetch(`${env.mailpitUrl}/api/v1/message/${mails.messages[0].ID}`).then(r=>r.json());
     expect(message.Text).toContain(`/support-${store.slice(0,8)}/order/SUP123`);
     expect(message.Text).not.toContain('SECRET');
     expect((await service.from('preorder_notification_deliveries').select('status,attempts,last_error').eq('order_id',order).single()).data).toEqual({status:'delivered',attempts:1,last_error:'SECRET PROVIDER DATA'});
@@ -133,7 +139,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     must(await service.from('platform_admins').delete().eq('admin_email',email));
     expect((await api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})).error).toBeTruthy();
     await page.reload();
-    await expect(page.getByText('เฉพาะ Platform Admin',{exact:true})).toBeVisible();
+    await expect(page.getByText('เฉพาะผู้ดูแลระบบ',{exact:true})).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     await service.from('platform_admins').delete().eq('admin_email',email);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { useI18n } from '../i18n';
+import { uiText, useI18n } from '../i18n';
 
 type History = {
   can_resend: boolean;
@@ -75,7 +75,7 @@ export default function AdminOrderHistory({orderId,reason,onForbidden}: {orderId
       <h3 className="font-bold">{tr('การส่งอีเมล (ล่าสุดอย่างละ 25 รายการ)','Email delivery (latest 25 per list)')}</h3>
       <p className="text-xs text-gray-500">{tr('ส่งสำเร็จไม่ได้ยืนยันว่าเข้ากล่องจดหมายหรือถูกอ่านแล้ว','A successful send does not prove inbox delivery or that it was read.')}</p>
       <ul className="divide-y text-sm">{history.deliveries.map((d,i)=><li key={i} className="py-2">{eventLabel(d.notification_event)} · {label(d.status)} · {d.attempts} {tr('ครั้ง','attempts')}<p>{date(d.delivered_at || d.claimed_at)}</p></li>)}</ul>
-      <ul className="divide-y text-sm">{history.resends.map(d=><li key={d.id} className="break-words py-2">{tr('Admin ส่งลิงก์ซ้ำ','Admin link resend')} · {label(d.status)}<p>{date(d.created_at)}</p><p className="text-xs text-gray-500">Admin ID: {d.actor_id}</p></li>)}</ul>
+      <ul className="divide-y text-sm">{history.resends.map(d=><li key={d.id} className="break-words py-2">{tr('Admin ส่งลิงก์ซ้ำ','Admin link resend')} · {label(d.status)}<p>{date(d.created_at)}</p><p className="text-xs text-gray-500">{uiText(language, 'Admin ID')}: {d.actor_id}</p></li>)}</ul>
       {!history.deliveries.length && !history.resends.length && <p>{tr('ไม่มีประวัติอีเมลที่บันทึกไว้','No recorded email history')}</p>}
       {history.can_resend ? <div className="space-y-2 rounded-xl bg-gray-50 p-4">
         <label className="block text-sm font-bold">{tr('เหตุผลที่ส่งอีเมลซ้ำ','Reason for resending email')}<textarea className="mt-1 min-h-20 w-full rounded-xl border border-gray-300 bg-white p-3" minLength={5} maxLength={500} disabled={busy || !!attempt.current} value={sendReason} onChange={e=>setSendReason(e.target.value)} /></label>

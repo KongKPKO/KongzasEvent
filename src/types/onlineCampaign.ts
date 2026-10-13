@@ -1,4 +1,5 @@
 import type { PromotionChoice } from './promotion';
+import type { ProductPresentationFields, ProductVariantFields } from './productPresentation';
 
 export type CampaignPublicationStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type CampaignState = CampaignPublicationStatus | 'scheduled' | 'open' | 'sold_out' | 'closed';
@@ -22,7 +23,7 @@ export type CampaignFulfillmentStatus =
   | 'cancelled'
   | 'expired';
 
-export interface CampaignProduct {
+export interface CampaignProduct extends ProductPresentationFields, ProductVariantFields {
   id?: string;
   campaign_product_id?: string;
   product_id: string;
@@ -32,8 +33,6 @@ export interface CampaignProduct {
   tags?: string[];
   image_url?: string | null;
   sku?: string | null;
-  variant_group_name?: string | null;
-  variant_name?: string | null;
   price: number;
   price_override?: number | null;
   currency?: string;

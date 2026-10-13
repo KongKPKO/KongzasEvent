@@ -4,6 +4,7 @@ import EventNavTabs from '../../components/EventNavTabs';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, DollarSign, CreditCard, ShoppingBag, FileText, LayoutList, PackageCheck } from 'lucide-react';
 import { formatPrice } from '../../utils/currency'; // ✅ NEW
+import { uiText, useI18n } from '../../i18n';
 import type { OrderType, PickupStatus } from '../../types/preorder';
 
 interface OrderItem {
@@ -41,6 +42,19 @@ interface EventInfo {
 export default function EventHistory() {
     const { eventId } = useParams();
     const navigate = useNavigate();
+    const { language, dateLocale } = useI18n();
+    const pickupStatusLabel = (status: PickupStatus) => {
+        const labels: Record<PickupStatus, string> = {
+            not_required: 'Not required',
+            awaiting_pickup: 'Awaiting pickup',
+            picked_up: 'Picked up',
+            cancelled: 'Cancelled',
+            expired: 'Expired',
+            awaiting_shipment: 'Awaiting shipment',
+            shipped: 'Shipped',
+        };
+        return uiText(language, labels[status]);
+    };
     const [orders, setOrders] = useState<Order[]>([]);
     const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
     const [loading, setLoading] = useState(true);
@@ -56,10 +70,10 @@ export default function EventHistory() {
         try {
             const { data: event } = await supabase
                 .from('events')
-                .select('event_name, start_date') 
+                .select('event_name, start_date')
                 .eq('id', eventId)
                 .single();
-            
+
             if (event) setEventInfo(event);
 
             const { data: ordersData, error } = await supabase
@@ -119,10 +133,10 @@ export default function EventHistory() {
         const preorderTotal = preorderOrders.reduce((sum, order) => sum + order.total_price, 0);
 
         const productStats: Record<string, { name: string; qty: number; total: number }> = {};
-        
+
         orders.forEach(order => {
             order.order_items.forEach(item => {
-                const prodName = item.products?.name || 'Unknown';
+                const prodName = item.products?.name || uiText(language, 'Unknown product');
                 if (!productStats[prodName]) {
                     productStats[prodName] = { name: prodName, qty: 0, total: 0 };
                 }
@@ -134,9 +148,9 @@ export default function EventHistory() {
         const topProducts = Object.values(productStats).sort((a, b) => b.qty - a.qty);
 
         return { totalRevenue, totalOrders, cashTotal, transferTotal, cashOrders, transferOrders, preorderTotal, preorderOrders: preorderOrders.length, topProducts };
-    }, [orders]);
+    }, [language, orders]);
 
-    if (loading) return <div className="p-10 text-center text-gray-400">Loading history...</div>;
+    if (loading) return <div className="p-10 text-center text-gray-400">{uiText(language, 'Loading history...')}</div>;
 
     return (
         <div className="min-h-screen bg-gray-50 p-6 font-sans">
@@ -145,17 +159,17 @@ export default function EventHistory() {
                 {eventId && <EventNavTabs eventId={eventId} active="history" />}
             </div>
             <div className="max-w-5xl mx-auto mb-8 flex items-center gap-4">
-                <button onClick={() => navigate(`/manage-events/${eventId}/workspace`)} className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500" aria-label="Back to event workspace">
+                <button onClick={() => navigate(`/manage-events/${eventId}/workspace`)} className="p-2.5 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition text-gray-500" aria-label={uiText(language, 'Back to event workspace')}>
                     <ArrowLeft size={20} />
                 </button>
                 <div>
-                    <h1 className="text-2xl font-black text-gray-800 tracking-tight">Order History</h1>
+                    <h1 className="text-2xl font-black text-gray-800 tracking-tight">{uiText(language, 'Order History')}</h1>
                     <p className="text-sm font-bold text-pink-500 flex items-center gap-1.5 mt-0.5">
-                        <LayoutList size={14}/> 
-                        {eventInfo?.event_name || 'Loading...'} 
+                        <LayoutList size={14}/>
+                        {eventInfo?.event_name || uiText(language, 'Loading...')}
                         <span className="text-gray-300">|</span>
                         <span className="text-gray-500 font-medium">
-                            {eventInfo?.start_date ? new Date(eventInfo.start_date).toLocaleDateString('en-GB') : ''}
+                            {eventInfo?.start_date ? new Date(eventInfo.start_date).toLocaleDateString(dateLocale) : ''}
                         </span>
                     </p>
                 </div>
@@ -167,74 +181,74 @@ export default function EventHistory() {
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-pink-100">
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600"><DollarSign size={20} /></div>
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Revenue</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{uiText(language, 'Total Revenue')}</span>
                         </div>
                         {/* ✅ FIX: Use currency from first order or default */}
                         <div className="text-3xl font-black text-gray-800">{formatPrice(summary.totalRevenue, orders[0]?.currency || 'THB')}</div>
-                        <div className="text-xs text-gray-400 mt-1 font-medium">{summary.totalOrders} completed orders</div>
+                        <div className="text-xs text-gray-400 mt-1 font-medium">{language === 'th' ? `ออเดอร์สำเร็จ ${summary.totalOrders} รายการ` : `${summary.totalOrders} completed orders`}</div>
                     </div>
 
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-emerald-100">
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600"><DollarSign size={20} /></div>
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cash</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{uiText(language, 'Cash')}</span>
                         </div>
                         <div className="text-3xl font-black text-gray-800">{formatPrice(summary.cashTotal, orders[0]?.currency || 'THB')}</div>
-                        <div className="text-xs text-gray-400 mt-1 font-medium">{summary.cashOrders} completed cash method</div>
+                        <div className="text-xs text-gray-400 mt-1 font-medium">{language === 'th' ? `ชำระเงินสดสำเร็จ ${summary.cashOrders} รายการ` : `${summary.cashOrders} completed cash payments`}</div>
                     </div>
 
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100">
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><CreditCard size={20} /></div>
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Transfer</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{uiText(language, 'Transfer')}</span>
                         </div>
                         <div className="text-3xl font-black text-gray-800">{formatPrice(summary.transferTotal, orders[0]?.currency || 'THB')}</div>
-                        <div className="text-xs text-gray-400 mt-1 font-medium">{summary.transferOrders} completed transfer method</div>
+                        <div className="text-xs text-gray-400 mt-1 font-medium">{language === 'th' ? `ชำระเงินโอนสำเร็จ ${summary.transferOrders} รายการ` : `${summary.transferOrders} completed transfer payments`}</div>
                     </div>
 
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-rose-100">
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600"><PackageCheck size={20} /></div>
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pre-order</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{uiText(language, 'Pre-order')}</span>
                         </div>
                         <div className="text-3xl font-black text-gray-800">{formatPrice(summary.preorderTotal, orders[0]?.currency || 'THB')}</div>
-                        <div className="text-xs text-gray-400 mt-1 font-medium">{summary.preorderOrders} completed pre-orders</div>
+                        <div className="text-xs text-gray-400 mt-1 font-medium">{language === 'th' ? `พรีออเดอร์สำเร็จ ${summary.preorderOrders} รายการ` : `${summary.preorderOrders} completed pre-orders`}</div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* 2. Product Breakdown */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 lg:col-span-1 h-fit">
-                        <h3 className="font-bold text-gray-800 mb-5 flex items-center gap-2 text-sm uppercase tracking-wide"><ShoppingBag size={16}/> Product Sales</h3>
+                        <h3 className="font-bold text-gray-800 mb-5 flex items-center gap-2 text-sm uppercase tracking-wide"><ShoppingBag size={16}/> {uiText(language, 'Product Sales')}</h3>
                         <div className="space-y-4">
                             {summary.topProducts.map((prod, idx) => (
                                 <div key={idx} className="flex justify-between items-center border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                                     <div className="min-w-0 flex-1 pr-2">
                                         <div className="text-sm font-bold text-gray-700 truncate">{prod.name}</div>
-                                        <div className="text-[10px] text-gray-400 font-medium">Sold: {prod.qty} units</div>
+                                        <div className="text-[10px] text-gray-400 font-medium">{language === 'th' ? `ขายแล้ว ${prod.qty} ชิ้น` : `Sold: ${prod.qty} units`}</div>
                                     </div>
                                     <div className="font-bold text-gray-800 text-sm">{formatPrice(prod.total, orders[0]?.currency || 'THB')}</div>
                                 </div>
                             ))}
-                            {summary.topProducts.length === 0 && <div className="text-center text-gray-400 text-sm py-4">No sales yet</div>}
+                            {summary.topProducts.length === 0 && <div className="text-center text-gray-400 text-sm py-4">{uiText(language, 'No sales yet')}</div>}
                         </div>
                     </div>
 
                     {/* 3. Transaction History Table */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2">
                         <div className="p-6 border-b border-gray-100">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide"><FileText size={16}/> Transactions</h3>
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide"><FileText size={16}/> {uiText(language, 'Transactions')}</h3>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50/50 text-gray-400 text-[10px] uppercase font-bold tracking-wider">
                                     <tr>
                                         {/* ✅ ลด Padding เหลือ px-4 */}
-                                        <th className="px-4 py-3">Date & Time</th>
-                                        <th className="px-4 py-3">Customer</th>
-                                        <th className="px-4 py-3">Items</th>
-                                        <th className="px-4 py-3 text-right">Amount</th>
-                                        <th className="px-4 py-3 text-right">Method</th>
+                                        <th className="px-4 py-3">{uiText(language, 'Date & Time')}</th>
+                                        <th className="px-4 py-3">{uiText(language, 'Customer')}</th>
+                                        <th className="px-4 py-3">{uiText(language, 'Items')}</th>
+                                        <th className="px-4 py-3 text-right">{uiText(language, 'Amount')}</th>
+                                        <th className="px-4 py-3 text-right">{uiText(language, 'Method')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
@@ -244,30 +258,30 @@ export default function EventHistory() {
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-bold text-gray-700">
-                                                        {new Date(order.created_at).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'})}
+                                                        {new Date(order.created_at).toLocaleDateString(dateLocale, {day: '2-digit', month: 'short', year: 'numeric'})}
                                                     </span>
                                                     <span className="text-[10px] text-gray-400 font-medium">
-                                                        {new Date(order.created_at).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'})}
+                                                        {new Date(order.created_at).toLocaleTimeString(dateLocale, {hour: '2-digit', minute:'2-digit'})}
                                                     </span>
                                                 </div>
                                             </td>
-                                            
+
                                             {/* ✅ เพิ่ม whitespace-nowrap เพื่อแก้ Walk-in ตกบรรทัด */}
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 {order.order_type === 'preorder' ? (
                                                     <div>
-                                                        <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded-md text-xs font-bold border border-rose-100 whitespace-nowrap">{order.customer_name || 'Pre-order'}</span>
+                                                        <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded-md text-xs font-bold border border-rose-100 whitespace-nowrap">{order.customer_name || uiText(language, 'Pre-order')}</span>
                                                         {order.customer_contact && <div className="mt-1 text-[10px] font-semibold text-gray-400">{order.customer_contact}</div>}
                                                         <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
-                                                            <span className="rounded-md bg-pink-50 px-2 py-1 text-pink-700">Pre-order</span>
+                                                            <span className="rounded-md bg-pink-50 px-2 py-1 text-pink-700">{uiText(language, 'Pre-order')}</span>
                                                             {order.pickup_code && <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-600">{order.pickup_code}</span>}
-                                                            {order.pickup_status && <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{order.pickup_status}</span>}
+                                                            {order.pickup_status && <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{pickupStatusLabel(order.pickup_status)}</span>}
                                                         </div>
                                                     </div>
                                                 ) : order.queues ? (
                                                     <span className="bg-pink-50 text-pink-600 px-2 py-1 rounded-md text-xs font-bold border border-pink-100 whitespace-nowrap">#{order.queues.queue_number}</span>
                                                 ) : (
-                                                    <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded-md text-xs font-bold border border-gray-200 whitespace-nowrap">Walk-in</span>
+                                                    <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded-md text-xs font-bold border border-gray-200 whitespace-nowrap">{uiText(language, 'Walk-in')}</span>
                                                 )}
                                             </td>
 
@@ -275,29 +289,29 @@ export default function EventHistory() {
                                                 <div className="flex flex-col gap-1">
                                                     {order.order_items.map((item, idx) => (
                                                         <div key={idx} className="flex items-center gap-1.5 truncate max-w-[200px] text-xs">
-                                                            <span className="font-black text-gray-800 bg-gray-100 px-1 rounded">{item.quantity}x</span> 
+                                                            <span className="font-black text-gray-800 bg-gray-100 px-1 rounded">{item.quantity}x</span>
                                                             <span className="truncate text-gray-600">{item.products?.name}</span>
                                                         </div>
                                                     ))}
                                                 </div>
                                             </td>
-                                            
+
                                             <td className="px-4 py-3 text-right font-black text-gray-800 text-sm whitespace-nowrap">
                                                 {formatPrice(order.total_price, order.currency)}
                                             </td>
-                                            
+
                                             <td className="px-4 py-3 text-right whitespace-nowrap">
                                                 {order.payment_method === 'transfer' ? (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full"><CreditCard size={10}/> Transfer</span>
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full"><CreditCard size={10}/> {uiText(language, 'Transfer')}</span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full"><DollarSign size={10}/> Cash</span>
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full"><DollarSign size={10}/> {uiText(language, 'Cash')}</span>
                                                 )}
                                             </td>
                                         </tr>
                                     ))}
                                     {orders.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm">No transactions found for this event.</td>
+                                            <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm">{uiText(language, 'No transactions found for this event.')}</td>
                                         </tr>
                                     )}
                                 </tbody>

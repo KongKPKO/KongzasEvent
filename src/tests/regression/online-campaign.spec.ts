@@ -377,8 +377,8 @@ test.describe('online campaign', () => {
     await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/i }).first().click();
     const productName = `Quick Cheki ${randomUUID().slice(0, 6)}`;
     await page.getByLabel(/Product name|ชื่อสินค้า/i).fill(productName);
-    await page.getByLabel(/Price & currency|ราคาและสกุลเงิน/i).fill('120');
-    await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/i }).last().click();
+    await page.getByRole('dialog').getByLabel('Base price *', { exact: true }).fill('120');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create product', exact: true }).click();
     const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
     await expect(handoff).toBeVisible({ timeout: 15_000 });
     await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);

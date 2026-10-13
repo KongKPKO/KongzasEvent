@@ -1,13 +1,22 @@
-import { useEffect, useState } from 'react';
-import { ImageOff, ShoppingBag, Plus, Minus, X } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
-import { getOptimizedImageUrl } from '../../utils/imageUtils';
+import { useState } from 'react';
+import { ChevronDown, ShoppingBag, Plus, Minus, X } from 'lucide-react';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 import { formatPrice } from '../../utils/currency';
 import { motion } from 'framer-motion';
 import { getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
+import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
+import { ProductGallery, ProductMedia, ProductPresentationSummary } from './ProductPresentation';
+import {
+   buildProductPresentationEntries,
+   getProductPresentationKind,
+   getProductPriceRange,
+   inheritProductPresentation,
+   isProductPreorderClosed,
+} from '../../utils/productPresentation';
 
-interface Product {
+interface Product extends ProductPresentationFields, ProductVariantFields {
    id: string;
    name: string;
    price: number;
@@ -20,9 +29,7 @@ interface Product {
    stock_reserved?: number;
    stock_sold?: number;
    is_unlimited?: boolean;
-   variant_group_name?: string | null;
-   variant_name?: string | null;
-   variant_sort_order?: number;
+   sku?: string | null;
 }
 
 interface ProductListProps {
@@ -34,51 +41,12 @@ interface ProductListProps {
    onClearFilters?: () => void;
 }
 
-type ProductEntry =
-   | { type: 'product'; product: Product }
-   | { type: 'group'; key: string; label: string; products: Product[] };
-
-const buildProductEntries = (products: Product[]): ProductEntry[] => {
-   const entries: ProductEntry[] = [];
-   const groups = new Map<string, { label: string; products: Product[] }>();
-
-   products.forEach((product) => {
-      const groupName = product.variant_group_name?.trim();
-      if (!groupName) {
-         entries.push({ type: 'product', product });
-         return;
-      }
-
-      const key = groupName.toLowerCase();
-      const group = groups.get(key) || { label: groupName, products: [] };
-      group.products.push(product);
-      groups.set(key, group);
-   });
-
-   groups.forEach((group, key) => {
-      group.products.sort((a, b) => {
-         const sortDiff = (a.variant_sort_order || 0) - (b.variant_sort_order || 0);
-         if (sortDiff !== 0) return sortDiff;
-         return (a.variant_name || a.name).localeCompare(b.variant_name || b.name);
-      });
-      entries.push({ type: 'group', key, label: group.label, products: group.products });
-   });
-
-   return entries;
-};
-
 const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQuantity, onClearFilters }: ProductListProps) => {
-   const { t } = useI18n();
+   const { t, language } = useI18n();
    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
-   useEffect(() => {
-      if (!selectedProduct) return;
-      const handleKeyDown = (event: KeyboardEvent) => {
-         if (event.key === 'Escape') setSelectedProduct(null);
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-   }, [selectedProduct]);
+   const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(selectedProduct), () => setSelectedProduct(null));
 
    if (products.length === 0) {
       return (
@@ -103,6 +71,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
    }
 
    const getAvailableUnits = (product: Product) => {
+      if (isProductPreorderClosed(product)) return 0;
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const total = product.stock_total || 0;
       const reserved = product.stock_reserved || 0;
@@ -110,15 +79,14 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
       return Math.max(0, total - reserved - sold);
    };
 
-   const getProductImageUrl = (dbValue: string, width: number = 400) => {
-      if (!dbValue) return '';
-      let path = dbValue;
-      if (dbValue.includes('http') && dbValue.includes('Menu/')) {
-         const parts = dbValue.split('Menu/');
-         if (parts.length > 1) path = parts[1];
-      }
-      const { data } = supabase.storage.from('Menu').getPublicUrl(path);
-      return getOptimizedImageUrl(data.publicUrl, width);
+   const getProductImageUrl = getMenuImageUrl;
+
+   const getAddLabel = (product: Product) => {
+      const kind = getProductPresentationKind(product);
+      if (isProductPreorderClosed(product)) return uiText(language, 'Pre-order closed');
+      if (kind === 'service') return uiText(language, 'Select service');
+      if (kind === 'preorder') return uiText(language, 'Pre-order');
+      return t('productAdd');
    };
 
    const renderProductCard = (product: Product, index: number) => {
@@ -130,6 +98,8 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
       const promoBadges = getPromotionBadgesForProduct(product, promotions);
       const isLowStock = Number.isFinite(availableUnits) && availableUnits > 0 && availableUnits <= 3;
       const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
+      const kind = getProductPresentationKind(product);
+      const showStock = kind !== 'preorder' && kind !== 'service';
 
       return (
          <motion.div
@@ -154,24 +124,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
             }}
          >
             <div className="relative aspect-square w-full overflow-hidden bg-pink-50">
-               {product.image_url ? (
-                  <motion.img
-                     whileHover={{ scale: 1.05 }}
-                     transition={{ duration: 0.3 }}
-                     src={getProductImageUrl(product.image_url, 300)}
-                     alt={product.name}
-                     loading={isFirst ? 'eager' : 'lazy'}
-                     width="300"
-                     height="300"
-                     className="h-full w-full object-contain p-2"
-                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=No+Img'; }}
-                  />
-               ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
-                     <ImageOff size={24} strokeWidth={1.8} aria-hidden="true" />
-                     <span className="max-w-[80%] truncate text-xs font-black text-gray-500">{product.name.charAt(0).toUpperCase()}</span>
-                  </div>
-               )}
+               <ProductMedia product={product} getImageUrl={getProductImageUrl} eager={isFirst} />
                {soldOut && (
                   <motion.div
                      className="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
@@ -184,7 +137,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                         animate={{ scale: 1, opacity: 1, rotate: -12 }}
                         transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
                      >
-                        {t('productSoldOut')}
+                        {isProductPreorderClosed(product) ? getAddLabel(product) : t('productSoldOut')}
                      </motion.span>
                   </motion.div>
                )}
@@ -203,16 +156,17 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                      <p className="mt-1 line-clamp-1 text-[11px] font-black text-pink-700">{product.name}</p>
                   )}
                   {product.description && <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-gray-500">{product.description}</p>}
+                  <div className="mt-2"><ProductPresentationSummary product={product} language={language} compact /></div>
                </div>
                <div className="flex flex-col gap-2">
                   <div className="text-lg font-black leading-none text-pink-600">{formatPrice(product.price, product.currency)}</div>
                   <div className="flex min-h-4 items-center justify-between gap-2">
-                     {!product.is_unlimited ? (
+                     {showStock && !product.is_unlimited ? (
                         <div className="text-[11px] font-bold text-gray-500">{t('productLeft')} {Math.max(0, availableUnits - qty)}</div>
-                     ) : (
+                     ) : showStock ? (
                         <div className="text-[11px] font-bold text-gray-500">{t('productUnlimited')}</div>
-                     )}
-                     {isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-black text-amber-700">{t('productLowStock')}</div>}
+                     ) : <div />}
+                     {showStock && isLowStock && <div className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-black text-amber-700">{t('productLowStock')}</div>}
                   </div>
                   {qty === 0 ? (
                      <button
@@ -227,7 +181,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-md shadow-pink-100 active:scale-95'
                         }`}
                      >
-                        <ShoppingBag size={16} /> {t('productAdd')}
+                        <ShoppingBag size={16} /> {getAddLabel(product)}
                      </button>
                   ) : (
                      <div className="flex min-h-[44px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1">
@@ -247,7 +201,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               event.stopPropagation();
                               onUpdateQuantity(product.id, 1, product.name);
                            }}
-                           disabled={!product.is_unlimited && qty >= availableUnits}
+                           disabled={isOrderSent || soldOut || (!product.is_unlimited && qty >= availableUnits)}
                            className={[
                               'grid h-11 w-11 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
                               'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'
@@ -264,7 +218,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
       );
    };
 
-   const entries = buildProductEntries(products);
+   const entries = buildProductPresentationEntries(products);
    const selectedQty = selectedProduct ? cart[selectedProduct.id] || 0 : 0;
    const selectedAvailableUnits = selectedProduct ? getAvailableUnits(selectedProduct) : 0;
    const selectedSoldOut = selectedProduct
@@ -293,16 +247,83 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                return renderProductCard(entry.product, index);
             }
 
+            const variants = entry.products.map((product) => inheritProductPresentation(product, entry.parent));
+            const representative = entry.parent || variants[0];
+            const priceRange = getProductPriceRange(variants);
+            const expanded = Boolean(expandedGroups[entry.key]);
             return (
-               <div key={`variant-group-${entry.key}`} className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3">
-                  <div className="mb-2 mt-1 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
-                     <h3 className="text-sm font-black text-pink-950">{entry.label}</h3>
-                     <p className="text-[11px] font-bold text-pink-800">{entry.products.length} variants</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-                     {entry.products.map((product, productIndex) => renderProductCard(product, productIndex))}
-                  </div>
-               </div>
+               <motion.article
+                  key={entry.key}
+                  className="col-span-2 overflow-hidden rounded-3xl border border-pink-100 bg-white shadow-sm sm:col-span-3 lg:col-span-2 xl:col-span-3"
+                  variants={{ hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0 } }}
+               >
+                  <button
+                     type="button"
+                     onClick={() => setExpandedGroups((current) => ({ ...current, [entry.key]: !expanded }))}
+                     className="flex min-h-28 w-full items-stretch text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-pink-200"
+                     aria-expanded={expanded}
+                  >
+                     <div className="relative w-28 shrink-0 overflow-hidden bg-pink-50 sm:w-36">
+                        <ProductMedia product={representative} getImageUrl={getProductImageUrl} eager={index === 0} />
+                     </div>
+                     <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">
+                        <div className="min-w-0">
+                           <h3 className="truncate text-base font-black text-gray-950">{entry.label}</h3>
+                           <p className="mt-1 text-xs font-bold text-pink-700">
+                              {variants.length} {uiText(language, variants.length === 1 ? 'variant' : 'variants')}
+                           </p>
+                           <div className="mt-2 text-lg font-black text-pink-600">
+                              {priceRange.min === priceRange.max
+                                 ? formatPrice(priceRange.min, representative.currency)
+                                 : `${formatPrice(priceRange.min, representative.currency)}–${formatPrice(priceRange.max, representative.currency)}`}
+                           </div>
+                           <div className="mt-2"><ProductPresentationSummary product={representative} language={language} compact /></div>
+                        </div>
+                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full bg-pink-50 text-pink-700 transition-transform ${expanded ? 'rotate-180' : ''}`}>
+                           <ChevronDown size={20} aria-hidden="true" />
+                        </span>
+                     </div>
+                  </button>
+                  {expanded && (
+                     <div className="divide-y divide-pink-50 border-t border-pink-100" data-testid="product-variant-list">
+                        {variants.map((product) => {
+                           const qty = cart[product.id] || 0;
+                           const available = getAvailableUnits(product);
+                           const soldOut = product.status === 'soldout' || available <= 0;
+                           return (
+                              <div key={product.id} className="flex items-center gap-3 px-3 py-3 sm:px-4">
+                                 <button type="button" onClick={() => setSelectedProduct(product)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-pink-50">
+                                       <ProductMedia product={product} getImageUrl={getProductImageUrl} />
+                                    </div>
+                                    <div className="min-w-0">
+                                       <div className="truncate text-sm font-black text-gray-950">{product.variant_name || product.name}</div>
+                                       {product.sku && <div className="truncate text-[10px] font-bold text-gray-400">{product.sku}</div>}
+                                       <div className="mt-0.5 text-sm font-black text-pink-600">{formatPrice(product.price, product.currency)}</div>
+                                    </div>
+                                 </button>
+                                 {qty === 0 ? (
+                                    <button
+                                       type="button"
+                                       onClick={() => !soldOut && onUpdateQuantity(product.id, 1, product.variant_name || product.name)}
+                                       disabled={soldOut || isOrderSent}
+                                       className="min-h-11 shrink-0 rounded-xl bg-pink-600 px-4 text-xs font-black text-white disabled:bg-gray-200 disabled:text-gray-400"
+                                    >
+                                       {soldOut && !isProductPreorderClosed(product) ? t('productSoldOut') : getAddLabel(product)}
+                                    </button>
+                                 ) : (
+                                    <div className="flex shrink-0 items-center rounded-xl bg-pink-50 p-0.5">
+                                       <button type="button" onClick={() => onUpdateQuantity(product.id, -1, product.name)} className="grid h-11 w-11 place-items-center rounded-lg bg-white text-pink-700" aria-label={t('productDecrease', { name: product.name })}><Minus size={15} /></button>
+                                       <span className="w-8 text-center text-sm font-black">{qty}</span>
+                                       <button type="button" onClick={() => onUpdateQuantity(product.id, 1, product.name)} disabled={isOrderSent || soldOut || (!product.is_unlimited && qty >= available)} className="grid h-11 w-11 place-items-center rounded-lg bg-pink-600 text-white disabled:bg-gray-200 disabled:text-gray-400" aria-label={t('productIncrease', { name: product.name })}><Plus size={15} /></button>
+                                    </div>
+                                 )}
+                              </div>
+                           );
+                        })}
+                     </div>
+                  )}
+               </motion.article>
             );
          })}
          <div className="col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-3 h-10 pt-4 text-center text-[11px] font-semibold text-gray-600">{t('productEnd')}</div>
@@ -313,6 +334,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
             role="dialog"
             aria-modal="true"
             aria-label={selectedProduct.name}
+            ref={dialogRef}
             onClick={() => setSelectedProduct(null)}
          >
             <motion.div
@@ -332,24 +354,11 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                </button>
                <div className="grid max-h-[92vh] overflow-y-auto sm:grid-cols-2">
                   <div className="relative min-w-0 overflow-hidden bg-pink-50 sm:border-r sm:border-pink-100">
-                     <div className="flex aspect-square min-h-[280px] items-center justify-center p-4 sm:h-full sm:min-h-[560px] sm:p-6">
-                        {selectedProduct.image_url ? (
-                           <img
-                              src={getProductImageUrl(selectedProduct.image_url, 900)}
-                              alt={selectedProduct.name}
-                              className="h-full max-h-full w-full max-w-full object-contain"
-                           />
-                        ) : (
-                           <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-3xl bg-gray-100 text-gray-400">
-                              <ImageOff size={44} strokeWidth={1.6} aria-hidden="true" />
-                              <span className="text-sm font-black text-gray-500">{selectedProduct.name}</span>
-                           </div>
-                        )}
-                     </div>
+                     <ProductGallery product={selectedProduct} getImageUrl={getProductImageUrl} />
                      {selectedSoldOut && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/45">
                            <span className="rotate-[-10deg] border-2 border-white px-4 py-2 text-sm font-black uppercase tracking-wide text-white">
-                              {t('productSoldOut')}
+                              {isProductPreorderClosed(selectedProduct) ? getAddLabel(selectedProduct) : t('productSoldOut')}
                            </span>
                         </div>
                      )}
@@ -380,6 +389,8 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                      </div>
 
                      <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <ProductPresentationSummary product={selectedProduct} language={language} />
+                        {getProductPresentationKind(selectedProduct) !== 'preorder' && getProductPresentationKind(selectedProduct) !== 'service' && (
                         <div className="flex items-center justify-between gap-3">
                            {!selectedProduct.is_unlimited ? (
                               <span className="text-sm font-black text-gray-700">
@@ -392,6 +403,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">{t('productLowStock')}</span>
                            )}
                         </div>
+                        )}
                      </div>
 
                      {selectedProduct.description ? (
@@ -434,7 +446,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                                     : 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg shadow-pink-100 active:scale-[0.99]'
                               }`}
                            >
-                              <ShoppingBag size={18} /> {t('productAdd')}
+                              <ShoppingBag size={18} /> {getAddLabel(selectedProduct)}
                            </button>
                         ) : (
                            <div className="flex min-h-[56px] items-center justify-between rounded-2xl border border-pink-100 bg-pink-50 p-1.5">
@@ -448,7 +460,7 @@ const ProductList = ({ products, promotions = [], cart, isOrderSent, onUpdateQua
                               <span className="min-w-[64px] text-center text-base font-black text-gray-950">{selectedQty}</span>
                               <button
                                  onClick={() => onUpdateQuantity(selectedProduct.id, 1, selectedProduct.name)}
-                                 disabled={!selectedProduct.is_unlimited && selectedQty >= selectedAvailableUnits}
+                                 disabled={isOrderSent || selectedSoldOut || (!selectedProduct.is_unlimited && selectedQty >= selectedAvailableUnits)}
                                  className={[
                                     'grid h-12 w-12 place-items-center rounded-xl bg-pink-600 text-white shadow-md shadow-pink-100 active:scale-95',
                                     'disabled:bg-gray-300 disabled:text-gray-700 disabled:shadow-none'

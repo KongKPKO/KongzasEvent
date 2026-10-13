@@ -7,6 +7,7 @@ import { Toast } from '../../components/ui/Feedback';
 import { supabase } from '../../supabaseClient';
 import type { EventSellingMode } from '../../types/preorder';
 import { formatDateTimeForInput, parseDateTimeInputInTimeZone } from '../../utils/timezone';
+import { uiText, useI18n } from '../../i18n';
 
 interface EventSettingsRow {
   id: string;
@@ -96,6 +97,7 @@ const getFiniteAvailable = (product: EventProductRow) => {
 export default function PreorderSettings() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { language } = useI18n();
   const [event, setEvent] = useState<EventSettingsRow | null>(null);
   const [catalogProducts, setCatalogProducts] = useState<EventProductRow[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDraft>(emptyPaymentMethod);
@@ -117,9 +119,9 @@ export default function PreorderSettings() {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path);
       updatePaymentMethod('qr_image_url', publicUrl);
-      setToast({ tone: 'success', title: 'QR image uploaded', detail: 'Remember to save payment settings.' });
+      setToast({ tone: 'success', title: uiText(language, 'QR image uploaded'), detail: uiText(language, 'Remember to save payment settings.') });
     } catch (error) {
-      setToast({ tone: 'error', title: 'QR upload failed', detail: error instanceof Error ? error.message : 'Could not upload the image.' });
+      setToast({ tone: 'error', title: uiText(language, 'QR upload failed'), detail: error instanceof Error ? error.message : uiText(language, 'Could not upload the image.') });
     } finally {
       setQrUploading(false);
     }
@@ -168,7 +170,7 @@ export default function PreorderSettings() {
         is_enabled: payment.is_enabled ?? true,
       } : emptyPaymentMethod);
     } catch (error: any) {
-      setToast({ tone: 'error', title: 'Could not load order settings', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Could not load order settings'), detail: error.message });
       setEvent(null);
       setCatalogProducts([]);
     } finally {
@@ -185,7 +187,7 @@ export default function PreorderSettings() {
   const postorderEnabled = Boolean(event?.postorder_enabled);
   const orderingClosed = event?.sales_status_override === 'closed';
   const isAdvanceOrderMode = preorderEnabled || postorderEnabled;
-  const readinessScope = isAdvanceOrderMode ? 'customer order pages' : 'live selling flow';
+  const readinessScope = uiText(language, isAdvanceOrderMode ? 'customer order pages' : 'live selling flow');
   const hasPickupInstructions = (event?.preorder_pickup_instructions || '').trim().length > 0;
   const hasPaymentInstructions =
     paymentMethod.is_enabled &&
@@ -233,7 +235,7 @@ export default function PreorderSettings() {
         icon: PackageCheck,
         label: 'Event catalog has products',
         detail: hasCatalogProducts
-          ? `${catalogProducts.length} product${catalogProducts.length === 1 ? '' : 's'} available for this event.`
+          ? language === 'th' ? `อีเวนต์นี้มีสินค้า ${catalogProducts.length} รายการ` : `${catalogProducts.length} product${catalogProducts.length === 1 ? '' : 's'} available for this event.`
           : 'Add products to this event catalog before opening customer orders.',
         ready: hasCatalogProducts,
         },
@@ -242,7 +244,7 @@ export default function PreorderSettings() {
         label: 'Finite stock is available',
         detail: finiteProducts.length === 0
           ? 'All event products are unlimited.'
-          : `${finiteProductsWithStock}/${finiteProducts.length} finite product${finiteProducts.length === 1 ? '' : 's'} have available stock.`,
+          : language === 'th' ? `สินค้าที่จำกัดสต็อก ${finiteProductsWithStock}/${finiteProducts.length} รายการยังมีสต็อกพร้อมขาย` : `${finiteProductsWithStock}/${finiteProducts.length} finite product${finiteProducts.length === 1 ? '' : 's'} have available stock.`,
         ready: finiteStockReady,
         },
       ];
@@ -305,7 +307,7 @@ export default function PreorderSettings() {
 
       return baseItems;
     },
-    [catalogProducts.length, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, orderingClosed, postOrderStartsAfterEvent, postorderEnabled, postorderWindowReady, preorderClosesBeforeEventStarts, preorderEnabled, preorderWindowReady]
+    [catalogProducts.length, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, language, orderingClosed, postOrderStartsAfterEvent, postorderEnabled, postorderWindowReady, preorderClosesBeforeEventStarts, preorderEnabled, preorderWindowReady]
   );
 
   const readyCount = readinessItems.filter((item) => item.ready).length;
@@ -415,10 +417,10 @@ export default function PreorderSettings() {
         : await supabase.from('event_payment_methods').insert(paymentPayload);
 
       if (paymentError) throw paymentError;
-      setToast({ tone: 'success', title: 'Order settings saved' });
+      setToast({ tone: 'success', title: uiText(language, 'Order settings saved') });
       await loadSettings();
     } catch (error: any) {
-      setToast({ tone: 'error', title: 'Order settings failed', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Order settings failed'), detail: error.message });
     } finally {
       setSaving(false);
     }
@@ -429,7 +431,7 @@ export default function PreorderSettings() {
       <div className="min-h-screen bg-gray-50">
         <AdminHeader activePage="events" />
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center text-sm font-bold text-gray-400">
-          Loading order settings...
+          {uiText(language, 'Loading order settings...')}
         </div>
       </div>
     );
@@ -441,10 +443,10 @@ export default function PreorderSettings() {
         <AdminHeader activePage="events" />
         <main className="mx-auto max-w-3xl p-4 md:p-6">
           <button onClick={() => navigate('/manage-events')} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50">
-            <ArrowLeft size={18} /> Back to events
+            <ArrowLeft size={18} /> {uiText(language, 'Back to events')}
           </button>
           <div className="rounded-2xl border border-red-100 bg-white p-6 text-sm font-bold text-red-700">
-            Event not found or unavailable.
+            {uiText(language, 'Event not found or unavailable.')}
           </div>
         </main>
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -460,14 +462,14 @@ export default function PreorderSettings() {
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">Order Settings</div>
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">{uiText(language, 'Order Settings')}</div>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-950 md:text-3xl">{event.event_name}</h1>
             <p className="mt-1 text-sm font-semibold text-gray-500">
-              Set event details, sales schedule, pickup notes, and payment instructions in one place.
+              {uiText(language, 'Set event details, sales schedule, pickup notes, and payment instructions in one place.')}
             </p>
           </div>
           <div className="rounded-xl border border-pink-100 bg-white px-4 py-3 text-sm font-black text-gray-800 shadow-sm">
-            {readyCount}/{readinessItems.length} ready
+            {readyCount}/{readinessItems.length} {uiText(language, 'ready')}
           </div>
         </div>
 
@@ -480,13 +482,13 @@ export default function PreorderSettings() {
                     <Settings size={20} aria-hidden="true" />
                   </div>
                   <div>
-                    <h2 className="text-base font-black text-gray-950">Event details</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Basic information used across the customer page, queue, POS, and order flows.</p>
+                    <h2 className="text-base font-black text-gray-950">{uiText(language, 'Event details')}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Basic information used across the customer page, queue, POS, and order flows.')}</p>
                   </div>
                 </div>
                 <div className="grid gap-4">
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Event name</span>
+                    <span className="text-sm font-black text-gray-700">{uiText(language, 'Event name')}</span>
                     <input
                       value={event.event_name}
                       onChange={(e) => updateEvent('event_name', e.target.value)}
@@ -495,7 +497,7 @@ export default function PreorderSettings() {
                   </label>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Event starts</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Event starts')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.start_date, eventTimeZone)}
@@ -504,7 +506,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Event ends</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Event ends')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.end_date, eventTimeZone)}
@@ -515,52 +517,52 @@ export default function PreorderSettings() {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Location</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Location')}</span>
                       <input
                         value={event.location || event.location_name || ''}
                         onChange={(e) => updateEvent('location', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Siam Paragon"
+                        placeholder={uiText(language, 'e.g. Siam Paragon')}
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Booth detail</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Booth detail')}</span>
                       <input
                         value={event.booth_detail || event.booth_number || ''}
                         onChange={(e) => updateEvent('booth_detail', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. A12, Creator Hall"
+                        placeholder={uiText(language, 'e.g. A12, Creator Hall')}
                       />
                     </label>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Queueing area</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Queueing area')}</span>
                       <input
                         value={event.queueing_area || ''}
                         onChange={(e) => updateEvent('queueing_area', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Queue lane beside booth A12"
+                        placeholder={uiText(language, 'e.g. Queue lane beside booth A12')}
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Entrance fee</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Entrance fee')}</span>
                       <input
                         value={event.entrance_fee || ''}
                         onChange={(e) => updateEvent('entrance_fee', e.target.value)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                        placeholder="e.g. Free / 300 THB"
+                        placeholder={uiText(language, 'e.g. Free / 300 THB')}
                       />
                     </label>
                   </div>
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Transit info</span>
+                    <span className="text-sm font-black text-gray-700">{uiText(language, 'Transit info')}</span>
                     <textarea
                       value={event.transit_info || ''}
                       onChange={(e) => updateEvent('transit_info', e.target.value)}
                       rows={3}
                       className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
-                      placeholder="How customers should get to the venue."
+                      placeholder={uiText(language, 'How customers should get to the venue.')}
                     />
                   </label>
                 </div>
@@ -568,28 +570,28 @@ export default function PreorderSettings() {
 
               <div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4">
                 <div className="mb-4">
-                  <h2 className="text-base font-black text-gray-950">Sales schedule</h2>
-                  <p className="mt-1 text-xs font-semibold text-gray-500">Live queue / POS is automatic during the event day. Turn on pre-order or post-order when this event needs customer orders outside the live booth.</p>
+                  <h2 className="text-base font-black text-gray-950">{uiText(language, 'Sales schedule')}</h2>
+                  <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Live queue / POS is automatic during the event day. Turn on pre-order or post-order when this event needs customer orders outside the live booth.')}</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                   <SalesModeCard
                     icon={ShoppingCart}
-                    title="Live event day"
-                    detail="Auto-active from event start to end."
+                    title={uiText(language, 'Live event day')}
+                    detail={uiText(language, 'Auto-active from event start to end.')}
                     active={!orderingClosed}
                     locked
                   />
                   <SalesModeCard
                     icon={PackageCheck}
-                    title="Pre-order"
-                    detail="Reserve before event, pickup at booth."
+                    title={uiText(language, 'Pre-order')}
+                    detail={uiText(language, 'Reserve before event, pickup at booth.')}
                     active={preorderEnabled}
                     onClick={togglePreorder}
                   />
                   <SalesModeCard
                     icon={Truck}
-                    title="Post-order"
-                    detail="Order after event, fulfill later."
+                    title={uiText(language, 'Post-order')}
+                    detail={uiText(language, 'Order after event, fulfill later.')}
                     active={postorderEnabled}
                     onClick={togglePostorder}
                   />
@@ -604,21 +606,21 @@ export default function PreorderSettings() {
                         : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    Emergency close customer ordering
+                    {uiText(language, 'Emergency close customer ordering')}
                   </button>
-                  <span className="text-xs font-semibold text-gray-500">Use only when customers should not place new orders even if a schedule window is open.</span>
+                  <span className="text-xs font-semibold text-gray-500">{uiText(language, 'Use only when customers should not place new orders even if a schedule window is open.')}</span>
                 </div>
               </div>
 
               {preorderEnabled && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
-                    <h2 className="text-base font-black text-gray-950">Pre-order window</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can reserve items before the event, then pick them up at the booth.</p>
+                    <h2 className="text-base font-black text-gray-950">{uiText(language, 'Pre-order window')}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Customers can reserve items before the event, then pick them up at the booth.')}</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Pre-order opens</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Pre-order opens')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_opens_at, eventTimeZone)}
@@ -627,7 +629,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Pre-order closes</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Pre-order closes')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.preorder_closes_at, eventTimeZone)}
@@ -637,7 +639,7 @@ export default function PreorderSettings() {
                     </label>
                   </div>
                   <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
-                    Times are saved using the event timezone: <span className="font-black">{eventTimeZone}</span>.
+                    {uiText(language, 'Times are saved using the event timezone')}: <span className="font-black">{eventTimeZone}</span>.
                   </div>
                 </div>
               )}
@@ -645,12 +647,12 @@ export default function PreorderSettings() {
               {postorderEnabled && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
                   <div className="mb-4">
-                    <h2 className="text-base font-black text-gray-950">Post-order window</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Customers can order after the event, then you fulfill by shipping or post-event handling.</p>
+                    <h2 className="text-base font-black text-gray-950">{uiText(language, 'Post-order window')}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Customers can order after the event, then you fulfill by shipping or post-event handling.')}</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Post-order opens</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Post-order opens')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.postorder_opens_at, eventTimeZone)}
@@ -659,7 +661,7 @@ export default function PreorderSettings() {
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Post-order closes</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Post-order closes')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(event.postorder_closes_at, eventTimeZone)}
@@ -669,20 +671,20 @@ export default function PreorderSettings() {
                     </label>
                   </div>
                   <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
-                    Times are saved using the event timezone: <span className="font-black">{eventTimeZone}</span>.
+                    {uiText(language, 'Times are saved using the event timezone')}: <span className="font-black">{eventTimeZone}</span>.
                   </div>
                 </div>
               )}
 
               {isAdvanceOrderMode && (
                 <label className="grid gap-2">
-                  <span className="text-sm font-black text-gray-700">Pickup instructions</span>
+                  <span className="text-sm font-black text-gray-700">{uiText(language, 'Pickup instructions')}</span>
                   <textarea
                     value={event.preorder_pickup_instructions || ''}
                     onChange={(e) => updateEvent('preorder_pickup_instructions', e.target.value)}
                     rows={5}
                     className="rounded-xl border border-gray-200 px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
-                    placeholder="Example: Show your pickup code at booth A12 between 12:00-17:00."
+                    placeholder={uiText(language, 'Example: Show your pickup code at booth A12 between 12:00-17:00.')}
                   />
                 </label>
               )}
@@ -691,8 +693,8 @@ export default function PreorderSettings() {
               <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-4">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-base font-black text-gray-950">Payment instructions</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">Money goes directly to your account. NireQ only stores the instruction and slip workflow.</p>
+                    <h2 className="text-base font-black text-gray-950">{uiText(language, 'Payment instructions')}</h2>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Money goes directly to your account. NireQ only stores the instruction and slip workflow.')}</p>
                   </div>
                   <label className="inline-flex items-center gap-2 text-xs font-black text-gray-700">
                     <input
@@ -701,31 +703,31 @@ export default function PreorderSettings() {
                       onChange={(e) => updatePaymentMethod('is_enabled', e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200"
                     />
-                    Enabled
+                    {uiText(language, 'Enabled')}
                   </label>
                 </div>
 
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Method type</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Method type')}</span>
                       <select
                         value={paymentMethod.method_type}
                         onChange={(e) => updatePaymentMethod('method_type', e.target.value as PaymentMethodDraft['method_type'])}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       >
-                        <option value="promptpay">PromptPay</option>
-                        <option value="bank_transfer">Bank transfer</option>
-                        <option value="qr_image">QR image</option>
-                        <option value="other">Other</option>
+                        <option value="promptpay">{uiText(language, 'PromptPay')}</option>
+                        <option value="bank_transfer">{uiText(language, 'Bank transfer')}</option>
+                        <option value="qr_image">{uiText(language, 'QR image')}</option>
+                        <option value="other">{uiText(language, 'Other')}</option>
                       </select>
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Display name</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Display name')}</span>
                       <input
                         value={paymentMethod.display_name}
                         onChange={(e) => updatePaymentMethod('display_name', e.target.value)}
-                        placeholder="PromptPay / Bank transfer"
+                        placeholder={uiText(language, 'PromptPay / Bank transfer')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
@@ -733,16 +735,16 @@ export default function PreorderSettings() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">PromptPay ID</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'PromptPay ID')}</span>
                       <input
                         value={paymentMethod.promptpay_id}
                         onChange={(e) => updatePaymentMethod('promptpay_id', e.target.value)}
-                        placeholder="Phone / national ID / e-wallet ID"
+                        placeholder={uiText(language, 'Phone / national ID / e-wallet ID')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                     <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">Payment deadline</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Payment deadline')}</span>
                       <input
                         type="datetime-local"
                         value={toInputValue(paymentMethod.payment_deadline_at, eventTimeZone)}
@@ -754,25 +756,25 @@ export default function PreorderSettings() {
 
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Bank name</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Bank name')}</span>
                       <input
                         value={paymentMethod.bank_name}
                         onChange={(e) => updatePaymentMethod('bank_name', e.target.value)}
-                        placeholder="KBank, SCB, etc."
+                        placeholder={uiText(language, 'KBank, SCB, etc.')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Account name</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Account name')}</span>
                       <input
                         value={paymentMethod.account_name}
                         onChange={(e) => updatePaymentMethod('account_name', e.target.value)}
-                        placeholder="Account holder"
+                        placeholder={uiText(language, 'Account holder')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                     <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">Account number</span>
+                      <span className="text-sm font-black text-gray-700">{uiText(language, 'Account number')}</span>
                       <input
                         value={paymentMethod.account_number}
                         onChange={(e) => updatePaymentMethod('account_number', e.target.value)}
@@ -783,17 +785,17 @@ export default function PreorderSettings() {
                   </div>
 
                   <div className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Payment QR image</span>
+                    <span className="text-sm font-black text-gray-700">{uiText(language, 'Payment QR image')}</span>
                     {paymentMethod.qr_image_url ? (
                       <div className="flex items-center gap-3">
                         <img
                           src={paymentMethod.qr_image_url}
-                          alt="Payment QR preview"
+                          alt={uiText(language, 'Payment QR preview')}
                           className="h-28 w-28 rounded-xl border border-pink-100 bg-white object-contain"
                         />
                         <div className="grid gap-2">
                           <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 px-4 text-sm font-black text-pink-700 hover:bg-pink-100">
-                            {qrUploading ? 'Uploading…' : 'Replace image'}
+                            {uiText(language, qrUploading ? 'Uploading…' : 'Replace image')}
                             <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
                           </label>
                           <button
@@ -801,25 +803,25 @@ export default function PreorderSettings() {
                             onClick={() => updatePaymentMethod('qr_image_url', '')}
                             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-600 hover:bg-gray-50"
                           >
-                            Remove
+                            {uiText(language, 'Remove')}
                           </button>
                         </div>
                       </div>
                     ) : (
                       <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50">
-                        {qrUploading ? 'Uploading…' : 'Upload PromptPay / transfer QR image'}
+                        {uiText(language, qrUploading ? 'Uploading…' : 'Upload PromptPay / transfer QR image')}
                         <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
                       </label>
                     )}
                   </div>
 
                   <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">Extra instructions</span>
+                    <span className="text-sm font-black text-gray-700">{uiText(language, 'Extra instructions')}</span>
                     <textarea
                       value={paymentMethod.instructions}
                       onChange={(e) => updatePaymentMethod('instructions', e.target.value)}
                       rows={3}
-                      placeholder="Example: Transfer exact amount, upload slip, then wait for confirmation."
+                      placeholder={uiText(language, 'Example: Transfer exact amount, upload slip, then wait for confirmation.')}
                       className="rounded-xl border border-pink-100 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
                     />
                   </label>
@@ -833,7 +835,7 @@ export default function PreorderSettings() {
                   onClick={() => navigate(`/manage-events/${event.id}/catalog`)}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-black text-gray-700 hover:bg-gray-50"
                 >
-                  <PackageCheck size={17} /> Event catalog
+                  <PackageCheck size={17} /> {uiText(language, 'Event catalog')}
                 </button>
                 <button
                   type="button"
@@ -841,7 +843,7 @@ export default function PreorderSettings() {
                   disabled={saving}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:opacity-60"
                 >
-                  <Save size={17} /> {saving ? 'Saving...' : 'Save settings'}
+                  <Save size={17} /> {uiText(language, saving ? 'Saving...' : 'Save settings')}
                 </button>
               </div>
             </div>
@@ -853,9 +855,9 @@ export default function PreorderSettings() {
                 <AlertTriangle size={20} />
               </div>
               <div>
-                <h2 className="text-base font-black text-gray-900">Readiness checklist</h2>
+                <h2 className="text-base font-black text-gray-900">{uiText(language, 'Readiness checklist')}</h2>
                 <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">
-                  Use this to catch setup gaps before customers see the {readinessScope}.
+                  {language === 'th' ? `ใช้รายการนี้ตรวจหาจุดที่ยังตั้งค่าไม่ครบก่อนลูกค้าจะเห็น${readinessScope}` : `Use this to catch setup gaps before customers see the ${readinessScope}.`}
                 </p>
               </div>
             </div>
@@ -871,12 +873,12 @@ export default function PreorderSettings() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-black text-gray-800">{item.label}</div>
+                          <div className="text-sm font-black text-gray-800">{uiText(language, item.label)}</div>
                           <span className={`shrink-0 text-[11px] font-black uppercase tracking-[0.12em] ${item.ready ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            {item.ready ? 'Ready' : 'Check'}
+                            {uiText(language, item.ready ? 'Ready' : 'Check')}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{item.detail}</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{uiText(language, item.detail)}</p>
                       </div>
                     </div>
                   </div>
@@ -906,6 +908,7 @@ function SalesModeCard({
   onClick?: () => void;
   locked?: boolean;
 }) {
+  const { language } = useI18n();
   return (
     <button
       type="button"
@@ -925,7 +928,7 @@ function SalesModeCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-black text-gray-950">{title}</h3>
-            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">{locked ? 'Auto' : 'Enabled'}</span>}
+            {active && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800">{uiText(language, locked ? 'Auto' : 'Enabled')}</span>}
           </div>
           <p className="mt-1 text-xs font-semibold leading-5 text-gray-600">{detail}</p>
         </div>

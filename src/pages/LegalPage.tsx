@@ -1,5 +1,6 @@
 import { ArrowLeft, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LanguageToggle, useI18n } from '../i18n';
 
 export type LegalPageKind = 'privacy' | 'terms' | 'cookies';
 
@@ -38,18 +39,48 @@ const content: Record<LegalPageKind, { title: string; englishTitle: string; upda
   },
 };
 
+const englishContent: typeof content = {
+  privacy: {
+    title: 'Privacy Policy', englishTitle: 'Privacy Policy', updated: '16 July 2026',
+    sections: [
+      { heading: 'Information Nireq uses', body: 'We use account, booth, order, queue, contact and payment-evidence information as needed to provide the service, maintain security and support users.' },
+      { heading: 'Payment evidence', body: 'Customers pay creators directly. Nireq privately stores evidence so creators can review and confirm or reject it themselves. We do not check bank accounts or certify that payment has been received.' },
+      { heading: 'Disclosure and retention', body: 'Public booth information appears when the owner publishes the booth. Order information and payment evidence are not public. We may use hosting, database, email and error-monitoring providers needed to operate the service.' },
+      { heading: 'Your rights and contact', body: 'You can contact us to request access, corrections or deletion where permitted by law. We may need to verify your identity before processing a request.' },
+    ],
+  },
+  terms: {
+    title: 'Terms of Service', englishTitle: 'Terms of Service', updated: '16 July 2026',
+    sections: [
+      { heading: 'The role of Nireq', body: 'Nireq helps manage queues, orders, payment evidence and pickup. It is not the seller, payment recipient or verifier of transactions between customers and creators.' },
+      { heading: 'User responsibilities', body: 'Users must provide accurate information, keep their accounts secure and not use the service for fraud, rights violations, service disruption or unauthorized access.' },
+      { heading: 'Orders, payments and disputes', body: 'Creators set prices, stock and pickup conditions and review payment evidence themselves. Contact the creator first about product or payment disputes.' },
+      { heading: 'Service availability', body: 'We aim to provide continuous service, but may pause for maintenance, security or circumstances beyond our control. We may update these terms and publish the revised date.' },
+    ],
+  },
+  cookies: {
+    title: 'Cookies & Local Storage', englishTitle: 'Cookies & Local Storage', updated: '16 July 2026',
+    sections: [
+      { heading: 'What we use', body: 'Nireq uses cookies or browser storage needed for sign-in, security, language, carts, queues and returning to order status.' },
+      { heading: 'Your controls', body: 'You can delete site data in your browser settings. This may require you to sign in again or remove queue and cart information saved on your device.' },
+      { heading: 'Measurement and errors', body: 'We may collect limited technical information to investigate errors and improve reliability, while avoiding sending passwords, tokens and payment evidence to monitoring systems.' },
+    ],
+  },
+};
+
 export default function LegalPage({ kind }: { kind: LegalPageKind }) {
-  const page = content[kind];
+  const { language } = useI18n();
+  const page = (language === 'th' ? content : englishContent)[kind];
 
   return (
     <main className="min-h-screen bg-[#fffafc] px-4 py-8 text-gray-950">
       <article className="mx-auto max-w-3xl rounded-3xl border border-pink-100 bg-white p-6 shadow-sm sm:p-10">
-        <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-pink-700 hover:text-pink-900">
-          <ArrowLeft size={17} /> กลับไป Nireq
-        </Link>
-        <p className="mt-8 text-xs font-black uppercase tracking-[0.18em] text-pink-700">{page.englishTitle}</p>
+        <div className="flex items-center justify-between gap-3"><Link to="/" className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-pink-700 hover:text-pink-900">
+          <ArrowLeft size={17} /> {language === 'th' ? 'กลับไป Nireq' : 'Back to Nireq'}
+        </Link><LanguageToggle /></div>
+        <p className="mt-8 text-xs font-black uppercase tracking-[0.18em] text-pink-700">{language === 'th' ? 'นโยบายและข้อกำหนด' : 'Policies and terms'}</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">{page.title}</h1>
-        <p className="mt-2 text-sm text-gray-500">ปรับปรุงล่าสุด {page.updated}</p>
+        <p className="mt-2 text-sm text-gray-500">{language === 'th' ? 'ปรับปรุงล่าสุด' : 'Last updated'} {page.updated}</p>
 
         <div className="mt-8 space-y-7">
           {page.sections.map((section) => (
@@ -61,7 +92,7 @@ export default function LegalPage({ kind }: { kind: LegalPageKind }) {
         </div>
 
         <div className="mt-10 rounded-2xl border border-pink-100 bg-pink-50/60 p-5">
-          <h2 className="font-black">ติดต่อ Nireq</h2>
+          <h2 className="font-black">{language === 'th' ? 'ติดต่อ Nireq' : 'Contact Nireq'}</h2>
           <a href="mailto:kongphop.sunit@gmail.com" className="mt-2 inline-flex min-h-11 items-center gap-2 font-bold text-pink-700 hover:text-pink-900">
             <Mail size={17} /> kongphop.sunit@gmail.com
           </a>

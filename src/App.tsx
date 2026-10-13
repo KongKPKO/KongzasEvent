@@ -48,7 +48,7 @@ const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
 import ManageLogin from './pages/ManageLogin';
-import { useI18n } from './i18n';
+import { useI18n, uiText } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 import InvitationsPage from './pages/InvitationsPage';
 import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
@@ -62,6 +62,7 @@ function EventAccessRoute({
   fallbackPath: string;
   children: ReactNode;
 }) {
+  const { language } = useI18n();
   const { eventId } = useParams();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const allowedRoleKey = allowedRoles.join(',');
@@ -86,7 +87,7 @@ function EventAccessRoute({
   }, [allowedRoleKey, eventId]);
 
   if (allowed === null) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Checking event access…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">{uiText(language, 'Checking event access…')}</div>;
   }
 
   return allowed ? children : <Navigate to={fallbackPath} replace />;

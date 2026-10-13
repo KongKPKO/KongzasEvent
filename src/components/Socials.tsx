@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../components/ui';
 import { Instagram, Facebook, Mail } from 'lucide-react';
+import { uiText, useI18n } from '../i18n';
 
 const XIcon = ({ size = 20 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -25,6 +26,7 @@ const TiktokIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 export const Socials: React.FC = () => {
+  const { language } = useI18n();
   const socialLinks = [
     {
       name: 'X',
@@ -64,7 +66,7 @@ export const Socials: React.FC = () => {
 
   return (
     <section className="socials-section py-4 text-center bg-gray-50 rounded-2xl mt-0 mb-6">
-      <h3 className="section-title text-xl font-bold mb-6">Follow Me</h3>
+      <h3 className="section-title text-xl font-bold mb-6">{uiText(language, 'Follow Me')}</h3>
       <div className="flex flex-wrap justify-center gap-4 px-4">
         {socialLinks.map((social) => (
           <Button
@@ -79,7 +81,7 @@ export const Socials: React.FC = () => {
         ))}
       </div>
       <div className="mt-4 text-sm text-gray-400">
-        Click to connect
+        {uiText(language, 'Click to connect')}
       </div>
     </section>
   );

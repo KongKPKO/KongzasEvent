@@ -8,7 +8,7 @@ import { Ban, RefreshCcw, LogOut, Ticket } from 'lucide-react';
 import CustomerHeader from '../../components/CustomerHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import { resolveQueueAvailability } from '../../lib/queueAvailability';
 import {
@@ -448,7 +448,7 @@ const QueueView = () => {
             console.error("handleGetTicket Exception:", err);
             const suspended = String((err as { message?: string })?.message || '').includes('store_suspended');
             setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: suspended
-                ? (language === 'th' ? 'ร้านนี้ถูกระงับการรับคิวใหม่' : 'This store is not accepting new queue tickets.')
+                ? uiText(language, 'This store is not accepting new queue tickets.')
                 : t('queueTryAgain') });
         } finally {
             setLoading(false);
@@ -780,7 +780,7 @@ const QueueView = () => {
 
             <CustomerHeader
                 artistId={displayArtist.id}
-                title={displayArtist.display_name || 'Queue'}
+                title={displayArtist.display_name || uiText(language, 'Queue')}
                 transparent={true} // Restored transparent background
                 avatarUrl={resolveAvatarUrl(displayArtist.image_url)}
                 avatarDisplay="inline"
@@ -814,14 +814,14 @@ const QueueView = () => {
                             >
                                 <span className="sr-only">
                                     {nowServingNumber
-                                        ? `Now serving queue number ${nowServingNumber}`
-                                        : "No queue is currently being served"}
+                                        ? `${uiText(language, 'Now serving queue number')} ${nowServingNumber}`
+                                        : uiText(language, 'No queue is currently being served')}
                                 </span>
                                 <span aria-hidden="true">
                                     {nowServingNumber ? (
                                         <span><span className="text-pink-400 text-2xl align-top mr-0.5">#</span>{nowServingNumber}</span>
                                     ) : (
-                                        <span className="text-sm font-black uppercase tracking-widest text-gray-400">Waiting</span>
+                                        <span className="text-sm font-black uppercase tracking-widest text-gray-400">{uiText(language, 'Waiting')}</span>
                                     )}
                                 </span>
                             </div>

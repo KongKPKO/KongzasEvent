@@ -10,7 +10,7 @@ import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
 import { getAuthUserSafe } from '../../utils/auth';
 import { fetchActorContext } from '../../utils/access';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import type { ActorContext } from '../../types/access';
 import type { EventSellingMode, OrderType, PickupStatus } from '../../types/preorder';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
@@ -83,11 +83,11 @@ interface EventMetricQueue {
   status?: string | null;
 }
 
-const getEventDateParts = (dateString: string, timeZone?: string | null) => {
+const getEventDateParts = (dateString: string, locale: string, timeZone?: string | null) => {
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return null;
 
-  const parts = new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -101,9 +101,9 @@ const getEventDateParts = (dateString: string, timeZone?: string | null) => {
   };
 };
 
-const formatEventDateRange = (event: Event) => {
-  const start = getEventDateParts(event.start_date, event.event_timezone);
-  const end = getEventDateParts(event.end_date, event.event_timezone);
+const formatEventDateRange = (event: Event, locale: string) => {
+  const start = getEventDateParts(event.start_date, locale, event.event_timezone);
+  const end = getEventDateParts(event.end_date, locale, event.event_timezone);
   if (!start || !end) {
     return { primary: '-', secondary: '' };
   }
@@ -169,7 +169,7 @@ const formatMoney = (amount: number, currency: string) =>
   }).format(amount || 0);
 
 const ManageArtist = () => {
-  const { t } = useI18n();
+  const { t, language, dateLocale } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const browserTimeZone = getBrowserTimeZone();
@@ -369,10 +369,10 @@ const ManageArtist = () => {
           .eq('id', artist.id);
 
        if (error) throw error;
-       alert('Profile picture updated successfully!');
+       alert(uiText(language, 'Profile picture updated successfully!'));
     } catch (error) {
        console.error("Error saving avatar:", error);
-       alert('Failed to save profile picture.');
+       alert(uiText(language, 'Failed to save profile picture.'));
     }
   };
 
@@ -395,10 +395,10 @@ const ManageArtist = () => {
         .eq('id', artist.id);
 
       if (error) throw error;
-      alert("Profile updated successfully!");
+      alert(uiText(language, 'Profile updated successfully!'));
     } catch (error) {
       console.error("Error updating profile:", error);
-      alert("Failed to update profile.");
+      alert(uiText(language, 'Failed to update profile.'));
     } finally {
       setIsSaving(false);
     }
@@ -514,7 +514,7 @@ const ManageArtist = () => {
 
   const handleEventSave = async () => {
     if (!artist || !currentEvent.event_name || !currentEvent.start_date) {
-      alert("Please fill in required fields (Name, Start Date)");
+      alert(uiText(language, 'Please fill in required fields (Name, Start Date)'));
       return;
     }
 
@@ -524,7 +524,7 @@ const ManageArtist = () => {
       const parsedStart = parseDateTimeInputInTimeZone(currentEvent.start_date || '', eventTimeZone);
 
       if (!parsedStart) {
-        alert('Invalid start date/time. Please check the selected timezone and date.');
+        alert(uiText(language, 'Invalid start date/time. Please check the selected timezone and date.'));
         return;
       }
 
@@ -589,21 +589,21 @@ const ManageArtist = () => {
       }
     } catch (error) {
       console.error("Error saving event:", error);
-      alert("Failed to save event.");
+      alert(uiText(language, 'Failed to save event.'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleEventDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this event?")) return;
+    if (!confirm(uiText(language, 'Are you sure you want to delete this event?'))) return;
     try {
       const { error } = await supabase.from('events').delete().eq('id', id);
       if (error) throw error;
       setEvents(events.filter(e => e.id !== id));
     } catch (error) {
        console.error("Error deleting event:", error);
-       alert("Failed to delete event.");
+       alert(uiText(language, 'Failed to delete event.'));
     }
   };
 
@@ -624,7 +624,7 @@ const ManageArtist = () => {
       )));
     } catch (error) {
       console.error('Error updating booth status:', error);
-      alert('Failed to update booth status.');
+      alert(uiText(language, 'Failed to update booth status.'));
     }
   };
 
@@ -686,7 +686,7 @@ const ManageArtist = () => {
       setCopyFeedback('idle');
     } catch (error) {
       console.error('[ManageArtist] Failed to publish public booth:', error);
-      setPublishError(getPublishErrorMessage(error));
+      setPublishError(uiText(language, getPublishErrorMessage(error)));
     } finally {
       setIsPublishingPublicLink(false);
     }
@@ -703,7 +703,7 @@ const ManageArtist = () => {
     } catch (error) {
       console.error('[ManageArtist] Failed to copy public URL:', error);
       setCopyFeedback('failed');
-      alert(error instanceof Error ? error.message : 'Failed to copy public URL.');
+      alert(uiText(language, error instanceof Error ? error.message : 'Failed to copy public URL.'));
     } finally {
       setIsPublishingPublicLink(false);
     }
@@ -725,7 +725,7 @@ const ManageArtist = () => {
     } catch (error) {
       console.error('[ManageArtist] Failed to open public catalog:', error);
       setCopyFeedback('failed');
-      alert(error instanceof Error ? error.message : 'Failed to publish public catalog.');
+      alert(uiText(language, error instanceof Error ? error.message : 'Failed to publish public catalog.'));
       window.setTimeout(() => setCopyFeedback('idle'), 2500);
     } finally {
       setIsPublishingPublicLink(false);
@@ -733,7 +733,7 @@ const ManageArtist = () => {
   };
 
 
-  if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">Loading Artist Center...</div>;
+  if (isLoading) return <div className="flex h-screen items-center justify-center text-pink-500 font-bold">{uiText(language, 'Loading Artist Center...')}</div>;
   if (loadError) return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div role="alert" className="max-w-md space-y-4 text-center">
@@ -744,7 +744,7 @@ const ManageArtist = () => {
       </div>
     </div>
   );
-  if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">Artist not found.</div>;
+  if (!artist) return <div className="flex h-screen items-center justify-center text-gray-500">{uiText(language, 'Artist not found.')}</div>;
 
   const publicPageUrl = artist.slug ? `${window.location.origin}/${artist.slug}/home` : '';
   const publicMenuUrl = artist.slug ? `${window.location.origin}/${artist.slug}/menu` : '';
@@ -784,7 +784,7 @@ const ManageArtist = () => {
         {/* Header */}
         <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <div>
-              <h1 className="text-xl font-black text-gray-800 tracking-tight">Manage profile and events</h1>
+              <h1 className="text-xl font-black text-gray-800 tracking-tight">{uiText(language, 'Manage profile and events')}</h1>
               <p className="text-sm md:text-base text-pink-700 font-bold">{artist.display_name}</p>
            </div>
            {artist.slug && (
@@ -795,21 +795,21 @@ const ManageArtist = () => {
                    onClick={handlePublishPublicBooth}
                    disabled={isPublishingPublicLink || !getShareableEvent()}
                    className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl bg-pink-700 px-4 py-2 text-sm font-black text-white hover:bg-pink-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-                   title={getShareableEvent() ? `Publish /${artist.slug} for ${getShareableEvent()?.event_name}` : 'Add a confirmed, non-expired event first'}
+                   title={getShareableEvent() ? language === 'th' ? `เผยแพร่ /${artist.slug} สำหรับ ${getShareableEvent()?.event_name}` : `Publish /${artist.slug} for ${getShareableEvent()?.event_name}` : uiText(language, 'Add a confirmed, non-expired event first')}
                  >
                    <ExternalLink size={16} aria-hidden="true" />
-                   {isPublishingPublicLink ? 'Publishing…' : 'Publish booth'}
+                   {uiText(language, isPublishingPublicLink ? 'Publishing…' : 'Publish booth')}
                  </button>
                )}
                <button
                  type="button"
                  onClick={handleCopyPublicUrl}
                  disabled={isPublishingPublicLink || !artist.is_public}
-                 title={artist.is_public ? publicPageUrl : 'Publish the booth before sharing'}
+                 title={artist.is_public ? publicPageUrl : uiText(language, 'Publish the booth before sharing')}
                  className="workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm font-black text-pink-700 hover:bg-pink-100"
                >
                  <Copy size={16} aria-hidden="true" />
-                 {copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL'}
+                 {uiText(language, copyFeedback === 'copied' ? 'Link copied' : copyFeedback === 'failed' ? 'Copy failed' : 'Copy public URL')}
                </button>
                <a
                  href={publicMenuUrl}
@@ -817,11 +817,11 @@ const ManageArtist = () => {
                  rel="noreferrer"
                  onClick={handleOpenPublicCatalog}
                  aria-disabled={!artist.is_public}
-                 title={artist.is_public ? publicMenuUrl : 'Publish the booth before opening the customer catalog'}
+                 title={artist.is_public ? publicMenuUrl : uiText(language, 'Publish the booth before opening the customer catalog')}
                  className={`workspace-action inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black ${artist.is_public ? 'text-gray-700 hover:bg-gray-50' : 'cursor-not-allowed text-gray-400'}`}
                >
                  <ExternalLink size={16} aria-hidden="true" />
-                 Open public catalog
+                 {uiText(language, 'Open public catalog')}
                </a>
              </div>
            )}
@@ -830,7 +830,7 @@ const ManageArtist = () => {
         {publishError && (
           <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900" role="alert">
             <span>{publishError}</span>
-            <button type="button" onClick={() => setPublishError(null)} className="min-h-11 shrink-0 rounded-lg px-3 text-xs font-black text-amber-900 hover:bg-amber-100">Dismiss</button>
+            <button type="button" onClick={() => setPublishError(null)} className="min-h-11 shrink-0 rounded-lg px-3 text-xs font-black text-amber-900 hover:bg-amber-100">{uiText(language, 'Dismiss')}</button>
           </div>
         )}
 
@@ -840,7 +840,7 @@ const ManageArtist = () => {
           <div ref={profilePanelRef} className="workspace-card h-auto self-start scroll-mt-20">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
                <User className="text-pink-700" size={16} />
-               <h2 className="font-bold text-sm text-slate-800">Profile Settings</h2>
+               <h2 className="font-bold text-sm text-slate-800">{uiText(language, 'Profile Settings')}</h2>
             </div>
             
             <div className="p-4 space-y-3">
@@ -855,7 +855,7 @@ const ManageArtist = () => {
 
                {/* Display Name */}
                <div className="space-y-1">
-                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Display Name</label>
+                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{uiText(language, 'Display Name')}</label>
                   <input 
                     id="artist-display-name"
                     name="display_name"
@@ -867,7 +867,7 @@ const ManageArtist = () => {
 
                {/* Bio */}
                <div className="space-y-1">
-                  <label htmlFor="artist-bio" className="text-xs font-bold uppercase text-slate-500 tracking-wider">Bio</label>
+                  <label htmlFor="artist-bio" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{uiText(language, 'Bio')}</label>
                   <textarea 
                     id="artist-bio"
                     name="bio"
@@ -882,7 +882,7 @@ const ManageArtist = () => {
 
                {/* Socials */}
                <div className="space-y-1">
-                  <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">Social Links</h3>
+                  <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">{uiText(language, 'Social Links')}</h3>
                   <div className="flex flex-col gap-1">
                      {['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'].map((field) => (
                        <div key={field} className="relative group">
@@ -910,7 +910,7 @@ const ManageArtist = () => {
                  disabled={isSaving}
                  className="w-full mt-1 bg-pink-600 hover:bg-pink-700 text-white font-bold h-11 text-sm rounded-xl shadow-md shadow-pink-200 active:scale-95 transition-all"
                >
-                 {isSaving ? 'Saving...' : 'Save Updates'}
+                 {uiText(language, isSaving ? 'Saving...' : 'Save Updates')}
                </Button>
             </div>
           </div>
@@ -923,14 +923,14 @@ const ManageArtist = () => {
                 <div className="flex items-center gap-2">
                   <Calendar className="text-pink-700" size={20} aria-hidden="true" />
                   <div>
-                    <h2 className="font-black text-lg text-slate-900">Event Workspaces</h2>
+                    <h2 className="font-black text-lg text-slate-900">{uiText(language, 'Event Workspaces')}</h2>
                     <p className="text-xs font-semibold text-gray-600">
-                      {showFullGrid ? 'Choose an event, then manage its operations inside the workspace.' : 'Opening your active event workspace...'}
+                      {uiText(language, showFullGrid ? 'Choose an event, then manage its operations inside the workspace.' : 'Opening your active event workspace...')}
                     </p>
                   </div>
                 </div>
                 <Button onClick={() => handleOpenModal()} className="bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-xs font-bold px-4 h-11 shadow-sm flex items-center gap-2">
-                  <Plus size={14} aria-hidden="true" /> Add Event
+                  <Plus size={14} aria-hidden="true" /> {uiText(language, 'Add Event')}
                 </Button>
               </div>
 
@@ -941,14 +941,14 @@ const ManageArtist = () => {
                     onClick={() => setTab('active')}
                     className={`min-h-11 rounded-lg px-3 text-xs font-black transition ${eventTab === 'active' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
                   >
-                    กำลังดำเนินการ {activeEvents.length}
+                    {uiText(language, 'Active')} {activeEvents.length}
                   </button>
                   <button
                     type="button"
                     onClick={() => setTab('ended')}
                     className={`min-h-11 rounded-lg px-3 text-xs font-black transition ${eventTab === 'ended' ? 'bg-white text-pink-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
                   >
-                    จบแล้ว {endedEvents.length}
+                    {uiText(language, 'Ended')} {endedEvents.length}
                   </button>
                 </div>
 
@@ -957,20 +957,20 @@ const ManageArtist = () => {
                     value={filterMonth}
                     onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                     className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                    aria-label="Filter by month"
+                    aria-label={uiText(language, 'Filter by month')}
                   >
-                    <option value="all">All Months</option>
-                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => (
-                      <option key={month} value={idx}>{month}</option>
+                    <option value="all">{uiText(language, 'All Months')}</option>
+                    {Array.from({ length: 12 }, (_, idx) => (
+                      <option key={idx} value={idx}>{new Date(2020, idx, 1).toLocaleString(dateLocale, { month: 'short' })}</option>
                     ))}
                   </select>
                   <select
                     value={filterYear}
                     onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                     className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
-                    aria-label="Filter by year"
+                    aria-label={uiText(language, 'Filter by year')}
                   >
-                    <option value="all">All Years</option>
+                    <option value="all">{uiText(language, 'All Years')}</option>
                     {(() => {
                       const years = [...new Set(events.map(e => new Date(e.start_date).getFullYear()))].sort((a, b) => b - a);
                       if (years.length === 0) years.push(new Date().getFullYear());
@@ -984,7 +984,7 @@ const ManageArtist = () => {
                       onClick={() => { setFilterMonth('all'); setFilterYear('all'); }}
                       className="min-h-11 rounded-lg px-2 text-xs font-black text-pink-700 hover:bg-pink-50"
                     >
-                      Clear
+                      {uiText(language, 'Clear')}
                     </button>
                   )}
                 </div>
@@ -994,18 +994,18 @@ const ManageArtist = () => {
             {events.length === 0 ? (
               <section className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center">
                 <Calendar size={42} className="mx-auto mb-3 text-gray-300" aria-hidden="true" />
-                <h3 className="text-base font-black text-gray-800">No events scheduled.</h3>
-                <p className="mt-1 text-sm font-semibold text-gray-600">Create your first event to start building a workspace.</p>
+                <h3 className="text-base font-black text-gray-800">{uiText(language, 'No events scheduled.')}</h3>
+                <p className="mt-1 text-sm font-semibold text-gray-600">{uiText(language, 'Create your first event to start building a workspace.')}</p>
               </section>
             ) : visibleEvents.length === 0 ? (
               <section className="rounded-2xl border border-gray-200 bg-white p-8 text-center">
-                <p className="text-sm font-bold text-gray-600">No events match this tab and filter.</p>
+                <p className="text-sm font-bold text-gray-600">{uiText(language, 'No events match this tab and filter.')}</p>
               </section>
             ) : (
-              <section className="grid gap-4 md:grid-cols-2" aria-label="Event workspace list">
+              <section className="grid gap-4 md:grid-cols-2" aria-label={uiText(language, 'Event workspace list')}>
                 {visibleEvents.map((evt) => {
                   const metric = eventMetrics[evt.id] || emptyMetric;
-                  const eventDateRange = formatEventDateRange(evt);
+                  const eventDateRange = formatEventDateRange(evt, dateLocale);
                   const ended = isEndedEvent(evt);
                   const statusBadgeClass = ended
                     ? 'bg-gray-100 text-gray-600'
@@ -1022,10 +1022,10 @@ const ManageArtist = () => {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusBadgeClass}`}>
-                              {ended ? 'Ended' : evt.selling_mode || evt.status}
+                              {ended ? uiText(language, 'Ended') : uiText(language, evt.selling_mode === 'preorder' ? 'Pre-order' : evt.selling_mode === 'post_event' ? 'Post-order' : evt.status)}
                             </span>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${boothBadgeClass}`}>
-                              {evt.is_booth_open ? 'Booth open' : 'Booth closed'}
+                              {uiText(language, evt.is_booth_open ? 'Booth open' : 'Booth closed')}
                             </span>
                           </div>
                           <h3 className="mt-2 truncate text-lg font-black text-slate-900">{evt.event_name}</h3>
@@ -1035,40 +1035,40 @@ const ManageArtist = () => {
                         </div>
 
                         <details className="relative shrink-0">
-                          <summary className="workspace-action flex h-11 w-11 cursor-pointer list-none items-center justify-center border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" aria-label={`More actions for ${evt.event_name}`}>
+                          <summary className="workspace-action flex h-11 w-11 cursor-pointer list-none items-center justify-center border border-gray-200 bg-white text-gray-600 hover:bg-gray-50" aria-label={language === 'th' ? `การทำงานเพิ่มเติมสำหรับ ${evt.event_name}` : `More actions for ${evt.event_name}`}>
                             <MoreHorizontal size={18} aria-hidden="true" />
                           </summary>
                           <div className="absolute right-0 top-12 z-10 w-44 rounded-xl border border-gray-200 bg-white p-1.5 text-sm font-bold shadow-lg">
                             {!ended && (
                               <button onClick={() => handleBoothToggle(evt.id, !evt.is_booth_open)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50">
                                 <span className={`h-2 w-2 rounded-full ${evt.is_booth_open ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                                {evt.is_booth_open ? 'Close booth' : 'Open booth'}
+                                {uiText(language, evt.is_booth_open ? 'Close booth' : 'Open booth')}
                               </button>
                             )}
-                            <button onClick={() => handleOpenModal(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Settings size={14} />Edit</button>
-                            <button onClick={() => handleOpenStats(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><BarChart2 size={14} />Dashboard</button>
-                            <button onClick={() => navigate(`/manage-events/${evt.id}/history`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><FileText size={14} />Orders</button>
-                            <button onClick={() => navigate(`/manage-events/${evt.id}/preorder`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Ticket size={14} />Pre-order</button>
-                            <button onClick={() => navigate(`/manage-events/${evt.id}/pickup`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><PackageCheck size={14} />Pickup</button>
-                            {!ended && <button onClick={() => navigate(`/live/queue?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Users size={14} />Live Queue</button>}
-                            {!ended && <button onClick={() => navigate(`/live/pos?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><ShoppingCart size={14} />Live POS</button>}
+                            <button onClick={() => handleOpenModal(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Settings size={14} />{uiText(language, 'Edit')}</button>
+                            <button onClick={() => handleOpenStats(evt)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><BarChart2 size={14} />{uiText(language, 'Dashboard')}</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/history`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><FileText size={14} />{uiText(language, 'Orders')}</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/preorder`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Ticket size={14} />{uiText(language, 'Pre-order')}</button>
+                            <button onClick={() => navigate(`/manage-events/${evt.id}/pickup`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><PackageCheck size={14} />{uiText(language, 'Pickup')}</button>
+                            {!ended && <button onClick={() => navigate(`/live/queue?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><Users size={14} />{uiText(language, 'Live Queue')}</button>}
+                            {!ended && <button onClick={() => navigate(`/live/pos?eventId=${evt.id}`)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-gray-700 hover:bg-gray-50"><ShoppingCart size={14} />{uiText(language, 'Live POS')}</button>}
                             <div className="my-1 h-px bg-gray-100" />
-                            <button onClick={() => handleEventDelete(evt.id)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-red-600 hover:bg-red-50"><Trash2 size={14} />Delete</button>
+                            <button onClick={() => handleEventDelete(evt.id)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-red-600 hover:bg-red-50"><Trash2 size={14} />{uiText(language, 'Delete')}</button>
                           </div>
                         </details>
                       </div>
 
                       <div className="mt-4 grid grid-cols-3 gap-2">
                         <div className="rounded-xl bg-gray-50 p-2">
-                          <p className="text-[10px] font-black uppercase text-gray-600">Pickup</p>
+                          <p className="text-[10px] font-black uppercase text-gray-600">{uiText(language, 'Pickup')}</p>
                           <p className="mt-1 text-sm font-black text-gray-900">{metric.awaitingPickup}</p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-2">
-                          <p className="text-[10px] font-black uppercase text-gray-600">Queue</p>
+                          <p className="text-[10px] font-black uppercase text-gray-600">{uiText(language, 'Queue')}</p>
                           <p className="mt-1 text-sm font-black text-gray-900">{metric.queueWaiting}</p>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-2">
-                          <p className="text-[10px] font-black uppercase text-gray-600">Sales</p>
+                          <p className="text-[10px] font-black uppercase text-gray-600">{uiText(language, 'Sales')}</p>
                           <p className="mt-1 truncate text-sm font-black text-gray-900">{formatMoney(metric.revenue, metric.currency)}</p>
                         </div>
                       </div>
@@ -1078,7 +1078,7 @@ const ManageArtist = () => {
                           onClick={() => openWorkspace(evt.id)}
                           className="workspace-action inline-flex flex-1 items-center justify-center gap-2 bg-pink-600 px-4 text-sm font-black text-white hover:bg-pink-700"
                         >
-                          Manage
+                          {uiText(language, 'Manage')}
                         </button>
                         {!ended && (
                           <button
@@ -1086,7 +1086,7 @@ const ManageArtist = () => {
                             className="workspace-action inline-flex items-center justify-center gap-2 border border-indigo-100 bg-indigo-50 px-4 text-sm font-black text-indigo-700 hover:bg-indigo-100"
                           >
                             <Users size={16} aria-hidden="true" />
-                            Live Ops
+                            {uiText(language, 'Live Ops')}
                           </button>
                         )}
                       </div>
@@ -1094,7 +1094,7 @@ const ManageArtist = () => {
                       {(evt.location || evt.booth_detail) && (
                         <div className="mt-3 flex items-start gap-1.5 text-xs font-semibold text-gray-600">
                           <MapPin size={13} className="mt-0.5 shrink-0 text-pink-400" aria-hidden="true" />
-                          <span>{evt.location || '-'}{evt.booth_detail ? ` · Booth ${evt.booth_detail}` : ''}</span>
+                          <span>{evt.location || '-'}{evt.booth_detail ? ` · ${uiText(language, 'Booth')} ${evt.booth_detail}` : ''}</span>
                         </div>
                       )}
                     </article>
@@ -1117,42 +1117,42 @@ const ManageArtist = () => {
               className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
             >
                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                  <h3 id="event-form-title" className="font-bold text-lg text-slate-800">{isEditingEvent ? 'Edit Event' : 'New Event'}</h3>
-                  <button onClick={() => setIsModalOpen(false)} className="icon-touch inline-flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100" aria-label="Close event form">
+                  <h3 id="event-form-title" className="font-bold text-lg text-slate-800">{uiText(language, isEditingEvent ? 'Edit Event' : 'New Event')}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="icon-touch inline-flex items-center justify-center text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100" aria-label={uiText(language, 'Close event form')}>
                      <X size={20} aria-hidden="true" />
                   </button>
                </div>
                
                <div className="p-6 overflow-y-auto space-y-4 text-sm">
                   <div className="rounded-xl border border-pink-100 bg-pink-50 p-3">
-                     <p className="text-xs font-black uppercase tracking-wide text-pink-700">Event timing</p>
-                     <p className="mt-1 text-xs font-semibold text-pink-800/80">Queue days reset using this event timezone, so choose the timezone where the booth is actually running.</p>
+                     <p className="text-xs font-black uppercase tracking-wide text-pink-700">{uiText(language, 'Event timing')}</p>
+                     <p className="mt-1 text-xs font-semibold text-pink-800/80">{uiText(language, 'Queue days reset using this event timezone, so choose the timezone where the booth is actually running.')}</p>
                   </div>
 
                   <div className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
                      <div className="space-y-1 flex-1">
-                        <label className="font-bold text-xs uppercase text-gray-600">Status</label>
-                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="min-h-11 w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label="Event status">
-                           <option value="Confirmed">Confirmed</option>
-                           <option value="Cancelled">Cancelled</option>
-                           <option value="Ended">Ended</option>
+                        <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Status')}</label>
+                        <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="min-h-11 w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label={uiText(language, 'Event status')}>
+                           <option value="Confirmed">{uiText(language, 'Confirmed')}</option>
+                           <option value="Cancelled">{uiText(language, 'Cancelled')}</option>
+                           <option value="Ended">{uiText(language, 'Ended')}</option>
                         </select>
                      </div>
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Event Name *</label>
-                     <input name="event_name" value={currentEvent.event_name} onChange={handleFunctionChange} className="input-field w-full border border-gray-200 rounded-lg p-3 font-semibold focus:ring-pink-500 focus:border-pink-500 outline-none" placeholder="e.g. Cosplay Festival 2026" />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Event Name *')}</label>
+                     <input name="event_name" value={currentEvent.event_name} onChange={handleFunctionChange} className="input-field w-full border border-gray-200 rounded-lg p-3 font-semibold focus:ring-pink-500 focus:border-pink-500 outline-none" placeholder={uiText(language, 'e.g. Cosplay Festival 2026')} />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Time Zone *</label>
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Time Zone *')}</label>
                      <select
                         name="event_timezone"
                         value={currentEvent.event_timezone || browserTimeZone}
                         onChange={handleFunctionChange}
                         className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500 bg-white"
-                        aria-label="Event timezone"
+                        aria-label={uiText(language, 'Event timezone')}
                      >
                         {timeZoneOptions.map((timeZone) => (
                            <option key={timeZone.value} value={timeZone.value}>
@@ -1160,50 +1160,50 @@ const ManageArtist = () => {
                            </option>
                         ))}
                      </select>
-                     <p className="mt-1 text-xs font-semibold text-gray-500">Used for end-of-day and daily queue reset.</p>
+                     <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Used for end-of-day and daily queue reset.')}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-600">Start Date *</label>
+                        <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Start Date *')}</label>
                         <input type="datetime-local" name="start_date" value={currentEvent.start_date || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" />
                      </div>
                      <div className="space-y-1">
-                        <label className="font-bold text-xs uppercase text-gray-600">End Date *</label>
+                        <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'End Date *')}</label>
                         <input type="datetime-local" name="end_date" value={currentEvent.end_date || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" />
                      </div>
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Location</label>
-                     <input name="location" value={currentEvent.location || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. 5th Floor, Siam Paragon" />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Location')}</label>
+                     <input name="location" value={currentEvent.location || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder={uiText(language, 'e.g. 5th Floor, Siam Paragon')} />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Booth Detail</label>
-                     <input name="booth_detail" value={currentEvent.booth_detail || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. Booth A12, Zone Creator Hall" />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Booth Detail')}</label>
+                     <input name="booth_detail" value={currentEvent.booth_detail || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder={uiText(language, 'e.g. Booth A12, Zone Creator Hall')} />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Queueing Area</label>
-                     <input name="queueing_area" value={currentEvent.queueing_area || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. Queue lane beside Booth A12" />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Queueing Area')}</label>
+                     <input name="queueing_area" value={currentEvent.queueing_area || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder={uiText(language, 'e.g. Queue lane beside Booth A12')} />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Entrance Fee</label>
-                     <input name="entrance_fee" value={currentEvent.entrance_fee || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder="e.g. 300 THB / Free" />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Entrance Fee')}</label>
+                     <input name="entrance_fee" value={currentEvent.entrance_fee || ''} onChange={handleFunctionChange} className="min-h-11 w-full border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:border-pink-500" placeholder={uiText(language, 'e.g. 300 THB / Free')} />
                   </div>
 
                   <div className="space-y-1">
-                     <label className="font-bold text-xs uppercase text-gray-600">Transit Info</label>
-                     <textarea name="transit_info" rows={3} value={currentEvent.transit_info || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 resize-none" placeholder="BTS Bangna..." />
+                     <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Transit Info')}</label>
+                     <textarea name="transit_info" rows={3} value={currentEvent.transit_info || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 resize-none" placeholder={uiText(language, 'BTS Bangna...')} />
                   </div>
                </div>
 
                <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-700">Cancel</Button>
+                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-700">{uiText(language, 'Cancel')}</Button>
                   <Button onClick={handleEventSave} className="bg-pink-600 hover:bg-pink-700 text-white font-bold px-6 shadow-md shadow-pink-200">
-                     {isSaving ? 'Saving...' : 'Save Event'}
+                     {uiText(language, isSaving ? 'Saving...' : 'Save Event')}
                   </Button>
                </div>
             </div>

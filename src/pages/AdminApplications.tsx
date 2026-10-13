@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { ConfirmDialog, Toast } from '../components/ui/Feedback';
-import { LanguageToggle, useI18n } from '../i18n';
+import { LanguageToggle, useI18n, uiText } from '../i18n';
 import { invokeNotificationFunction } from '../utils/edgeFunctions';
 
 type ApplicationStatus = 'pending' | 'auto_approved' | 'approved' | 'rejected';
@@ -81,7 +81,7 @@ const linkItems = (application: CreatorApplication) => [
 ].filter(([, url]) => Boolean(url));
 
 export default function AdminApplications() {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, language } = useI18n();
   const navigate = useNavigate();
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -108,7 +108,7 @@ export default function AdminApplications() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      setToast({ tone: 'error', title: 'Could not load applications', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Could not load applications'), detail: error.message });
     } else {
       setApplications((data || []) as CreatorApplication[]);
     }
@@ -152,7 +152,7 @@ export default function AdminApplications() {
     if (error) {
       setToast({
         tone: 'warning',
-        title: 'Decision saved, email failed',
+        title: uiText(language, 'Decision saved, email failed'),
         detail: error.message,
       });
     }
@@ -168,13 +168,13 @@ export default function AdminApplications() {
     });
 
     if (error) {
-      setToast({ tone: 'error', title: 'Could not approve application', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Could not approve application'), detail: error.message });
     } else {
       await sendDecisionEmail(pendingAction.application.id, 'approved');
       setToast({
         tone: 'success',
         title: t('adminApprove'),
-        detail: `${pendingAction.application.email} can now sign in to the workspace.`,
+        detail: language === 'th' ? `${pendingAction.application.email} เข้าสู่หน้าจัดการร้านได้แล้ว` : `${pendingAction.application.email} can now sign in to the workspace.`,
       });
       await loadApplications();
     }
@@ -187,7 +187,7 @@ export default function AdminApplications() {
   const handleReject = async () => {
     if (!pendingAction || pendingAction.type !== 'reject') return;
     if (!reviewNote.trim()) {
-      setToast({ tone: 'warning', title: 'Reject note required', detail: t('adminRejectBody') });
+      setToast({ tone: 'warning', title: uiText(language, 'Reject note required'), detail: t('adminRejectBody') });
       return;
     }
 
@@ -198,10 +198,10 @@ export default function AdminApplications() {
     });
 
     if (error) {
-      setToast({ tone: 'error', title: 'Could not reject application', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Could not reject application'), detail: error.message });
     } else {
       await sendDecisionEmail(pendingAction.application.id, 'rejected');
-      setToast({ tone: 'success', title: 'Application rejected' });
+      setToast({ tone: 'success', title: uiText(language, 'Application rejected') });
       await loadApplications();
     }
 

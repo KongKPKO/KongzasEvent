@@ -1,7 +1,9 @@
+import { useI18n, uiText } from '../i18n';
 import React from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 
 const MainLayout: React.FC = () => {
+  const { language } = useI18n();
   const location = useLocation();
 
   const isActive = (path: string) => {
@@ -39,9 +41,9 @@ const MainLayout: React.FC = () => {
               </Link>
             </div>
             <div className="flex space-x-8 items-center ml-auto">
-              <NavLink to="/" icon="home" label="Home" />
-              <NavLink to="/menu" icon="coffee" label="Menu" />
-              <NavLink to="/queue" icon="people" label="Queue" />
+              <NavLink to="/" icon="home" label={uiText(language, "Home")} />
+              <NavLink to="/menu" icon="coffee" label={uiText(language, "Menu")} />
+              <NavLink to="/queue" icon="people" label={uiText(language, "Queue")} />
             </div>
           </div>
         </div>
@@ -59,16 +61,16 @@ const MainLayout: React.FC = () => {
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-surface-light dark:bg-surface-dark border-t border-border-light dark:border-border-dark pb-safe z-50">
         <div className="grid grid-cols-3 h-16">
             <Link to="/" className={`flex flex-col items-center justify-center ${isActive('/') ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
-                <span className="material-icons-round">home</span>
-                <span className="text-xs font-medium mt-1">Home</span>
+                <span className="material-icons-round">{uiText(language, "home")}</span>
+                <span className="text-xs font-medium mt-1">{uiText(language, "Home")}</span>
             </Link>
              <Link to="/menu" className={`flex flex-col items-center justify-center ${isActive('/menu') ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
-                <span className="material-icons-round">coffee</span>
-                <span className="text-xs font-medium mt-1">Menu</span>
+                <span className="material-icons-round">{uiText(language, "coffee")}</span>
+                <span className="text-xs font-medium mt-1">{uiText(language, "Menu")}</span>
             </Link>
              <Link to="/queue" className={`flex flex-col items-center justify-center ${isActive('/queue') ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}>
-                <span className="material-icons-round">people</span>
-                <span className="text-xs font-medium mt-1">Queue</span>
+                <span className="material-icons-round">{uiText(language, "people")}</span>
+                <span className="text-xs font-medium mt-1">{uiText(language, "Queue")}</span>
             </Link>
         </div>
       </div>

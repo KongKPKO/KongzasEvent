@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { CheckCircle, Clock3, PackageCheck, Search, Trash2 } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { cancelPreorder, expirePreordersForEvent, getPreorderErrorMessage, markPreorderPickedUp } from '../../lib/preorders';
 import { supabase } from '../../supabaseClient';
@@ -45,7 +45,7 @@ type ConfirmAction =
   | { type: 'expire' }
   | null;
 
-const formatPickupStatus = (status: PickupStatus) => {
+const formatPickupStatus = (status: PickupStatus, language: 'en' | 'th') => {
   const labels: Record<PickupStatus, string> = {
     not_required: 'Not required',
     awaiting_pickup: 'Awaiting pickup',
@@ -55,7 +55,7 @@ const formatPickupStatus = (status: PickupStatus) => {
     awaiting_shipment: 'Awaiting shipment',
     shipped: 'Shipped',
   };
-  return labels[status] || status;
+  return uiText(language, labels[status] || status);
 };
 
 const getStatusClasses = (status: PickupStatus) => {
@@ -123,13 +123,13 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
     } catch (error) {
       setToast({
         tone: 'error',
-        title: 'Could not load pickup orders',
-        detail: getPreorderErrorMessage(error),
+        title: uiText(language, 'Could not load pickup orders'),
+        detail: uiText(language, getPreorderErrorMessage(error)),
       });
     } finally {
       setLoading(false);
     }
-  }, [actorContext.artist_id, eventId]);
+  }, [actorContext.artist_id, eventId, language]);
 
   useEffect(() => {
     void load();
@@ -156,10 +156,10 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
     setActionLoading(true);
     try {
       await markPreorderPickedUp(order.id);
-      setToast({ tone: 'success', title: 'Pickup completed', detail: `${order.pickup_code} marked as picked up.` });
+      setToast({ tone: 'success', title: uiText(language, 'Pickup completed'), detail: language === 'th' ? `ทำเครื่องหมาย ${order.pickup_code} ว่ารับแล้ว` : `${order.pickup_code} marked as picked up.` });
       await load();
     } catch (error) {
-      setToast({ tone: 'error', title: 'Pickup failed', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Pickup failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setActionLoading(false);
       setConfirmAction(null);
@@ -170,10 +170,10 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
     setActionLoading(true);
     try {
       await cancelPreorder(order.id, 'staff_cancelled_no_show');
-      setToast({ tone: 'success', title: 'Pre-order cancelled', detail: 'Reserved stock was released.' });
+      setToast({ tone: 'success', title: uiText(language, 'Pre-order cancelled'), detail: uiText(language, 'Reserved stock was released.') });
       await load();
     } catch (error) {
-      setToast({ tone: 'error', title: 'Cancel failed', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Cancel failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setActionLoading(false);
       setConfirmAction(null);
@@ -187,12 +187,12 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       const result = await expirePreordersForEvent(eventId);
       setToast({
         tone: 'success',
-        title: 'Remaining pre-orders expired',
-        detail: `${result.expired_count || 0} order(s) released.`,
+        title: uiText(language, 'Remaining pre-orders expired'),
+        detail: language === 'th' ? `คืนสต็อกจากออเดอร์ ${result.expired_count || 0} รายการแล้ว` : `${result.expired_count || 0} order(s) released.`,
       });
       await load();
     } catch (error) {
-      setToast({ tone: 'error', title: 'Expiry failed', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Expiry failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setActionLoading(false);
       setConfirmAction(null);
@@ -208,16 +208,20 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
 
   const confirmDetail = (() => {
     if (!confirmAction) return '';
-    if (confirmAction.type === 'pickup') return `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be converted to sold stock.`;
-    if (confirmAction.type === 'cancel') return `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be released back to inventory.`;
-    return 'All awaiting pre-orders for this event will be expired and reserved stock will be released.';
+    if (confirmAction.type === 'pickup') return language === 'th'
+      ? `รหัสรับสินค้า ${confirmAction.order.pickup_code}\nสต็อกที่จองไว้จะเปลี่ยนเป็นสต็อกที่ขายแล้ว`
+      : `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be converted to sold stock.`;
+    if (confirmAction.type === 'cancel') return language === 'th'
+      ? `รหัสรับสินค้า ${confirmAction.order.pickup_code}\nสต็อกที่จองไว้จะคืนกลับเข้าสต็อก`
+      : `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be released back to inventory.`;
+    return uiText(language, 'All awaiting pre-orders for this event will be expired and reserved stock will be released.');
   })();
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AdminHeader activePage="pos" actorRole={actorContext.role} userEmail={actorContext.member_email} />
-        <div className="p-10 text-center text-sm font-bold text-gray-400">Loading pickup orders...</div>
+        <div className="p-10 text-center text-sm font-bold text-gray-400">{uiText(language, 'Loading pickup orders...')}</div>
       </div>
     );
   }
@@ -235,13 +239,13 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
         open={Boolean(confirmAction)}
         title={
           confirmAction?.type === 'pickup'
-            ? 'Mark picked up?'
+            ? uiText(language, 'Mark picked up?')
             : confirmAction?.type === 'expire'
-              ? 'Expire remaining pre-orders?'
-              : 'Cancel pre-order?'
+              ? uiText(language, 'Expire remaining pre-orders?')
+              : uiText(language, 'Cancel pre-order?')
         }
         detail={confirmDetail}
-        confirmLabel={confirmAction?.type === 'pickup' ? 'Picked up' : confirmAction?.type === 'expire' ? 'Expire' : 'Cancel order'}
+        confirmLabel={confirmAction?.type === 'pickup' ? uiText(language, 'Picked up') : confirmAction?.type === 'expire' ? uiText(language, 'Expire') : uiText(language, 'Cancel order')}
         tone={confirmAction?.type === 'pickup' ? 'default' : 'danger'}
         loading={actionLoading}
         onConfirm={handleConfirm}
@@ -255,10 +259,10 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
           <div>
             <div className="flex items-center gap-2">
               <PackageCheck className="text-pink-600" size={24} />
-              <h1 className="text-2xl font-black text-gray-900">Pickup Orders</h1>
+              <h1 className="text-2xl font-black text-gray-900">{uiText(language, 'Pickup Orders')}</h1>
             </div>
             <p className="mt-1 text-sm font-semibold text-gray-500">
-              {eventInfo?.event_name || 'Event'} · Workspace role: {actorContext.role}
+              {eventInfo?.event_name || uiText(language, 'Event')} · {uiText(language, 'Workspace role')}: {uiText(language, actorContext.role === 'owner' ? 'Owner' : actorContext.role === 'manager' ? 'Manager' : actorContext.role === 'seller' ? 'Seller / POS Staff' : 'Queue Staff')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -268,7 +272,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                 disabled={stats.awaiting === 0 || actionLoading}
                 className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Clock3 size={15} /> Expire remaining
+                <Clock3 size={15} /> {uiText(language, 'Expire remaining')}
               </button>
             )}
           </div>
@@ -276,15 +280,15 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
 
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-            <div className="text-xs font-black uppercase tracking-wide text-amber-700">Awaiting</div>
+            <div className="text-xs font-black uppercase tracking-wide text-amber-700">{uiText(language, 'Awaiting')}</div>
             <div className="mt-1 text-2xl font-black text-gray-900">{stats.awaiting}</div>
           </div>
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">Picked up</div>
+            <div className="text-xs font-black uppercase tracking-wide text-emerald-700">{uiText(language, 'Picked up')}</div>
             <div className="mt-1 text-2xl font-black text-gray-900">{stats.pickedUp}</div>
           </div>
           <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <div className="text-xs font-black uppercase tracking-wide text-gray-500">Released</div>
+            <div className="text-xs font-black uppercase tracking-wide text-gray-500">{uiText(language, 'Released')}</div>
             <div className="mt-1 text-2xl font-black text-gray-900">{stats.released}</div>
           </div>
         </div>
@@ -295,7 +299,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search code, name, contact, or product"
+              placeholder={uiText(language, 'Search code, name, contact, or product')}
               className="min-h-12 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-3 text-sm font-bold outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
             />
           </label>
@@ -304,23 +308,23 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
             onChange={(event) => setFilter(event.target.value as PickupFilter)}
             className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-black outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-100"
           >
-            <option value="awaiting_pickup">Awaiting pickup</option>
-            <option value="picked_up">Picked up</option>
-            <option value="all">All statuses</option>
+            <option value="awaiting_pickup">{uiText(language, 'Awaiting pickup')}</option>
+            <option value="picked_up">{uiText(language, 'Picked up')}</option>
+            <option value="all">{uiText(language, 'All statuses')}</option>
           </select>
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           {!eventInfo ? (
-            <div className="p-8 text-center text-sm font-bold text-gray-400">Event not found or you do not have access.</div>
+            <div className="p-8 text-center text-sm font-bold text-gray-400">{uiText(language, 'Event not found or you do not have access.')}</div>
           ) : filteredOrders.length === 0 ? (
-            <div className="p-8 text-center text-sm font-bold text-gray-400">No pickup orders found.</div>
+            <div className="p-8 text-center text-sm font-bold text-gray-400">{uiText(language, 'No pickup orders found.')}</div>
           ) : (
             <div className="divide-y divide-gray-100">
               {filteredOrders.map((order) => (
                 <div key={order.id} className="grid gap-4 p-4 md:grid-cols-[240px_minmax(0,1fr)_auto] md:items-center">
                   <div className="min-w-0">
-                    <div className="text-xs font-black uppercase tracking-[0.14em] text-gray-400">Code</div>
+                    <div className="text-xs font-black uppercase tracking-[0.14em] text-gray-400">{uiText(language, 'Code')}</div>
                     <div className="whitespace-nowrap font-mono text-2xl font-black tracking-[0.08em] text-pink-700 md:text-[1.65rem]">{order.pickup_code}</div>
                     <div className="mt-1 text-[11px] font-bold text-gray-400">{new Date(order.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</div>
                   </div>
@@ -328,14 +332,14 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="max-w-full truncate text-sm font-black text-gray-900">{order.customer_name}</div>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-black ${getStatusClasses(order.pickup_status)}`}>
-                        {formatPickupStatus(order.pickup_status)}
+                        {formatPickupStatus(order.pickup_status, language)}
                       </span>
                     </div>
                     <div className="mt-1 truncate text-xs font-bold text-gray-500">
-                      {order.customer_contact || 'No contact'} · {formatPrice(order.total_price, order.currency)}
+                      {order.customer_contact || uiText(language, 'No contact')} · {formatPrice(order.total_price, order.currency)}
                     </div>
                     <div className="mt-1 truncate text-xs font-semibold text-gray-600">
-                      {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || 'Unknown'}`).join(', ')}
+                      {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}`).join(', ')}
                     </div>
                     {order.customer_note && (
                       <div className="mt-2 max-w-full truncate rounded-lg bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">{order.customer_note}</div>
@@ -350,7 +354,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                             disabled={actionLoading}
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                           >
-                            <Trash2 size={15} /> Cancel
+                            <Trash2 size={15} /> {uiText(language, 'Cancel')}
                           </button>
                         )}
                         <button
@@ -358,12 +362,12 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                           disabled={actionLoading}
                           className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          <CheckCircle size={17} /> Picked up
+                          <CheckCircle size={17} /> {uiText(language, 'Picked up')}
                         </button>
                       </div>
                     ) : (
                       <span className={`inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-black ${getStatusClasses(order.pickup_status)}`}>
-                        {formatPickupStatus(order.pickup_status)}
+                        {formatPickupStatus(order.pickup_status, language)}
                       </span>
                     )}
                   </div>

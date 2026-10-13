@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, Eye, ImageOff, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import {
   getCampaignWorkspace,
   markCampaignOrderRefunded,
@@ -45,7 +45,7 @@ const maskPaymentId = (value?: string | null) => {
 
 export default function OnlineCampaignWorkspace() {
   const { campaignId } = useParams<{ campaignId: string }>();
-  const { t, dateLocale } = useI18n();
+  const { t, language, dateLocale } = useI18n();
   const [actor, setActor] = useState<ActorContext | null>(null);
   const [artistSlug, setArtistSlug] = useState('');
   const [workspace, setWorkspace] = useState<CampaignWorkspace | null>(null);
@@ -848,7 +848,7 @@ export default function OnlineCampaignWorkspace() {
                 <form onSubmit={addPaymentMethod} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
                   <h3 className="font-black">{t('campaignAddPaymentMethod')}</h3>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <input name="display_name" placeholder="PromptPay" className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="display_name" placeholder={uiText(language, 'PromptPay')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
                     <input name="promptpay_id" required placeholder={t('campaignPromptPayId')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
                     <input name="instructions" placeholder={t('campaignPaymentInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
                   </div>

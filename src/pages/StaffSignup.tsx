@@ -1,5 +1,5 @@
+import { useI18n, uiText } from '../i18n';
 import PublicShell from '../components/PublicShell';
-import { useI18n } from '../i18n';
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, KeyRound, Mail, UserPlus } from 'lucide-react';
@@ -80,14 +80,14 @@ export default function StaffSignup() {
           {errorMsg && (
             <div role="alert" className="mt-5 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700">
               <AlertCircle size={17} className="mt-0.5 shrink-0" />
-              {errorMsg}
+              {uiText(language, errorMsg)}
             </div>
           )}
 
           {message && (
             <div role="status" className="mt-5 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
               <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
-              {message}
+              {uiText(language, message)}
             </div>
           )}
 

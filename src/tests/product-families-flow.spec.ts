@@ -169,3 +169,43 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await expect(storefront.getByTestId('public-event-appearances')).toBeHidden();
   await customer.close();
 });
+
+for (const photoCount of [1, 3]) {
+test(`single-variant ${photoCount}-photo set survives navigation and reload and uses the new edit form`, async ({ page }) => {
+  test.setTimeout(90_000);
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/, { timeout: 30_000 });
+  await page.goto('/manage-products');
+  await page.getByRole('button', { name: /Add Product/i }).click();
+  const editor = page.getByRole('dialog', { name: 'Create product', exact: true });
+  const photoName = `Reload photoset ${photoCount} ${runId.slice(0, 8)}`;
+  const origin = new URL(page.url()).origin;
+  const gallery = [1, 2, 3].slice(0, photoCount).map(n => `${origin}/pwa-192x192.png?reload-photo=${n}`).join('\n');
+  await editor.getByLabel('Product name *', { exact: true }).fill(photoName);
+  await editor.getByLabel('Base price *', { exact: true }).fill('150');
+  await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
+  await editor.getByLabel('Photo gallery', { exact: true }).fill(gallery);
+  await editor.getByLabel('Unlimited', { exact: true }).check();
+  await editor.getByRole('button', { name: 'Create product', exact: true }).click();
+  await expect(editor).toBeHidden();
+  const parent = await service.from('product_parents').select('id,product_kind,gallery_images').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
+  expect(parent.data?.product_kind).toBe('photo');
+  expect(parent.data?.gallery_images).toEqual(gallery.split('\n'));
+  await page.goto('/manage-events');
+  await page.goto('/manage-products');
+  await page.reload();
+  const card = page.locator('article').filter({ has: page.getByRole('heading', { name: photoName, exact: true }) });
+  await expect(card.locator('img')).toHaveCount(photoCount);
+  await card.scrollIntoViewIfNeeded();
+  await expect.poll(() => card.locator('img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
+  await card.getByRole('button', { name: `Edit ${photoName}`, exact: true }).click();
+  const edit = page.getByRole('dialog', { name: `Edit ${photoName}`, exact: true });
+  await expect(edit.getByLabel('Product type', { exact: true })).toHaveValue('photo');
+  await expect(edit.getByLabel('Photo gallery', { exact: true })).toHaveValue(gallery);
+  await edit.getByRole('button', { name: 'Save family', exact: true }).click();
+  await expect(edit).toBeHidden();
+  await page.reload();
+  await expect(card.locator('img')).toHaveCount(photoCount);
+});
+}

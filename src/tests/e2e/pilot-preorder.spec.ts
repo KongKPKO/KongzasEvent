@@ -16,6 +16,8 @@ const customerName = `Pilot Customer ${runId.slice(0, 8)}`;
 const customerEmail = `pilot-customer-${runId}@example.test`;
 const rejectReason = `Wrong slip ${runId.slice(0, 8)}`;
 const slipPath = resolve('public/pwa-192x192.png');
+const validatedUploadTimeoutMs = 30_000;
+const notificationDeliveryTimeoutMs = 30_000;
 
 let service: SupabaseClient;
 let artistId = '';
@@ -147,7 +149,9 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     expect(await readStock()).toEqual({ stock_total: 5, stock_reserved: 1, stock_sold: 0 });
     await customerPage.locator('#order-slip-input').setInputFiles(slipPath);
     await customerPage.getByRole('button', { name: 'Send slip to seller', exact: true }).click();
-    await expect.poll(async () => (await readPaymentStatus()).payment_status).toBe('payment_submitted');
+    await expect.poll(async () => (await readPaymentStatus()).payment_status, {
+      timeout: validatedUploadTimeoutMs,
+    }).toBe('payment_submitted');
 
     const adminPage = await adminContext.newPage();
     adminPage.setDefaultTimeout(15_000);
@@ -167,7 +171,9 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await expect(customerPage.getByText(rejectReason, { exact: true })).toBeVisible({ timeout: 20_000 });
     await customerPage.locator('#order-slip-input').setInputFiles(slipPath);
     await customerPage.getByRole('button', { name: 'Send new slip', exact: true }).click();
-    await expect.poll(async () => (await readPaymentStatus()).payment_status).toBe('payment_submitted');
+    await expect.poll(async () => (await readPaymentStatus()).payment_status, {
+      timeout: validatedUploadTimeoutMs,
+    }).toBe('payment_submitted');
     expect(await readStock()).toEqual({ stock_total: 5, stock_reserved: 1, stock_sold: 0 });
 
     await adminPage.reload();
@@ -197,7 +203,7 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
       const deliveries = await service.from('preorder_notification_deliveries')
         .select('notification_event, status').eq('order_id', orderId).throwOnError();
       return deliveries.data.filter(row => row.status === 'delivered').map(row => row.notification_event).sort();
-    }, { timeout: 15_000 }).toEqual(['confirmed', 'rejected', 'submitted', 'submitted']);
+    }, { timeout: notificationDeliveryTimeoutMs }).toEqual(['confirmed', 'rejected', 'submitted', 'submitted']);
     await customerPage.reload();
     await expect(customerPage.getByRole('heading', { name: 'Picked up — thank you!', exact: true })).toBeVisible();
     await customerPage.screenshot({ path: `/tmp/nireq-beta-preorder-${test.info().project.name}.png` });

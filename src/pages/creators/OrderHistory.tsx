@@ -1,6 +1,6 @@
 import './sales-reports.css';
 import EventDateFilter, { matchesEventDate } from '../../components/EventDateFilter';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -157,7 +157,7 @@ export default function EventHistory() {
 
         filteredOrders.forEach(order => {
             order.order_items.forEach(item => {
-                const prodName = item.products?.name || 'Unknown';
+                const prodName = item.products?.name || uiText(language, 'Unknown product');
                 if (!productStats[prodName]) {
                     productStats[prodName] = { name: prodName, qty: 0, total: 0 };
                 }

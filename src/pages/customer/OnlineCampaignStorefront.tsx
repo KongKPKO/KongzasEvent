@@ -5,7 +5,7 @@ import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, Loader2, Minus, Plus, ShoppingCart, X } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
 import { requiresPromotionReview, quotePromotions } from '../../lib/promotions';
 import type { CampaignFulfillmentMethod, CampaignProduct, PublicOnlineCampaign } from '../../types/onlineCampaign';
@@ -21,6 +21,8 @@ import { ProductGallery, ProductMedia, ProductPresentationSummary } from '../../
 import { buildProductPresentationEntries, getProductPresentationKind, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
 
 type CampaignDisplayProduct = CampaignProduct & PresentableProduct;
+const ALL_CATEGORIES = '__nireq_all_categories__';
+const UNCATEGORIZED = '__nireq_uncategorized__';
 
 const asDisplayProduct = (product: CampaignProduct): CampaignDisplayProduct => ({
   ...product,
@@ -38,7 +40,7 @@ export default function OnlineCampaignStorefront() {
   const [loadRetry, setLoadRetry] = useState(0);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState(ALL_CATEGORIES);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [fulfillment, setFulfillment] = useState<CampaignFulfillmentMethod>('shipping');
   const [pickupPointId, setPickupPointId] = useState('');
@@ -163,11 +165,11 @@ export default function OnlineCampaignStorefront() {
       if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded') {
         setError(t('campaignProductOrderLimitExceeded'));
       } else if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'store_suspended') {
-        setError(language === 'th' ? 'ร้านนี้ถูกระงับการรับออเดอร์ใหม่ ออเดอร์เดิมยังดูสถานะได้' : 'This store is not accepting new orders. Existing orders remain accessible.');
+        setError(uiText(language, 'This store is not accepting new orders. Existing orders remain accessible.'));
       } else if (requiresPromotionReview(checkoutError)) {
         setRewardChoices([]);
         setAcceptExhaustedRewards(false);
-        setError(language === 'th' ? 'โปรโมชั่นหรือสต็อกมีการเปลี่ยนแปลง กรุณาตรวจสอบยอดใหม่' : 'A promotion or stock level changed. Please review the new total.');
+        setError(uiText(language, 'A promotion or stock level changed. Please review the new total.'));
       } else {
         setError(t('campaignCheckoutFailed'));
       }
@@ -181,13 +183,13 @@ export default function OnlineCampaignStorefront() {
   if (!campaign) return <div className="grid min-h-screen place-items-center bg-gray-50 px-4 text-center font-bold text-gray-500">{t('campaignUnavailable')}</div>;
 
   const saleOpen = campaign.state === 'open';
-  const categories = [...new Set(campaign.products.map(product => product.category).filter((value): value is string => Boolean(value)))];
-  const visibleProducts = campaign.products.filter(product => (category === 'all' || product.category === category) && `${product.name} ${product.variant_name || ''} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const categories = [...new Set(campaign.products.map(product => product.category?.trim() || UNCATEGORIZED))];
+  const visibleProducts = campaign.products.filter(product => (category === ALL_CATEGORIES || (product.category?.trim() || UNCATEGORIZED) === category) && `${product.name} ${product.variant_name || ''} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const productEntries = buildProductPresentationEntries(visibleProducts.map(asDisplayProduct));
   const renderCampaignProduct = (product: CampaignDisplayProduct, index: number) => {
     const available = product.available_quantity ?? null;
     const soldOut = isProductPreorderClosed(product) || (available !== null && available <= 0);
-    const soldOutLabel = isProductPreorderClosed(product) ? (language === 'th' ? 'ปิดรับพรีออเดอร์' : 'Pre-order closed') : t('campaignSoldOut');
+    const soldOutLabel = isProductPreorderClosed(product) ? uiText(language, 'Pre-order closed') : t('campaignSoldOut');
     const quantity = cart[product.product_id] || 0;
     const orderLimit = product.max_quantity_per_order ?? null;
     const quantityLimit = orderLimit === null
@@ -255,10 +257,10 @@ export default function OnlineCampaignStorefront() {
           <label className="block text-sm font-bold">{t('menuSearch')}
             <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={t('menuSearchPlaceholder')} className="mt-2 min-h-12 w-full rounded-xl border border-gray-300 bg-white px-4 font-normal" />
           </label>
-          <div className="flex flex-wrap gap-2">{['all', ...categories].map(value => <button type="button" key={value} className="shop-variant-option" aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'all' ? (language === 'th' ? 'ทั้งหมด' : 'All') : value}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{[ALL_CATEGORIES, ...categories].map(value => <button type="button" key={value} className="shop-variant-option" aria-pressed={category === value} onClick={() => setCategory(value)}>{value === ALL_CATEGORIES ? t('menuAll') : value === UNCATEGORIZED ? uiText(language, 'Other') : value}</button>)}</div>
           <p className="text-sm text-gray-600" aria-live="polite">{visibleProducts.length} {language === 'th' ? 'รายการ' : 'products'}</p>
         </div>
-        {visibleProducts.length === 0 && <div className="shop-empty"><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{(search || category !== 'all') && <button className="shop-outline" onClick={() => { setSearch(''); setCategory('all'); }}>{t('menuClearFilters')}</button>}</div>}
+        {visibleProducts.length === 0 && <div className="shop-empty"><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{(search || category !== ALL_CATEGORIES) && <button className="shop-outline" onClick={() => { setSearch(''); setCategory(ALL_CATEGORIES); }}>{t('menuClearFilters')}</button>}</div>}
         <section className="shop-product-grid shop-campaign-grid">
           {productEntries.map((entry, index) => {
             if (entry.type === 'product') return renderCampaignProduct(entry.product, index);
@@ -273,7 +275,7 @@ export default function OnlineCampaignStorefront() {
                   <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">
                     <div className="min-w-0">
                       <h2 className="truncate font-black text-gray-950">{entry.label}</h2>
-                      <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {language === 'th' ? 'ตัวเลือก' : variants.length === 1 ? 'variant' : 'variants'}</p>
+                      <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {uiText(language, variants.length === 1 ? 'variant' : 'variants')}</p>
                       <div className="mt-2 text-lg font-black text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, campaign.currency) : `${formatPrice(prices.min, campaign.currency)}–${formatPrice(prices.max, campaign.currency)}`}</div>
                       <div className="mt-2"><ProductPresentationSummary product={representative} language={language} compact /></div>
                     </div>
@@ -361,14 +363,14 @@ export default function OnlineCampaignStorefront() {
               <button type="button" className="checkout-edit" disabled={submitting} onClick={() => setCheckoutOpen(false)}>{language === 'th' ? 'กลับไปแก้รายการสินค้า' : 'Edit your items'}</button>
             {quote?.applied_promotions.length ? (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                <div className="font-black text-emerald-900">{language === 'th' ? 'โปรโมชั่นที่ได้รับ' : 'Applied promotions'}</div>
+                <div className="font-black text-emerald-900">{uiText(language, 'Applied promotions')}</div>
                 {quote.applied_promotions.map((promotion) => (
                   <div key={promotion.id} className="mt-1 flex justify-between gap-3 text-emerald-800">
                     <span>{promotion.name}</span>
                     {promotion.discount_amount > 0 && <strong>-{formatPrice(promotion.discount_amount, campaign.currency)}</strong>}
                   </div>
                 ))}
-                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{language === 'th' ? 'ของแถม' : 'Free gift'}: {reward.name} × {reward.quantity}</div>)}
+                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
               </div>
             ) : null}
             {unresolvedChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
@@ -381,12 +383,12 @@ export default function OnlineCampaignStorefront() {
             {exhaustedRewards.length > 0 && (
               <label className="mt-4 flex cursor-pointer gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <input type="checkbox" checked={acceptExhaustedRewards} onChange={(event) => setAcceptExhaustedRewards(event.target.checked)} className="mt-1 h-4 w-4" />
-                <span><strong className="block">{language === 'th' ? 'ของแถมสำหรับโปรนี้หมดทั้งหมดแล้ว' : 'All gifts for this promotion are out of stock.'}</strong>{language === 'th' ? 'ตรวจสอบยอดใหม่ที่ไม่มีโปรโมชั่นนี้ แล้วกดยืนยันเพื่อสั่งซื้อต่อ' : 'Review the new total without this promotion, then confirm to continue.'}</span>
+                <span><strong className="block">{uiText(language, 'All gifts for this promotion are out of stock.')}</strong>{uiText(language, 'Review the new total without this promotion, then confirm to continue.')}</span>
               </label>
             )}
             <div className="checkout-totals">
               <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(subtotal, campaign.currency)}</strong></div>
-              {(quote?.discount_total || 0) > 0 && <div className="flex justify-between text-emerald-700"><span>{language === 'th' ? 'ส่วนลด' : 'Discount'}</span><strong>-{formatPrice(quote?.discount_total || 0, campaign.currency)}</strong></div>}
+              {(quote?.discount_total || 0) > 0 && <div className="flex justify-between text-emerald-700"><span>{uiText(language, 'Discount')}</span><strong>-{formatPrice(quote?.discount_total || 0, campaign.currency)}</strong></div>}
               <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(estimatedShipping, campaign.currency)}</strong></div>
               <div className="flex justify-between border-t border-gray-200 pt-2 text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(total, campaign.currency)}</strong></div>
             </div>

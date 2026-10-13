@@ -1,4 +1,4 @@
-import { useI18n } from '../../i18n';
+import { uiText, useI18n, type Language } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import './sales-readiness.css';
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
@@ -253,6 +253,29 @@ const formatEventDate = (event: WorkspaceEvent, locale: string) => {
     month: 'short',
     year: 'numeric',
   }).format(date);
+};
+
+const workspaceText = (language: Language, text: string) => {
+  if (language !== 'th') return text;
+  let match = text.match(/^(\d+) awaiting pickup$/);
+  if (match) return `รอรับสินค้า ${match[1]} รายการ`;
+  match = text.match(/^(\d+) orders? waiting for pickup$/);
+  if (match) return `มีออเดอร์รอรับสินค้า ${match[1]} รายการ`;
+  match = text.match(/^(\d+) queue tickets? need live attention\.$/);
+  if (match) return `มีคิว ${match[1]} รายการที่ต้องดูแลทันที`;
+  match = text.match(/^(\d+) completed orders? · (.+) revenue\.$/);
+  if (match) return `ออเดอร์สำเร็จ ${match[1]} รายการ · รายได้ ${match[2]}`;
+  match = text.match(/^(\d+) products? selling$/);
+  if (match) return `มีสินค้าวางขาย ${match[1]} รายการ`;
+  match = text.match(/^(\d+) waiting$/);
+  if (match) return `รอคิว ${match[1]} รายการ`;
+  match = text.match(/^(\d+) completed · (.+)$/);
+  if (match) return `สำเร็จ ${match[1]} รายการ · ${match[2]}`;
+  match = text.match(/^(\d+) orders? need staff confirmation\.$/);
+  if (match) return `มีออเดอร์ ${match[1]} รายการที่ต้องให้พนักงานยืนยัน`;
+  if (text.endsWith(' schedule is set')) return `ตั้งเวลากำหนด${uiText(language, text.replace(' schedule is set', ''))}แล้ว`;
+  const localized = uiText(language, text);
+  return localized === text ? eventCopy(language, text) : localized;
 };
 
 const isWithinScheduleWindow = (opensAt: string | null | undefined, closesAt: string | null | undefined, now: Date) => {
@@ -660,7 +683,7 @@ const buildSetupGroups = (
 
 export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   const { language } = useI18n();
-  const copy = (value: string) => eventCopy(language, value);
+  const copy = (value: string) => workspaceText(language, value);
 
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -762,11 +785,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       });
     } catch (err) {
       console.error('[EventWorkspace] fetch failed:', err);
-      setError(err instanceof Error ? err.message : 'Could not load event workspace.');
+      setError(uiText(language, err instanceof Error ? err.message : 'Could not load event workspace.'));
     } finally {
       setLoading(false);
     }
-  }, [actorContext.role, eventId]);
+  }, [actorContext.role, eventId, language]);
 
   useEffect(() => {
     void fetchWorkspace();
@@ -875,7 +898,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
   const handleEventSave = async () => {
     if (!event || !eventDraft.event_name || !eventDraft.start_date) {
-      alert('Please fill in required fields (Name, Start Date).');
+      alert(uiText(language, 'Please fill in required fields (Name, Start Date).'));
       return;
     }
 
@@ -885,7 +908,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       const parsedStart = parseDateTimeInputInTimeZone(eventDraft.start_date || '', eventTimeZone);
 
       if (!parsedStart) {
-        alert('Invalid start date/time. Please check the selected timezone and date.');
+        alert(uiText(language, 'Invalid start date/time. Please check the selected timezone and date.'));
         return;
       }
 
@@ -934,7 +957,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       void fetchWorkspace();
     } catch (err) {
       console.error('[EventWorkspace] event save failed:', err);
-      alert('Failed to save event.');
+      alert(uiText(language, 'Failed to save event.'));
     } finally {
       setEventSaving(false);
     }
@@ -1003,7 +1026,6 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-5 md:px-6">
-        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
         <section className="mb-5 border-b border-gray-200 pb-5">
           <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
             <ArrowLeft size={15} aria-hidden="true" />
@@ -1033,6 +1055,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           </div>
         </section>
 
+        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
+
         {setupReadiness && (
           <GuidedSetupPanel
             readiness={setupReadiness}
@@ -1050,7 +1074,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             </div>
 
         {primaryAction && !(setupReadiness && primaryAction.action === 'edit-event') ? (
-          <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label="Current event status">
+          <section className={`mb-5 rounded-xl border p-4 shadow-sm md:p-5 ${primaryActionClasses.panel}`} aria-label={copy("Current event status")}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 gap-3">
                 <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${primaryActionClasses.icon}`}>
@@ -1084,7 +1108,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         )}
 
         {setupReadiness?.complete && setupGroups.length > 0 && (
-          <details className="sales-readiness" aria-label="Event setup checklist">
+          <details className="sales-readiness" aria-label={copy("Event setup checklist")}>
             <summary className="cursor-pointer font-bold">{language === 'th' ? 'ดูรายละเอียดความพร้อม' : 'Setup details'}</summary>
             <div className="mb-4 mt-4">
               <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Setup")}</p>
@@ -1113,7 +1137,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
             </div>
           </section>
 
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label="Attention items">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={uiText(language, 'Attention items')}>
             <div className="mb-4">
               <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Attention")}</p>
               <h2 className="text-lg font-black text-gray-900">{copy("Needs action")}</h2>
@@ -1152,7 +1176,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
               <button
                 onClick={() => setIsEventModalOpen(false)}
                 className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-800"
-                aria-label="Close event form"
+                aria-label={uiText(language, 'Close event form')}
               >
                 <X size={20} aria-hidden="true" />
               </button>
@@ -1186,7 +1210,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.event_name || ''}
                   onChange={handleEventDraftChange}
                   className="w-full rounded-lg border border-gray-200 p-3 font-semibold outline-none focus:border-pink-500 focus:ring-pink-500"
-                  placeholder="e.g. Cosplay Festival 2026"
+                  placeholder={uiText(language, 'e.g. Cosplay Festival 2026')}
                 />
               </label>
 
@@ -1237,7 +1261,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.location || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. 5th Floor, Siam Paragon"
+                  placeholder={uiText(language, 'e.g. 5th Floor, Siam Paragon')}
                 />
               </label>
 
@@ -1248,7 +1272,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.booth_detail || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. Booth A12, Zone Creator Hall"
+                  placeholder={uiText(language, 'e.g. Booth A12, Zone Creator Hall')}
                 />
               </label>
 
@@ -1259,7 +1283,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.queueing_area || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. Queue lane beside Booth A12"
+                  placeholder={uiText(language, 'e.g. Queue lane beside Booth A12')}
                 />
               </label>
 
@@ -1270,7 +1294,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.entrance_fee || ''}
                   onChange={handleEventDraftChange}
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
-                  placeholder="e.g. 300 THB / Free"
+                  placeholder={uiText(language, 'e.g. 300 THB / Free')}
                 />
               </label>
 
@@ -1282,7 +1306,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   value={eventDraft.transit_info || ''}
                   onChange={handleEventDraftChange}
                   className="w-full resize-none rounded-lg border border-gray-200 p-2.5 outline-none focus:border-pink-500"
-                  placeholder="BTS Bangna..."
+                  placeholder={uiText(language, 'BTS Bangna...')}
                 />
               </label>
             </div>

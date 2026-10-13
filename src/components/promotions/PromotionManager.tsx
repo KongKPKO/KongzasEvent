@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, Edit2, Gift, Loader2, Plus, Search, Sparkles, ArrowLeft, Check, CalendarDays } from 'lucide-react';
 import './promotion-workspace.css';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import { archivePromotionDefinition, listPromotionDefinitions, PromotionSaveConflict, savePromotionDefinition } from '../../lib/promotions';
 import { promotionLocalDateTime } from '../../lib/promotionDateTime';
@@ -62,7 +62,7 @@ function ProductPicker({ products, selected, onChange, label }: { products: Prod
       })}
     </div>
     {!filtered.length && <p className="promotion-help">{th ? (products.length ? 'ไม่พบสินค้า ลองค้นหาด้วยชื่ออื่น' : 'ยังไม่มีสินค้า เพิ่มสินค้าในคลังร้านก่อน') : (products.length ? 'No matching products. Try another name.' : 'Add products to your store catalog first.')}</p>}
-    <p className="promotion-help">{th ? `เลือกแล้ว ${selected.length} รายการ` : `${selected.length} selected`}</p>
+    <p className="promotion-help">{uiText(language, 'selected')} {selected.length}</p>
   </div>;
 }
 
@@ -249,9 +249,9 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
       {loading ? <p role="status" className="promotion-empty"><Loader2 className="animate-spin" size={20} />{th ? 'กำลังโหลดโปรโมชัน…' : 'Loading promotions…'}</p> : loadError ? <div role="alert" className="promotion-empty"><p>{th ? 'โหลดโปรโมชันไม่สำเร็จ กรุณาลองใหม่' : 'Could not load promotions. Please retry.'}</p><button type="button" className="promotion-button" onClick={() => void refresh()}>{th ? 'ลองใหม่' : 'Retry'}</button></div> : <>
         {!!definitions.length && <div className="promotion-toolbar"><label className="promotion-search"><span className={labelClass}>{th ? 'ค้นหาโปรโมชัน' : 'Search promotions'}</span><input className={fieldClass} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={th ? 'ชื่อโปรโมชัน' : 'Promotion name'} /></label><label className="promotion-channel"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />{th ? 'แสดงที่เก็บเข้าคลัง' : 'Include archived'}</label></div>}
         <div className="promotion-list">{visibleDefinitions.map((definition) => <article key={definition.id} className="promotion-saved">
-          <div className="promotion-toolbar"><div><p className="promotion-help">{definition.lifecycle_status === 'archived' ? (th ? 'เก็บเข้าคลังแล้ว' : 'Archived') : definition.lifecycle_status === 'draft' ? (th ? 'ฉบับร่าง' : 'Draft') : (th ? 'ตั้งค่าแล้ว' : 'Configured')}</p><h4>{definition.name || (th ? 'โปรโมชัน' : 'Promotion')}</h4></div><div className="promotion-actions">
-            <button type="button" className="promotion-button" disabled={!!archivingId || definition.promotion_type === 'legacy_free_eligible_items'} aria-label={th ? 'แก้ไขโปรโมชัน' : 'Edit promotion'} onClick={() => edit(definition)}><Edit2 size={16} />{th ? 'แก้ไข' : 'Edit'}</button>
-            {definition.lifecycle_status !== 'archived' && <button type="button" className="promotion-button" disabled={!!archivingId} aria-label={th ? 'เก็บโปรโมชันเข้าคลัง' : 'Archive promotion'} onClick={() => void archive(definition.id)}>{archivingId === definition.id ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}{th ? 'เก็บเข้าคลัง' : 'Archive'}</button>}
+          <div className="promotion-toolbar"><div><p className="promotion-help">{definition.lifecycle_status === 'archived' ? (th ? 'เก็บเข้าคลังแล้ว' : 'Archived') : definition.lifecycle_status === 'draft' ? (th ? 'ฉบับร่าง' : 'Draft') : (th ? 'ตั้งค่าแล้ว' : 'Configured')}</p><h4>{definition.name || uiText(language, 'Promotion')}</h4></div><div className="promotion-actions">
+            <button type="button" className="promotion-button" disabled={!!archivingId || definition.promotion_type === 'legacy_free_eligible_items'} aria-label={uiText(language, 'Edit promotion')} onClick={() => edit(definition)}><Edit2 size={16} />{th ? 'แก้ไข' : 'Edit'}</button>
+            {definition.lifecycle_status !== 'archived' && <button type="button" className="promotion-button" disabled={!!archivingId} aria-label={uiText(language, 'Archive promotion')} onClick={() => void archive(definition.id)}>{archivingId === definition.id ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}{th ? 'เก็บเข้าคลัง' : 'Archive'}</button>}
           </div></div>
           <p className="promotion-saved-rule">{definition.promotion_type === 'quantity_discount' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น ลด ฿${definition.reward_value}` : `Every ${definition.buy_quantity} items, save ฿${definition.reward_value}`) : definition.promotion_type === 'quantity_gift' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น รับของแถม ${definition.reward_quantity} ชิ้น` : `Every ${definition.buy_quantity} items, get ${definition.reward_quantity} gifts`) : definition.promotion_type === 'spend_tier_gift' ? definition.tiers.map((tier) => th ? `ครบ ฿${tier.threshold_amount} รับ ${tier.reward_quantity} ชิ้น` : `Spend ฿${tier.threshold_amount}, get ${tier.reward_quantity} gifts`).join(' · ') : (th ? 'โปรโมชันรูปแบบเก่า แก้ไขไม่ได้ กรุณาสร้างโปรใหม่แทน' : 'Legacy offer. Create a new promotion to change its terms.')}</p>
           {definition.lifecycle_status === 'ready' && <p className="promotion-help">{Array.from(new Set(definition.assignments.map(assignmentStatus))).join(' · ')}</p>}

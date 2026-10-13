@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import type { ActorRole } from '../types/access';
-import { LanguageToggle, useI18n } from '../i18n';
+import { LanguageToggle, useI18n , uiText} from '../i18n';
 
 // --- TYPES ---
 interface ActiveEvent {
@@ -105,8 +105,8 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 {activeEvent === null && (
                     <div className="ml-2 md:ml-3 px-2.5 py-1 bg-red-50 border border-red-200 rounded-full text-xs font-bold text-red-600 inline-flex items-center gap-1.5">
                         <AlertTriangle size={13} aria-hidden="true" />
-                        <span className="md:hidden">No Event</span>
-                        <span className="hidden md:inline">No Active Event</span>
+                        <span className="md:hidden">{uiText(language, "No Event")}</span>
+                        <span className="hidden md:inline">{uiText(language, "No Active Event")}</span>
                     </div>
                 )}
             </div>

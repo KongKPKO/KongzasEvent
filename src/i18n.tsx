@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
+import { eventAdminThaiText } from './locales/eventAdmin';
+import { commerceThaiText } from './locales/commerce';
+import { customerThaiText } from './locales/customer';
+import { sharedThaiText } from './locales/shared';
+
 export type Language = 'en' | 'th';
 
 const STORAGE_KEY = 'nireq-language';
@@ -157,82 +162,6 @@ const legacyThaiText: Record<string, string> = {
   'Select or type category...': 'เลือกหรือพิมพ์หมวดหมู่...',
 };
 
-const legacyTextNodes = new WeakMap<Text, string>();
-const legacyElementAttrs = new WeakMap<Element, Record<string, string>>();
-
-const translateLegacyString = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const direct = legacyThaiText[trimmed];
-  if (direct) return value.replace(trimmed, direct);
-
-  const activeEvent = trimmed.match(/^Active Event: (.+)$/);
-  if (activeEvent) return value.replace(trimmed, `อีเวนต์ที่กำลังใช้งาน: ${activeEvent[1]}`);
-
-  const soldUnits = trimmed.match(/^Sold: (.+) units$/);
-  if (soldUnits) return value.replace(trimmed, `ขายแล้ว: ${soldUnits[1]} ชิ้น`);
-
-  const activeRules = trimmed.match(/^Active Rules \((.+)\)$/);
-  if (activeRules) return value.replace(trimmed, `กติกาที่ใช้งาน (${activeRules[1]})`);
-
-  const currentCatalog = trimmed.match(/^Current Catalog \((.+)\)$/);
-  if (currentCatalog) return value.replace(trimmed, `แคตตาล็อกปัจจุบัน (${currentCatalog[1]})`);
-
-  const total = trimmed.match(/^Total: (.+)$/);
-  if (total) return value.replace(trimmed, `รวม: ${total[1]}`);
-
-  return null;
-};
-
-const applyLegacyLocalization = (language: Language) => {
-  if (typeof document === 'undefined') return;
-
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => {
-      const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      if (['SCRIPT', 'STYLE', 'TEXTAREA'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
-      return node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-    },
-  });
-
-  const textNodes: Text[] = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
-
-  for (const node of textNodes) {
-    const currentText = node.textContent || '';
-    const saved = legacyTextNodes.get(node);
-    // React may reuse the node for a new state (loading → ready, open → closed).
-    // Do not restore the first label over the new state.
-    if (saved && currentText !== saved && currentText !== translateLegacyString(saved)) legacyTextNodes.delete(node);
-    const original = legacyTextNodes.get(node) || currentText;
-    const translatedText = translateLegacyString(original);
-    if (!legacyTextNodes.has(node) && translatedText === null) continue;
-    if (!legacyTextNodes.has(node)) legacyTextNodes.set(node, original);
-    const nextText = language === 'th' ? translatedText : original;
-    if (nextText === null) continue;
-    if (node.textContent !== nextText) node.textContent = nextText;
-  }
-
-  const attrNames = ['placeholder', 'aria-label', 'title'];
-  for (const element of Array.from(document.querySelectorAll<HTMLElement>('[placeholder], [aria-label], [title]'))) {
-    const originals = legacyElementAttrs.get(element) || {};
-    for (const attr of attrNames) {
-      const value = element.getAttribute(attr);
-      if (!value) continue;
-      if (originals[attr] && value !== originals[attr] && value !== translateLegacyString(originals[attr])) delete originals[attr];
-      const originalValue = originals[attr] || value;
-      const translatedValue = translateLegacyString(originalValue);
-      if (!originals[attr] && translatedValue === null) continue;
-      if (!originals[attr]) originals[attr] = value;
-      const nextValue = language === 'th' ? translatedValue : originals[attr];
-      if (nextValue === null) continue;
-      if (element.getAttribute(attr) !== nextValue) element.setAttribute(attr, nextValue);
-    }
-    legacyElementAttrs.set(element, originals);
-  }
-};
-
 const translations = {
   en: {
     discoveryEyebrow: "CREATORS · ARTWORK · EVENTS TO LOVE",
@@ -282,10 +211,13 @@ const translations = {
     languageName: 'English',
     languageShort: 'EN',
     switchLanguage: 'Switch language',
+    selectLanguage: 'Language',
     loading: 'Loading...',
     signOut: 'Sign out',
     workspaceNotAssigned: 'Workspace Not Assigned',
     workspaceNotAssignedBody: 'This account is signed in but has no artist workspace role.',
+    workspaceLoadFailed: 'Could not load your workspace. Please try again.',
+    workspaceRetryLoad: 'Retry loading workspace',
 
     navDiscover: 'Discover',
     navCreatorLogin: 'Creator login',
@@ -1063,10 +995,13 @@ const translations = {
     languageName: 'ไทย',
     languageShort: 'TH',
     switchLanguage: 'เปลี่ยนภาษา',
+    selectLanguage: 'ภาษา',
     loading: 'กำลังโหลด...',
     signOut: 'ออกจากระบบ',
     workspaceNotAssigned: 'ยังไม่มี Workspace',
     workspaceNotAssignedBody: 'บัญชีนี้เข้าสู่ระบบแล้ว แต่ยังไม่มี role สำหรับ artist workspace.',
+    workspaceLoadFailed: 'โหลดหน้าจัดการร้านไม่สำเร็จ กรุณาลองอีกครั้ง',
+    workspaceRetryLoad: 'ลองโหลดหน้าจัดการร้านอีกครั้ง',
 
     navDiscover: 'ค้นหาบูธ',
     navCreatorLogin: 'เข้าสู่ระบบ Creator',
@@ -1798,6 +1733,54 @@ const translations = {
   },
 } as const;
 
+const uiThaiText: Record<string, string> = {
+  ...Object.fromEntries(Object.keys(translations.en).map(key => [
+    translations.en[key as keyof typeof translations.en],
+    translations.th[key as keyof typeof translations.th],
+  ])),
+  ...legacyThaiText,
+  ...sharedThaiText,
+  ...eventAdminThaiText,
+  ...commerceThaiText,
+  ...customerThaiText,
+};
+
+const uiEnglishText = Object.fromEntries(Object.entries(uiThaiText).map(([english, thai]) => [thai, english]));
+
+const uiTemplates = Object.entries(uiThaiText)
+  .filter(([english]) => /\{\w+\}/.test(english))
+  .map(([english, thai]) => {
+    const compile = (text: string) => {
+      const names: string[] = [];
+      const pattern = text.split(/(\{\w+\})/).map(part => {
+        if (/^\{\w+\}$/.test(part)) {
+          names.push(part.slice(1, -1));
+          return '([\\s\\S]*?)';
+        }
+        return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }).join('');
+      return { pattern: new RegExp(`^${pattern}$`), names };
+    };
+    return { english, thai, en: compile(english), th: compile(thai) };
+  });
+
+/** Only product UI copy passes here, never merchant-authored content. */
+export const uiText = (language: Language, text: string): string => {
+  const normalized = text.trim().replace(/\s+/g, ' ');
+  const direct = language === 'th' ? uiThaiText[normalized] : uiEnglishText[normalized];
+  if (direct) return text.replace(text.trim(), direct);
+  if (language === 'en' && !/[ก-๙]/.test(normalized)) return text;
+  for (const template of uiTemplates) {
+    const source = language === 'th' ? template.en : template.th;
+    const match = normalized.match(source.pattern);
+    if (!match) continue;
+    const values = Object.fromEntries(source.names.map((name, index) => [name, match[index + 1]]));
+    const target = language === 'th' ? template.thai : template.english;
+    return text.replace(text.trim(), target.replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? `{${name}}`));
+  }
+  return text;
+};
+
 type TranslationKey = keyof typeof translations.en;
 
 interface I18nContextValue {
@@ -1828,18 +1811,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = language;
-    applyLegacyLocalization(language);
-    const observer = new MutationObserver(() => {
-      window.requestAnimationFrame(() => applyLegacyLocalization(language));
-    });
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['placeholder', 'aria-label', 'title'],
-    });
-    return () => observer.disconnect();
   }, [language]);
 
   const value = useMemo<I18nContextValue>(() => {
@@ -1873,17 +1844,19 @@ export function useI18n() {
 }
 
 export function LanguageToggle({ className = '' }: { className?: string }) {
-  const { language, toggleLanguage, t } = useI18n();
-  const nextLanguage = language === 'en' ? 'TH' : 'EN';
-
+  const { language, setLanguage, t } = useI18n();
   return (
-    <button
-      type="button"
-      onClick={toggleLanguage}
-      className={`inline-flex items-center rounded-full border border-pink-200 bg-white px-3 py-2 text-xs font-black text-pink-700 shadow-sm transition hover:bg-pink-50 ${className}`}
-      aria-label={t('switchLanguage')}
+    <select
+      value={language}
+      onChange={(event) => {
+        const value = event.target.value;
+        if (value === 'th' || value === 'en') setLanguage(value);
+      }}
+      className={`min-h-11 cursor-pointer rounded-xl border border-pink-200 bg-white px-3 py-2 text-sm font-bold text-pink-700 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600 ${className}`}
+      aria-label={t('selectLanguage')}
     >
-      {nextLanguage}
-    </button>
+      <option value="th">TH · ไทย</option>
+      <option value="en">EN · English</option>
+    </select>
   );
 }

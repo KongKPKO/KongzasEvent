@@ -1,4 +1,3 @@
-import { useI18n } from '../i18n';
 import { offlineRows, type OfflineSnapshot, type OfflineEntry } from '../lib/offlineOperations';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,6 +11,7 @@ import { canUsePos } from '../types/access';
 import { Toast } from '../components/ui/Feedback';
 import { formatDateInTimeZone } from '../utils/timezone';
 import { posSelectedEventStorageKey } from '../utils/customerEvents';
+import { uiText, useI18n } from '../i18n';
 
 export interface ActiveEvent {
     id: string;
@@ -52,11 +52,11 @@ interface UpcomingEvent {
 
 // Formats a UTC ISO start_date string into a human-readable local time string
 // using the event's configured timezone.  Used only for the upcoming-event hint.
-const formatEventStart = (startDate: string, timezone: string | null): string => {
+const formatEventStart = (startDate: string, timezone: string | null, locale: string): string => {
     const tz = timezone || 'Asia/Bangkok';
     const date = new Date(startDate);
     if (Number.isNaN(date.getTime())) return startDate;
-    return new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat(locale, {
         timeZone: tz,
         weekday: 'short',
         day: 'numeric',
@@ -69,7 +69,8 @@ const formatEventStart = (startDate: string, timezone: string | null): string =>
 };
 
 export default function ManageCombined({ actorContext, initialTab }: ManageCombinedProps) {
-    const { language } = useI18n();
+    const { language, t } = useI18n();
+    const dateLocale = language === 'th' ? 'th-TH' : 'en-GB';
     const text = (en: string, th: string) => language === 'th' ? th : en;
     // useSearchParams makes urlEventId reactive: if the URL changes while this
     // component stays mounted (e.g. navigating from one Event Hub to another),
@@ -86,6 +87,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         return window.localStorage.getItem(posSelectedEventStorageKey(actorContext.artist_id));
     });
     const [eventLoading, setEventLoading] = useState(true);
+    const [eventLoadFailed, setEventLoadFailed] = useState(false);
     const [loadingSlow, setLoadingSlow] = useState(false);
     const [boothToggleLoading, setBoothToggleLoading] = useState(false);
     const [nextUpcomingEvent, setNextUpcomingEvent] = useState<UpcomingEvent | null>(null);
@@ -106,6 +108,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const activeEventIdRef = useRef<string | null>(null);
     const activeServiceDateRef = useRef<string | null>(null);
+    const eventRequestRef = useRef(0);
     const activeServiceDate = activeEvent
         ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
         : null;
@@ -123,7 +126,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!activeEvent?.id || boothToggleLoading) return;
-        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(`Close booth for ${activeEvent.event_name}? Customers will see the booth as closed.`)) {
+        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(uiText(language, 'Close booth for {event}? Customers will see the booth as closed.').replace('{event}', activeEvent.event_name))) {
             return;
         }
 
@@ -138,22 +141,26 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             setActiveEvent((prev) => (prev ? { ...prev, is_booth_open: nextOpen } : prev));
         } catch (error) {
             console.error('[ManageCombined] Error updating booth status:', error);
-            setToast({ tone: 'warning', title: 'Booth update failed', detail: 'Please try again.' });
+            setToast({ tone: 'warning', title: uiText(language, 'Booth update failed'), detail: uiText(language, 'Please try again.') });
         } finally {
             setBoothToggleLoading(false);
         }
-    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading]);
+    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading, language]);
 
     const fetchActiveEvents = useCallback(async () => {
+        const request = ++eventRequestRef.current;
         try {
             const { data, error } = await supabase.rpc('list_accessible_pos_events');
+            if (request !== eventRequestRef.current) return;
 
             if (error) {
                 console.error('[ManageCombined] Error fetching active events:', error);
+                setEventLoadFailed(true);
                 setAvailableEvents([]);
                 setActiveEvent(null);
             } else {
                 const events = (data || []) as ActiveEvent[];
+                setEventLoadFailed(false);
                 setAvailableEvents(events);
 
                 setSelectedEventId((currentSelectedId) => {
@@ -178,11 +185,13 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 });
             }
         } catch (err) {
+            if (request !== eventRequestRef.current) return;
             console.error('[ManageCombined] Error fetching active events:', err);
+            setEventLoadFailed(true);
             setAvailableEvents([]);
             setActiveEvent(null);
         } finally {
-            setEventLoading(false);
+            if (request === eventRequestRef.current) setEventLoading(false);
         }
     }, [actorContext.artist_id]);
 
@@ -206,12 +215,12 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     // Trigger the upcoming-event lookup whenever the active event list becomes
     // empty (or clears it when active events exist so stale data is never shown).
     useEffect(() => {
-        if (!eventLoading && availableEvents.length === 0) {
+        if (!eventLoading && !eventLoadFailed && availableEvents.length === 0) {
             void fetchNextUpcomingEvent();
         } else {
             setNextUpcomingEvent(null);
         }
-    }, [eventLoading, availableEvents.length, fetchNextUpcomingEvent]);
+    }, [eventLoading, eventLoadFailed, availableEvents.length, fetchNextUpcomingEvent]);
 
     const fetchQueues = useCallback(async () => {
         const eventId = activeEventIdRef.current;
@@ -336,7 +345,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [activeEvent?.id]);
 
     const handleSelectedEventChange = (eventId: string) => {
-        if (selectedQueueId && eventId && eventId !== activeEvent?.id && !window.confirm('Switch event and clear the selected queue/order context?')) {
+        if (selectedQueueId && eventId && eventId !== activeEvent?.id && !window.confirm(uiText(language, 'Switch event and clear the selected queue/order context?'))) {
             return;
         }
         setSelectedEventId(eventId || null);
@@ -415,11 +424,29 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             <div className="flex flex-col h-screen bg-gray-50 items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-3" />
                 <p className="text-gray-500 text-sm font-medium">
-                    {loadingSlow ? 'Taking longer than usual — check your connection.' : 'Loading workspace...'}
+                    {uiText(language, loadingSlow ? 'Taking longer than usual — check your connection.' : 'Loading workspace...')}
                 </p>
             </div>
         );
     }
+
+    if (eventLoadFailed) return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+            <div role="alert" className="max-w-md space-y-4 text-center">
+                <p className="font-bold text-red-700">{t('workspaceLoadFailed')}</p>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setEventLoading(true);
+                        void fetchActiveEvents();
+                    }}
+                    className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 font-bold text-white"
+                >
+                    {t('workspaceRetryLoad')}
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="festival-live flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
@@ -552,7 +579,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                         </div>
                                         <div className="mt-2 flex items-center gap-1.5 text-sm font-bold text-gray-600">
                                             <Clock size={14} className="shrink-0 text-gray-400" aria-hidden="true" />
-                                            <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone)}</span>
+                                            <span>{formatEventStart(nextUpcomingEvent.start_date, nextUpcomingEvent.event_timezone, dateLocale)}</span>
                                         </div>
                                         <p className="mt-3 text-xs font-medium text-gray-400 leading-relaxed">
                                             {text("This event will appear in the POS dashboard automatically after it starts.", "เมื่อถึงเวลาเริ่ม อีเวนต์นี้จะแสดงในหน้าขายโดยอัตโนมัติ")}

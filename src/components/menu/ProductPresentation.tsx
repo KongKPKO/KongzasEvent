@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '../../i18n';
 import { CalendarClock, Clock3, ImageOff, Images, Package, Sparkles, Users } from 'lucide-react';
 import type { PresentableProduct } from '../../types/productPresentation';
 import { getBundleItemCount, getProductImages, getProductPresentationKind, isProductPreorderClosed } from '../../utils/productPresentation';
+import { uiText, useI18n } from '../../i18n';
 
 type Labels = {
   photos: string;
@@ -14,11 +14,12 @@ type Labels = {
   duration: string;
   slots: string;
   service: string;
+  minutes: string;
 };
 
 const labelsByLanguage: Record<'en' | 'th', Labels> = {
-  en: { photos: 'pics', bundleItems: 'items', preorder: 'Pre-order', preorderClosed: 'Pre-order closed', closes: 'Closes', eta: 'ETA', duration: 'Duration', slots: 'slots per session', service: 'Service' },
-  th: { photos: 'รูป', bundleItems: 'ชิ้น', preorder: 'พรีออเดอร์', preorderClosed: 'ปิดรับพรีออเดอร์', closes: 'ปิดรับ', eta: 'พร้อมรับ/จัดส่ง', duration: 'ระยะเวลา', slots: 'คิวต่อรอบ', service: 'บริการ' },
+  en: { photos: 'pics', bundleItems: 'items', preorder: 'Pre-order', preorderClosed: 'Pre-order closed', closes: 'Closes', eta: 'ETA', duration: 'Duration', slots: 'slots per session', service: 'Service', minutes: 'min' },
+  th: { photos: 'รูป', bundleItems: 'ชิ้น', preorder: 'พรีออเดอร์', preorderClosed: 'ปิดรับพรีออเดอร์', closes: 'ปิดรับ', eta: 'พร้อมรับ/จัดส่ง', duration: 'ระยะเวลา', slots: 'คิวต่อรอบ', service: 'บริการ', minutes: 'นาที' },
 };
 
 const formatDate = (value: string, language: 'en' | 'th', includeTime = true) => {
@@ -34,7 +35,12 @@ const formatDate = (value: string, language: 'en' | 'th', includeTime = true) =>
 function ImageFallback({ name }: { name: string }) {
   const { language } = useI18n();
   return (
-    <div role="img" aria-label={`${name}: ${language === 'th' ? 'ไม่มีภาพสินค้า' : 'Image unavailable'}`} data-testid="campaign-product-image-fallback" className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
+    <div
+      role="img"
+      aria-label={`${name}: ${language === 'th' ? 'ไม่มีภาพสินค้า' : 'Image unavailable'}`}
+      data-testid="campaign-product-image-fallback"
+      className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400"
+    >
       <ImageOff size={26} strokeWidth={1.8} aria-hidden="true" />
       <span className="max-w-[80%] truncate text-xs font-black text-gray-500">{name.charAt(0).toUpperCase()}</span>
     </div>
@@ -50,6 +56,7 @@ export function ProductMedia({
   getImageUrl: (value: string, width?: number) => string;
   eager?: boolean;
 }) {
+  const { language } = useI18n();
   const kind = getProductPresentationKind(product);
   const images = getProductImages(product);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
@@ -78,7 +85,7 @@ export function ProductMedia({
               />
             )}
             {overflowCount > 0 && (
-              <div className="absolute inset-0 grid place-items-center bg-gray-950/65 text-xl font-black text-white" aria-label={`${overflowCount} more images`}>
+              <div className="absolute inset-0 grid place-items-center bg-gray-950/65 text-xl font-black text-white" aria-label={`${overflowCount} ${uiText(language, 'more images')}`}>
                 +{overflowCount}
               </div>
             )}
@@ -86,7 +93,7 @@ export function ProductMedia({
         );
       })}
       {kind === 'photo' && (
-        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-gray-950/75 px-2 py-1 text-[10px] font-black text-white shadow-sm" aria-label={`${images.length} product images`}>
+        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-gray-950/75 px-2 py-1 text-[10px] font-black text-white shadow-sm" aria-label={`${images.length} ${uiText(language, 'product images')}`}>
           <Images size={12} aria-hidden="true" /> {images.length}
         </span>
       )}
@@ -101,6 +108,7 @@ export function ProductGallery({
   product: PresentableProduct;
   getImageUrl: (value: string, width?: number) => string;
 }) {
+  const { language } = useI18n();
   const images = getProductImages(product);
   const [selected, setSelected] = useState(0);
 
@@ -114,14 +122,14 @@ export function ProductGallery({
         <img src={getImageUrl(images[selected], 1000)} alt={`${product.name} ${selected + 1}`} className="h-full max-h-[70vh] w-full object-contain" />
       </div>
       {images.length > 1 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label={`${images.length} product images`}>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label={`${images.length} ${uiText(language, 'product images')}`}>
           {images.map((image, index) => (
             <button
               key={image}
               type="button"
               onClick={() => setSelected(index)}
               className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 bg-white ${selected === index ? 'border-pink-500' : 'border-white'}`}
-              aria-label={`View image ${index + 1} of ${images.length}`}
+              aria-label={`${uiText(language, 'View image')} ${index + 1} ${uiText(language, 'of')} ${images.length}`}
               aria-pressed={selected === index}
             >
               <img src={getImageUrl(image, 160)} alt="" className="h-full w-full object-cover" />
@@ -176,7 +184,7 @@ export function ProductPresentationSummary({
       <div className="space-y-1 text-[11px] font-bold text-violet-800">
         <div className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1"><Sparkles size={13} />{product.service_kind || labels.service}</div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-gray-600">
-          {product.service_duration_minutes ? <span className="inline-flex items-center gap-1"><Clock3 size={12} />{labels.duration} {product.service_duration_minutes} min</span> : null}
+          {product.service_duration_minutes ? <span className="inline-flex items-center gap-1"><Clock3 size={12} />{labels.duration} {product.service_duration_minutes} {labels.minutes}</span> : null}
           {product.service_slots !== null && product.service_slots !== undefined ? <span className="inline-flex items-center gap-1"><Users size={12} />{product.service_slots} {labels.slots}</span> : null}
         </div>
       </div>

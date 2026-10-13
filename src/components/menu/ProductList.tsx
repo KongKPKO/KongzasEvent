@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ShoppingBag, ShoppingCart, Plus, Minus, X } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { ProductGallery, ProductMedia, ProductPresentationSummary } from './ProductPresentation';
 import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
@@ -38,7 +38,7 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
     const qty = cart[product.id] || 0, available = availableUnits(product);
     const closed = isProductPreorderClosed(product);
     const soldOut = closed || product.status === 'soldout' || product.status === 'disable' || available <= 0;
-    const addLabel = closed ? (language === 'th' ? 'ปิดรับพรีออเดอร์' : 'Pre-order closed') : getProductPresentationKind(product) === 'service' ? (language === 'th' ? 'เลือกบริการ' : 'Select service') : t('productAdd');
+    const addLabel = closed ? uiText(language, 'Pre-order closed') : getProductPresentationKind(product) === 'service' ? uiText(language, 'Select service') : t('productAdd');
     return qty === 0 ? <button type="button" className="shop-add" disabled={soldOut || isOrderSent} onClick={() => onUpdateQuantity(product.id, 1, product.name)} aria-label={closed || getProductPresentationKind(product) === 'service' ? addLabel : `${addLabel}: ${product.name}`}><ShoppingCart size={17} aria-hidden="true" />{closed ? addLabel : soldOut ? t('productSoldOut') : addLabel}</button>
       : <div className="shop-quantity">
         <button type="button" disabled={isOrderSent} onClick={() => onUpdateQuantity(product.id, -1, product.name)} aria-label={t('productDecrease', { name: product.name })}><Minus size={17} /></button>

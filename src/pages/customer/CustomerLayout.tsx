@@ -7,12 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useArtist } from '../../hooks/useArtist';
 import { useArtistRealtime } from '../../hooks/useArtistRealtime';
 import CallingNotification from '../../components/CallingNotification';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
 import { customerEventStorageKey, getCurrentCustomerEvents, getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
 
 const CustomerLayout = () => {
-   const { t } = useI18n();
+   const { t, language } = useI18n();
    const { slug } = useParams<{ slug: string }>();
    const location = useLocation();
    const { artist, loading, error } = useArtist(slug);
@@ -189,7 +189,7 @@ const CustomerLayout = () => {
                            </div>
                         )}
                      </div>
-                     <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="Main navigation">
+                     <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label={uiText(language, 'Main navigation')}>
                         {[
                            { to: `/${slug}/home`, label: t('customerNavHome'), Icon: Home, match: '/home' },
                            { to: `/${slug}/menu`, label: t('customerNavMerch'), Icon: ShoppingBag, match: '/menu' },
@@ -238,7 +238,7 @@ const CustomerLayout = () => {
             </AnimatePresence>
 
             {/* Bottom Nav for Mobile */}
-            <nav className="customer-bottom-nav fixed bottom-0 z-50 flex h-20 w-full max-w-md justify-around border-t border-gray-100 bg-white/90 pb-5 text-[11px] font-bold tracking-tight backdrop-blur-md lg:hidden" aria-label="Main navigation">
+            <nav className="customer-bottom-nav fixed bottom-0 z-50 flex h-20 w-full max-w-md justify-around border-t border-gray-100 bg-white/90 pb-5 text-[11px] font-bold tracking-tight backdrop-blur-md lg:hidden" aria-label={uiText(language, 'Main navigation')}>
                <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/home`}

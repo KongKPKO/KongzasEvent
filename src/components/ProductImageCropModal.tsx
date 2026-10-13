@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Image as ImageIcon, Minus, Plus, X } from 'lucide-react';
 import { Button } from './ui';
+import { uiText, useI18n } from '../i18n';
 
 type Point = {
   x: number;
@@ -49,6 +50,7 @@ const clampOffset = (offset: Point, naturalWidth: number, naturalHeight: number,
 };
 
 const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductImageCropModalProps) => {
+  const { language } = useI18n();
   const [imageUrl, setImageUrl] = useState('');
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [frameMode, setFrameMode] = useState<FrameMode>('fit');
@@ -121,7 +123,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
       canvas.width = OUTPUT_SIZE;
       canvas.height = OUTPUT_SIZE;
       const context = canvas.getContext('2d');
-      if (!context) throw new Error('Canvas is not available.');
+      if (!context) throw new Error(uiText(language, 'Canvas is not available.'));
 
       const scale = getBaseScale(imageSize.width, imageSize.height, frameMode) * zoom;
       const displayWidth = imageSize.width * scale;
@@ -143,7 +145,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((nextBlob) => {
           if (nextBlob) resolve(nextBlob);
-          else reject(new Error('Image export failed.'));
+          else reject(new Error(uiText(language, 'Image export failed.')));
         }, 'image/webp', 0.86);
       });
 
@@ -151,7 +153,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
       onConfirm(new File([blob], `${baseName}.${blob.type === 'image/webp' ? 'webp' : 'png'}`, { type: blob.type }));
     } catch (error) {
       console.error('[ProductImageCropModal] export failed:', error);
-      onError?.('Could not prepare this image. Please try another file.');
+      onError?.(uiText(language, 'Could not prepare this image. Please try another file.'));
     } finally {
       setExporting(false);
     }
@@ -164,15 +166,15 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
           <div>
             <div className="flex items-center gap-2 text-sm font-black text-gray-900">
               <ImageIcon size={18} className="text-pink-500" />
-              Position product image
+              {uiText(language, 'Position product image')}
             </div>
-            <p className="mt-1 text-xs font-semibold text-gray-500">Fit keeps the full image. Crop fills the square.</p>
+            <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'Fit keeps the full image. Crop fills the square.')}</p>
           </div>
           <button
             type="button"
             onClick={onCancel}
             className="grid h-9 w-9 place-items-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close crop editor"
+            aria-label={uiText(language, 'Close crop editor')}
           >
             <X size={18} />
           </button>
@@ -189,7 +191,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
                   : 'text-gray-500 hover:text-gray-800'
               }`}
             >
-              Fit full image
+              {uiText(language, 'Fit full image')}
             </button>
             <button
               type="button"
@@ -200,7 +202,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
                   : 'text-gray-500 hover:text-gray-800'
               }`}
             >
-              Fill square
+              {uiText(language, 'Fill square')}
             </button>
           </div>
 
@@ -211,7 +213,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
             onPointerUp={finishDragging}
             onPointerCancel={finishDragging}
             role="application"
-            aria-label="Image crop area"
+            aria-label={uiText(language, 'Image crop area')}
           >
             {imageUrl && (
               <img
@@ -236,7 +238,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
 
           <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
             <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-gray-500">
-              <span>Zoom</span>
+              <span>{uiText(language, 'Zoom')}</span>
               <span>{Math.round(zoom * 100)}%</span>
             </div>
             <div className="flex items-center gap-3">
@@ -249,7 +251,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
                 value={zoom}
                 onChange={(event) => setZoom(Number(event.target.value))}
                 className="h-2 w-full accent-pink-500"
-                aria-label="Image zoom"
+                aria-label={uiText(language, 'Image zoom')}
               />
               <Plus size={16} className="text-gray-400" />
             </div>
@@ -262,7 +264,7 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
             onClick={onCancel}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50"
           >
-            Cancel
+            {uiText(language, 'Cancel')}
           </Button>
           <Button
             type="button"
@@ -270,8 +272,8 @@ const ProductImageCropModal = ({ file, onCancel, onConfirm, onError }: ProductIm
             disabled={exporting || !imageSize.width}
             className="inline-flex items-center gap-2 rounded-lg bg-pink-500 px-5 py-2 text-sm font-black text-white shadow-md shadow-pink-200 hover:bg-pink-600 disabled:bg-pink-300"
           >
-            {exporting ? 'Preparing...' : <Check size={16} />}
-            {exporting ? '' : 'Use image'}
+            {exporting ? uiText(language, 'Preparing...') : <Check size={16} />}
+            {exporting ? '' : uiText(language, 'Use image')}
           </Button>
         </div>
       </div>

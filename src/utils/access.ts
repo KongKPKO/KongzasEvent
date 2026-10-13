@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import type { ActorContext } from '../types/access';
+import { getAuthUserSafe } from './auth';
 
 const withTimeout = async <T,>(promise: PromiseLike<T>, ms = 12000): Promise<T> => {
   const wrapped = Promise.resolve(promise);
@@ -12,15 +13,15 @@ const withTimeout = async <T,>(promise: PromiseLike<T>, ms = 12000): Promise<T> 
 };
 
 const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
-  const { data: userData, error: userError } = await withTimeout(supabase.auth.getUser(), 8000);
-  if (userError || !userData.user) return null;
+  const user = await getAuthUserSafe();
+  if (!user) return null;
 
-  const userId = userData.user.id;
-  const email = userData.user.email?.toLowerCase() || null;
+  const userId = user.id;
+  const email = user.email?.toLowerCase() || null;
   let artistId: string | null = null;
 
   if (email) {
-    const { data: memberContext } = await withTimeout(
+    const { data: memberContext, error: memberError } = await withTimeout(
       supabase
         .from('artist_members')
         .select('artist_id, role, member_email')
@@ -31,6 +32,7 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
         .maybeSingle(),
       8000
     );
+    if (memberError) throw memberError;
 
     if (memberContext?.artist_id && memberContext.role) {
       return {
@@ -42,7 +44,7 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
     }
   }
 
-  const { data: ownedArtist } = await withTimeout(
+  const { data: ownedArtist, error: ownedArtistError } = await withTimeout(
     supabase
       .from('artists')
       .select('id')
@@ -50,10 +52,11 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
       .maybeSingle(),
     8000
   );
+  if (ownedArtistError) throw ownedArtistError;
   artistId = ownedArtist?.id || null;
 
   if (!artistId && email) {
-    const { data: emailArtist } = await withTimeout(
+    const { data: emailArtist, error: emailArtistError } = await withTimeout(
       supabase
         .from('artists')
         .select('id')
@@ -63,6 +66,7 @@ const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
         .maybeSingle(),
       8000
     );
+    if (emailArtistError) throw emailArtistError;
     artistId = emailArtist?.id || null;
   }
 
@@ -102,26 +106,25 @@ export const completePendingVerifiedCreatorSignup = async (): Promise<CreatorSig
 };
 
 export const fetchActorContext = async (): Promise<ActorContext | null> => {
+  let first: ActorContext | undefined;
   try {
     const { data, error } = await withTimeout(supabase.rpc('get_actor_context'));
     if (error) {
       console.error('[Access] get_actor_context failed:', error);
-      return await fetchLegacyOwnerContext();
+    } else {
+      first = Array.isArray(data) ? data[0] : data;
     }
-
-    if (!data) return await fetchLegacyOwnerContext();
-
-    const first = Array.isArray(data) ? data[0] : data;
-    if (!first?.artist_id || !first?.role) return await fetchLegacyOwnerContext();
-
-    return {
-      artist_id: first.artist_id,
-      role: first.role,
-      is_owner: !!first.is_owner,
-      member_email: first.member_email || null,
-    };
   } catch (error) {
     console.error('[Access] get_actor_context request failed:', error);
-    return await fetchLegacyOwnerContext();
   }
+
+  // Keep the fallback outside the RPC catch: its failure must reach the UI
+  // once instead of triggering a second account check.
+  if (!first?.artist_id || !first?.role) return await fetchLegacyOwnerContext();
+  return {
+    artist_id: first.artist_id,
+    role: first.role,
+    is_owner: !!first.is_owner,
+    member_email: first.member_email || null,
+  };
 };

@@ -1,5 +1,5 @@
 import { CalendarDays, Clock3, MapPin, Sparkles } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { formatAppearanceTimeRange, sortEventAppearances } from '../../lib/eventAppearances';
 import type { EventAppearance } from '../../types/eventAppearance';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -9,7 +9,7 @@ interface EventAppearancePreviewProps {
 }
 
 const EventAppearancePreview = ({ appearances }: EventAppearancePreviewProps) => {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, language } = useI18n();
   if (appearances.length === 0) return null;
 
   return (
@@ -31,7 +31,7 @@ const EventAppearancePreview = ({ appearances }: EventAppearancePreviewProps) =>
             <article key={appearance.id} className="flex w-[248px] shrink-0 snap-start gap-3 rounded-2xl border border-fuchsia-100 bg-gradient-to-br from-fuchsia-50 to-white p-2.5">
               <div className="h-24 w-[72px] shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-fuchsia-100">
                 {appearance.image_url ? (
-                  <img src={getMenuImageUrl(appearance.image_url)} alt={`${appearance.character_name} cosplay`} loading="lazy" className="h-full w-full object-cover" />
+                  <img src={getMenuImageUrl(appearance.image_url)} alt={`${appearance.character_name} ${uiText(language, 'cosplay')}`} loading="lazy" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-fuchsia-300"><Sparkles size={25} aria-hidden="true" /></div>
                 )}

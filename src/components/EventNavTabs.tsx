@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { useI18n } from '../i18n';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Monitor, Users } from 'lucide-react';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../types/access';
 import type { ActorRole } from '../types/access';
+import { uiText, useI18n } from '../i18n';
 
 export type EventTabKey = 'settings' | 'overview' | 'dashboard' | 'catalog' | 'promotion' | 'preorder' | 'postorder' | 'pickup' | 'history';
 
@@ -23,7 +23,7 @@ interface EventNavTabsProps {
 export default function EventNavTabs({ eventId, active, actorRole }: EventNavTabsProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { language, setLanguage } = useI18n();
+  const { language } = useI18n();
   const th = language === 'th';
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'auto' }); }, [eventId, active]);
   // Pages that render this without an actorContext are management-only routes.
@@ -78,14 +78,11 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
                 : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
             }`}
           >
-            {tab.label}
+            {uiText(language, tab.label)}
           </button>
         ))}
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1" aria-label="Language">
-          {(['th', 'en'] as const).map(value => <button key={value} type="button" aria-pressed={language === value} onClick={() => setLanguage(value)} className={`min-h-11 rounded-lg px-3 text-sm font-bold ${language === value ? 'bg-pink-50 text-pink-700' : 'text-gray-500'}`}>{value.toUpperCase()}</button>)}
-        </div>
         {liveActions.filter((action) => action.visible).map((action) => (
           <button
             key={action.label}
@@ -93,7 +90,7 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
             onClick={() => navigate(action.path)}
             className="inline-flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
           >
-            <action.icon size={15} /> {action.label}
+            <action.icon size={15} /> {uiText(language, action.label)}
           </button>
         ))}
       </div>

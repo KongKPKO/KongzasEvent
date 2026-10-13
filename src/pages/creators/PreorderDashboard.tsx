@@ -1,4 +1,4 @@
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import EvidenceReview from '../../components/EvidenceReview';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -113,11 +113,11 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setSummary(summaryData);
       setOrders(reviewData.filter((order) => (scope === 'post_event' ? order.order_type === 'post_event' : order.order_type !== 'post_event')));
     } catch (error) {
-      setToast({ tone: 'error', title: 'Could not load pre-order dashboard', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Could not load pre-order dashboard'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [actorContext.artist_id, eventId, scope]);
+  }, [actorContext.artist_id, eventId, language, scope]);
 
   useEffect(() => {
     void load();
@@ -200,7 +200,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setSignedUrls((prev) => ({ ...prev, [order.slip_url as string]: url }));
       setSlipPreview({ order, url });
     } catch (error) {
-      setToast({ tone: 'error', title: 'Could not open slip', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Could not open slip'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setSlipLoadingId(null);
     }
@@ -208,7 +208,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
 
   const exportCsv = () => {
     const rows = [
-      ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'],
+      ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'].map((heading) => uiText(language, heading)),
       ...summary.map((row) => [
         row.product_name,
         row.category || '',
@@ -248,20 +248,20 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         )));
         const { error: notifyError } = await notifyPreorderPayment({ orderId: targetOrder.order_id, event: 'confirmed' });
         setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'confirmed', pickupCode: targetOrder.pickup_code } : null);
-        const readyMessage = targetOrder.order_type === 'post_event'
-          ? `${targetOrder.pickup_code} is ready for shipment.`
-          : `${targetOrder.pickup_code} is ready for pickup.`;
+        const readyMessage = language === 'th'
+          ? targetOrder.order_type === 'post_event' ? `${targetOrder.pickup_code} พร้อมจัดส่งแล้ว` : `${targetOrder.pickup_code} พร้อมให้รับสินค้าแล้ว`
+          : targetOrder.order_type === 'post_event' ? `${targetOrder.pickup_code} is ready for shipment.` : `${targetOrder.pickup_code} is ready for pickup.`;
         setToast({
           tone: notifyError ? 'warning' : 'success',
-          title: 'Payment confirmed',
+          title: uiText(language, 'Payment confirmed'),
           detail: notifyError
-            ? `${readyMessage} Email was not sent. Use Retry email; the payment will not be confirmed twice.`
-            : `${readyMessage} Customer email was sent.`,
+            ? `${readyMessage} ${uiText(language, 'Email was not sent. Use Retry email; the payment will not be confirmed twice.')}`
+            : `${readyMessage} ${uiText(language, 'Customer email was sent.')}`,
         });
       } else if (reviewAction.type === 'reject') {
         const note = reviewNote.trim();
         if (!note) {
-          setToast({ tone: 'warning', title: 'Reject reason required', detail: 'Add a short explanation for the customer before rejecting.' });
+          setToast({ tone: 'warning', title: uiText(language, 'Reject reason required'), detail: uiText(language, 'Add a short explanation for the customer before rejecting.') });
           return;
         }
         await rejectPreorderPayment(targetOrder.order_id, note);
@@ -274,16 +274,16 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         setFailedNotification(notifyError ? { orderId: targetOrder.order_id, event: 'rejected', pickupCode: targetOrder.pickup_code } : null);
         setToast({
           tone: notifyError ? 'warning' : 'success',
-          title: 'Payment rejected',
+          title: uiText(language, 'Payment rejected'),
           detail: notifyError
-            ? 'Reserved stock was released. Email was not sent; use Retry email.'
-            : 'Reserved stock was released and the customer email was sent.',
+            ? uiText(language, 'Reserved stock was released. Email was not sent; use Retry email.')
+            : uiText(language, 'Reserved stock was released and the customer email was sent.'),
         });
       } else {
         const tracking = trackingNumber.trim();
         const carrier = shippingCarrier.trim();
         if (!tracking) {
-          setToast({ tone: 'warning', title: 'Tracking number required', detail: 'Add the shipment tracking number before marking this order shipped.' });
+          setToast({ tone: 'warning', title: uiText(language, 'Tracking number required'), detail: uiText(language, 'Add the shipment tracking number before marking this order shipped.') });
           return;
         }
         const result = await markOrderShipped(targetOrder.order_id, tracking, carrier);
@@ -300,7 +300,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         )));
         setToast({
           tone: 'success',
-          title: 'Order marked shipped',
+          title: uiText(language, 'Order marked shipped'),
           detail: `${targetOrder.pickup_code} · ${tracking}`,
         });
       }
@@ -310,7 +310,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setShippingCarrier('');
       void load(true);
     } catch (error) {
-      setToast({ tone: 'error', title: 'Review failed', detail: getPreorderErrorMessage(error) });
+      setToast({ tone: 'error', title: uiText(language, 'Review failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
       setActionLoading(false);
     }
@@ -325,10 +325,10 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     });
     setNotificationRetrying(false);
     if (error) {
-      setToast({ tone: 'warning', title: 'Email still not sent', detail: 'The order state is already saved. Try the email again later.' });
+      setToast({ tone: 'warning', title: uiText(language, 'Email still not sent'), detail: uiText(language, 'The order state is already saved. Try the email again later.') });
       return;
     }
-    setToast({ tone: 'success', title: 'Customer email sent', detail: `${failedNotification.pickupCode} notification delivered without repeating the payment action.` });
+    setToast({ tone: 'success', title: uiText(language, 'Customer email sent'), detail: language === 'th' ? `ส่งการแจ้งเตือนของ ${failedNotification.pickupCode} แล้ว โดยไม่ทำรายการชำระเงินซ้ำ` : `${failedNotification.pickupCode} notification delivered without repeating the payment action.` });
     setFailedNotification(null);
   };
 
@@ -586,7 +586,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     </div>
                     <div className="mt-1 text-sm font-black text-gray-900">{order.customer_name}</div>
                     <div className="mt-1 text-xs font-bold text-gray-500">
-                      {[order.customer_phone, order.customer_social, order.customer_email].filter(Boolean).join(' · ') || order.customer_contact || 'No contact'}
+                      {[order.customer_phone, order.customer_social, order.customer_email].filter(Boolean).join(' · ') || order.customer_contact || uiText(language, 'No contact')}
                     </div>
                     {order.order_type === 'post_event' && order.shipping_address && (
                       <div
@@ -689,7 +689,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     <tr key={row.product_id}>
                       <td className="px-4 py-3">
                         <div className="font-black text-gray-900">{row.product_name}</div>
-                        <div className="text-xs font-semibold text-gray-500">{row.category || 'Uncategorized'}</div>
+                        <div className="text-xs font-semibold text-gray-500">{row.category || uiText(language, 'Uncategorized')}</div>
                       </td>
                       <td className="px-4 py-3 font-bold text-amber-700">{row.submitted_quantity}</td>
                       <td className="px-4 py-3 font-bold text-emerald-700">{row.confirmed_quantity}</td>

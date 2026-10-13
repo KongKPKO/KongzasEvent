@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { CalendarClock, Clock3, Images, Package, PackageSearch, Pencil, Search, Users, X } from 'lucide-react';
 import type { ProductParent } from '../../types/productFamily';
 import { formatPrice } from '../../utils/currency';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 export interface CatalogFamilyVariant {
@@ -33,30 +33,31 @@ interface ProductFamilyCatalogProps<TVariant extends CatalogFamilyVariant> {
   onEditFamily: (family: CatalogProductFamily<TVariant>) => void;
 }
 
-const kindLabels: Record<ProductParent['product_kind'], string> = {
+const kindLabel = (language: 'en' | 'th', kind: ProductParent['product_kind']) => uiText(language, ({
   single: 'Single item',
   photo: 'Photo set',
   bundle: 'Bundle',
   preorder: 'Pre-order',
   service: 'Service',
-};
+})[kind]);
 
-const formatDateTime = (value?: string | null) => {
+const formatDateTime = (value: string | null | undefined, locale: string) => {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 };
 
-function ProductVisual<TVariant extends CatalogFamilyVariant>({ parent, variants, getImageUrl }: {
+function ProductVisual<TVariant extends CatalogFamilyVariant>({ parent, variants, getImageUrl, language }: {
   parent: ProductParent;
   variants: TVariant[];
   getImageUrl: ProductFamilyCatalogProps<TVariant>['getImageUrl'];
+  language: 'en' | 'th';
 }) {
   const gallery = parent.product_kind === 'photo'
     ? [parent.image_url, ...(parent.gallery_images || [])].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
     : [];
-  const fallbackImage = parent.image_url || variants.find((variant) => variant.image_url)?.image_url;
+  const fallbackImage = gallery[0] || parent.image_url || variants.find((variant) => variant.image_url)?.image_url;
 
   if (gallery.length > 1) {
     const shown = gallery.slice(0, 4);
@@ -72,7 +73,7 @@ function ProductVisual<TVariant extends CatalogFamilyVariant>({ parent, variants
     );
   }
 
-  return fallbackImage ? <img src={getImageUrl(fallbackImage, 650)} alt={parent.name} className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <div className="flex h-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400"><PackageSearch size={28} /><span className="text-xs font-black uppercase tracking-wide">Missing image</span></div>;
+  return fallbackImage ? <img src={getImageUrl(fallbackImage, 650)} alt={parent.name} className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <div className="flex h-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400"><PackageSearch size={28} /><span className="text-xs font-black uppercase tracking-wide">{uiText(language, 'Missing image')}</span></div>;
 }
 
 export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVariant>({
@@ -83,7 +84,7 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
   renderVariantActions,
   onEditFamily,
 }: ProductFamilyCatalogProps<TVariant>) {
-  const { language } = useI18n();
+  const { language, dateLocale } = useI18n();
   const thai = language === 'th';
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -141,12 +142,12 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
           const bundleCount = (family.parent.bundle_items || []).reduce((sum, item) => sum + item.quantity, 0);
           return (
             <article key={family.parent.id} data-testid={family.variants.length === 1 ? `catalog-card-${primary.id}` : `catalog-family-card-${family.parent.id}`} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/50">
-              <div className="relative aspect-[4/3] overflow-hidden bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} /><div className="absolute left-3 top-3 flex flex-wrap gap-1.5"><span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">{kindLabels[family.parent.product_kind]}</span>{family.parent.product_kind === 'photo' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Images size={11} /> {pictureCount} pics</span>}{family.parent.product_kind === 'bundle' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Package size={11} /> {bundleCount} items</span>}{family.parent.product_kind === 'preorder' && <span className="rounded-full bg-amber-500 px-2 py-1 text-[10px] font-black text-white">PRE-ORDER</span>}</div></div>
+              <div className="relative aspect-[4/3] overflow-hidden bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} language={language} /><div className="absolute left-3 top-3 flex flex-wrap gap-1.5"><span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">{kindLabel(language, family.parent.product_kind)}</span>{family.parent.product_kind === 'photo' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Images size={11} /> {pictureCount} {uiText(language, 'pics')}</span>}{family.parent.product_kind === 'bundle' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Package size={11} /> {bundleCount} {uiText(language, 'items')}</span>}{family.parent.product_kind === 'preorder' && <span className="rounded-full bg-amber-500 px-2 py-1 text-[10px] font-black text-white">{uiText(language, 'PRE-ORDER')}</span>}</div></div>
               <div className="space-y-3 p-4">
-                <div><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base font-black text-gray-950">{family.parent.name}</h3><p className="mt-1 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{thai ? `เปิดใช้งาน ${activeCount}` : `${activeCount} active`}</p></div><button type="button" onClick={() => onEditFamily(family)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-600 hover:border-pink-200 hover:text-pink-700" aria-label={`Edit ${family.parent.name}`}><Pencil size={16} /></button></div><div className="mt-2 text-xl font-black text-pink-600">{priceRange(family)}</div></div>
+                <div><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base font-black text-gray-950">{family.parent.name}</h3><p className="mt-1 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{thai ? `เปิดใช้งาน ${activeCount}` : `${activeCount} active`}</p></div><button type="button" onClick={() => onEditFamily(family)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-600 hover:border-pink-200 hover:text-pink-700" aria-label={uiText(language, 'Edit {name}').replace('{name}', family.parent.name)}><Pencil size={16} /></button></div><div className="mt-2 text-xl font-black text-pink-600">{priceRange(family)}</div></div>
                 {family.parent.product_kind === 'bundle' && <ul className="space-y-1 rounded-xl bg-gray-50 p-3 text-xs font-semibold text-gray-600">{(family.parent.bundle_items || []).slice(0, 3).map((item, index) => <li key={`${item.name}-${index}`}>{item.name} ×{item.quantity}</li>)}</ul>}
-                {family.parent.product_kind === 'preorder' && <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">{family.parent.preorder_closes_at && <div className="flex items-center gap-1.5"><CalendarClock size={14} /> Closes {formatDateTime(family.parent.preorder_closes_at)}</div>}{family.parent.preorder_eta && <div className="mt-1 text-amber-700">ETA {family.parent.preorder_eta}</div>}</div>}
-                {family.parent.product_kind === 'service' && <div className="flex flex-wrap gap-2 rounded-xl bg-violet-50 p-3 text-xs font-black text-violet-800">{family.parent.service_duration_minutes != null && <span className="inline-flex items-center gap-1"><Clock3 size={14} /> {family.parent.service_duration_minutes} min</span>}{family.parent.service_slots != null && <span className="inline-flex items-center gap-1"><Users size={14} /> {family.parent.service_slots} slots</span>}</div>}
+                {family.parent.product_kind === 'preorder' && <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">{family.parent.preorder_closes_at && <div className="flex items-center gap-1.5"><CalendarClock size={14} /> {uiText(language, 'Closes')} {formatDateTime(family.parent.preorder_closes_at, dateLocale)}</div>}{family.parent.preorder_eta && <div className="mt-1 text-amber-700">{uiText(language, 'ETA')} {family.parent.preorder_eta}</div>}</div>}
+                {family.parent.product_kind === 'service' && <div className="flex flex-wrap gap-2 rounded-xl bg-violet-50 p-3 text-xs font-black text-violet-800">{family.parent.service_duration_minutes != null && <span className="inline-flex items-center gap-1"><Clock3 size={14} /> {family.parent.service_duration_minutes} {uiText(language, 'min')}</span>}{family.parent.service_slots != null && <span className="inline-flex items-center gap-1"><Users size={14} /> {family.parent.service_slots} {uiText(language, 'slots')}</span>}</div>}
                 {family.variants.length > 1 && optionsButton(family)}
                 {primary && family.variants.length === 1 && <div className="space-y-3"><div className="rounded-xl border border-gray-100 bg-gray-50 p-3">{renderVariantStock(primary, true)}</div>{renderVariantActions(primary, 'card')}</div>}
               </div>
@@ -164,15 +165,15 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
     <div className="space-y-3">
       {families.map((family) => {
         const primary = family.variants[0];
-        const totalStock = family.variants.some((variant) => variant.is_unlimited) ? 'Unlimited' : family.variants.reduce((sum, variant) => sum + Number(variant.stock_total || 0), 0);
+        const totalStock = family.variants.some((variant) => variant.is_unlimited) ? uiText(language, 'Unlimited') : family.variants.reduce((sum, variant) => sum + Number(variant.stock_total || 0), 0);
         return (
           <article key={family.parent.id} data-testid={family.variants.length === 1 ? `catalog-row-${primary.id}` : `catalog-family-row-${family.parent.id}`} className="overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="grid items-center gap-3 p-3 md:grid-cols-[minmax(260px,1.5fr)_110px_130px_110px_210px]">
-              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} /></div><div className="min-w-0"><h3 className="truncate text-sm font-black text-gray-900">{family.parent.name}</h3><p className="mt-0.5 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{kindLabels[family.parent.product_kind]}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} language={language} /></div><div className="min-w-0"><h3 className="truncate text-sm font-black text-gray-900">{family.parent.name}</h3><p className="mt-0.5 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{kindLabel(language, family.parent.product_kind)}</p></div></div>
               <div><span className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{family.parent.category || 'Other'}</span></div>
               <div className="text-sm font-black text-pink-700">{priceRange(family)}</div>
               <div className="text-sm font-black text-gray-800">{totalStock}</div>
-              <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => onEditFamily(family)} aria-label={`Edit ${family.parent.name}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700 hover:bg-pink-50"><Pencil size={14} />{thai ? 'แก้ไขสินค้า' : 'Edit product'}</button>{family.variants.length > 1 && optionsButton(family)}</div>
+              <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => onEditFamily(family)} aria-label={uiText(language, 'Edit {name}').replace('{name}', family.parent.name)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700 hover:bg-pink-50"><Pencil size={14} />{thai ? 'แก้ไขสินค้า' : 'Edit product'}</button>{family.variants.length > 1 && optionsButton(family)}</div>
             </div>
             {family.variants.length === 1 && primary && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-3"><div>{renderVariantStock(primary, true)}</div>{renderVariantActions(primary, 'table')}</div>}
           </article>

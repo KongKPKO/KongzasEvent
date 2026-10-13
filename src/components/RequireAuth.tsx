@@ -1,9 +1,11 @@
+import { useI18n, uiText } from '../i18n';
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 
 export const RequireAuth = () => {
+  const { language } = useI18n();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const location = useLocation();
 
@@ -22,7 +24,7 @@ export const RequireAuth = () => {
     // Loading state (optional: add a spinner here)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-pulse text-[#0070C0] font-bold">Verifying Access...</div>
+        <div className="animate-pulse text-[#0070C0] font-bold">{uiText(language, "Verifying Access...")}</div>
       </div>
     );
   }

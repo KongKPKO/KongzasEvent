@@ -1,4 +1,4 @@
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import './sales-readiness.css';
 import { uploadImage } from '../../lib/imageUploads';
@@ -118,9 +118,9 @@ export default function PreorderSettings() {
       const path = await uploadImage(file, 'qr', { artistId: event.artist_id });
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path);
       updatePaymentMethod('qr_image_url', publicUrl);
-      setToast({ tone: 'success', title: 'QR image uploaded', detail: 'Remember to save payment settings.' });
+      setToast({ tone: 'success', title: uiText(language, 'QR image uploaded'), detail: uiText(language, 'Remember to save payment settings.') });
     } catch (error) {
-      setToast({ tone: 'error', title: 'QR upload failed', detail: error instanceof Error ? error.message : 'Could not upload the image.' });
+      setToast({ tone: 'error', title: uiText(language, 'QR upload failed'), detail: error instanceof Error ? error.message : uiText(language, 'Could not upload the image.') });
     } finally {
       setQrUploading(false);
     }
@@ -169,7 +169,7 @@ export default function PreorderSettings() {
         is_enabled: payment.is_enabled ?? true,
       } : emptyPaymentMethod);
     } catch (error: any) {
-      setToast({ tone: 'error', title: 'Could not load order settings', detail: error.message });
+      setToast({ tone: 'error', title: uiText(language, 'Could not load order settings'), detail: error.message });
       setEvent(null);
       setCatalogProducts([]);
     } finally {
@@ -186,7 +186,7 @@ export default function PreorderSettings() {
   const postorderEnabled = Boolean(event?.postorder_enabled);
   const orderingClosed = event?.sales_status_override === 'closed';
   const isAdvanceOrderMode = preorderEnabled || postorderEnabled;
-  const readinessScope = isAdvanceOrderMode ? 'customer order pages' : 'live selling flow';
+  const readinessScope = uiText(language, isAdvanceOrderMode ? 'customer order pages' : 'live selling flow');
   const hasPickupInstructions = (event?.preorder_pickup_instructions || '').trim().length > 0;
   const hasPaymentInstructions =
     paymentMethod.is_enabled &&
@@ -234,7 +234,7 @@ export default function PreorderSettings() {
         icon: PackageCheck,
         label: 'Event catalog has products', target: 'catalog',
         detail: hasCatalogProducts
-          ? `${catalogProducts.length} product${catalogProducts.length === 1 ? '' : 's'} available for this event.`
+          ? language === 'th' ? `อีเวนต์นี้มีสินค้า ${catalogProducts.length} รายการ` : `${catalogProducts.length} product${catalogProducts.length === 1 ? '' : 's'} available for this event.`
           : 'Add products to this event catalog before opening customer orders.',
         ready: hasCatalogProducts,
         },
@@ -306,7 +306,7 @@ export default function PreorderSettings() {
 
       return baseItems;
     },
-    [catalogProducts.length, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, orderingClosed, postOrderStartsAfterEvent, postorderEnabled, postorderWindowReady, preorderClosesBeforeEventStarts, preorderEnabled, preorderWindowReady]
+    [catalogProducts.length, finiteProducts.length, finiteProductsWithStock, finiteStockReady, hasCatalogProducts, hasPaymentInstructions, hasPickupInstructions, isAdvanceOrderMode, language, orderingClosed, postOrderStartsAfterEvent, postorderEnabled, postorderWindowReady, preorderClosesBeforeEventStarts, preorderEnabled, preorderWindowReady]
   );
 
   const readyCount = readinessItems.filter((item) => item.ready).length;
@@ -724,7 +724,7 @@ export default function PreorderSettings() {
                       <input
                         value={paymentMethod.display_name}
                         onChange={(e) => updatePaymentMethod('display_name', e.target.value)}
-                        placeholder="PromptPay / Bank transfer"
+                        placeholder={uiText(language, 'PromptPay / Bank transfer')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
@@ -757,7 +757,7 @@ export default function PreorderSettings() {
                       <input
                         value={paymentMethod.bank_name}
                         onChange={(e) => updatePaymentMethod('bank_name', e.target.value)}
-                        placeholder="KBank, SCB, etc."
+                        placeholder={uiText(language, 'KBank, SCB, etc.')}
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>

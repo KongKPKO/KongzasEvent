@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card, Button } from './ui';
 import { SkipForward, RotateCcw, Users } from 'lucide-react';
+import { uiText, useI18n } from '../i18n';
 
 interface AdminQueueControlsProps {
   nextTicketId: number | null;
@@ -21,6 +22,7 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
   onUndo,
   onReset
 }) => {
+  const { language } = useI18n();
   const handleCallNext = () => {
     onCallNext();
   };
@@ -29,12 +31,12 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
     <Card className="w-full max-w-2xl mx-auto">
       <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
         <div>
-          <h2 className="text-2xl font-bold">Queue Control</h2>
-          <p className="text-gray-500 text-sm">Manage the flow of the event</p>
+          <h2 className="text-2xl font-bold">{uiText(language, 'Queue Control')}</h2>
+          <p className="text-gray-500 text-sm">{uiText(language, 'Manage the flow of the event')}</p>
         </div>
         <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full text-sm font-medium text-gray-600">
           <Users size={16} />
-          <span>Total: {pendingCount + readyCount + waitingCount}</span>
+          <span>{uiText(language, 'Total')}: {pendingCount + readyCount + waitingCount}</span>
         </div>
       </div>
 
@@ -42,13 +44,13 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
         {/* Next to Serve Display */}
         <div className="text-center p-6 bg-slate-50 rounded-2xl border border-slate-200 relative overflow-hidden">
           <div className="text-sm font-bold uppercase text-slate-600 tracking-wider mb-2">
-            Next Ticket
+            {uiText(language, 'Next Ticket')}
           </div>
           <div className="text-8xl font-black text-slate-950 leading-tight">
             {nextTicketId ? `#${nextTicketId}` : '-'}
           </div>
           <div className="mt-2 text-slate-700 font-medium text-sm">
-            {waitingCount} waiting
+            {waitingCount} {uiText(language, 'waiting')}
           </div>
         </div>
 
@@ -61,7 +63,7 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
              className="w-full shadow-lg shadow-pink-100 disabled:opacity-50 disabled:cursor-not-allowed bg-pink-600 hover:bg-pink-700 text-white"
           >
             <SkipForward className="mr-2" size={20} />
-            Call Next
+            {uiText(language, 'Call Next')}
           </Button>
 
           <Button 
@@ -69,7 +71,7 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
             onClick={onUndo}
             className="w-full text-gray-600 border-gray-200 hover:bg-gray-50"
           >
-            Undo Last
+            {uiText(language, 'Undo Last')}
           </Button>
 
           <div className="pt-4 border-t border-gray-100 mt-2">
@@ -77,14 +79,14 @@ export const AdminQueueControls: React.FC<AdminQueueControlsProps> = ({
               variant="ghost" 
               className="w-full text-red-500 hover:text-red-600 hover:bg-red-50"
               onClick={() => {
-                if(confirm("Are you sure you want to reset the queue? This cannot be undone.")) {
+                if(confirm(uiText(language, 'Are you sure you want to reset the queue? This cannot be undone.'))) {
                   onReset();
                   localStorage.removeItem('queue_timer_end');
                 }
               }}
             >
               <RotateCcw size={16} className="mr-2" />
-              Reset Queue
+              {uiText(language, 'Reset Queue')}
             </Button>
           </div>
         </div>

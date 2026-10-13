@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
+import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
 test('offline receipts survive reload and a lost sync response without duplicate stock', async ({ page, context }) => {
   const suffix = randomUUID().slice(0,8), email=`offline-${suffix}@example.com`, password='LocalOffline123!';
@@ -26,7 +27,7 @@ test('offline receipts survive reload and a lost sync response without duplicate
       await context.setOffline(true);
     } else {
       // Development has no service worker; keep Vite reachable while cutting backend access.
-      await context.route('http://127.0.0.1:54321/**',route=>route.abort('internetdisconnected'));
+      await context.route(`${resolveSupabaseTestEnv().url}/**`,route=>route.abort('internetdisconnected'));
     }
     await page.getByRole('spinbutton',{name:'Offline item',exact:true}).fill('2');
     await page.getByLabel(/Actual amount collected|ยอดรับจริง/).fill('200');
@@ -35,7 +36,7 @@ test('offline receipts survive reload and a lost sync response without duplicate
     await page.reload();
     await expect(page.getByText(/1 รายการรอตรวจ|1 pending/)).toBeVisible();
     await context.setOffline(false);
-    await context.unroute('http://127.0.0.1:54321/**');
+    await context.unroute(`${resolveSupabaseTestEnv().url}/**`);
     let lost=false;
     await page.route('**/rest/v1/rpc/apply_offline_operation',async route=>{if(!lost){lost=true;await route.fetch();await route.abort();}else await route.continue();});
     await page.getByRole('button',{name:/Synchronize when connected|ส่งรายการเมื่อเชื่อมต่อ/}).click();
@@ -94,7 +95,7 @@ test('offline receipts survive reload and a lost sync response without duplicate
 
   } finally {
     await context.setOffline(false);
-    await context.unroute('http://127.0.0.1:54321/**');
+    await context.unroute(`${resolveSupabaseTestEnv().url}/**`);
     await fixture.service.from('offline_operations').delete().eq('event_id',eventId);
     await fixture.service.from('offline_devices').delete().eq('event_id',eventId);
     await fixture.service.from('orders').delete().eq('event_id',eventId);

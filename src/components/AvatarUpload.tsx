@@ -1,9 +1,9 @@
-import { useI18n } from '../i18n';
 import { uploadImage } from '../lib/imageUploads';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Camera, Loader2, User, AlertCircle } from 'lucide-react';
 import { resolveAvatarUrl } from '../utils/avatarUrl';
+import { uiText, useI18n } from '../i18n';
 
 interface AvatarUploadProps {
   currentImageUrl?: string;
@@ -75,7 +75,7 @@ const AvatarUpload = ({ currentImageUrl, artistId, onUploadComplete }: AvatarUpl
         {previewUrl ? (
           <img 
             src={previewUrl} 
-            alt="Profile Avatar" 
+            alt={uiText(language, 'Profile Avatar')}
             className="w-full h-full object-cover bg-gray-100"
           />
         ) : (

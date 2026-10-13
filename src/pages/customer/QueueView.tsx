@@ -6,7 +6,7 @@ import { Button } from '../../components/ui';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { Ban, RefreshCcw, LogOut, Ticket } from 'lucide-react';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { formatDateInTimeZone } from '../../utils/timezone';
 import { resolveQueueAvailability } from '../../lib/queueAvailability';
 import {
@@ -441,7 +441,7 @@ const QueueView = () => {
             console.error("handleGetTicket Exception:", err);
             const suspended = String((err as { message?: string })?.message || '').includes('store_suspended');
             setToast({ tone: 'error', title: t('queueCouldNotGetTicket'), detail: suspended
-                ? (language === 'th' ? 'ร้านนี้ถูกระงับการรับคิวใหม่' : 'This store is not accepting new queue tickets.')
+                ? uiText(language, 'This store is not accepting new queue tickets.')
                 : t('queueTryAgain') });
         } finally {
             setLoading(false);

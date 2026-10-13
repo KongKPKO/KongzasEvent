@@ -25,6 +25,7 @@ import {
   validateAppearanceDraft,
 } from '../../lib/eventAppearances';
 import { getMenuImageUrl } from '../../utils/imageUtils';
+import { uiText, useI18n } from '../../i18n';
 
 interface EventAppearanceManagerProps {
   event: AppearanceEventContext;
@@ -33,6 +34,7 @@ interface EventAppearanceManagerProps {
 const getNullableValue = (value: string) => value.trim() || null;
 
 const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
+  const { language, dateLocale } = useI18n();
   const [appearances, setAppearances] = useState<EventAppearance[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -63,13 +65,13 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
 
     if (error) {
       console.error('[EventAppearanceManager] load failed:', error);
-      setLoadError('Could not load the Cosplan. Please retry.');
+      setLoadError(uiText(language, 'Could not load the Cosplan. Please retry.'));
       setAppearances([]);
     } else {
       setAppearances(sortEventAppearances((data || []) as EventAppearance[]));
     }
     setLoading(false);
-  }, [event.id]);
+  }, [event.id, language]);
 
   useEffect(() => {
     void fetchAppearances();
@@ -121,12 +123,12 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
     const file = changeEvent.target.files?.[0] || null;
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setFormError('Choose an image file.');
+      setFormError(uiText(language, 'Choose an image file.'));
       changeEvent.target.value = '';
       return;
     }
     if (file.size > 8 * 1024 * 1024) {
-      setFormError('Image must be 8 MB or smaller.');
+      setFormError(uiText(language, 'Image must be 8 MB or smaller.'));
       changeEvent.target.value = '';
       return;
     }
@@ -140,7 +142,7 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
     if (!draft || saving) return;
     const validationError = validateAppearanceDraft(draft, dateRange);
     if (validationError) {
-      setFormError(validationError);
+      setFormError(uiText(language, validationError));
       return;
     }
 
@@ -188,14 +190,16 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
     } catch (error) {
       console.error('[EventAppearanceManager] save failed:', error);
       // Validated uploads can also be referenced by products; preserve them on a failed save.
-      setFormError(error instanceof Error ? error.message : 'Could not save this appearance.');
+      setFormError(error instanceof Error ? error.message : uiText(language, 'Could not save this appearance.'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (appearance: EventAppearance) => {
-    const confirmed = window.confirm(`Remove ${appearance.character_name} from this event's Cosplan?`);
+    const confirmed = window.confirm(language === 'th'
+      ? `นำ ${appearance.character_name} ออกจาก Cosplan ของอีเวนต์นี้หรือไม่?`
+      : `Remove ${appearance.character_name} from this event's Cosplan?`);
     if (!confirmed) return;
     setDeletingId(appearance.id);
     setLoadError('');
@@ -206,7 +210,7 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
       .eq('artist_id', event.artist_id);
     if (error) {
       console.error('[EventAppearanceManager] delete failed:', error);
-      setLoadError('Could not remove the appearance. Please retry.');
+      setLoadError(uiText(language, 'Could not remove the appearance. Please retry.'));
     } else {
       if (appearance.image_url?.startsWith(`public/appearances/${event.artist_id}/${event.id}/`)) {
         const { error: removeError } = await supabase.storage.from('Menu').remove([appearance.image_url]);
@@ -225,10 +229,10 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
             <Sparkles size={20} aria-hidden="true" />
           </div>
           <div>
-            <p className="text-xs font-black uppercase tracking-wide text-fuchsia-600">Optional</p>
-            <h2 id="event-appearance-heading" className="text-lg font-black text-gray-900">Cosplan / Event appearance</h2>
+            <p className="text-xs font-black uppercase tracking-wide text-fuchsia-600">{uiText(language, 'Optional')}</p>
+            <h2 id="event-appearance-heading" className="text-lg font-black text-gray-900">{uiText(language, 'Cosplan / Event appearance')}</h2>
             <p className="mt-1 max-w-2xl text-sm font-semibold leading-5 text-gray-500">
-              Share who you will cosplay, when visitors can meet you, and where to find you. Skip this section if it does not fit your event.
+              {uiText(language, 'Share who you will cosplay, when visitors can meet you, and where to find you. Skip this section if it does not fit your event.')}
             </p>
           </div>
         </div>
@@ -238,23 +242,23 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
           className="workspace-action inline-flex min-h-11 shrink-0 items-center justify-center gap-2 bg-fuchsia-600 px-4 text-sm font-black text-white hover:bg-fuchsia-700"
         >
           <Plus size={17} aria-hidden="true" />
-          Add appearance
+          {uiText(language, 'Add appearance')}
         </button>
       </div>
 
       {loadError && (
         <div role="alert" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
           <span>{loadError}</span>
-          <button type="button" onClick={() => void fetchAppearances()} className="min-h-10 rounded-lg px-3 underline">Retry</button>
+          <button type="button" onClick={() => void fetchAppearances()} className="min-h-10 rounded-lg px-3 underline">{uiText(language, 'Retry')}</button>
         </div>
       )}
 
       {loading ? (
-        <p className="mt-4 text-sm font-semibold text-gray-400">Loading Cosplan...</p>
+        <p className="mt-4 text-sm font-semibold text-gray-400">{uiText(language, 'Loading Cosplan...')}</p>
       ) : appearances.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-5 text-center">
-          <p className="text-sm font-black text-gray-700">No appearance added</p>
-          <p className="mt-1 text-xs font-semibold text-gray-500">This event stays clean and works normally without one.</p>
+          <p className="text-sm font-black text-gray-700">{uiText(language, 'No appearance added')}</p>
+          <p className="mt-1 text-xs font-semibold text-gray-500">{uiText(language, 'This event stays clean and works normally without one.')}</p>
         </div>
       ) : (
         <div className="mt-4 grid gap-3 md:grid-cols-2" data-testid="event-appearance-list">
@@ -264,7 +268,7 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
               <article key={appearance.id} className="flex min-w-0 gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3">
                 <div className="h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-fuchsia-50">
                   {appearance.image_url ? (
-                    <img src={getMenuImageUrl(appearance.image_url)} alt={`${appearance.character_name} appearance`} className="h-full w-full object-cover" />
+                    <img src={getMenuImageUrl(appearance.image_url)} alt={language === 'th' ? `รูปการปรากฏตัวของ ${appearance.character_name}` : `${appearance.character_name} appearance`} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-fuchsia-300"><Sparkles size={24} aria-hidden="true" /></div>
                   )}
@@ -277,17 +281,17 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
                     </div>
                     <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black ${appearance.is_public ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
                       {appearance.is_public ? <Eye size={11} aria-hidden="true" /> : <EyeOff size={11} aria-hidden="true" />}
-                      {appearance.is_public ? 'Public' : 'Hidden'}
+                      {uiText(language, appearance.is_public ? 'Public' : 'Hidden')}
                     </span>
                   </div>
                   <div className="mt-2 space-y-1 text-xs font-semibold text-gray-600">
-                    <p className="flex items-center gap-1.5"><CalendarDays size={13} aria-hidden="true" />{appearance.appearance_date}{appearance.day_label ? ` · ${appearance.day_label}` : ''}</p>
+                    <p className="flex items-center gap-1.5"><CalendarDays size={13} aria-hidden="true" />{new Date(`${appearance.appearance_date}T00:00:00`).toLocaleDateString(dateLocale)}{appearance.day_label ? ` · ${appearance.day_label}` : ''}</p>
                     {timeLabel && <p className="flex items-center gap-1.5"><Clock3 size={13} aria-hidden="true" />{timeLabel}</p>}
                     {(appearance.zone || appearance.booth) && <p className="flex items-center gap-1.5"><MapPin size={13} aria-hidden="true" />{[appearance.zone, appearance.booth].filter(Boolean).join(' · ')}</p>}
                   </div>
                   <div className="mt-2 flex gap-1">
-                    <button type="button" onClick={() => openEdit(appearance)} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-fuchsia-700" aria-label={`Edit ${appearance.character_name}`}><Pencil size={15} /></button>
-                    <button type="button" disabled={deletingId === appearance.id} onClick={() => void handleDelete(appearance)} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" aria-label={`Remove ${appearance.character_name}`}><Trash2 size={15} /></button>
+                    <button type="button" onClick={() => openEdit(appearance)} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-fuchsia-700" aria-label={language === 'th' ? `แก้ไข ${appearance.character_name}` : `Edit ${appearance.character_name}`}><Pencil size={15} /></button>
+                    <button type="button" disabled={deletingId === appearance.id} onClick={() => void handleDelete(appearance)} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" aria-label={language === 'th' ? `นำ ${appearance.character_name} ออก` : `Remove ${appearance.character_name}`}><Trash2 size={15} /></button>
                   </div>
                 </div>
               </article>
@@ -301,10 +305,10 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
           <div role="dialog" aria-modal="true" aria-labelledby="appearance-form-title" ref={dialogRef} className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-5 py-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-fuchsia-600">{editing ? 'Edit' : 'New'} Cosplan</p>
-                <h3 id="appearance-form-title" className="text-lg font-black text-gray-900">Event appearance</h3>
+                <p className="text-xs font-black uppercase tracking-wide text-fuchsia-600">{uiText(language, editing ? 'Edit Cosplan' : 'New Cosplan')}</p>
+                <h3 id="appearance-form-title" className="text-lg font-black text-gray-900">{uiText(language, 'Event appearance')}</h3>
               </div>
-              <button type="button" onClick={closeForm} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100" aria-label="Close appearance form"><X size={20} /></button>
+              <button type="button" onClick={closeForm} className="icon-touch inline-flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100" aria-label={uiText(language, 'Close appearance form')}><X size={20} /></button>
             </div>
 
             <div className="space-y-4 overflow-y-auto p-5 text-sm">
@@ -314,27 +318,27 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
                 <div>
                   <div className="aspect-[4/5] overflow-hidden rounded-xl border border-gray-200 bg-fuchsia-50">
                     {imagePreview || draft.image_url ? (
-                      <img src={imagePreview || getMenuImageUrl(draft.image_url)} alt="Appearance preview" className="h-full w-full object-cover" />
+                      <img src={imagePreview || getMenuImageUrl(draft.image_url)} alt={uiText(language, 'Appearance preview')} className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-fuchsia-300"><ImagePlus size={28} /><span className="text-xs font-bold">Optional image</span></div>
+                      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-fuchsia-300"><ImagePlus size={28} /><span className="text-xs font-bold">{uiText(language, 'Optional image')}</span></div>
                     )}
                   </div>
                   <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageChange} className="sr-only" id="appearance-image" />
-                  <button type="button" onClick={() => imageInputRef.current?.click()} className="mt-2 min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">Choose image</button>
-                  {(imagePreview || draft.image_url) && <button type="button" onClick={() => { setImageFile(null); updateDraft('image_url', ''); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="mt-1 min-h-10 w-full text-xs font-bold text-red-600">Remove image</button>}
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="mt-2 min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">{uiText(language, 'Choose image')}</button>
+                  {(imagePreview || draft.image_url) && <button type="button" onClick={() => { setImageFile(null); updateDraft('image_url', ''); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="mt-1 min-h-10 w-full text-xs font-bold text-red-600">{uiText(language, 'Remove image')}</button>}
                 </div>
 
                 <div className="space-y-4">
                   <label className="block space-y-1">
-                    <span className="text-xs font-bold uppercase text-gray-600">Character / look *</span>
-                    <input value={draft.character_name} onChange={(e) => updateDraft('character_name', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder="e.g. Frieren" autoFocus />
+                    <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Character / look *')}</span>
+                    <input value={draft.character_name} onChange={(e) => updateDraft('character_name', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, 'e.g. Frieren')} autoFocus />
                   </label>
                   <label className="block space-y-1">
-                    <span className="text-xs font-bold uppercase text-gray-600">Series</span>
-                    <input value={draft.series_name} onChange={(e) => updateDraft('series_name', e.target.value)} maxLength={160} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder="e.g. Frieren: Beyond Journey's End" />
+                    <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Series')}</span>
+                    <input value={draft.series_name} onChange={(e) => updateDraft('series_name', e.target.value)} maxLength={160} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, "e.g. Frieren: Beyond Journey's End")} />
                   </label>
                   <label className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                    <span><span className="block text-sm font-black text-gray-800">Show publicly</span><span className="block text-xs font-semibold text-gray-500">Visitors can see this on your event card.</span></span>
+                    <span><span className="block text-sm font-black text-gray-800">{uiText(language, 'Show publicly')}</span><span className="block text-xs font-semibold text-gray-500">{uiText(language, 'Visitors can see this on your event card.')}</span></span>
                     <input type="checkbox" checked={draft.is_public} onChange={(e) => updateDraft('is_public', e.target.checked)} className="h-5 w-5 accent-fuchsia-600" />
                   </label>
                 </div>
@@ -342,40 +346,40 @@ const EventAppearanceManager = ({ event }: EventAppearanceManagerProps) => {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Date *</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Date *')}</span>
                   <input type="date" value={draft.appearance_date} min={dateRange.min} max={dateRange.max} onChange={(e) => updateDraft('appearance_date', e.target.value)} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Day label</span>
-                  <input value={draft.day_label} onChange={(e) => updateDraft('day_label', e.target.value)} maxLength={40} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder="e.g. Day 2" />
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Day label')}</span>
+                  <input value={draft.day_label} onChange={(e) => updateDraft('day_label', e.target.value)} maxLength={40} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, 'e.g. Day 2')} />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">From</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'From')}</span>
                   <input type="time" value={draft.start_time} onChange={(e) => updateDraft('start_time', e.target.value)} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Until</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Until')}</span>
                   <input type="time" value={draft.end_time} onChange={(e) => updateDraft('end_time', e.target.value)} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Zone</span>
-                  <input value={draft.zone} onChange={(e) => updateDraft('zone', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder="e.g. Creator Hall" />
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Zone')}</span>
+                  <input value={draft.zone} onChange={(e) => updateDraft('zone', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, 'e.g. Creator Hall')} />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-xs font-bold uppercase text-gray-600">Booth</span>
-                  <input value={draft.booth} onChange={(e) => updateDraft('booth', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder="e.g. A12" />
+                  <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Booth')}</span>
+                  <input value={draft.booth} onChange={(e) => updateDraft('booth', e.target.value)} maxLength={120} className="min-h-11 w-full rounded-lg border border-gray-200 px-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, 'e.g. A12')} />
                 </label>
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs font-bold uppercase text-gray-600">Note</span>
-                <textarea value={draft.note} onChange={(e) => updateDraft('note', e.target.value)} maxLength={1000} rows={3} className="w-full resize-none rounded-lg border border-gray-200 p-3 outline-none focus:border-fuchsia-500" placeholder="Meet-up note, costume change, or availability details" />
+                <span className="text-xs font-bold uppercase text-gray-600">{uiText(language, 'Note')}</span>
+                <textarea value={draft.note} onChange={(e) => updateDraft('note', e.target.value)} maxLength={1000} rows={3} className="w-full resize-none rounded-lg border border-gray-200 p-3 outline-none focus:border-fuchsia-500" placeholder={uiText(language, 'Meet-up note, costume change, or availability details')} />
               </label>
             </div>
 
             <div className="flex justify-end gap-2 border-t border-gray-100 bg-gray-50 p-4">
-              <button type="button" onClick={closeForm} className="workspace-action min-h-11 px-4 text-sm font-black text-gray-700 hover:bg-gray-100">Cancel</button>
-              <button type="button" onClick={() => void handleSave()} disabled={saving} className="workspace-action min-h-11 bg-fuchsia-600 px-5 text-sm font-black text-white hover:bg-fuchsia-700 disabled:opacity-60">{saving ? 'Saving...' : editing ? 'Save changes' : 'Add appearance'}</button>
+              <button type="button" onClick={closeForm} className="workspace-action min-h-11 px-4 text-sm font-black text-gray-700 hover:bg-gray-100">{uiText(language, 'Cancel')}</button>
+              <button type="button" onClick={() => void handleSave()} disabled={saving} className="workspace-action min-h-11 bg-fuchsia-600 px-5 text-sm font-black text-white hover:bg-fuchsia-700 disabled:opacity-60">{uiText(language, saving ? 'Saving...' : editing ? 'Save changes' : 'Add appearance')}</button>
             </div>
           </div>
         </div>

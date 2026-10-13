@@ -1,6 +1,6 @@
 import './sales-reports.css';
 import EventDateFilter, { matchesEventDate } from '../../components/EventDateFilter';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -60,8 +60,6 @@ interface QueueRow {
   completed_at?: string | null;
 }
 
-const formatMinutes = (value: number) => `${Math.round(value)}m`;
-
 export default function EventDashboard() {
   const { language } = useI18n();
   const copy = (value: string) => eventCopy(language, value);
@@ -69,6 +67,7 @@ export default function EventDashboard() {
 
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const formatMinutes = (value: number) => language === 'th' ? `${Math.round(value)} นาที` : `${Math.round(value)}m`;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
@@ -429,7 +428,7 @@ export default function EventDashboard() {
             <h2 className="text-sm font-black text-gray-800 uppercase tracking-wide mb-4">{copy("What To Watch Next")}</h2>
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               {recommendations.map((card) => (
-                <RecommendationCard key={card.title} title={card.title} detail={card.detail} tone={card.tone} />
+                <RecommendationCard key={card.title} title={uiText(language, card.title)} detail={card.detail} tone={card.tone} />
               ))}
             </div>
           </section>
@@ -481,7 +480,7 @@ export default function EventDashboard() {
                 <div key={`${product.name}-${index}`} className="flex items-center justify-between border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                   <div className="min-w-0 pr-3">
                     <div className="font-bold text-gray-800 text-sm truncate">{product.name}</div>
-                    <div className="text-xs text-gray-400">{product.category}</div>
+                    <div className="text-xs text-gray-400">{product.category === 'Other' ? uiText(language, 'Other') : product.category}</div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-black text-gray-900 text-sm">{product.qty} {copy("sold")}</div>

@@ -1,8 +1,8 @@
+import { useI18n } from '../i18n';
 // src/pages/InvitationsPage.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import PublicShell from '../components/PublicShell';
-import { useI18n } from '../i18n';
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import type { PendingInvite } from '../components/PendingInvitationBanner';

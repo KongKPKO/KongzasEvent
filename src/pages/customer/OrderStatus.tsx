@@ -3,7 +3,7 @@ import OrderProblemForm from '../../components/OrderProblemForm';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Check, CheckCircle, ChevronLeft, Clock, Copy, Truck, XCircle } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import { formatPrice } from '../../utils/currency';
 import { ConfirmDialog } from '../../components/ui/Feedback';
 import {
@@ -126,7 +126,7 @@ const OrderStatus: React.FC = () => {
       await load(true);
     } catch (error) {
       console.error(error);
-      setFeedback({ tone: 'error', title: t('orderSubmitError'), detail: getPreorderErrorMessage(error) });
+      setFeedback({ tone: 'error', title: t('orderSubmitError'), detail: uiText(language, getPreorderErrorMessage(error)) });
       await load(true);
     } finally {
       setSubmitting(false);
@@ -142,7 +142,7 @@ const OrderStatus: React.FC = () => {
       await load(true);
     } catch (error) {
       console.error(error);
-      setFeedback({ tone: 'error', title: t('orderCancelError'), detail: getPreorderErrorMessage(error) });
+      setFeedback({ tone: 'error', title: t('orderCancelError'), detail: uiText(language, getPreorderErrorMessage(error)) });
       setCancelOpen(false);
     } finally {
       setCancelling(false);
@@ -491,7 +491,7 @@ const OrderStatus: React.FC = () => {
                       <div key={method.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <div className="text-sm font-black text-gray-900">{method.display_name || method.method_type}</div>
                         {method.promptpay_id && (
-                          <div className="mt-0.5 text-base font-black tracking-wide text-gray-900">PromptPay: {method.promptpay_id}</div>
+                          <div className="mt-0.5 text-base font-black tracking-wide text-gray-900">{uiText(language, 'PromptPay')}: {method.promptpay_id}</div>
                         )}
                         {method.account_number && (
                           <div className="mt-0.5 text-base font-black tracking-wide text-gray-900">
@@ -585,7 +585,7 @@ const OrderStatus: React.FC = () => {
                   <li key={item.product_id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-gray-900">{item.name}</div>
-                      <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">{language === 'th' ? 'ของแถม' : 'Free gift'}</span>}</div>
+                      <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">{uiText(language, 'Free gift')}</span>}</div>
                     </div>
                     <div className="shrink-0 text-sm font-black text-gray-900">
                       {formatPrice(item.price_per_unit * item.quantity, item.currency)}
@@ -594,7 +594,7 @@ const OrderStatus: React.FC = () => {
                 ))}
               </ul>
               <div className="mt-2 space-y-1 border-t border-gray-200 pt-2">
-                {(detail.discount_total || 0) > 0 && <><div className="flex items-center justify-between text-sm"><span className="font-bold text-gray-700">{t('campaignSubtotal')}</span><span className="font-black">{formatPrice(detail.subtotal_price || 0, detail.currency)}</span></div><div className="flex items-center justify-between text-sm text-emerald-700"><span className="font-bold">{language === 'th' ? 'ส่วนลดโปรโมชั่น' : 'Promotion discount'}</span><span className="font-black">−{formatPrice(detail.discount_total || 0, detail.currency)}</span></div></>}
+                {(detail.discount_total || 0) > 0 && <><div className="flex items-center justify-between text-sm"><span className="font-bold text-gray-700">{uiText(language, 'Merchandise subtotal')}</span><span className="font-black">{formatPrice(detail.subtotal_price || 0, detail.currency)}</span></div><div className="flex items-center justify-between text-sm text-emerald-700"><span className="font-bold">{uiText(language, 'Promotion discount')}</span><span className="font-black">−{formatPrice(detail.discount_total || 0, detail.currency)}</span></div></>}
                 <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-700">{t('orderTotalLabel')}</span>
                 <span className="text-lg font-black text-gray-950">{formatPrice(detail.total_price, detail.currency)}</span>

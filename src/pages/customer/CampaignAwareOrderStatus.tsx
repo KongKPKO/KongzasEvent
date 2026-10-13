@@ -3,7 +3,7 @@ import OrderProblemForm from '../../components/OrderProblemForm';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Check, CheckCircle, Clock, Copy, Loader2, PackageCheck, Truck, Upload, XCircle } from 'lucide-react';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import {
   beginCampaignPaymentUpload,
   getPublicCampaignOrder,
@@ -139,7 +139,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
               {(order.payment_methods || []).map((method) => (
                 <div key={method.id} className="order-method">
                   <div className="font-black">{method.display_name || method.method_type}</div>
-                  {method.promptpay_id && <div className="mt-1 text-lg font-black">PromptPay: {method.promptpay_id}</div>}
+                  {method.promptpay_id && <div className="mt-1 text-lg font-black">{uiText(language, 'PromptPay')}: {method.promptpay_id}</div>}
                   {method.account_number && <div className="mt-1 font-black">{method.bank_name} · {method.account_number}</div>}
                   {method.account_name && <p className="mt-1 text-sm">{method.account_name}</p>}
                   {method.qr_image_url && <img src={method.qr_image_url} alt={`${method.display_name || method.method_type} QR`} className="order-payment-qr" />}
@@ -169,11 +169,11 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
         <section className="rounded-2xl border border-gray-200 bg-white p-4">
           <h2 className="font-black">{t('campaignOrderItems')}</h2>
           <div className="mt-2 divide-y divide-gray-100">
-            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-700">{language === 'th' ? 'ของแถม' : 'Free gift'}</span>}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
+            {order.items.map((item, index) => <div key={(item.product_id || item.name) + index} className="flex justify-between gap-3 py-2 text-sm"><span className="font-bold">{item.name} × {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-700">{uiText(language, 'Free gift')}</span>}</span><strong>{formatPrice(item.price_per_unit * item.quantity, order.currency)}</strong></div>)}
           </div>
           <div className="mt-2 space-y-1 border-t border-gray-200 pt-2 text-sm">
             <div className="flex justify-between"><span>{t('campaignSubtotal')}</span><strong>{formatPrice(order.subtotal_price, order.currency)}</strong></div>
-            {order.discount_total > 0 && <div className="flex justify-between text-emerald-700"><span>{language === 'th' ? 'ส่วนลดโปรโมชั่น' : 'Promotion discount'}</span><strong>−{formatPrice(order.discount_total, order.currency)}</strong></div>}
+            {order.discount_total > 0 && <div className="flex justify-between text-emerald-700"><span>{uiText(language, 'Promotion discount')}</span><strong>−{formatPrice(order.discount_total, order.currency)}</strong></div>}
             <div className="flex justify-between"><span>{t('campaignShippingFee')}</span><strong>{formatPrice(order.shipping_fee, order.currency)}</strong></div>
             <div className="flex justify-between text-base"><span className="font-black">{t('campaignTotal')}</span><strong>{formatPrice(order.total_price, order.currency)}</strong></div>
           </div>

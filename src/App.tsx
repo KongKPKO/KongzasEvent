@@ -1,5 +1,5 @@
 import { offlineAuthorization } from './lib/offlineOperations';
-import { Suspense, lazy, useState, useEffect, type ReactNode } from 'react';
+import { Suspense, lazy, useState, useEffect, useRef, type ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 
 /** Redirects to /live/queue while keeping the current search string (e.g. ?eventId=). */
@@ -8,6 +8,7 @@ function LiveQueueRedirect() {
   return <Navigate to={`/live/queue${search}`} replace />;
 }
 import { supabase } from './supabaseClient';
+import type { Session } from '@supabase/supabase-js';
 import { completePendingVerifiedCreatorSignup, fetchActorContext } from './utils/access';
 import type { ActorContext, ActorRole } from './types/access';
 import {
@@ -50,7 +51,7 @@ const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
 import ManageLogin from './pages/ManageLogin';
-import { useI18n } from './i18n';
+import { useI18n, uiText } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 import InvitationsPage from './pages/InvitationsPage';
 
@@ -63,6 +64,7 @@ function EventAccessRoute({
   fallbackPath: string;
   children: ReactNode;
 }) {
+  const { language } = useI18n();
   const { eventId } = useParams();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const allowedRoleKey = allowedRoles.join(',');
@@ -87,31 +89,38 @@ function EventAccessRoute({
   }, [allowedRoleKey, eventId]);
 
   if (allowed === null) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Checking event access…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-gray-500">{uiText(language, 'Checking event access…')}</div>;
   }
 
   return allowed ? children : <Navigate to={fallbackPath} replace />;
 }
 
 function App() {
-  const { t } = useI18n();
-  const [session, setSession] = useState<any>(null);
+  const { t, language } = useI18n();
+  const [session, setSession] = useState<Session | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionLoadFailed, setSessionLoadFailed] = useState(false);
+  const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
+  const [contextLoadFailed, setContextLoadFailed] = useState(false);
+  const [contextSyncing, setContextSyncing] = useState(false);
+  const contextRequest = useRef(0);
+  const sessionIdentity = useRef<string | null>(null);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvite[]>([]);
 
-  const loadPendingInvitations = async () => {
+  const syncSessionContext = async (nextSession: Session | null) => {
+    const request = ++contextRequest.current;
+    setSessionLoadFailed(false);
     try {
-      const { data } = await supabase.rpc('list_my_pending_invitations');
-      setPendingInvitations((data || []) as PendingInvite[]);
-    } catch {
-      setPendingInvitations([]);
-    }
-  };
-
-  const syncSessionContext = async (nextSession: any) => {
-    try {
+      const identity = nextSession?.user.id || null;
+      if (identity !== sessionIdentity.current) {
+        setActorContext(null);
+        setPendingInvitations([]);
+      }
+      sessionIdentity.current = identity;
       setSession(nextSession);
+      setContextLoadFailed(false);
+      setContextSyncing(!!nextSession);
 
       if (!nextSession) {
         setActorContext(null);
@@ -119,18 +128,32 @@ function App() {
         return;
       }
 
-      await completePendingVerifiedCreatorSignup();
+      const signupStatus = await completePendingVerifiedCreatorSignup();
 
-      const [ctx] = await Promise.all([
+      const [ctx, invitations] = await Promise.all([
         fetchActorContext(),
-        loadPendingInvitations(),
+        supabase.rpc('list_my_pending_invitations'),
       ]);
+      if (request !== contextRequest.current) return;
+      if (!ctx && !(invitations.data || []).length && signupStatus === 'error') throw new Error('Could not complete creator signup');
+      if (invitations.error) {
+        console.error('[App] Failed to load invitations:', invitations.error);
+        if (!ctx) throw invitations.error;
+      } else {
+        setPendingInvitations((invitations.data || []) as PendingInvite[]);
+      }
       setActorContext(ctx);
     } catch (error) {
       console.error('[App] Failed to sync session context:', error);
+      if (request !== contextRequest.current) return;
       setActorContext(null);
+      setPendingInvitations([]);
+      setContextLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (request === contextRequest.current) {
+        setContextSyncing(false);
+        setLoading(false);
+      }
     }
   };
 
@@ -138,6 +161,7 @@ function App() {
     let isMounted = true;
 
     const loadInitialSession = async () => {
+      setSessionLoadFailed(false);
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
@@ -146,8 +170,7 @@ function App() {
       } catch (error) {
         console.error('[App] getSession failed:', error);
         if (!isMounted) return;
-        setSession(null);
-        setActorContext(null);
+        setSessionLoadFailed(true);
         setLoading(false);
       }
     };
@@ -170,9 +193,10 @@ function App() {
 
     return () => {
       isMounted = false;
+      contextRequest.current++;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [sessionLoadAttempt]);
 
   const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
@@ -191,8 +215,30 @@ function App() {
     : false;
   const isWorkspaceOptionalPath = ['/', '/help', '/offline', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
-  if (loading && currentPath !== '/offline') {
+  if (currentPath !== '/offline' && (loading || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
+  }
+
+  const needsSession = currentPath.startsWith('/manage') || currentPath.startsWith('/admin') || ['/invitations', '/creator/register', '/staff-signup', '/reset-password'].includes(currentPath);
+  if ((sessionLoadFailed && needsSession) || (session && contextLoadFailed && !isWorkspaceOptionalPath && !isCustomerRoute)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div role="alert" className="max-w-md space-y-4 text-center">
+          <p className="font-bold text-red-700">{t('workspaceLoadFailed')}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              if (sessionLoadFailed) setSessionLoadAttempt((attempt) => attempt + 1);
+              else void syncSessionContext(session);
+            }}
+            className="min-h-11 rounded-xl bg-pink-600 px-4 py-2 font-bold text-white"
+          >
+            {t('workspaceRetryLoad')}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (session && !actorContext && pendingInvitations.length > 0 && !isWorkspaceOptionalPath && !isCustomerRoute) {
@@ -223,11 +269,11 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
-        {currentPath !== '/offline' && offlineAuthorization() && <a href="/offline" className="block bg-amber-50 p-3 text-center text-sm font-semibold text-amber-900">เปิดพื้นที่ขายที่เตรียมไว้เมื่อเน็ตขาด · Open prepared offline workspace</a>}
+        {currentPath !== '/offline' && offlineAuthorization() && <a href="/offline" className="block bg-amber-50 p-3 text-center text-sm font-semibold text-amber-900">{language === 'th' ? 'เปิดพื้นที่ขายที่เตรียมไว้เมื่อเน็ตขาด' : 'Open prepared offline workspace'}</a>}
         <Suspense fallback={<div className="flex justify-center items-center h-screen">{t('loading')}</div>}>
           <Routes>
             <Route path="/offline" element={<OfflineWorkspace />} />
-            <Route path="/manage-login" element={<ManageLogin />} />
+            <Route path="/manage-login" element={<ManageLogin refreshWorkspace={() => syncSessionContext(session)} />} />
             <Route path="/creator/register" element={<CreatorRegister />} />
             <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />

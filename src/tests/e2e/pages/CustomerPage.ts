@@ -92,8 +92,8 @@ export class CustomerPage {
     
     // Wait for ticket number to appear
     try {
-      await this.page.waitForSelector('.text-7xl', { timeout: 15000 });
-      const ticketNumber = await this.page.locator('.text-7xl').textContent();
+      await this.page.waitForSelector('.queue-ticket-number', { timeout: 15000 });
+      const ticketNumber = await this.page.locator('.queue-ticket-number').textContent();
       console.log(`[Customer] Ticket received: ${ticketNumber} ✓`);
     } catch (error) {
       await this.page.screenshot({ path: 'debug-after-click-ticket.png' });

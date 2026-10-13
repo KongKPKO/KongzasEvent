@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import AdminHeader from '../../components/AdminHeader';
 import { Button } from '../../components/ui';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import type { ActorContext, ActorRole } from '../../types/access';
 import { CalendarDays, UserPlus, Users, Shield, Trash2, Search, Clock, Send, X } from 'lucide-react';
 import { invokeNotificationFunction } from '../../utils/edgeFunctions';
@@ -318,7 +318,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     } catch (err) {
       console.error('[ManageTeam] invite failed:', err);
       setInviteResult(null);
-      setInviteResultMsg(getErrorMessage(err, 'Failed to send invitation.'));
+      setInviteResultMsg(uiText(language, getErrorMessage(err, 'Failed to send invitation.')));
     } finally {
       setAdding(false);
     }
@@ -335,7 +335,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     } catch (err) {
       console.error('[ManageTeam] cancel invitation failed:', err);
       setInviteResult(null);
-      setInviteResultMsg(getErrorMessage(err, 'Failed to cancel invitation.'));
+      setInviteResultMsg(uiText(language, getErrorMessage(err, 'Failed to cancel invitation.')));
     }
   };
 
@@ -377,7 +377,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
           .eq('id', member.id)
       );
       if (error) {
-        setMemberActionError(error.message || 'Failed to update member status');
+        setMemberActionError(uiText(language, error.message || 'Failed to update member status'));
         return;
       }
       await fetchMembers();
@@ -423,7 +423,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       await fetchMembers();
     } catch (err) {
       console.error('[ManageTeam] update role failed:', err);
-      setMemberActionError(getErrorMessage(err, 'Failed to update member role'));
+      setMemberActionError(uiText(language, getErrorMessage(err, 'Failed to update member role')));
     } finally {
       setUpdatingRoleId(null);
     }
@@ -438,12 +438,12 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       );
 
       if (error) {
-        setMemberActionError(error.message || 'Failed to delete member');
+        setMemberActionError(uiText(language, error.message || 'Failed to delete member'));
         return;
       }
       await fetchMembers();
     } catch (error) {
-      setMemberActionError(getErrorMessage(error, 'Failed to delete member'));
+      setMemberActionError(uiText(language, getErrorMessage(error, 'Failed to delete member')));
     }
   };
 

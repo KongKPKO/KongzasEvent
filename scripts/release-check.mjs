@@ -273,6 +273,13 @@ if (mode === 'local') {
     'src/tests/e2e/full-service-loop.spec.ts',
     'src/tests/e2e/pilot-auth.spec.ts',
     'src/tests/e2e/pilot-preorder.spec.ts',
+    'src/tests/auth-user-errors.spec.ts',
+    'src/tests/localization.spec.ts',
+    ...(workdir ? [
+      'src/tests/e2e/pilot-login-recovery.spec.ts',
+      'src/tests/e2e/pilot-multi-shop.spec.ts',
+      'src/tests/e2e/language-selection.spec.ts',
+    ] : []),
     'src/tests/regression/online-campaign.spec.ts',
     'src/tests/product-presentation.spec.ts',
     'src/tests/product-families-flow.spec.ts',

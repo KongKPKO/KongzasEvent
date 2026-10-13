@@ -308,7 +308,7 @@ test.describe('catalog workspace', () => {
     test.skip(testInfo.project.name !== 'desktop-chromium');
     await login(page);
     await page.goto('/manage-products');
-    await page.getByRole('button', { name: 'Switch language' }).click();
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('th');
 
     const inactiveCard = page.getByTestId(`catalog-card-${inactiveProductId}`);
     await expect(inactiveCard.getByText('ไม่มีรูป', { exact: true })).toBeVisible();

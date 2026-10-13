@@ -6,7 +6,7 @@ import OnlineShopSection from '../../components/home/OnlineShopSection';
 import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { supabase } from '../../supabaseClient';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
-import { useI18n } from '../../i18n';
+import { uiText, useI18n } from '../../i18n';
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { EventAppearance } from '../../types/eventAppearance';
 
@@ -65,7 +65,7 @@ const shuffleNearbyCreatorIds = (artistIds: string[]) => {
 };
 
 const Home = () => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   // Midnight Watcher
   const currentDate = useMidnightTick();
 
@@ -229,7 +229,7 @@ const Home = () => {
          </div>
       )}
 
-      <StorefrontHeader name={displayArtist.display_name || 'Creator'} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)}>
+      <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Creator')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)}>
         {/* Status Badge */}
         <div className="flex justify-center mb-1">
           {isBoothActive ? (

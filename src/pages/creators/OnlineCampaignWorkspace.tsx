@@ -458,9 +458,11 @@ export default function OnlineCampaignWorkspace() {
     || settingsDraft.shippingEnabled !== campaign.shipping_enabled
     || settingsDraft.pickupEnabled !== campaign.pickup_enabled
   ));
+  const shippingFeeValid = Boolean(settingsDraft && /^(?:\d+\.?\d*|\.\d+)$/.test(settingsDraft.flatShippingFee.trim())
+    && Number.isFinite(Number(settingsDraft.flatShippingFee))
+    && Number(settingsDraft.flatShippingFee) >= 0);
   const settingsValid = Boolean(settingsDraft?.name.trim())
-    && Number.isFinite(Number(settingsDraft?.flatShippingFee))
-    && Number(settingsDraft?.flatShippingFee) >= 0
+    && shippingFeeValid
     && Boolean(settingsDraft?.shippingEnabled || settingsDraft?.pickupEnabled);
   const saveCampaignSettings = () => settingsDraft && updateCampaign({
     name: settingsDraft.name.trim(),
@@ -812,7 +814,7 @@ export default function OnlineCampaignWorkspace() {
               {settingsDraft && <>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label><span className="text-xs font-black">{t('campaignName')}</span><input aria-label={t('campaignName')} value={settingsDraft.name} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, name: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
-                  <label><span className="text-xs font-black">{t('campaignShippingFee')}</span><input aria-label={t('campaignShippingFee')} type="number" min="0" value={settingsDraft.flatShippingFee} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, flatShippingFee: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                  <label><span className="text-xs font-black">{t('campaignShippingFee')}</span><input aria-label={t('campaignShippingFee')} type="text" inputMode="decimal" aria-invalid={!shippingFeeValid} aria-describedby={!shippingFeeValid ? 'campaign-shipping-fee-error' : undefined} value={settingsDraft.flatShippingFee} onChange={(event) => { const value = event.currentTarget.value; setSettingsDraft((current) => current && ({ ...current, flatShippingFee: value })); }} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" />{!shippingFeeValid && <span id="campaign-shipping-fee-error" className="mt-1 block text-xs font-semibold text-red-700">{language === 'th' ? 'กรอกค่าส่งเป็นตัวเลขตั้งแต่ 0 ขึ้นไป เช่น 40 หรือ 40.50' : 'Enter a shipping fee of 0 or more, such as 40 or 40.50.'}</span>}</label>
                   <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settingsDraft.shippingEnabled} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, shippingEnabled: event.target.checked }))} />{t('campaignShipping')}</label>
                   <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settingsDraft.pickupEnabled} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, pickupEnabled: event.target.checked }))} />{t('campaignPickup')}</label>
                 </div>

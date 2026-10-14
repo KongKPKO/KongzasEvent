@@ -654,6 +654,43 @@ test.describe('online campaign', () => {
     }
   });
 
+  test('merchant types and saves a decimal shipping fee without spinner controls', async ({ page }) => {
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: /Settings|ตั้งค่า/, exact: true }).click();
+    const fee = page.getByLabel(/Shipping fee per order|ค่าส่งต่อออเดอร์/);
+    const savedFee = await fixture.service.from('online_campaigns').select('flat_shipping_fee').eq('id', campaignId).single();
+    if (savedFee.error) throw savedFee.error;
+    try {
+      await fee.focus();
+      await fee.selectText();
+      await page.keyboard.press('Backspace');
+      await expect(fee).toHaveValue('');
+      await expect(page.getByRole('button', { name: /Save changes|บันทึกการเปลี่ยนแปลง/ })).toBeDisabled();
+      await fee.pressSequentially('55.50');
+      await expect(fee).toHaveValue('55.50');
+      const save = page.getByRole('button', { name: /Save changes|บันทึกการเปลี่ยนแปลง/ });
+      await expect(save).toBeEnabled();
+      await fee.fill('-1');
+      await expect(save).toBeDisabled();
+      await fee.fill('not a fee');
+      await expect(save).toBeDisabled();
+      await fee.fill('55.50');
+      await save.click();
+      await expect.poll(async () => {
+        const row = await fixture.service.from('online_campaigns').select('flat_shipping_fee').eq('id', campaignId).single();
+        if (row.error) throw row.error;
+        return Number(row.data.flat_shipping_fee);
+      }).toBe(55.5);
+      await page.reload();
+      await page.getByRole('button', { name: /Settings|ตั้งค่า/, exact: true }).click();
+      await expect(fee).toHaveValue('55.5');
+    } finally {
+      const restored = await fixture.service.from('online_campaigns').update({ flat_shipping_fee: savedFee.data.flat_shipping_fee }).eq('id', campaignId);
+      if (restored.error) throw restored.error;
+    }
+  });
+
   test('merchant manages pickup and payment settings with visible feedback', async ({ page }) => {
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);

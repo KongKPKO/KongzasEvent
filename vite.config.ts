@@ -38,9 +38,24 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,webp,wasm}'],
+        // Upload conversion and optional replay are not needed to reopen offline sales.
+        globIgnores: ['**/heic2any-*.js', '**/webp_enc*', '**/logrocket-*.js'],
+        // Only the prepared offline workspace uses the precached app shell.
+        navigateFallbackAllowlist: [/^\/offline(?:\?|$)/],
+        directoryIndex: '',
         // Don't cache API calls or Firestore
         navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^https:\/\/firestore\.googleapis\.com/],
         runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) => request.mode === 'navigate' && !url.pathname.startsWith('/api/'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'nireq-pages',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 30 },
+              cacheableResponse: { statuses: [200] }
+            }
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',

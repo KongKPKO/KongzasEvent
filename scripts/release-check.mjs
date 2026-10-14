@@ -259,6 +259,7 @@ if (mode === 'local') {
   run('npx', ['playwright', 'test',
     'src/tests/setup-readiness.spec.ts',
     'src/tests/production-readiness.spec.ts',
+    'src/tests/release-cache.spec.ts',
     'src/tests/public-i18n-smoke.spec.ts',
     'src/tests/queue-availability.spec.ts',
     'src/tests/online-shop-discovery.spec.ts',

@@ -20,17 +20,17 @@ import {
   canUsePos,
 } from './types/access';
 
-import CustomerLayout from './pages/customer/CustomerLayout';
-import CustomerHome from './pages/customer/Home';
+const CustomerLayout = lazy(() => import('./pages/customer/CustomerLayout'));
+const CustomerHome = lazy(() => import('./pages/customer/Home'));
 const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
 const CampaignAwareOrderStatus = lazy(() => import('./pages/customer/CampaignAwareOrderStatus'));
 const OnlineCampaignStorefront = lazy(() => import('./pages/customer/OnlineCampaignStorefront'));
-import QueueView from './pages/customer/QueueView';
-import ResetPassword from './pages/ResetPassword';
-import CreatorRegister from './pages/CreatorRegister';
-import AdminApplications from './pages/AdminApplications';
-import LegalPage from './pages/LegalPage';
+const QueueView = lazy(() => import('./pages/customer/QueueView'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const CreatorRegister = lazy(() => import('./pages/CreatorRegister'));
+const AdminApplications = lazy(() => import('./pages/AdminApplications'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 
 const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
 const HelpPage = lazy(() => import('./pages/HelpPage'));
@@ -50,10 +50,10 @@ const OfflineWorkspace = lazy(() => import('./pages/OfflineWorkspace'));
 const ManageCombined = lazy(() => import('./pages/ManageCombined'));
 const StaffSignup = lazy(() => import('./pages/StaffSignup'));
 
-import ManageLogin from './pages/ManageLogin';
+const ManageLogin = lazy(() => import('./pages/ManageLogin'));
 import { useI18n, uiText } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
-import InvitationsPage from './pages/InvitationsPage';
+const InvitationsPage = lazy(() => import('./pages/InvitationsPage'));
 
 function EventAccessRoute({
   allowedRoles,

@@ -1,8 +1,9 @@
 import './sales-readiness.css';
+import { ProductMedia } from '../../components/menu/ProductPresentation';
 import EvidenceReview from '../../components/EvidenceReview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ExternalLink, Eye, ImageOff, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, Eye, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { uiText, useI18n } from '../../i18n';
@@ -678,7 +679,7 @@ export default function OnlineCampaignWorkspace() {
                           <td className="px-3 py-2">
                             <div className="flex min-w-[250px] items-center gap-3">
                               <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
-                                {product.image_url ? <img src={getMenuImageUrl(product.image_url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <ImageOff size={19} />}
+                                <ProductMedia product={{ ...product, id: productId }} getImageUrl={getMenuImageUrl} />
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">

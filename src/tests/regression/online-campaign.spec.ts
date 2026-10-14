@@ -541,6 +541,41 @@ test.describe('online campaign', () => {
     }).toBe(true);
   });
 
+  test('merchant campaign table shows inherited and item-specific photoset galleries after reload', async ({ page }) => {
+    const gallery = ['https://example.test/photo-a.png', 'https://example.test/photo-b.png', 'https://example.test/photo-c.png'];
+    await page.route('https://example.test/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="pink"/></svg>' }));
+    const parent = await fixture.service.from('product_parents').insert({ artist_id: fixture.userId, name: 'Campaign photo gallery', product_kind: 'photo', gallery_images: gallery, base_price: 150 }).select('id').single();
+    if (parent.error) throw parent.error;
+    try {
+      const items = await fixture.service.from('products').insert([
+        { artist_id: fixture.userId, parent_product_id: parent.data.id, name: 'Campaign photo inherited', variant_name: 'Inherited', price: 150, is_unlimited: true, status: 'enable' },
+        { artist_id: fixture.userId, parent_product_id: parent.data.id, name: 'Campaign photo override', variant_name: 'Override', variant_gallery_images: [gallery[2]], price: 150, is_unlimited: true, status: 'enable' },
+        { artist_id: fixture.userId, parent_product_id: parent.data.id, name: 'Campaign photo cleared', variant_name: 'Cleared', variant_gallery_images: [], price: 150, is_unlimited: true, status: 'enable' },
+      ]).select('id');
+      if (items.error) throw items.error;
+      await login(page);
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      for (let pass = 0; pass < 2; pass++) {
+        if (pass) await page.reload();
+        await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+        await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('Campaign photo');
+        const inherited = page.getByRole('row').filter({ hasText: 'Campaign photo inherited' });
+        await expect(inherited.locator('img')).toHaveCount(3);
+        await expect(inherited.locator('img').first()).toHaveAttribute('src', gallery[0]);
+        await expect.poll(() => inherited.locator('img').evaluateAll(images => images.every(image => (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+        const override = page.getByRole('row').filter({ hasText: 'Campaign photo override' });
+        await expect(override.locator('img')).toHaveCount(1);
+        await expect(override.locator('img')).toHaveAttribute('src', gallery[2]);
+        await expect(page.getByRole('row').filter({ hasText: 'Campaign photo cleared' }).getByTestId('campaign-product-image-fallback')).toBeVisible();
+      }
+    } finally {
+      const removedItems = await fixture.service.from('products').delete().eq('parent_product_id', parent.data.id);
+      if (removedItems.error) throw removedItems.error;
+      const removedParent = await fixture.service.from('product_parents').delete().eq('id', parent.data.id);
+      if (removedParent.error) throw removedParent.error;
+    }
+  });
+
   test('fully event-allocated catalog product can join a campaign with zero stock', async ({ page }) => {
     const legacyProductId = randomUUID();
     const activeEventId = randomUUID();

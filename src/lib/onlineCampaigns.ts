@@ -83,7 +83,24 @@ export async function getCampaignWorkspace(campaignId: string) {
     p_campaign_id: campaignId,
   });
   throwRpcError(error);
-  return data as CampaignWorkspace;
+  const workspace = data as CampaignWorkspace;
+  // The workspace RPC predates item galleries. Read only its authorized catalog
+  // IDs through RLS, in bounded batches to avoid oversized PostgREST URLs.
+  const missing = workspace.catalog.filter(product => product.gallery_images === undefined || product.variant_gallery_images === undefined);
+  const batches = [];
+  for (let index = 0; index < missing.length; index += 100) {
+    batches.push(missing.slice(index, index + 100));
+  }
+  const results = await Promise.all(batches.map(products => supabase.from('products')
+    .select('id, product_kind, gallery_images, variant_gallery_images')
+    .eq('artist_id', workspace.campaign.artist_id)
+    .in('id', products.map(product => product.product_id || product.id || ''))));
+  results.forEach(result => throwRpcError(result.error));
+  const media = new Map(results.flatMap(result => result.data || []).map(product => [product.id, product]));
+  return {
+    ...workspace,
+    catalog: workspace.catalog.map(product => ({ ...product, ...media.get(product.product_id || product.id || '') })),
+  };
 }
 
 export async function getPublicOnlineCampaign(artistSlug: string, campaignSlug: string) {

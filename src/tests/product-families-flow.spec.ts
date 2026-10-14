@@ -47,7 +47,7 @@ test.afterAll(async () => {
 test('customer can search 30 items with fixed actions and preview images on desktop and mobile', async ({ page }) => {
   const result = await service.from('products').select('id').eq('artist_id', artistId).like('name', 'Design %');
   must(result);
-  must(await service.from('event_products').upsert(result.data!.map(product => ({ artist_id: artistId, event_id: eventId, product_id: product.id, stock_total: 10, is_enabled: true, is_unlimited: false }))));
+  must(await service.from('event_products').upsert(result.data!.map(product => ({ artist_id: artistId, event_id: eventId, product_id: product.id, stock_total: 10, is_enabled: true, is_unlimited: false })), { onConflict: 'event_id,product_id' }));
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await page.goto(`/${slug}/menu?event=${eventId}`);
@@ -78,6 +78,41 @@ test('customer can search 30 items with fixed actions and preview images on desk
     await page.keyboard.press('Escape');
     await expect(detail).toBeHidden();
   }
+});
+
+test('mobile POS gives products most of the viewport and keeps tools and cart available', async ({ page }) => {
+  const result = await service.from('products').select('id').eq('artist_id', artistId).like('name', 'Design %');
+  must(result);
+  must(await service.from('event_products').upsert(result.data!.map(product => ({ artist_id: artistId, event_id: eventId, product_id: product.id, stock_total: 10, is_enabled: true, is_unlimited: false })), { onConflict: 'event_id,product_id' }));
+  await page.setViewportSize({ width: 390, height: 700 });
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/, { timeout: 20_000 });
+  await page.goto(`/manage-pos-queues?eventId=${eventId}`);
+  await page.getByTestId('pos-tab').click();
+  const region = page.getByRole('region', { name: /^Product (?:list|grid)$/ });
+  await expect(region.locator('[data-pos-family]')).toBeVisible();
+  const bounds = await region.boundingBox();
+  expect(bounds!.height).toBeGreaterThan(350);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.getByTestId('pos-event-selector')).toBeHidden();
+  await page.getByRole('button', { name: 'Booth tools', exact: true }).click();
+  await expect(page.getByTestId('pos-event-selector')).toBeVisible();
+  await expect(page.getByTestId('booth-toggle')).toBeVisible();
+  await page.getByRole('button', { name: 'Booth tools', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Select Customer', exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Sort products by', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await region.locator('summary').click();
+  await region.getByRole('button', { name: /Design 1/, exact: false }).first().click();
+  await page.locator('.pos-mobile-cartbar button').click();
+  const cart = page.getByRole('dialog', { name: 'Shopping cart', exact: true });
+  await expect(cart).toBeVisible();
+  await expect(cart.getByText('Design 1', { exact: true })).toBeVisible();
+  await cart.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(cart).toBeHidden();
+  await page.screenshot({ path: '../pos-mobile-compact-local.png' });
 });
 
 test('creator family editor saves and reorders variants, customer sees one family and public Cosplan', async ({ page, browser }) => {

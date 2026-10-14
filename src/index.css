@@ -510,3 +510,22 @@ body {
   .shop-detail-copy { padding: 12px 16px; gap: 10px; }
   .shop-detail-info h2 { font-size: 20px; }
 }
+
+@media (max-width: 767px) {
+  .festival-live .festival-header { min-height: 48px; }
+  .festival-boothbar { padding: 0 12px; }
+  .festival-boothbar > div { flex-direction: row; align-items: center; gap: 8px; }
+  .festival-boothbar .mt-1 { margin-top: 0; }
+  .pos-booth-tools-toggle { min-width: 44px; height: 44px; font-size: 24px; }
+  .pos-booth-tools { position: absolute; top: 44px; right: 8px; z-index: 40; width: min(340px, calc(100vw - 16px)); padding: 12px; border: 1px solid #f4d9e5; border-radius: 12px; background: white; box-shadow: 0 8px 24px #211a3520; }
+  .pos-booth-tools > * { width: 100%; min-height: 44px; }
+  .festival-live [data-testid="pos-switcher"] { padding: 0 8px; gap: 8px; }
+  .festival-live [data-testid="pos-switcher"] > button { min-height: 44px; padding: 4px 8px; border: 0; border-radius: 0; }
+  .pos-product-toolbar { padding: 2px 12px; }
+  .pos-product-search { flex-wrap: wrap; }
+  .pos-product-search > input { width: 0; }
+  .pos-product-search > select { flex-basis: 100%; }
+  .pos-product-toolbar.space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 4px; }
+  .pos-mobile-cartbar { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); flex-shrink: 0; }
+  .pos-mobile-cartbar > button { border-radius: 10px; padding: 8px 12px; min-height: 48px; }
+}

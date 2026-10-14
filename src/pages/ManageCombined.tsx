@@ -96,6 +96,8 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
     const [selectedQueueNumber, setSelectedQueueNumber] = useState<string | null>(null);
     const hasPosPermission = canUsePos(actorContext.role);
+    const mobileBoothToolsToggle = useRef<HTMLButtonElement>(null);
+    const [mobileBoothToolsOpen, setMobileBoothToolsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'queue' | 'pos'>(() => {
         // Explicit route preference wins (e.g. /live/queue or /live/pos),
         // but POS is only allowed for roles that can use POS — fall back to queue otherwise.
@@ -454,10 +456,10 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             <Toast message={toast} onClose={() => setToast(null)} />
             <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
 
-            <div className="festival-boothbar shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+            <div className="festival-boothbar relative shrink-0 border-b border-gray-200 bg-white px-4 py-3">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <div className="text-xs font-semibold text-gray-500">{text("Live booth", "ประจำบูธ")}</div>
+                        <div className="hidden md:block text-xs font-semibold text-gray-500">{text("Live booth", "ประจำบูธ")}</div>
                         <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${
                                 activeEvent?.is_booth_open
@@ -473,7 +475,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                 <button
                                     type="button"
                                     onClick={() => navigate(`/manage-events/${activeEvent.id}/workspace`)}
-                                    className="inline-flex min-h-9 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 hover:bg-pink-100"
+                                    className="hidden md:inline-flex min-h-9 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-xs font-bold text-pink-700 hover:bg-pink-100"
                                 >
                                     {activeEvent.event_name}
                                     <ArrowUpRight size={13} aria-hidden="true" />
@@ -486,7 +488,9 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    <button ref={mobileBoothToolsToggle} type="button" className="pos-booth-tools-toggle md:hidden" aria-label={text('Booth tools', 'เครื่องมือบูธ')} aria-expanded={mobileBoothToolsOpen} aria-controls="pos-booth-tools" onClick={() => setMobileBoothToolsOpen(open => !open)}>⋯</button>
+                    <div id="pos-booth-tools" className={`pos-booth-tools ${mobileBoothToolsOpen ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 lg:justify-end`} onKeyDown={event => { if (event.key === 'Escape') { setMobileBoothToolsOpen(false); mobileBoothToolsToggle.current?.focus(); } }}>
+                        {activeEvent && <Link to={`/manage-events/${activeEvent.id}/workspace`} className="md:hidden workspace-action">{text('Event workspace', 'กลับหน้างาน')}</Link>}
                         {activeEvent && hasPosPermission && <Link to={`/offline?eventId=${activeEvent.id}`} className="workspace-action inline-flex items-center border border-pink-200 px-3 text-sm font-semibold text-pink-800">{text("Offline workspace", "เตรียมใช้งานออฟไลน์")}</Link>}
                         <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                             <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />

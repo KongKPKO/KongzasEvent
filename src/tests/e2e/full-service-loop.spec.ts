@@ -141,6 +141,16 @@ test.describe('full queue and POS service loop', () => {
         return dataOrThrow(result, 'read serving queue ticket').status;
       }).toBe('serving');
 
+      await adminPage.setViewportSize({ width: 390, height: 700 });
+      await adminPage.getByTestId('pos-tab').click();
+      const mobileCustomer = adminPage.getByRole('combobox', { name: 'Select Customer', exact: true });
+      await expect(mobileCustomer.locator(`option[value="${ticketId}"]`)).toHaveCount(1);
+      await mobileCustomer.selectOption(ticketId);
+      await expect(mobileCustomer).toHaveValue(ticketId);
+      await mobileCustomer.selectOption('');
+      await expect(mobileCustomer).toHaveValue('');
+      await mobileCustomer.selectOption(ticketId);
+      await adminPage.setViewportSize({ width: 1280, height: 800 });
       const queueTab = adminPage.getByRole('button', { name: `Queue #${ticketNumber}`, exact: true });
       await expect(queueTab).toBeVisible({ timeout: 20_000 });
       await queueTab.click();

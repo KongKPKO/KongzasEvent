@@ -197,6 +197,7 @@ export default function POSPanel({
     const cartRef = useRef<CartItem[]>([]);
     const paymentInFlightRef = useRef(false);
 
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [selectedTag, setSelectedTag] = useState<string>('All');
@@ -1279,8 +1280,20 @@ export default function POSPanel({
     return (
         <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
-            <div className="bg-white border-b border-gray-200 shrink-0 shadow-sm">
-                <div className="px-4 py-2">
+            <div className="pos-customer-selector bg-white border-b border-gray-200 shrink-0 shadow-sm">
+                <label className="md:hidden flex items-center gap-2 px-3 py-1 text-xs font-bold">
+                    <span>{uiText(language, 'Select Customer')}</span>
+                    <select aria-label={uiText(language, 'Select Customer')} value={selectedQueueId || ''} className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-sm" onChange={event => {
+                        const queue = servingQueues.find(item => item.id === event.target.value);
+                        if (queue) onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) });
+                        else if (!event.target.value) onClearQueue();
+                    }}>
+                        <option value="">{uiText(language, 'Walk-in')}</option>
+                        {selectedQueueId && !servingQueues.some(queue => queue.id === selectedQueueId) && <option value={selectedQueueId}>{uiText(language, 'Queue #{number}').replace('{number}', String(selectedQueueNumber))}</option>}
+                        {servingQueues.map(queue => <option key={queue.id} value={queue.id}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</option>)}
+                    </select>
+                </label>
+                <div className="hidden md:block px-4 py-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">{uiText(language, 'Select Customer')}</div>
                     <div className="grid grid-cols-2 gap-2">
                         <button
@@ -1363,8 +1376,8 @@ export default function POSPanel({
                 </div>
 
                 <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-gray-50/50 order-1 md:order-1">
-                    <div className="bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
+                    <div className="pos-product-toolbar bg-white px-4 py-3 border-b border-gray-100 shadow-sm shrink-0 space-y-2">
+                        <div className="hidden md:flex items-center justify-between gap-3">
                             <div className="min-w-0">
                                 <h1 className="festival-title">{uiText(language, 'Sell')}</h1>
                                 <div className="mt-1 flex items-center gap-2">
@@ -1385,7 +1398,7 @@ export default function POSPanel({
                                 )}
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="pos-product-search flex gap-2">
                             <input
                                 type="text"
                                 placeholder={uiText(language, 'Search by name or tag...')}
@@ -1394,10 +1407,11 @@ export default function POSPanel({
                                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 text-sm"
                                 aria-label={uiText(language, 'Search products')}
                             />
+                            <button type="button" className="md:hidden shrink-0 rounded-lg border border-pink-200 px-3 text-xs font-bold text-pink-700" aria-expanded={mobileFiltersOpen} onClick={() => setMobileFiltersOpen(open => !open)}>{language === 'th' ? 'ตัวกรอง' : 'Filters'}{hasActiveProductFilters ? ' •' : ''}</button>
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value as SortType)}
-                                className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer font-medium w-[110px] md:w-auto"
+                                className={`${mobileFiltersOpen ? "block" : "hidden"} md:block border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white cursor-pointer font-medium w-[90px] md:w-auto`}
                                 aria-label={uiText(language, 'Sort products by')}
                             >
                                 <option value="name">{uiText(language, 'Name')}</option>
@@ -1430,7 +1444,7 @@ export default function POSPanel({
                                 </button>
                             </div>
                         </div>
-                        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                        <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} md:flex gap-1.5 overflow-x-auto no-scrollbar`}>
                             {quickFilters.map((filter) => {
                                 const Icon = filter.icon;
                                 return (
@@ -1441,7 +1455,7 @@ export default function POSPanel({
                                     >
                                         <Icon size={12} />
                                         <span>{filter.label}</span>
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{filter.count}</span>
+                                        <span className={`${filter.count === 0 ? "hidden md:inline" : ""} rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{filter.count}</span>
                                     </button>
                                 );
                             })}
@@ -1458,7 +1472,7 @@ export default function POSPanel({
                             ))}
                         </div>
                         {tags.length > 1 && (
-                            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                            <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} md:flex gap-1.5 overflow-x-auto no-scrollbar`}>
                                 {tags.map((tag) => (
                                     <button
                                         key={tag.label}
@@ -1471,7 +1485,7 @@ export default function POSPanel({
                             </div>
                         )}
                         {hasActiveProductFilters && (
-                            <div className="flex flex-wrap gap-2 pt-1">
+                            <div className={`${mobileFiltersOpen ? "flex" : "hidden"} md:flex flex-wrap gap-2 pt-1`}>
                                 {selectedQuickFilter !== 'all' && (
                                     <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-600">
                                         {uiText(language, 'Quick')}: {quickFilters.find((filter) => filter.id === selectedQuickFilter)?.label}
@@ -1520,22 +1534,22 @@ export default function POSPanel({
                 </div>
             </div>
 
-            <div className="md:hidden sticky bottom-0 z-20 border-t border-pink-100 bg-white/95 backdrop-blur px-3 pt-2 pb-safe-bar shadow-[0_-6px_16px_rgba(15,23,42,0.08)]">
+            <div className="pos-mobile-cartbar md:hidden sticky bottom-0 z-20 border-t border-pink-100 bg-white/95 backdrop-blur px-3 pt-2 pb-safe-bar shadow-[0_-6px_16px_rgba(15,23,42,0.08)]">
                 <button
                     onClick={() => setIsMobileCartOpen(true)}
                     className="w-full rounded-2xl border border-pink-100 bg-gradient-to-r from-white to-pink-50 px-3 py-2.5 text-left touch-manipulation"
                 >
                     <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{uiText(language, 'Cart')}</div>
-                            <div className="text-sm font-bold text-gray-800">{itemCountLabel(cartItemCount)} · {cart.length} SKU</div>
-                            <div className="text-[11px] text-gray-500 truncate">
+                            <div className="sr-only">{uiText(language, 'Cart')}</div>
+                            <div className="text-sm font-bold text-gray-800">{itemCountLabel(cartItemCount)}</div>
+                            <div className="sr-only">
                                 {selectedQueueId ? uiText(language, 'Queue #{number}').replace('{number}', String(selectedQueueNumber)) : uiText(language, 'Walk-in checkout')}
                             </div>
                         </div>
-                        <div className="text-right shrink-0">
+                        <div className="flex items-center gap-3 shrink-0">
                             {displayedDiscount > 0 && (
-                                <div className="text-[11px] font-bold text-emerald-600">{uiText(language, 'Save')} {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
+                                <div className="sr-only">{uiText(language, 'Save')} {formatPrice(displayedDiscount, cart[0]?.product.currency)}</div>
                             )}
                             <div className="text-lg font-extrabold text-gray-900">{formatPrice(displayedTotal, cart[0]?.product.currency)}</div>
                             <div className="text-[11px] font-bold text-pink-600">{uiText(language, cart.length === 0 ? 'Select items' : 'View cart')}</div>

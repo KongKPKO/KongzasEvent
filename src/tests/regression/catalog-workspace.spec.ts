@@ -1,3 +1,4 @@
+import { selectLanguage } from '../helpers/languageMenu';
 import { expect, test, type Page } from '@playwright/test';
 import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
 
@@ -308,7 +309,7 @@ test.describe('catalog workspace', () => {
     test.skip(testInfo.project.name !== 'desktop-chromium');
     await login(page);
     await page.goto('/manage-products');
-    await page.getByRole('combobox', { name: 'Language' }).selectOption('th');
+    await selectLanguage(page, 'th');
 
     const inactiveCard = page.getByTestId(`catalog-card-${inactiveProductId}`);
     await expect(inactiveCard.getByText('ไม่มีรูป', { exact: true })).toBeVisible();

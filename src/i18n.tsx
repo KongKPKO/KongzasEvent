@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useId, useRef } from 'react';
 
 import { eventAdminThaiText } from './locales/eventAdmin';
 import { commerceThaiText } from './locales/commerce';
@@ -1845,18 +1845,86 @@ export function useI18n() {
 
 export function LanguageToggle({ className = '' }: { className?: string }) {
   const { language, setLanguage, t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const options = useRef<Record<Language, HTMLButtonElement | null>>({ th: null, en: null });
+  const openingFocus = useRef<Language>(language);
+  const labels = { th: 'TH · ไทย', en: 'EN · English' };
+  const flags = { th: '🇹🇭', en: '🇬🇧' };
+
+  useEffect(() => {
+    if (!open) return;
+    options.current[openingFocus.current]?.focus();
+    const dismiss = (event: Event) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('focusin', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('focusin', dismiss);
+    };
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const show = (focus: Language) => {
+    openingFocus.current = focus;
+    setOpen(true);
+  };
+
   return (
-    <select
-      value={language}
-      onChange={(event) => {
-        const value = event.target.value;
-        if (value === 'th' || value === 'en') setLanguage(value);
-      }}
-      className={`min-h-11 cursor-pointer rounded-xl border border-pink-200 bg-white px-3 py-2 text-sm font-bold text-pink-700 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600 ${className}`}
-      aria-label={t('selectLanguage')}
-    >
-      <option value="th">TH · ไทย</option>
-      <option value="en">EN · English</option>
-    </select>
+    <div ref={root} className={`relative inline-flex w-32 shrink-0 sm:w-40 ${className}`}>
+      <button
+        ref={trigger}
+        type="button"
+        aria-label={t('selectLanguage')}
+        aria-describedby={`${id}-value`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? `${id}-menu` : undefined}
+        data-language={language}
+        onClick={() => open ? close() : show(language)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            show(event.key === 'ArrowDown' ? 'th' : 'en');
+          }
+        }}
+        className={`flex min-h-11 min-w-0 w-full items-center gap-2 border border-pink-200 bg-white px-3 py-2 text-sm font-bold text-pink-700 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600 ${open ? 'rounded-t-xl rounded-b-none' : 'rounded-xl'}`}
+      >
+        <span aria-hidden="true">{flags[language]}</span>
+        <span id={`${id}-value`}>{language === 'th' ? 'ไทย' : 'English'}</span>
+        <span aria-hidden="true" className="ml-auto text-xs">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div id={`${id}-menu`} role="menu" aria-label={t('selectLanguage')} className="absolute inset-x-0 top-full z-50 overflow-hidden rounded-b-xl border border-t-0 border-pink-200 bg-white shadow-md" onKeyDown={(event) => {
+          if (event.key === 'Escape' || event.key === 'Tab') {
+            if (event.key === 'Escape') event.preventDefault();
+            close();
+          } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const current = document.activeElement === options.current.th ? 'th' : 'en';
+            const next = event.key === 'Home' ? 'th' : event.key === 'End' ? 'en' : current === 'th' ? 'en' : 'th';
+            options.current[next]?.focus();
+          }
+        }}>
+          {(['th', 'en'] as const).map(value => (
+            <button key={value} ref={(node) => { options.current[value] = node; }} type="button" role="menuitemradio" aria-checked={language === value} tabIndex={-1} onClick={() => {
+              setLanguage(value);
+              close();
+            }} className="flex min-h-11 w-full items-center gap-1.5 border-t border-pink-100 px-2 py-2 text-left text-xs font-bold sm:gap-2 sm:px-3 sm:text-sm text-slate-700 hover:bg-pink-50 focus:bg-pink-50 focus:outline-none">
+              <span aria-hidden="true">{flags[value]}</span>
+              {labels[value]}
+              {language === value && <span aria-hidden="true" className="ml-auto text-pink-600">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

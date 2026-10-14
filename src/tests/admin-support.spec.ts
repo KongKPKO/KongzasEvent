@@ -1,3 +1,4 @@
+import { selectLanguage } from './helpers/languageMenu';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -58,7 +59,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     await expect(page.locator('vite-error-overlay')).toHaveCount(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({path:`/tmp/admin-support-${test.info().project.name}.png`,fullPage:true});
-    await page.getByRole('combobox',{name:'Language',exact:true}).selectOption('th');
+    await selectLanguage(page, 'th');
     await expect(page.getByRole('heading',{name:'ช่วยเหลือร้าน',exact:true})).toBeVisible();
     await expect(page.getByRole('region',{name:'รายละเอียด',exact:true})).toContainText('ไม่ใช่หลักฐานว่าคืนสต็อกแล้ว');
     expect((await service.from('orders').select('*').eq('id',order).single()).data).toEqual(before);

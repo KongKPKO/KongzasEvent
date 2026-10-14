@@ -275,6 +275,7 @@ if (mode === 'local') {
     'src/tests/e2e/pilot-preorder.spec.ts',
     'src/tests/auth-user-errors.spec.ts',
     'src/tests/localization.spec.ts',
+    'src/tests/language-menu.spec.ts',
     ...(workdir ? [
       'src/tests/e2e/pilot-login-recovery.spec.ts',
       'src/tests/e2e/pilot-multi-shop.spec.ts',

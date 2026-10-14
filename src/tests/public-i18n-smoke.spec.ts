@@ -1,3 +1,4 @@
+import { selectLanguage } from './helpers/languageMenu';
 import { expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
@@ -83,7 +84,7 @@ test.describe('Public Nireq smoke', () => {
     await expect(page.getByTestId('public-creator-search')).toBeVisible();
     await expect(page.getByTestId('public-discovery')).toBeVisible();
 
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+    await selectLanguage(page, 'th');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
     const thaiHeading = page.getByRole('heading', { name: /ค้นหาบูธครีเอเตอร์/ });
@@ -139,11 +140,11 @@ test.describe('Public Nireq fixture smoke', () => {
 
     await page.goto(`/${publicSlug}/menu`);
 
-    await expect(page.getByRole('combobox', { name: 'Language', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Language', exact: true })).toBeVisible();
     await expect(page.getByText('Queue Number', { exact: true })).toBeVisible();
     await expect(page.getByText('Anonymous Smoke Product')).toBeVisible();
 
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+    await selectLanguage(page, 'th');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
     await expect(page.getByText('หมายเลขคิว', { exact: true })).toBeVisible();

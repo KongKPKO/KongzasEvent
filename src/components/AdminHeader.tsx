@@ -157,7 +157,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
 
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
                 {isPlatformAdmin && <Link to="/admin/support" className="min-h-11 inline-flex items-center px-3 text-xs font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
-                <LanguageToggle className="workspace-action px-2 py-2" />
+                <LanguageToggle className="shrink-0" />
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
 
                 {/* Profile Indicator (Desktop) */}

@@ -179,6 +179,7 @@ export default function POSPanel({
     const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [orderLoading, setOrderLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
     // Track the latest fetch to ignore stale results from superseded requests.
@@ -317,6 +318,7 @@ export default function POSPanel({
         if (!canUsePos || !activeEvent) return;
 
         const version = ++fetchVersionRef.current;
+        setOrderLoading(true);
         setLoading(true);
         setFetchError(false);
 
@@ -375,6 +377,7 @@ export default function POSPanel({
             }
         } finally {
             if (version === fetchVersionRef.current) {
+                setOrderLoading(false);
                 setLoading(false);
             }
         }
@@ -580,7 +583,7 @@ export default function POSPanel({
     };
 
     const addToCart = (product: Product) => {
-        if (!canUsePos || loading || fetchError) return;
+        if (!canUsePos || loading || orderLoading || fetchError) return;
 
         setRecentProductIds((prev) => [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 12));
 
@@ -600,14 +603,14 @@ export default function POSPanel({
     };
 
     const decreaseQuantity = (productId: string) => {
-        if (loading || fetchError) return;
+        if (loading || orderLoading || fetchError) return;
         setCart((prev) => prev
             .map((item) => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
             .filter((item) => item.quantity > 0));
     };
 
     const removeFromCart = (productId: string) => {
-        if (loading || fetchError) return;
+        if (loading || orderLoading || fetchError) return;
         setCart((prev) => prev.filter((item) => item.product.id !== productId));
     };
 
@@ -617,7 +620,7 @@ export default function POSPanel({
     const displayedSubtotal = promotionQuote?.subtotal ?? pricing.subtotal;
     const displayedDiscount = promotionQuote?.discount_total ?? pricing.discountTotal;
     const displayedTotal = promotionQuote?.total ?? pricing.total;
-    const canChargeOrder = cart.length > 0 && !loading && !fetchError && !!activeEvent && overdraftProductIds.size === 0 && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards);
+    const canChargeOrder = cart.length > 0 && !loading && !orderLoading && !fetchError && !!activeEvent && overdraftProductIds.size === 0 && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards);
 
     useEffect(() => { setAcceptExhaustedRewards(false); }, [cart]);
 
@@ -687,7 +690,7 @@ export default function POSPanel({
 
     const handlePayment = async (method: 'cash' | 'transfer') => {
         if (paymentInFlightRef.current) return;
-        if (loading || fetchError) return;
+        if (loading || orderLoading || fetchError) return;
         if (!canUsePos) {
             setToast({ tone: 'error', title: uiText(language, 'Charge not allowed'), detail: uiText(language, 'Your role does not have permission to charge orders.') });
             return;
@@ -1026,21 +1029,21 @@ export default function POSPanel({
                                 <div className="flex items-center gap-1">
                                     <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 min-h-11">
                                         <button
-                                            disabled={loading || fetchError}
+                                            disabled={loading || orderLoading || fetchError}
                                             onClick={() => decreaseQuantity(item.product.id)}
                                             className="w-11 min-h-11 flex items-center justify-center text-gray-600 hover:text-red-600 text-[11px] disabled:opacity-50"
                                             aria-label={uiText(language, 'Decrease quantity of {name}').replace('{name}', item.product.name)}
                                         >-</button>
                                         <span className={`min-w-[28px] text-center font-bold text-sm ${isOverdraft ? 'text-red-600' : 'text-gray-700'}`}>{item.quantity}</span>
                                         <button
-                                            disabled={loading || fetchError}
+                                            disabled={loading || orderLoading || fetchError}
                                             onClick={() => addToCart(item.product)}
                                             className="w-11 min-h-11 flex items-center justify-center text-gray-600 hover:text-green-600 text-[11px] disabled:opacity-50"
                                             aria-label={uiText(language, 'Increase quantity of {name}').replace('{name}', item.product.name)}
                                         >+</button>
                                     </div>
                                     <button
-                                        disabled={loading || fetchError}
+                                        disabled={loading || orderLoading || fetchError}
                                         onClick={() => removeFromCart(item.product.id)}
                                         className="w-11 min-h-11 text-sm text-gray-600 hover:text-red-700 disabled:opacity-50"
                                         aria-label={uiText(language, 'Remove {name} from cart').replace('{name}', item.product.name)}
@@ -1372,7 +1375,7 @@ export default function POSPanel({
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'}>
+                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'} aria-busy={loading || orderLoading}>
                         {filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>{uiText(language, 'No products found.')}</p></div>
                         ) : (
@@ -1404,8 +1407,9 @@ export default function POSPanel({
                                                     className="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 flex items-center gap-3"
                                                 >
                                                     <button
+                                                        disabled={loading || orderLoading || fetchError}
                                                         onClick={() => addToCart(product)}
-                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
                                                     >
                                                         <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
                                                             {product.image_url ? (
@@ -1464,8 +1468,9 @@ export default function POSPanel({
                                                     className="festival-product bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200"
                                                 >
                                                     <button
+                                                    disabled={loading || orderLoading || fetchError}
                                                     onClick={() => addToCart(product)}
-                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col"
+                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                     <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
                                                         {product.image_url ? (
@@ -1592,7 +1597,7 @@ export default function POSPanel({
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}
-                                disabled={loading || fetchError}
+                                disabled={loading || orderLoading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-100 hover:border-emerald-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">💵</span>
@@ -1600,7 +1605,7 @@ export default function POSPanel({
                             </button>
                             <button
                                 onClick={() => handlePayment('transfer')}
-                                disabled={loading || fetchError}
+                                disabled={loading || orderLoading || fetchError}
                                 className="flex flex-col items-center justify-center p-6 bg-sky-50 hover:bg-sky-100 border-2 border-sky-100 hover:border-sky-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span className="text-4xl mb-2">🏦</span>

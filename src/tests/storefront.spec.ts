@@ -1,3 +1,4 @@
+import { selectLanguage } from './helpers/languageMenu';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
@@ -50,7 +51,7 @@ test('storefront supports variants, stock limits, keyboard details and a persist
     await openPink();
     await expect(dialog.getByRole('button', { name: 'Increase quantity of Print Pink' })).toBeDisabled();
     await page.keyboard.press('Escape');
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+    await selectLanguage(page, 'th');
     await expect(page.getByText('ร้านครีเอเตอร์', { exact: true })).toBeVisible();
     await openPink();
     await expect(dialog.getByRole('button', { name: 'เพิ่มจำนวน Print Pink' })).toBeDisabled();

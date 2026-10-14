@@ -1,3 +1,4 @@
+import { selectLanguage } from '../helpers/languageMenu';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -49,8 +50,8 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
   expect(headingBounds).not.toBeNull();
   expect(eventNavBounds).not.toBeNull();
   expect(headingBounds!.y + headingBounds!.height).toBeLessThan(eventNavBounds!.y);
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
-  await expect(page.getByRole('combobox', { name: 'ภาษา', exact: true })).toHaveValue('th');
+  await selectLanguage(page, 'th');
+  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
   await expect(page.getByRole('heading', { name: 'ตั้งค่าให้ครบ ก่อนเริ่มขาย', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Queue', exact: true })).toBeVisible();
   await expect(page.getByText('Home', { exact: true }).first()).toBeVisible();
@@ -61,33 +62,34 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
   await expect(page.getByRole('button', { name: 'โปรโมชัน', exact: true }).first()).toBeVisible();
   if (process.env.NIREQ_SCREENSHOT_DIR) {
     await page.screenshot({ path: `${process.env.NIREQ_SCREENSHOT_DIR}/NireQ-Language-TH.png`, fullPage: true });
-    await page.getByRole('combobox', { name: 'ภาษา', exact: true }).selectOption('en');
+    await selectLanguage(page, 'en');
     await expect(page.getByRole('heading', { name: 'Set up before you start selling', exact: true })).toBeVisible();
     await page.screenshot({ path: `${process.env.NIREQ_SCREENSHOT_DIR}/NireQ-Language-EN.png`, fullPage: true });
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+    await selectLanguage(page, 'th');
   }
 
   await page.getByRole('button', { name: 'แคตตาล็อก', exact: true }).first().click();
-  await expect(page.getByRole('combobox', { name: 'ภาษา', exact: true })).toHaveValue('th');
-  await page.getByRole('combobox', { name: 'ภาษา', exact: true }).selectOption('en');
+  await expect(page.getByRole('heading', { name: 'คลังสินค้า', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
+  await selectLanguage(page, 'en');
   await expect(page.getByRole('heading', { name: 'Product catalog', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en');
+  await expect(page.getByRole('button', { name: 'Language', exact: true })).toHaveAttribute('data-language', 'en');
   await page.goto(`/manage-events/${eventId}/workspace`);
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+  await selectLanguage(page, 'th');
   await expect(page.getByRole('heading', { name: 'ตั้งค่าให้ครบ ก่อนเริ่มขาย', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
 test('public login and legal pages follow the selected language after reload', async ({ page }) => {
   await page.goto('/manage-login');
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+  await selectLanguage(page, 'th');
   await expect(page.getByRole('tab', { name: 'ครีเอเตอร์ / ผู้จัดการ', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('combobox', { name: 'ภาษา', exact: true })).toHaveValue('th');
+  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
   await page.goto('/privacy');
   await expect(page.getByRole('heading', { level: 1, name: 'นโยบายความเป็นส่วนตัว', exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: 'ภาษา', exact: true }).selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(page.getByRole('heading', { level: 1, name: 'Privacy Policy', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Payment evidence', exact: true })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -101,18 +103,28 @@ test('switching POS language preserves the cart and total without requesting a n
   await login.goto();
   await login.login(email, password);
   await expect(page).toHaveURL(/manage-events/, { timeout: 30_000 });
+  let releaseOrderRead!: () => void;
+  const orderRead = new Promise<void>(resolve => { releaseOrderRead = resolve; });
+  await page.route('**/rest/v1/orders?*', async route => {
+    await orderRead;
+    await route.continue();
+  });
   await page.goto(`/live/pos?eventId=${eventId}`);
   let quotes = 0;
   page.on('request', request => { if (request.url().includes('/rpc/quote_sale_promotions')) quotes++; });
   const item = page.getByRole('region', { name: /Product list|Product grid/ }).getByRole('button').filter({ has: page.getByRole('heading', { name: 'Menu', exact: true }) }).first();
+  await expect(item).toBeVisible();
+  await expect(item).toBeDisabled();
+  releaseOrderRead();
+  await expect(item).toBeEnabled();
   await item.click();
   await expect(page.getByRole('button', { name: 'Charge ฿150', exact: true })).toBeEnabled();
   const before = quotes;
   expect(before).toBe(1);
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('th');
+  await selectLanguage(page, 'th');
   await expect(page.getByRole('button', { name: 'รับชำระ ฿150', exact: true })).toBeEnabled();
   await expect(page.getByRole('region', { name: 'ตะกร้าสินค้า', exact: true }).getByText('Menu', { exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: 'ภาษา', exact: true }).selectOption('en');
+  await selectLanguage(page, 'en');
   await expect(page.getByRole('button', { name: 'Charge ฿150', exact: true })).toBeEnabled();
   expect(quotes).toBe(before);
 });

@@ -529,3 +529,8 @@ body {
   .pos-mobile-cartbar { padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); flex-shrink: 0; }
   .pos-mobile-cartbar > button { border-radius: 10px; padding: 8px 12px; min-height: 48px; }
 }
+
+.festival-pos .pos-pin-button { display: grid; place-items: center; width: 44px; height: 44px; min-width: 44px; padding: 0; flex-shrink: 0; border: 0; border-radius: 50%; background: transparent; }
+.pos-pin-symbol { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #ffffffd9; font-size: 18px; line-height: 1; filter: grayscale(1); }
+.pos-pin-button[aria-pressed="true"] .pos-pin-symbol { background: #fce7f3; outline: 2px solid #db2777; filter: none; }
+.pos-pin-button:hover .pos-pin-symbol { background: #fce7f3; }

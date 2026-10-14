@@ -1219,10 +1219,11 @@ export default function POSPanel({
                                                     </button>
                                                     <button
                                                         onClick={() => togglePinnedProduct(product.id)}
-                                                        className={`p-2 rounded-lg border ${isPinned ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200'}`}
+                                                        className="pos-pin-button"
+                                                        aria-pressed={isPinned}
                                                         aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
                                                     >
-                                                        <Pin size={14} />
+                                                        <span className="pos-pin-symbol" aria-hidden="true">📌</span>
                                                     </button>
                                                 </div>
                                             );
@@ -1267,10 +1268,11 @@ export default function POSPanel({
                                                 </button>
                                                 <button
                                                     onClick={() => togglePinnedProduct(product.id)}
-                                                    className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
+                                                    className="pos-pin-button absolute top-1 right-1"
+                                                    aria-pressed={isPinned}
                                                     aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
                                                 >
-                                                    <Pin size={12} />
+                                                    <span className="pos-pin-symbol" aria-hidden="true">📌</span>
                                                 </button>
                                             </div>
                                         );

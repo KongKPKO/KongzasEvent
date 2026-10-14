@@ -11,6 +11,7 @@ export const clearMenuOrderState = (artistId: string | undefined | null): boolea
     localStorage.removeItem(`cart_${artistId}`);
     localStorage.removeItem(`orderSent_${artistId}`);
     localStorage.removeItem(`sentOrderId_${artistId}`);
+    localStorage.removeItem(`sentOrderTicketId_${artistId}`);
     localStorage.removeItem(`orderCompleted_${artistId}`);
     return true;
   } catch (err) {
@@ -82,6 +83,11 @@ const dispatchTicketUpdated = () => {
 
 export const setStoredTicketId = (artistId: string | undefined | null, ticketId: string): void => {
   if (!artistId || !ticketId) return;
+  const previous = getStoredTicketId(artistId);
+  const orderTicket = storageRead(`sentOrderTicketId_${artistId}`);
+  if (storageRead(`orderSent_${artistId}`) === 'true' && ((orderTicket && orderTicket !== ticketId) || (!orderTicket && previous && previous !== ticketId))) {
+    clearMenuOrderState(artistId);
+  }
   storageWrite(ticketStorageKey(artistId), ticketId);
   dispatchTicketUpdated();
 };

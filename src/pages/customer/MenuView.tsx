@@ -157,6 +157,13 @@ const MenuView = () => {
   const [isOrderCompleted, setIsOrderCompleted] = useState<boolean>(() => {
     return localStorage.getItem(`orderCompleted_${contextArtist?.id}`) === 'true';
   });
+  const [sentOrderTicketId, setSentOrderTicketId] = useState<string | null>(() => localStorage.getItem(`sentOrderTicketId_${contextArtist?.id}`) || null);
+  const sentOrderTicketRef = useRef(sentOrderTicketId);
+  sentOrderTicketRef.current = sentOrderTicketId;
+  const [orderBannerDismissed, setOrderBannerDismissed] = useState(false);
+  const [menuTicketId, setMenuTicketId] = useState<string | null>(() => getStoredTicketId(displayArtist?.id));
+  const menuTicketRef = useRef(menuTicketId);
+  menuTicketRef.current = menuTicketId;
   const [preorderCustomer, setPreorderCustomer] = useState<PreorderCustomerForm>({ name: '', phone: '', social: '', email: '', shippingAddress: '', note: '' });
   const [advanceOrderSubmitAttempted, setAdvanceOrderSubmitAttempted] = useState(false);
   const [postOrderPhoneTouched, setPostOrderPhoneTouched] = useState(false);
@@ -424,8 +431,10 @@ const MenuView = () => {
       localStorage.setItem(`orderSent_${contextArtist.id}`, isOrderSent.toString());
       localStorage.setItem(`sentOrderId_${contextArtist.id}`, sentOrderId || '');
       localStorage.setItem(`orderCompleted_${contextArtist.id}`, isOrderCompleted.toString());
+      if (sentOrderTicketId) localStorage.setItem(`sentOrderTicketId_${contextArtist.id}`, sentOrderTicketId);
+      else localStorage.removeItem(`sentOrderTicketId_${contextArtist.id}`);
     }
-  }, [isOrderSent, sentOrderId, isOrderCompleted, contextArtist?.id]);
+  }, [isOrderSent, sentOrderId, isOrderCompleted, sentOrderTicketId, contextArtist?.id]);
 
   // --- 2. Fetch Data ---
   useEffect(() => {
@@ -443,22 +452,24 @@ const MenuView = () => {
                 .eq('id', localQueueId)
                 .maybeSingle();
 
-            // Only show queue number if status is active
-            if (queueData && isQueueFromToday(queueData) && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
-                if (queueData.event_id && queueData.event_id !== selectedEvent?.id) {
-                  setSelectedEventId(queueData.event_id);
+            if (getStoredTicketId(displayArtist.id) === localQueueId) {
+                // Only show queue number if status is active
+                if (queueData && isQueueFromToday(queueData) && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
+                    if (queueData.event_id && queueData.event_id !== selectedEvent?.id) {
+                      setSelectedEventId(queueData.event_id);
+                    }
+                    setUserQueueNumber(queueData.queue_number);
+                    setUserQueueStatus(queueData.status);
+                } else {
+                   // Clear stale id when row missing (deleted server-side) or
+                   // not from today's service date. Ended-state tickets are
+                   // intentionally preserved so the user can close them.
+                   if (!queueData || !isQueueFromToday(queueData)) {
+                      clearStoredTicketId(displayArtist.id);
+                   }
+                   setUserQueueNumber(null);
+                   setUserQueueStatus(queueData?.status || null);
                 }
-                setUserQueueNumber(queueData.queue_number);
-                setUserQueueStatus(queueData.status);
-            } else {
-               // Clear stale id when row missing (deleted server-side) or
-               // not from today's service date. Ended-state tickets are
-               // intentionally preserved so the user can close them.
-               if (!queueData || !isQueueFromToday(queueData)) {
-                  clearStoredTicketId(displayArtist.id);
-               }
-               setUserQueueNumber(null);
-               setUserQueueStatus(queueData?.status || null);
             }
         }
 
@@ -740,6 +751,9 @@ const MenuView = () => {
         if (!orderId) throw new Error(uiText(language, 'Order creation failed'));
 
         setSentOrderId(orderId);
+        setSentOrderTicketId(localQueueId);
+        setIsOrderCompleted(false);
+        setOrderBannerDismissed(false);
         setIsOrderSent(true);
         setIsCartOpen(false);
         clearCart();
@@ -879,6 +893,8 @@ const MenuView = () => {
           clearCart();
           setIsOrderSent(false);
           setSentOrderId(null);
+          setSentOrderTicketId(null);
+          setOrderBannerDismissed(false);
           setIsOrderCompleted(false);
           
           const cleared = clearMenuOrderState(contextArtist?.id);
@@ -894,12 +910,21 @@ const MenuView = () => {
       }
   };
 
+  useEffect(() => {
+    if (sentOrderTicketId && menuTicketId && sentOrderTicketId !== menuTicketId) {
+      setIsOrderSent(false); setSentOrderId(null); setSentOrderTicketId(null); setIsOrderCompleted(false); setOrderBannerDismissed(false);
+      clearCart();
+      clearMenuOrderState(displayArtist?.id);
+    }
+  }, [sentOrderTicketId, menuTicketId, displayArtist?.id]);
+
   // Keep completion status in sync even when realtime events are missed.
   useEffect(() => {
-      const localQueueId = getStoredTicketId(displayArtist?.id);
+      const localQueueId = menuTicketId;
       if (!sentOrderId || !localQueueId) return;
 
       let isMounted = true;
+      let statusErrorReported = false;
 
       const syncCompletionStatus = async () => {
           const { data, error } = await supabase.rpc('get_customer_order_status', {
@@ -908,7 +933,29 @@ const MenuView = () => {
           });
 
           const status = Array.isArray(data) ? data[0]?.status : data?.status;
-          if (!isMounted || error || !status) return;
+          if (!isMounted || getStoredTicketId(displayArtist?.id) !== localQueueId) return;
+          if (error) {
+            if (!statusErrorReported) setToast({ tone: 'warning', title: language === 'th' ? 'โหลดสถานะออเดอร์ไม่สำเร็จ กำลังลองใหม่' : 'Could not load order status. Retrying.' });
+            statusErrorReported = true;
+            return;
+          }
+          if (status) statusErrorReported = false;
+          // Older clients did not store the receipt's ticket. Only discard a
+          // missing receipt when the current ticket belongs to this live event.
+          if (!status && !sentOrderTicketId && selectedEvent && getEventSalesPhase(selectedEvent) === 'live') {
+            const { data: ticket, error: ticketError } = await supabase.from('queues').select('status,event_id').eq('id', localQueueId).maybeSingle();
+            if (isMounted && ticketError && !statusErrorReported) {
+              setToast({ tone: 'warning', title: language === 'th' ? 'โหลดสถานะคิวไม่สำเร็จ กำลังลองใหม่' : 'Could not load queue status. Retrying.' });
+              statusErrorReported = true;
+            }
+            if (isMounted && getStoredTicketId(displayArtist?.id) === localQueueId && !ticketError && ticket?.event_id === selectedEvent.id && ['waiting','calling','serving'].includes(ticket.status)) {
+              setIsOrderSent(false); setSentOrderId(null); setSentOrderTicketId(null); setIsOrderCompleted(false); setOrderBannerDismissed(false);
+              clearCart();
+              clearMenuOrderState(displayArtist?.id);
+            }
+            return;
+          }
+          if (status && !sentOrderTicketId) setSentOrderTicketId(localQueueId);
           if (status === 'completed') {
               setIsOrderCompleted(true);
           }
@@ -921,14 +968,13 @@ const MenuView = () => {
           isMounted = false;
           window.clearInterval(pollId);
       };
-  }, [sentOrderId, displayArtist?.id]);
+  }, [sentOrderId, sentOrderTicketId, displayArtist?.id, menuTicketId, selectedEvent, language]);
 
   // Realtime listener for Queue Status (clears badge when completed).
   // Track the active ticket id in state so that cross-tab/same-tab ticket
   // changes (TICKET_UPDATED_EVENT, native 'storage') resubscribe the channel
   // to the right row instead of staying bound to whatever id was in storage
   // at mount time.
-  const [menuTicketId, setMenuTicketId] = useState<string | null>(() => getStoredTicketId(displayArtist?.id));
   useEffect(() => {
       if (!displayArtist?.id) {
           setMenuTicketId(null);
@@ -936,7 +982,17 @@ const MenuView = () => {
       }
       const sync = () => {
           const next = getStoredTicketId(displayArtist.id);
-          setMenuTicketId((prev) => (prev !== next ? next : prev));
+          if (next && isOrderSentRef.current && ((sentOrderTicketRef.current && sentOrderTicketRef.current !== next) || (menuTicketRef.current && menuTicketRef.current !== next))) {
+            setIsOrderSent(false);
+            setSentOrderId(null);
+            setSentOrderTicketId(null);
+            setIsOrderCompleted(false);
+            setOrderBannerDismissed(false);
+            clearCart();
+            clearMenuOrderState(displayArtist.id);
+          }
+          if (menuTicketRef.current !== next) { setUserQueueNumber(null); setUserQueueStatus(null); }
+          setMenuTicketId(next);
       };
       sync();
       const handleStorage = (e: StorageEvent) => {
@@ -953,12 +1009,22 @@ const MenuView = () => {
   useEffect(() => {
      if (!menuTicketId || !displayArtist?.id) return;
 
+     let active = true;
+     void supabase.from('queues').select('queue_number,status,event_id,queue_service_date,events(event_timezone)').eq('id', menuTicketId).maybeSingle().then(({ data, error }) => {
+       if (!active || getStoredTicketId(displayArtist?.id) !== menuTicketId) return;
+       if (error) { setToast({ tone: 'warning', title: language === 'th' ? 'โหลดสถานะคิวไม่สำเร็จ' : 'Could not load queue status.' }); return; }
+       if (!data) return;
+       setUserQueueStatus(data.status);
+       setUserQueueNumber(isQueueFromToday(data) && ['waiting','calling','serving'].includes(data.status) ? String(data.queue_number) : null);
+       if (data.event_id && data.event_id !== selectedEvent?.id) setSelectedEventId(data.event_id);
+     });
+
      const channel = supabase
          .channel(`menu-queue-status-${menuTicketId}`)
          .on('postgres_changes',
              { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${menuTicketId}` },
              (payload: any) => {
-                 if (!payload.new) return;
+                 if (!active || getStoredTicketId(displayArtist?.id) !== menuTicketId || !payload.new) return;
                  const newStatus = payload.new.status;
                  if (!newStatus) return;
                  // Read via ref so this subscription is not torn down when
@@ -976,10 +1042,10 @@ const MenuView = () => {
          )
          .subscribe();
 
-      return () => { supabase.removeChannel(channel); };
+      return () => { active = false; supabase.removeChannel(channel); };
   // isOrderSent is intentionally omitted — read via isOrderSentRef to avoid
   // re-subscribing every time the customer submits or cancels an order.
-  }, [displayArtist?.id, menuTicketId]);
+  }, [displayArtist?.id, menuTicketId, selectedEvent?.id, setSelectedEventId, language]);
 
   // Helper to reset order state - Clear all localStorage and state
   const canConfirmOrder = userQueueStatus === 'calling' || userQueueStatus === 'serving';
@@ -1006,6 +1072,8 @@ const MenuView = () => {
       clearCart();
       setIsOrderSent(false);
       setSentOrderId(null);
+      setSentOrderTicketId(null);
+      setOrderBannerDismissed(false);
       setIsOrderCompleted(false);
       
       const cleared = clearMenuOrderState(contextArtist?.id);
@@ -1520,7 +1588,7 @@ const MenuView = () => {
                     {(totalItems > 0 || isOrderSent) && (
                     <div className="flex min-h-14 items-center gap-3 bg-white/95 p-2 px-3 backdrop-blur-sm lg:shrink-0 lg:border-t lg:border-pink-50 lg:p-4">
                         {isOrderSent ? (
-                            isOrderCompleted ? (
+                            orderBannerDismissed ? <button type="button" className="min-h-11 text-sm font-bold text-green-800" onClick={() => setOrderBannerDismissed(false)}>{language === 'th' ? 'ดูออเดอร์ที่ส่งแล้ว' : 'View submitted order'}</button> : isOrderCompleted ? (
                                 // ✅ ORDER COMPLETED UI
                                 <div className="flex-1 flex items-center justify-between w-full animate-fade-in bg-green-100 px-3 py-2 rounded-lg border border-green-200">
                                     <div className="flex items-center gap-2">
@@ -1547,6 +1615,7 @@ const MenuView = () => {
                                             <div className="text-[11px] text-green-600">{t('menuWaitForQueue')}</div>
                                         </div>
                                     </div>
+                                    <button type="button" onClick={() => setOrderBannerDismissed(true)} aria-label={language === 'th' ? 'ปิดแจ้งผลออเดอร์' : 'Close order notification'} className="grid min-h-11 min-w-11 place-items-center rounded-xl text-green-800"><X size={18} /></button>
                                     <button onClick={handleCancelOrder} disabled={submitting} className="flex min-h-11 items-center gap-1 rounded-xl border border-red-200 bg-white px-3 text-[11px] font-bold text-red-600 shadow-sm hover:bg-red-50">
                                         <Trash2 size={12} /> {t('menuCancel')}
                                     </button>

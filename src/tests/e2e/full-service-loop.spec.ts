@@ -133,6 +133,17 @@ test.describe('full queue and POS service loop', () => {
       }).toBe('calling');
       await expect(customerPage.getByText(/It's Your Turn|Now Serving|Please proceed/i).first()).toBeVisible({ timeout: 20_000 });
 
+      await customerPage.goto(`/${artistSlug}/menu?event=${eventId}`);
+      await customerPage.getByRole('button', { name: `Add: ${productName}`, exact: true }).click();
+      await customerPage.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await customerPage.getByRole('dialog', { name: 'Confirm Order?', exact: true }).getByRole('button', { name: 'Send Order', exact: true }).click();
+      const closeNotice = customerPage.getByRole('button', { name: 'Close order notification', exact: true });
+      await expect(closeNotice).toBeVisible();
+      await closeNotice.click();
+      await expect(customerPage.getByRole('button', { name: `Add: ${productName}`, exact: true })).toBeDisabled();
+      await customerPage.getByRole('button', { name: 'View submitted order', exact: true }).click();
+      await expect(closeNotice).toBeVisible();
+
       const arrived = adminPage.getByRole('button', { name: 'ARRIVED', exact: true });
       await expect(arrived).toBeVisible({ timeout: 20_000 });
       await arrived.click();
@@ -154,7 +165,7 @@ test.describe('full queue and POS service loop', () => {
       const queueTab = adminPage.getByRole('button', { name: `Queue #${ticketNumber}`, exact: true });
       await expect(queueTab).toBeVisible({ timeout: 20_000 });
       await queueTab.click();
-      await adminPage.getByRole('button', { name: new RegExp(productName) }).first().click();
+      // The customer already sent one item; POS must retain that order.
       const charge = adminPage.getByRole('button', { name: /Charge/ });
       await expect(charge).toBeEnabled({ timeout: 20_000 });
       await charge.click();
@@ -187,6 +198,38 @@ test.describe('full queue and POS service loop', () => {
       expect(dataOrThrow(stock, 'read event stock after payment')).toEqual({ stock_total: 5, stock_reserved: 0, stock_sold: 1 });
       await expect(customerPage.getByText(/Completed|Order complete|Thank you/i).first()).toBeVisible({ timeout: 20_000 });
       await expect(queueTab).toBeHidden();
+      const nextTicketPage = await customerContext.newPage();
+      await nextTicketPage.goto(`/${artistSlug}/queue`);
+      await nextTicketPage.getByRole('button', { name: 'Close Ticket', exact: true }).click();
+      await nextTicketPage.getByRole('button', { name: /Get Ticket|Join (?:the )?Queue/i }).click();
+      const secondNumber = Number((await nextTicketPage.locator('.queue-ticket-number').innerText()).replace('#', '').trim());
+      expect(secondNumber).toBeGreaterThan(ticketNumber);
+      // The original menu tab must unlock without navigation or reload.
+      const addAgain = customerPage.getByRole('button', { name: `Add: ${productName}`, exact: true });
+      await expect(addAgain).toBeEnabled();
+      // Recover a stale receipt written by the previous DEV version (no ticket binding).
+      await customerPage.evaluate(({ artistId, orderId }) => {
+        localStorage.setItem(`orderSent_${artistId}`, 'true');
+        localStorage.setItem(`sentOrderId_${artistId}`, orderId);
+        localStorage.setItem(`orderCompleted_${artistId}`, 'false');
+        localStorage.removeItem(`sentOrderTicketId_${artistId}`);
+      }, { artistId, orderId: String(paidOrder.id) });
+      await customerPage.reload();
+      await expect(addAgain).toBeEnabled({ timeout: 15_000 });
+      await addAgain.click();
+      await expect(customerPage.getByRole('button', { name: 'Wait', exact: true })).toBeDisabled();
+      await adminPage.reload();
+      await adminPage.getByRole('button', { name: new RegExp(`^Call Next \\(#${secondNumber}\\)$`, 'i') }).click();
+      await expect(customerPage.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled({ timeout: 15_000 });
+      await customerPage.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await customerPage.getByRole('dialog', { name: 'Confirm Order?', exact: true }).getByRole('button', { name: 'Send Order', exact: true }).click();
+      await expect(closeNotice).toBeVisible();
+      const orders = await service.from('orders').select('id,queue_id,status').eq('event_id', eventId);
+      must(orders, 'read two customer rounds');
+      expect(orders.data).toHaveLength(2);
+      expect(orders.data!.find(row => row.id === paidOrder.id)?.status).toBe('completed');
+      expect(orders.data!.find(row => row.id !== paidOrder.id)?.queue_id).not.toBe(ticketId);
+
     } finally {
       await adminContext.close();
       await customerContext.close();

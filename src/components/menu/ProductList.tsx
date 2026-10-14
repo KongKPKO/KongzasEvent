@@ -24,6 +24,7 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
   const { t, language } = useI18n();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const [itemSearch, setItemSearch] = useState('');
   // Resolve the current record so an open detail view follows stock/price updates.
   const selected = products.find(product => product.id === selectedId);
   useEffect(() => {
@@ -40,9 +41,13 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
     return result;
   }, []);
   const variants = selected ? products.filter(product => selected.parent_product_id ? product.parent_product_id === selected.parent_product_id : selected.variant_group_name && product.variant_group_name?.trim().toLowerCase() === selected.variant_group_name.trim().toLowerCase()) : [];
+  const familyKey = selected?.parent_product_id || selected?.variant_group_name || selected?.id;
+  useEffect(() => setItemSearch(''), [familyKey]);
   const detailLabel = (name: string) => language === 'th' ? `ดูรายละเอียด ${name}` : `View details: ${name}`;
   const itemName = (product: Product) => product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name;
   const itemMeta = (product: Product) => [product.category?.trim(), ...(product.tags || []).map(tag => tag.trim())].filter(Boolean);
+
+  const visibleVariants = variants.filter(product => `${itemName(product)} ${itemMeta(product).join(' ')}`.toLocaleLowerCase().includes(itemSearch.trim().toLocaleLowerCase()));
 
   const quantityControls = (product: Product) => {
     const qty = cart[product.id] || 0, available = availableUnits(product);
@@ -101,15 +106,15 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
       {selected && <div className="shop-detail">
         <button type="button" className="shop-detail-close" autoFocus onClick={() => setSelectedId(null)} aria-label={t('productDetailClose')}><X size={22} /></button>
         <div className="shop-detail-image"><ProductGallery product={selected} getImageUrl={getMenuImageUrl} /></div>
-        <div className="shop-detail-copy">
+        <div className="shop-detail-copy"><div className="shop-detail-info">
           <div className="flex flex-wrap gap-1.5">{itemMeta(selected).map(value => <span key={value} className="rounded-full bg-pink-50 px-2.5 py-1 text-xs font-semibold text-pink-800">{value}</span>)}</div>
           <h2 className="mt-2 break-words text-2xl font-extrabold text-gray-950">{itemName(selected)}</h2>
           {selected.variant_group_name && <p className="mt-1 text-sm font-semibold text-gray-600">{selected.variant_group_name}</p>}
           <p className="mt-3 text-2xl font-bold">{formatPrice(selected.price, selected.currency)}</p>
           <ProductPresentationSummary product={selected} language={language} />{!['preorder', 'service'].includes(getProductPresentationKind(selected)) && <p className="mt-2 text-sm text-gray-600">{stockLabel(selected)}</p>}
           {selected.description && <p className="mt-5 whitespace-pre-line break-words text-sm leading-7 text-gray-600">{selected.description}</p>}
-          {variants.length > 1 && <fieldset className="mt-5"><legend className="mb-2 text-sm font-bold">{language === 'th' ? 'เลือกรายการสินค้า' : 'Choose item'}</legend><div className="grid gap-2">{variants.map(product => <button type="button" key={product.id} aria-label={itemName(product)} aria-description={`${itemMeta(product).join(' · ')} · ${getProductImages(product).length} ${language === 'th' ? 'รูป' : 'photos'}`} aria-pressed={product.id === selected.id} className="shop-variant-option flex w-full items-center justify-between gap-3 text-left" onClick={() => setSelectedId(product.id)}><span><strong className="block">{itemName(product)}</strong><span className="mt-0.5 block text-[11px] text-gray-500">{itemMeta(product).join(' · ')}</span></span><span className="shrink-0 text-xs font-semibold text-pink-700">{getProductImages(product).length} {language === 'th' ? 'รูป' : 'photos'}</span></button>)}</div></fieldset>}
-          <div className="mt-6">{quantityControls(selected)}<p className="mt-3 text-xs leading-5 text-gray-600">{language === 'th' ? 'การใส่ตะกร้ายังไม่จองสต็อก ตรวจรายการก่อนยืนยัน' : 'Adding to cart does not reserve stock. Review your items before confirming.'}</p></div>
+          </div>{variants.length > 1 && <fieldset className="shop-item-picker"><legend className="mb-2 text-sm font-bold">{language === 'th' ? 'เลือกรายการสินค้า' : 'Choose item'}</legend>{variants.length > 6 && <input type="search" className="shop-item-search" aria-label={language === 'th' ? 'ค้นหารายการสินค้า' : 'Search items'} placeholder={language === 'th' ? 'ค้นหารายการสินค้า…' : 'Search items…'} value={itemSearch} onChange={event => setItemSearch(event.target.value)} /> }<div className="shop-item-options">{visibleVariants.map(product => <button type="button" key={product.id} aria-label={itemName(product)} aria-description={`${itemMeta(product).join(' · ')} · ${getProductImages(product).length} ${language === 'th' ? 'รูป' : 'photos'}`} aria-pressed={product.id === selected.id} className="shop-variant-option flex w-full items-center justify-between gap-3 text-left" onClick={() => setSelectedId(product.id)}><span><strong className="block">{itemName(product)}</strong><span className="mt-0.5 block text-[11px] text-gray-500">{itemMeta(product).join(' · ')}</span></span>{getProductPresentationKind(product) === 'photo' && <span className="shrink-0 text-xs font-semibold text-pink-700">{getProductImages(product).length} {language === 'th' ? 'ภาพตัวอย่าง' : 'preview images'}</span>}</button>)}{visibleVariants.length === 0 && <p className="py-3 text-sm text-gray-500" role="status">{language === 'th' ? 'ไม่พบรายการสินค้า' : 'No matching items'}</p>}</div></fieldset>}
+          <div className="shop-detail-purchase">{quantityControls(selected)}<p className="mt-3 text-xs leading-5 text-gray-600">{language === 'th' ? 'การใส่ตะกร้ายังไม่จองสต็อก ตรวจรายการก่อนยืนยัน' : 'Adding to cart does not reserve stock. Review your items before confirming.'}</p></div>
         </div>
       </div>}
     </dialog>

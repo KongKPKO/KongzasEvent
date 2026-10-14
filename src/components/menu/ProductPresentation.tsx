@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { CalendarClock, Clock3, ImageOff, Images, Package, Sparkles, Users } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, X, CalendarClock, Clock3, ImageOff, Images, Package, Sparkles, Users } from 'lucide-react';
 import type { PresentableProduct } from '../../types/productPresentation';
 import { getBundleItemCount, getProductImages, getProductPresentationKind, isProductPreorderClosed } from '../../utils/productPresentation';
 import { uiText, useI18n } from '../../i18n';
@@ -111,6 +111,10 @@ export function ProductGallery({
   const { language } = useI18n();
   const images = getProductImages(product);
   const [selected, setSelected] = useState(0);
+  const preview = useRef<HTMLDialogElement>(null);
+  const touchStart = useRef<number | null>(null);
+  const move = (delta: number) => setSelected(current => (current + delta + images.length) % images.length);
+  const previewLabel = language === 'th' ? 'ดูภาพใหญ่' : 'Preview image';
 
   useEffect(() => setSelected(0), [product.id, images.length]);
 
@@ -118,9 +122,9 @@ export function ProductGallery({
 
   return (
     <div className="flex h-full min-h-[300px] flex-col p-4 sm:min-h-[560px] sm:p-6">
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-white/60">
-        <img src={getImageUrl(images[selected], 1000)} alt={`${product.name} ${selected + 1}`} className="h-full max-h-[70vh] w-full object-contain" />
-      </div>
+      <button type="button" aria-label={previewLabel} onClick={() => preview.current?.showModal()} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-white/60">
+        <img src={getImageUrl(images[selected] || images[0], 1000)} alt={`${product.name} ${selected + 1}`} className="h-full max-h-[70vh] w-full object-contain" />
+      </button>
       {images.length > 1 && (
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label={`${images.length} ${uiText(language, 'product images')}`}>
           {images.map((image, index) => (
@@ -137,6 +141,20 @@ export function ProductGallery({
           ))}
         </div>
       )}
+      <dialog ref={preview} className="shop-image-preview" aria-label={previewLabel}
+        onCancel={event => event.stopPropagation()}
+        onClick={event => { if (event.target === event.currentTarget) preview.current?.close(); }}
+        onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); move(event.key === 'ArrowRight' ? 1 : -1); } }}>
+        <button type="button" autoFocus className="shop-preview-close" aria-label={language === 'th' ? 'ปิดภาพใหญ่' : 'Close image preview'} onClick={() => preview.current?.close()}><X /></button>
+        <div className="shop-preview-stage" onTouchStart={event => { touchStart.current = event.touches[0].clientX; }} onTouchEnd={event => {
+          if (touchStart.current !== null) { const distance = event.changedTouches[0].clientX - touchStart.current; if (Math.abs(distance) > 40) move(distance < 0 ? 1 : -1); }
+          touchStart.current = null;
+        }}>
+          <img src={getImageUrl(images[selected] || images[0], 1800)} alt={`${product.name} ${selected + 1}`} />
+          {images.length > 1 && <><button type="button" className="shop-preview-previous" aria-label={language === 'th' ? 'ภาพก่อนหน้า' : 'Previous image'} onClick={() => move(-1)}><ChevronLeft /></button><button type="button" className="shop-preview-next" aria-label={language === 'th' ? 'ภาพถัดไป' : 'Next image'} onClick={() => move(1)}><ChevronRight /></button></>}
+        </div>
+        <p className="shop-preview-count" aria-live="polite">{selected + 1} / {images.length}</p>
+      </dialog>
     </div>
   );
 }

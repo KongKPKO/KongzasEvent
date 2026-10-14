@@ -26,7 +26,7 @@ test.beforeAll(async () => {
   artistId = fixture.userId;
   const many = await service.from('product_parents').insert({ artist_id: artistId, name: 'Many designs', base_price: 90 }).select('id').single();
   must(many);
-  must(await service.from('products').insert(Array.from({ length: 30 }, (_, index) => ({ artist_id: artistId, parent_product_id: many.data!.id, name: `Design ${index + 1}`, variant_name: `Design ${index + 1}`, variant_sort_order: index, stock_total: 10, is_unlimited: false, price: 90, status: 'enable' }))));
+  must(await service.from('products').insert(Array.from({ length: 30 }, (_, index) => ({ artist_id: artistId, parent_product_id: many.data!.id, name: `Design ${index + 1}`, variant_group_name: 'Many designs', variant_name: `Design ${index + 1}`, variant_sort_order: index, stock_total: 10, is_unlimited: false, price: 90, status: 'enable' }))));
   must(await service.from('products').insert({ artist_id: artistId, name: 'Simple service', variant_name: 'Default', price: 200, stock_total: 20, is_unlimited: false, status: 'enable' }));
   must(await service.from('events').insert({ id: eventId, artist_id: artistId, event_name: 'Cosplay family event',
     start_date: new Date(Date.now() - 3600_000).toISOString(), end_date: new Date(Date.now() + 86_400_000).toISOString(),
@@ -42,6 +42,42 @@ test.afterAll(async () => {
   must(await service.from('product_parents').delete().eq('artist_id', artistId));
   must(await service.from('artists').delete().eq('id', artistId));
   must(await service.auth.admin.deleteUser(artistId));
+});
+
+test('customer can search 30 items with fixed actions and preview images on desktop and mobile', async ({ page }) => {
+  const result = await service.from('products').select('id').eq('artist_id', artistId).like('name', 'Design %');
+  must(result);
+  must(await service.from('event_products').upsert(result.data!.map(product => ({ artist_id: artistId, event_id: eventId, product_id: product.id, stock_total: 10, is_enabled: true, is_unlimited: false }))));
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`/${slug}/menu?event=${eventId}`);
+    await page.getByRole('article', { name: 'Many designs', exact: true }).getByRole('button', { name: 'Choose item', exact: true }).click();
+    const detail = page.locator('.shop-product-dialog');
+    const search = detail.getByRole('searchbox', { name: 'Search items' });
+    await expect(search).toBeVisible();
+    const list = detail.locator('.shop-item-options');
+    expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    const purchase = detail.locator('.shop-detail-purchase');
+    const initial = await purchase.boundingBox();
+    await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const after = await purchase.boundingBox();
+    expect(after!.y).toBe(initial!.y);
+    expect(after!.y + after!.height).toBeLessThanOrEqual(viewport.height);
+    const close = await detail.getByRole('button', { name: 'Close product detail' }).boundingBox();
+    expect(close!.y).toBeGreaterThanOrEqual(0);
+    await page.screenshot({ path: `../customer-items-${viewport.width}-local.png` });
+    await search.fill('Design 30');
+    await expect(list.getByRole('button')).toHaveCount(1);
+    await list.getByRole('button', { name: 'Design 30', exact: true }).click();
+    await expect(search).toHaveValue('Design 30');
+    await expect(detail.getByRole('heading', { name: 'Design 30', exact: true })).toBeVisible();
+    await search.fill('missing design');
+    await expect(list.getByRole('status')).toHaveText('No matching items');
+    await search.fill('');
+    await expect(list.getByText('preview images')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
+  }
 });
 
 test('creator family editor saves and reorders variants, customer sees one family and public Cosplan', async ({ page, browser }) => {
@@ -164,8 +200,27 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await detail.getByRole('button', { name: /^Aether(?:\s|$)/ }).click();
   await expect(detail.getByRole('button', { name: 'View image 5 of 5', exact: true })).toBeVisible();
   await detail.getByRole('button', { name: 'View image 5 of 5', exact: true }).click();
+  await detail.getByRole('button', { name: 'Preview image', exact: true }).click();
+  const imagePreview = storefront.getByRole('dialog', { name: 'Preview image', exact: true });
+  await expect(imagePreview).toBeVisible();
+  await expect(imagePreview.locator('.shop-preview-count')).toHaveText('5 / 5');
+  await imagePreview.getByRole('button', { name: 'Next image' }).click();
+  await expect(imagePreview.locator('.shop-preview-count')).toHaveText('1 / 5');
+  await storefront.keyboard.press('ArrowRight');
+  await expect(imagePreview.locator('.shop-preview-count')).toHaveText('2 / 5');
+  await storefront.setViewportSize({ width: 390, height: 844 });
+  await imagePreview.locator('.shop-preview-stage').evaluate(stage => {
+    stage.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [new Touch({ identifier: 1, target: stage, clientX: 300 })] }));
+    stage.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [new Touch({ identifier: 1, target: stage, clientX: 120 })] }));
+  });
+  await expect(imagePreview.locator('.shop-preview-count')).toHaveText('3 / 5');
+  await storefront.screenshot({ path: '../customer-image-preview-mobile-local.png' });
+  await storefront.keyboard.press('Escape');
+  await expect(imagePreview).toBeHidden();
+  await expect(storefront.locator('.shop-product-dialog')).toBeVisible();
   await storefront.keyboard.press('Escape');
   await expect(detail).toBeHidden();
+
 
   await page.getByRole('button', { name: 'Edit Frieren', exact: true }).click();
   await appearance.getByLabel('Show publicly').uncheck();
@@ -309,6 +364,6 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await expect(details.getByRole('heading', { name: 'Ronova', exact: true })).toBeVisible();
   await details.getByRole('button', { name: /Raiden/ }).click();
   await expect(details.getByRole('heading', { name: 'Raiden', exact: true })).toBeVisible();
-  await expect(details.locator('.shop-detail-image img')).toHaveCount(5); // selected image + four thumbnail images
+  await expect(details.locator('.shop-detail-image img:visible')).toHaveCount(5); // selected image + four thumbnail images
   await page.screenshot({ path: testInfo.outputPath('customer-item-gallery.png'), fullPage: true });
 });

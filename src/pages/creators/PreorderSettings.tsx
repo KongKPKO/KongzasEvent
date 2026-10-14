@@ -456,14 +456,13 @@ export default function PreorderSettings() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AdminHeader activePage="events" />
-      <main className="mx-auto max-w-5xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active="settings" sellingMode={event.selling_mode} />}
+      <AdminHeader activePage="events" activeEvent={{ id: event.id, event_name: event.event_name }} />
+      <main className="mx-auto max-w-6xl p-4 md:p-6">
+        {eventId && <EventNavTabs eventName={event.event_name} eventId={eventId} active="settings" sellingMode={event.selling_mode} />}
 
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-black uppercase tracking-[0.16em] text-pink-600">{copy("Order Settings")}</div>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-950 md:text-3xl">{event.event_name}</h1>
+            <h2 className="text-lg font-black text-gray-950">{copy("Order Settings")}</h2>
             <p className="mt-1 text-sm font-semibold text-gray-500">
               {copy("Set event details, sales schedule, pickup notes, and payment instructions in one place.")}</p>
           </div>

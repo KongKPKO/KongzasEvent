@@ -1026,14 +1026,13 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-5 md:px-6">
-        <section className="mb-5 border-b border-gray-200 pb-5">
-          <button onClick={goToAllEvents} className="workspace-action mb-4 inline-flex items-center gap-2 border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:bg-gray-50">
-            <ArrowLeft size={15} aria-hidden="true" />
-            {language === 'th' ? 'ดูอีเวนต์ทั้งหมด' : 'All events'}
-          </button>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
+        <EventNavTabs eventId={event.id} eventName={event.event_name} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode}>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-gray-600">
+                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event, language === 'th' ? 'th-TH' : 'en-GB')}</span>
+                {event.location && <span className="inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" />{event.location}</span>}
+                {event.booth_detail && <span>{copy("Booth")}{event.booth_detail}</span>}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${contextBadgeClass}`}>
                   {copy(contextLabel)}
                 </span>
@@ -1044,18 +1043,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   {event.is_booth_open ? copy("Booth open") : copy("Booth closed")}
                 </span>}
               </div>
-              <h1 className="mt-3 truncate text-2xl font-black tracking-tight text-gray-900 md:text-3xl">{event.event_name}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-gray-600">
-                <span className="inline-flex items-center gap-1.5"><Calendar size={15} aria-hidden="true" />{formatEventDate(event, language === 'th' ? 'th-TH' : 'en-GB')}</span>
-                {event.location && <span className="inline-flex items-center gap-1.5"><MapPin size={15} aria-hidden="true" />{event.location}</span>}
-                {event.booth_detail && <span>{copy("Booth")}{event.booth_detail}</span>}
-              </div>
-            </div>
-
-          </div>
-        </section>
-
-        <EventNavTabs eventId={event.id} active="overview" actorRole={actorContext.role} sellingMode={event.selling_mode} />
+        </EventNavTabs>
 
         {setupReadiness && (
           <GuidedSetupPanel

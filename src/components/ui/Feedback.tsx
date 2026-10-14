@@ -36,6 +36,16 @@ const toneClasses = {
 
 export function Toast({ message, onClose }: ToastProps) {
   const { t, language } = useI18n();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!message) return;
+
+    const timeout = window.setTimeout(() => onCloseRef.current(), 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
   if (!message) return null;
 
   return (

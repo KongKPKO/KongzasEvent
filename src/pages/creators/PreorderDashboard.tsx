@@ -492,7 +492,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       </EvidenceReview>}
 
       <main className="merchant-orders mx-auto max-w-6xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active={scope === 'post_event' ? 'postorder' : 'preorder'} actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
+        {eventId && <EventNavTabs eventName={eventInfo?.event_name || copy('Event')} eventId={eventId} active={scope === 'post_event' ? 'postorder' : 'preorder'} actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-wrap gap-2">
             <button
@@ -512,7 +512,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         <section className="mb-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <ReceiptText className="text-pink-600" size={24} />
-            <h1 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? copy("Post-order Dashboard") : copy("Pre-order Dashboard")}</h1>
+            <h2 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? copy("Post-order Dashboard") : copy("Pre-order Dashboard")}</h2>
           </div>
           <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || copy("Event")} · {scope === 'post_event' ? copy("Review transfers, then ship orders") : copy("Review transfers, then prepare production")}</p>
           <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">{copy("Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.")}</p>

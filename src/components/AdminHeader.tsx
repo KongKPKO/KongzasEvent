@@ -133,6 +133,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                                     : 'text-gray-600 hover:text-pink-600 hover:bg-gray-50'
                             }`}
                             aria-label={label}
+                            aria-current={isActive ? 'page' : undefined}
                         >
                             <Icon size={14} aria-hidden="true" />
                             <span className="hidden sm:inline">{label}</span>
@@ -236,6 +237,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                                         : 'text-gray-600 hover:bg-gray-50'
                                 }`}
                                 aria-label={label}
+                                aria-current={isActive ? 'page' : undefined}
                             >
                                 <Icon size={18} />
                                 {label}

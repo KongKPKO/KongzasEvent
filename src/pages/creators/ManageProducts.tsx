@@ -2098,7 +2098,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          </dialog>
          {/* ✅ NEW: Unified Admin Header */}
          <AdminHeader
-            activePage={activeWorkspaceTab === 'promotions' && !isEventScopedWorkspace ? 'promotion' : 'menu'}
+            activePage={isEventScopedWorkspace ? 'events' : activeWorkspaceTab === 'promotions' ? 'promotion' : 'menu'}
+            activeEvent={isEventScopedWorkspace && selectedEventId ? { id: selectedEventId, event_name: selectedEventName } : undefined}
             actorRole={actorContext?.role}
             userEmail={actorContext?.member_email}
          />
@@ -2310,17 +2311,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          )}
 
          {/* Page Title Wrapper */}
-         {(isEventScopedWorkspace || activeWorkspaceTab === 'promotions') && (
+         {(!isEventScopedWorkspace && activeWorkspaceTab === 'promotions') && (
             <div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 mb-2">
                <h1 className="text-xl font-black text-gray-800 tracking-tight">{pageTitle}</h1>
                <p className="text-sm text-pink-600 font-bold">{pageSubtitle}</p>
             </div>
          )}
 
-         <main className="max-w-6xl mx-auto px-4 md:px-6 pb-12">
+         <main className="max-w-6xl mx-auto px-4 md:px-6 pt-5 pb-12">
             {isEventScopedWorkspace && selectedEventId && (
                <EventNavTabs
                   eventId={selectedEventId}
+                  eventName={selectedEventName}
                   active={activeWorkspaceTab === 'promotions' ? 'promotion' : 'catalog'}
                   actorRole={actorContext?.role}
                />

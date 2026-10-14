@@ -5,6 +5,7 @@ import { eventCopy } from '../../lib/eventCopy';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import EventNavTabs from '../../components/EventNavTabs';
+import AdminHeader from '../../components/AdminHeader';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, PackageCheck, ShoppingBag, Store, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
@@ -362,9 +363,11 @@ export default function EventDashboard() {
   };
 
   return (
+    <div>
+      <AdminHeader activePage="events" activeEvent={eventId ? { id: eventId, event_name: eventInfo.event_name } : undefined} />
     <div className="sales-reports min-h-screen bg-gray-50 p-4 sm:p-6 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
-        {eventId && <EventNavTabs eventId={eventId} active="dashboard" />}
+        {eventId && <EventNavTabs eventName={eventInfo.event_name} eventId={eventId} active="dashboard" />}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -375,7 +378,7 @@ export default function EventDashboard() {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-2xl font-black text-gray-800 tracking-tight">{th ? 'ภาพรวมยอดขาย' : 'Sales dashboard'}</h1>
+            <h2 className="text-2xl font-black text-gray-800 tracking-tight">{th ? 'ภาพรวมยอดขาย' : 'Sales dashboard'}</h2>
             <p className="text-sm text-pink-500 font-bold mt-0.5">{eventInfo.event_name}</p>
             <p className="text-xs text-gray-500 mt-1">
               {new Date(eventInfo.start_date).toLocaleDateString(language === 'th' ? 'th-TH' : 'en-GB', { timeZone })} - {new Date(eventInfo.end_date).toLocaleDateString(language === 'th' ? 'th-TH' : 'en-GB', { timeZone })}
@@ -510,6 +513,7 @@ export default function EventDashboard() {
         </div>
 
       </div>
+    </div>
     </div>
   );
 }

@@ -128,3 +128,46 @@ test('switching POS language preserves the cart and total without requesting a n
   await expect(page.getByRole('button', { name: 'Charge ฿150', exact: true })).toBeEnabled();
   expect(quotes).toBe(before);
 });
+
+test('all event menus show the event before navigation and action feedback closes after two seconds', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await page.goto('/manage-login');
+  await new LoginPage(page).login(email, password);
+  await expect(page).not.toHaveURL(/manage-login/);
+  await selectLanguage(page, 'en');
+  const menus = [
+    ['workspace', 'overview', 'Prepare event'], ['catalog', 'catalog', 'Products & stock'],
+    ['preorder', 'settings', 'Schedule & payment'], ['promotion', 'promotion', 'Promotions'],
+    ['preorder-dashboard', 'preorder', 'Pre-orders'], ['postorder-dashboard', 'postorder', 'Post-orders'],
+    ['pickup', 'pickup', 'Pickup'], ['dashboard', 'dashboard', 'Sales'], ['history', 'history', 'History'],
+  ];
+  for (const [path, key, label] of menus) {
+    await page.goto(`/manage-events/${eventId}/${path}`);
+    const context = page.locator(`[data-event-context="${eventId}"]`);
+    await expect(context.getByRole('heading', { level: 1, name: 'Queue', exact: true })).toBeVisible();
+    await expect(context.getByText(`Current page · ${label}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Events', exact: true }).first()).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('button', { name: 'Catalog', exact: true }).first()).not.toHaveAttribute('aria-current', 'page');
+    const nav = context.getByRole('navigation', { name: 'Event sections' });
+    await expect(nav.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-current', 'page');
+    const titleBounds = await context.getByRole('heading', { level: 1 }).boundingBox();
+    const navBounds = await nav.boundingBox();
+    expect(titleBounds!.y + titleBounds!.height).toBeLessThan(navBounds!.y);
+    await page.setViewportSize({ width: 375, height: 900 });
+    await expect(nav.getByRole('combobox', { name: 'Event page', exact: true })).toHaveValue(key);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    if (key === 'catalog') await page.screenshot({ path: testInfo.outputPath('event-context.png'), fullPage: true });
+  }
+  await page.goto(`/manage-events/${eventId}/preorder`);
+  await page.clock.install();
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  const toast = page.getByRole('status').filter({ hasText: 'Order settings saved' });
+  await expect(toast).toBeVisible();
+  await page.clock.fastForward(1500);
+  await expect(toast).toBeVisible();
+  await page.clock.fastForward(600);
+  await expect(toast).toHaveCount(0);
+  await selectLanguage(page, 'th');
+  await expect(page.locator(`[data-event-context="${eventId}"]`)).toContainText('หน้าปัจจุบัน · ช่วงขายและรับเงิน');
+});

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Monitor, Users } from 'lucide-react';
+import { ArrowLeft, Monitor, Users } from 'lucide-react';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../types/access';
 import type { ActorRole } from '../types/access';
 import { uiText, useI18n } from '../i18n';
@@ -9,6 +9,8 @@ export type EventTabKey = 'settings' | 'overview' | 'dashboard' | 'catalog' | 'p
 
 interface EventNavTabsProps {
   eventId: string;
+  eventName: string;
+  children?: ReactNode;
   active?: EventTabKey;
   actorRole?: ActorRole | null;
   // Accepted for call-site compatibility; tabs no longer vary by mode.
@@ -20,7 +22,7 @@ interface EventNavTabsProps {
 // Pre-order and post-event are separate timelines of one event, so both order
 // tabs are always shown — a finished pre-order phase stays viewable after the
 // post-event store opens.
-export default function EventNavTabs({ eventId, active, actorRole }: EventNavTabsProps) {
+export default function EventNavTabs({ eventId, eventName, active, actorRole, children }: EventNavTabsProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
@@ -57,43 +59,54 @@ export default function EventNavTabs({ eventId, active, actorRole }: EventNavTab
   };
 
   return (
-    <nav aria-label={th ? "เมนูอีเวนต์" : "Event sections"} className="mb-5 flex flex-wrap items-center gap-2">
-      <label className="grid w-full min-w-0 gap-1 text-xs font-bold text-gray-600 sm:hidden">
-        {th ? 'หน้าของอีเวนต์' : 'Event page'}
-        <select value={active || ''} onChange={event => openTab(event.target.value)} className="min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-pink-900">
-          <option value="" disabled>{th ? 'เลือกหน้า' : 'Choose a page'}</option>
-          {tabs.filter(tab => tab.visible).map(tab => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
-        </select>
-      </label>
-      <div className="hidden w-full min-w-0 flex-wrap sm:flex items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
-        {tabs.filter((tab) => tab.visible).map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => openTab(tab.key)}
-            aria-current={active === tab.key ? 'page' : undefined}
-            className={`min-h-11 whitespace-nowrap shrink-0 rounded-xl px-3.5 text-sm font-black transition-colors ${
-              active === tab.key
-                ? 'bg-pink-600 text-white shadow-sm'
-                : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
-            }`}
-          >
-            {uiText(language, tab.label)}
-          </button>
-        ))}
-      </div>
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        {liveActions.filter((action) => action.visible).map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={() => navigate(action.path)}
-            className="inline-flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
-          >
-            <action.icon size={15} /> {uiText(language, action.label)}
-          </button>
-        ))}
-      </div>
-    </nav>
+    <section className="mb-5" aria-label={th ? 'อีเวนต์ที่กำลังจัดการ' : 'Current event'} data-event-context={eventId}>
+      <header className="mb-3 rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 to-white px-4 py-4 sm:px-5">
+        <button type="button" onClick={() => navigate('/manage-events?view=all')} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg text-xs font-bold text-pink-800 hover:text-pink-600">
+          <ArrowLeft size={15} aria-hidden="true" />{th ? 'ดูอีเวนต์ทั้งหมด' : 'All events'}
+        </button>
+        <p className="text-xs font-bold text-pink-700">{th ? 'กำลังจัดการอีเวนต์' : 'Event workspace'}</p>
+        <h1 className="mt-1 break-words text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">{eventName}</h1>
+        {children}
+        <p className="mt-2 text-sm font-bold text-gray-700">{th ? 'หน้าปัจจุบัน' : 'Current page'} · {tabs.find(tab => tab.key === active)?.label}</p>
+      </header>
+      <nav aria-label={th ? "เมนูอีเวนต์" : "Event sections"} className="flex flex-wrap items-center gap-2">
+        <label className="grid w-full min-w-0 gap-1 text-xs font-bold text-gray-600 sm:hidden">
+          {th ? 'หน้าของอีเวนต์' : 'Event page'}
+          <select value={active || ''} onChange={event => openTab(event.target.value)} className="min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-pink-900">
+            <option value="" disabled>{th ? 'เลือกหน้า' : 'Choose a page'}</option>
+            {tabs.filter(tab => tab.visible).map(tab => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+          </select>
+        </label>
+        <div className="hidden w-full min-w-0 flex-wrap sm:flex items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          {tabs.filter((tab) => tab.visible).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => openTab(tab.key)}
+              aria-current={active === tab.key ? 'page' : undefined}
+              className={`min-h-11 whitespace-nowrap shrink-0 rounded-xl px-3.5 text-sm font-black transition-colors ${
+                active === tab.key
+                  ? 'bg-pink-600 text-white shadow-sm'
+                  : 'text-pink-900 hover:bg-pink-50 hover:text-pink-800'
+              }`}
+            >
+              {uiText(language, tab.label)}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {liveActions.filter((action) => action.visible).map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => navigate(action.path)}
+              className="inline-flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
+            >
+              <action.icon size={15} /> {uiText(language, action.label)}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </section>
   );
 }

@@ -224,7 +224,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AdminHeader activePage="pos" actorRole={actorContext.role} userEmail={actorContext.member_email} />
+        <AdminHeader activePage="events" actorRole={actorContext.role} userEmail={actorContext.member_email} />
         <div className="p-10 text-center text-sm font-bold text-gray-400">{uiText(language, 'Loading pickup orders...')}</div>
       </div>
     );
@@ -233,7 +233,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminHeader
-        activePage="pos"
+        activePage="events"
         activeEvent={eventInfo ? { id: eventInfo.id, event_name: eventInfo.event_name } : null}
         actorRole={actorContext.role}
         userEmail={actorContext.member_email}
@@ -256,14 +256,14 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
         onCancel={() => { if (!actionInFlight.current) setConfirmAction(null); }}
       />
 
-      <main className="mx-auto max-w-5xl p-4 md:p-6">
-        {eventId && <EventNavTabs eventId={eventId} active="pickup" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
+      <main className="mx-auto max-w-6xl p-4 md:p-6">
+        {eventId && <EventNavTabs eventName={eventInfo?.event_name || uiText(language, 'Event')} eventId={eventId} active="pickup" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}
 
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <PackageCheck className="text-pink-600" size={24} />
-              <h1 className="text-2xl font-black text-gray-900">{uiText(language, 'Pickup Orders')}</h1>
+              <h2 className="text-2xl font-black text-gray-900">{uiText(language, 'Pickup Orders')}</h2>
             </div>
             <p className="mt-1 text-sm font-semibold text-gray-500">
               {eventInfo?.event_name || uiText(language, 'Event')} · {uiText(language, 'Workspace role')}: {uiText(language, actorContext.role === 'owner' ? 'Owner' : actorContext.role === 'manager' ? 'Manager' : actorContext.role === 'seller' ? 'Seller / POS Staff' : 'Queue Staff')}

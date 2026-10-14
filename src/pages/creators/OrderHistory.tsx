@@ -5,6 +5,7 @@ import { eventCopy } from '../../lib/eventCopy';
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import EventNavTabs from '../../components/EventNavTabs';
+import AdminHeader from '../../components/AdminHeader';
 import { supabase } from '../../supabaseClient';
 import { ArrowLeft } from 'lucide-react';
 import { formatPrice } from '../../utils/currency'; // ✅ NEW
@@ -179,12 +180,14 @@ export default function EventHistory() {
     if (loading) return <div className="p-10 text-center text-gray-400">{copy("Loading history...")}</div>;
 
     return (
+      <div>
+        <AdminHeader activePage="events" activeEvent={eventId && eventInfo ? { id: eventId, event_name: eventInfo.event_name } : undefined} />
       <main className="sales-reports min-h-screen bg-gray-50 p-4 sm:p-6">
         <div className="max-w-6xl mx-auto space-y-5">
-          {eventId && <EventNavTabs eventId={eventId} active="history" />}
+          {eventId && <EventNavTabs eventName={eventInfo?.event_name || copy('Event')} eventId={eventId} active="history" />}
           <header className="flex items-start gap-3">
             <button type="button" onClick={() => navigate(`/manage-events/${eventId}/workspace`)} aria-label={copy("Back to event workspace")} className="report-icon"><ArrowLeft size={20} /></button>
-            <div><h1 className="text-2xl font-black">{th ? 'ประวัติการขาย' : 'Sales history'}</h1><p className="text-sm text-gray-600 mt-1">{eventInfo?.event_name}</p></div>
+            <div><h2 className="text-2xl font-black">{th ? 'ประวัติการขาย' : 'Sales history'}</h2><p className="text-sm text-gray-600 mt-1">{eventInfo?.event_name}</p></div>
           </header>
           <EventDateFilter from={from} to={to} timeZone={timeZone} onChange={changeDates} />
           <section className="report-filters" aria-label={th ? 'กรองรายการขาย' : 'Filter sales'}>
@@ -216,5 +219,6 @@ export default function EventHistory() {
           <details className="report-panel"><summary className="font-bold cursor-pointer">{th ? 'สินค้าที่ขายในช่วงที่เลือก' : 'Products sold in this selection'}</summary><p className="text-xs text-gray-600 my-3">{th ? 'มูลค่าสินค้าก่อนส่วนลด รวมรายการของแถมราคา 0' : 'Item value before discounts, including zero-priced gifts.'}</p>{summary.topProducts.map(prod => <div key={prod.name} className="flex justify-between gap-4 py-3 border-b border-gray-100 text-sm"><span>{prod.name} · {prod.qty} {copy('units')}</span><strong>{formatPrice(prod.total, orders[0]?.currency || 'THB')}</strong></div>)}</details>
         </div>
       </main>
+      </div>
     );
 }

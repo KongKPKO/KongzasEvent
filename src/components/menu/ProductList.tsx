@@ -6,13 +6,13 @@ import { uiText, useI18n } from '../../i18n';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { ProductGallery, ProductMedia, ProductPresentationSummary } from './ProductPresentation';
 import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
-import { buildProductPresentationEntries, getProductPresentationKind, getProductPriceRange, isProductPreorderClosed } from '../../utils/productPresentation';
+import { buildProductPresentationEntries, getProductImages, getProductPresentationKind, getProductPriceRange, isProductPreorderClosed } from '../../utils/productPresentation';
 
 interface Product extends ProductPresentationFields, ProductVariantFields {
   id: string; name: string; price: number; image_url: string; description?: string; category?: string;
   status?: 'enable' | 'disable' | 'soldout'; currency?: string; stock_total?: number | null;
   stock_reserved?: number; stock_sold?: number; is_unlimited?: boolean;
-  variant_group_name?: string | null; variant_name?: string | null; variant_sort_order?: number;
+  tags?: string[];
 }
 interface ProductListProps {
   products: Product[]; promotions?: PromotionRule[]; cart: Record<string, number>; isOrderSent: boolean;
@@ -31,8 +31,18 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
     if (!selected && dialog.current?.open) dialog.current.close();
   }, [selected]);
   const entries = buildProductPresentationEntries(products);
+  const sections = entries.reduce<Array<{ category: string; entries: typeof entries }>>((result, entry) => {
+    const product = entry.type === 'product' ? entry.product : entry.products[0];
+    const category = product?.category?.trim() || (language === 'th' ? 'อื่น ๆ' : 'Other');
+    const section = result.find(item => item.category === category);
+    if (section) section.entries.push(entry);
+    else result.push({ category, entries: [entry] });
+    return result;
+  }, []);
   const variants = selected ? products.filter(product => selected.parent_product_id ? product.parent_product_id === selected.parent_product_id : selected.variant_group_name && product.variant_group_name?.trim().toLowerCase() === selected.variant_group_name.trim().toLowerCase()) : [];
   const detailLabel = (name: string) => language === 'th' ? `ดูรายละเอียด ${name}` : `View details: ${name}`;
+  const itemName = (product: Product) => product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name;
+  const itemMeta = (product: Product) => [product.category?.trim(), ...(product.tags || []).map(tag => tag.trim())].filter(Boolean);
 
   const quantityControls = (product: Product) => {
     const qty = cart[product.id] || 0, available = availableUnits(product);
@@ -53,7 +63,7 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
       {(product.status === 'soldout' || availableUnits(product) === 0) && <span className="shop-sold-out">{t('productSoldOut')}</span>}
     </button>
     <div className="shop-product-copy">
-      <h3 className="break-words font-bold leading-6 text-gray-950">{product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name}</h3>
+      <h3 className="break-words font-bold leading-6 text-gray-950">{itemName(product)}</h3>
       {product.variant_name && product.variant_name !== 'Default' && <p className="mt-1 break-words text-xs text-gray-600">{product.name}</p>}
       <div className="mt-1 flex flex-wrap gap-1">{getPromotionBadgesForProduct(product, promotions).map(badge => <span key={badge.id} className="text-xs font-semibold text-pink-800">{badge.shortLabel}</span>)}</div>
       <ProductPresentationSummary product={product} language={language} compact /><div className="shop-product-purchase">{!['preorder', 'service'].includes(getProductPresentationKind(product)) && <p className="shop-product-stock">{stockLabel(product)}</p>}<div className={`shop-product-buyline ${cart[product.id] ? 'has-quantity' : ''}`}><p className="shop-product-price">{formatPrice(product.price, product.currency)}</p>{quantityControls(product)}</div></div>
@@ -62,15 +72,29 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
 
   return <>
     {products.length === 0 ? <div className="shop-empty"><ShoppingBag size={36} aria-hidden="true" /><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{onClearFilters && <button className="shop-outline" onClick={onClearFilters}>{t('menuClearFilters')}</button>}</div> : <div className="shop-product-grid">
-      {entries.map((entry, index) => {
-        if (entry.type === 'product') return card(entry.product, index);
-        const representative = entry.parent || entry.products[0];
-        const price = getProductPriceRange(entry.products);
-        return <article className="shop-product" key={entry.key} aria-label={entry.label}>
-          <button type="button" className="shop-product-picture" aria-label={detailLabel(entry.label)} onClick={() => setSelectedId(entry.products[0].id)}><ProductMedia product={representative} getImageUrl={getMenuImageUrl} eager={index < 3} /></button>
-          <div className="shop-product-copy"><h3 className="break-words font-bold leading-6 text-gray-950">{entry.label}</h3><p className="mt-1 text-xs text-gray-600">{entry.products.length} {language === 'th' ? 'ตัวเลือก' : 'variants'}</p><ProductPresentationSummary product={representative} language={language} compact /><p className="shop-product-price">{price.min === price.max ? formatPrice(price.min, representative.currency) : `${formatPrice(price.min, representative.currency)}–${formatPrice(price.max, representative.currency)}`}</p><button type="button" className="shop-add" onClick={() => setSelectedId(entry.products[0].id)}>{language === 'th' ? 'เลือกแบบ' : 'Choose variant'}</button></div>
-        </article>;
-      })}
+      {sections.flatMap((section) => [
+        <div key={`category:${section.category}`} className="col-span-full border-b border-pink-100 pb-2 pt-1">
+          <h2 className="text-base font-extrabold text-gray-950">{section.category}</h2>
+        </div>,
+        ...section.entries.map((entry, index) => {
+          if (entry.type === 'product') return card(entry.product, index);
+          // A family card previews one real child item so separate item galleries
+          // never get combined into a synthetic parent gallery.
+          const representative = entry.products[0];
+          const price = getProductPriceRange(entry.products);
+          return <article className="shop-product" key={entry.key} aria-label={entry.label}>
+            <button type="button" className="shop-product-picture" aria-label={detailLabel(entry.label)} onClick={() => setSelectedId(representative.id)}><ProductMedia product={representative} getImageUrl={getMenuImageUrl} eager={index < 3} /></button>
+            <div className="shop-product-copy">
+              <h3 className="break-words font-bold leading-6 text-gray-950">{entry.label}</h3>
+              <div className="mt-1 flex flex-wrap gap-1">{(representative.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{tag}</span>)}</div>
+              <p className="mt-1 text-xs text-gray-600">{entry.products.length} {language === 'th' ? 'รายการสินค้า' : 'items'}</p>
+              <ProductPresentationSummary product={representative} language={language} compact />
+              <p className="shop-product-price">{price.min === price.max ? formatPrice(price.min, representative.currency) : `${formatPrice(price.min, representative.currency)}–${formatPrice(price.max, representative.currency)}`}</p>
+              <button type="button" className="shop-add" onClick={() => setSelectedId(representative.id)}>{language === 'th' ? 'เลือกรายการ' : 'Choose item'}</button>
+            </div>
+          </article>;
+        }),
+      ])}
       <p className="shop-grid-end">{t('productEnd')}</p>
     </div>}
     <dialog ref={dialog} className="shop-product-dialog" onCancel={event => { event.preventDefault(); setSelectedId(null); }} onClick={event => { if (event.target === event.currentTarget) setSelectedId(null); }} aria-label={selected?.name}>
@@ -78,12 +102,13 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
         <button type="button" className="shop-detail-close" autoFocus onClick={() => setSelectedId(null)} aria-label={t('productDetailClose')}><X size={22} /></button>
         <div className="shop-detail-image"><ProductGallery product={selected} getImageUrl={getMenuImageUrl} /></div>
         <div className="shop-detail-copy">
-          {selected.category && <p className="text-sm font-semibold text-pink-800">{selected.category}</p>}
-          <h2 className="mt-2 break-words text-2xl font-extrabold text-gray-950">{selected.name}</h2>
+          <div className="flex flex-wrap gap-1.5">{itemMeta(selected).map(value => <span key={value} className="rounded-full bg-pink-50 px-2.5 py-1 text-xs font-semibold text-pink-800">{value}</span>)}</div>
+          <h2 className="mt-2 break-words text-2xl font-extrabold text-gray-950">{itemName(selected)}</h2>
+          {selected.variant_group_name && <p className="mt-1 text-sm font-semibold text-gray-600">{selected.variant_group_name}</p>}
           <p className="mt-3 text-2xl font-bold">{formatPrice(selected.price, selected.currency)}</p>
           <ProductPresentationSummary product={selected} language={language} />{!['preorder', 'service'].includes(getProductPresentationKind(selected)) && <p className="mt-2 text-sm text-gray-600">{stockLabel(selected)}</p>}
           {selected.description && <p className="mt-5 whitespace-pre-line break-words text-sm leading-7 text-gray-600">{selected.description}</p>}
-          {variants.length > 1 && <fieldset className="mt-5"><legend className="mb-2 text-sm font-bold">{t('productDetailVariantGroup')}</legend><div className="flex flex-wrap gap-2">{variants.map(product => <button type="button" key={product.id} aria-pressed={product.id === selected.id} className="shop-variant-option" onClick={() => setSelectedId(product.id)}>{product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name}</button>)}</div></fieldset>}
+          {variants.length > 1 && <fieldset className="mt-5"><legend className="mb-2 text-sm font-bold">{language === 'th' ? 'เลือกรายการสินค้า' : 'Choose item'}</legend><div className="grid gap-2">{variants.map(product => <button type="button" key={product.id} aria-label={itemName(product)} aria-description={`${itemMeta(product).join(' · ')} · ${getProductImages(product).length} ${language === 'th' ? 'รูป' : 'photos'}`} aria-pressed={product.id === selected.id} className="shop-variant-option flex w-full items-center justify-between gap-3 text-left" onClick={() => setSelectedId(product.id)}><span><strong className="block">{itemName(product)}</strong><span className="mt-0.5 block text-[11px] text-gray-500">{itemMeta(product).join(' · ')}</span></span><span className="shrink-0 text-xs font-semibold text-pink-700">{getProductImages(product).length} {language === 'th' ? 'รูป' : 'photos'}</span></button>)}</div></fieldset>}
           <div className="mt-6">{quantityControls(selected)}<p className="mt-3 text-xs leading-5 text-gray-600">{language === 'th' ? 'การใส่ตะกร้ายังไม่จองสต็อก ตรวจรายการก่อนยืนยัน' : 'Adding to cart does not reserve stock. Review your items before confirming.'}</p></div>
         </div>
       </div>}

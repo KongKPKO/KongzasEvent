@@ -69,3 +69,10 @@ test('does not merge distinct persisted parents through a shared legacy label', 
   expect(entries).toHaveLength(2);
   expect(entries.every((entry) => entry.type === 'product')).toBe(true);
 });
+
+test('item gallery overrides exclude the inherited cover and explicit clears stay empty', () => {
+  expect(getProductImages(product({ image_url: 'shared.jpg', gallery_images: ['shared.jpg'], variant_gallery_images: ['a.jpg', 'b.jpg'] }))).toEqual(['a.jpg', 'b.jpg']);
+  expect(getProductImages(product({ image_url: 'shared.jpg', gallery_images: ['shared.jpg'], variant_gallery_images: [] }))).toEqual([]);
+  expect(getProductImages(product({ image_url: 'shared.jpg', gallery_images: ['legacy.jpg'], variant_gallery_images: null }))).toEqual(['shared.jpg', 'legacy.jpg']);
+  expect(getProductImages(product({ product_kind: 'single', image_url: 'new-cover.jpg', gallery_images: ['old-photo.jpg'], variant_gallery_images: ['old-photo.jpg'] }))[0]).toBe('new-cover.jpg');
+});

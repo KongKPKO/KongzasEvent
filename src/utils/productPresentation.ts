@@ -6,9 +6,16 @@ export type ProductPresentationEntry<T extends PresentableProduct> =
 
 const normalizedLegacyGroup = (product: PresentableProduct) => product.variant_group_name?.trim().toLocaleLowerCase() || '';
 
+const uniqueImages = (values: Array<string | null | undefined>): string[] => values
+  .map((value) => value?.trim() || '')
+  .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
+
 export function getProductImages(product: PresentableProduct): string[] {
-  const values = [product.image_url || '', ...(product.gallery_images || [])];
-  return values.map((value) => value.trim()).filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
+  // A non-null item gallery is an explicit override. In particular, [] means
+  // the merchant cleared this item's gallery, so the inherited parent cover or
+  // effective parent gallery must not be reintroduced here.
+  if (product.variant_gallery_images != null && getProductPresentationKind(product) === 'photo') return uniqueImages(product.variant_gallery_images);
+  return uniqueImages([product.image_url, ...(product.gallery_images || [])]);
 }
 
 export function getBundleItemCount(items: ProductBundleItem[] | null | undefined): number {
@@ -17,7 +24,7 @@ export function getBundleItemCount(items: ProductBundleItem[] | null | undefined
 
 export function getProductPresentationKind(product: PresentableProduct) {
   if (product.product_kind) return product.product_kind;
-  if ((product.gallery_images || []).length > 0) return 'photo' as const;
+  if ((product.variant_gallery_images || []).length > 0 || (product.gallery_images || []).length > 0) return 'photo' as const;
   return 'single' as const;
 }
 
@@ -85,7 +92,7 @@ export function inheritProductPresentation<T extends PresentableProduct>(product
     description: product.description || parent.description,
     category: product.category || parent.category,
     product_kind: product.product_kind || parent.product_kind,
-    gallery_images: product.gallery_images?.length ? product.gallery_images : parent.gallery_images,
+    gallery_images: product.gallery_images ?? parent.gallery_images,
     bundle_items: product.bundle_items?.length ? product.bundle_items : parent.bundle_items,
     preorder_closes_at: product.preorder_closes_at || parent.preorder_closes_at,
     preorder_eta: product.preorder_eta || parent.preorder_eta,

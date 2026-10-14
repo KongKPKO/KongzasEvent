@@ -1,5 +1,5 @@
 import { recordPreparedPayment, saveOffline, type OfflineEntry } from '../../lib/offlineOperations';
-import { Fragment, useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import PromotionChoicePicker from '../promotions/PromotionChoicePicker';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -13,6 +13,9 @@ import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { uiText, useI18n } from '../../i18n';
+import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
+import { ProductMedia } from '../menu/ProductPresentation';
+import { buildProductPresentationEntries, getProductImages, getProductPriceRange } from '../../utils/productPresentation';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
 // "status unknown."  Each individual fetch already has a 15 s per-request
@@ -94,7 +97,7 @@ const isNetworkAmbiguousError = (err: unknown): boolean => {
     );
 };
 
-interface Product {
+interface Product extends ProductPresentationFields, ProductVariantFields {
     id: string;
     name: string;
     price: number;
@@ -107,9 +110,6 @@ interface Product {
     stock_reserved?: number;
     stock_sold?: number;
     is_unlimited?: boolean;
-    variant_group_name?: string | null;
-    variant_name?: string | null;
-    variant_sort_order?: number;
 }
 
 interface CartItem { product: Product; quantity: number; notes?: string; }
@@ -493,6 +493,7 @@ export default function POSPanel({
 
         return result;
     }, [products, promotions, searchQuery, selectedCategory, selectedTag, selectedQuickFilter, recentProductIds, pinnedProductIds, sortBy]);
+    const productEntries = useMemo(() => buildProductPresentationEntries(filteredProducts), [filteredProducts]);
 
     // O(1) lookup into the freshest product data from the last fetchProducts call.
     // Used by cart validation and the overdraft visual flag in renderCartItems.
@@ -979,6 +980,7 @@ export default function POSPanel({
 
                 {cart.map((item) => {
                     const promoBadges = getPromotionBadgesForProduct(item.product, promotions);
+                    const image = getProductImages(item.product)[0];
                     const isOverdraft = overdraftProductIds.has(item.product.id);
                     const freshProduct = productsById.get(item.product.id);
                     const availableNow = freshProduct ? getAvailableUnits(freshProduct) : 0;
@@ -994,9 +996,9 @@ export default function POSPanel({
                         >
                             <div className="flex items-center gap-2 overflow-hidden">
                                 <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden border border-gray-200 bg-gray-100">
-                                    {item.product.image_url ? (
+                                    {image ? (
                                         <img
-                                            src={getProductImage(item.product.image_url)}
+                                            src={getProductImage(image)}
                                             alt={item.product.name}
                                             className="w-full h-full object-cover"
                                             onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/nireq-mark.svg'; }}
@@ -1154,6 +1156,125 @@ export default function POSPanel({
             </div>
         );
     }
+
+    const renderProductItem = (product: Product) => {
+        const image = getProductImages(product)[0];
+                                        const promoBadges = getPromotionBadgesForProduct(product, promotions);
+                                        const available = getAvailableUnits(product);
+                                        const lowStock = isLowStock(product);
+                                        const isPinned = pinnedProductIds.includes(product.id);
+                                        const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
+
+                                        if (effectiveViewMode === 'compact') {
+                                            return (
+                                                <div
+                                                    key={product.id}
+                                                    className="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 flex items-center gap-3"
+                                                >
+                                                    <button
+                                                        disabled={loading || orderLoading || fetchError}
+                                                        onClick={() => addToCart(product)}
+                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
+                                                            {image ? (
+                                                                <img
+                                                                    src={getProductImage(image)}
+                                                                    alt={product.name}
+                                                                    className="w-full h-full object-cover"
+                                                                    loading="lazy"
+                                                                    decoding="async"
+                                                                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
+                                                                />
+                                                            ) : renderImageFallback(product.name, true)}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{displayName}</div>
+                                                                    {product.variant_group_name && product.variant_name && (
+                                                                        <div className="text-[11px] font-bold text-pink-700 break-words">{product.name}</div>
+                                                                    )}
+                                                                    <div className="text-[11px] text-gray-500 break-words">{(product.category || 'Other').trim() || 'Other'}</div>
+                                                                </div>
+                                                                <div className="text-right shrink-0">
+                                                                    <div className="font-black text-pink-600 text-sm">{formatPrice(product.price, product.currency)}</div>
+                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                                                {promoBadges.slice(0, 2).map((badge) => (
+                                                                    <span key={badge.id} className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-rose-50 text-rose-700 border-rose-100">
+                                                                        {badge.shortLabel}
+                                                                    </span>
+                                                                ))}
+                                                                {lowStock && (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-100">
+                                                                        {uiText(language, 'Low stock')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => togglePinnedProduct(product.id)}
+                                                        className={`p-2 rounded-lg border ${isPinned ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200'}`}
+                                                        aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
+                                                    >
+                                                        <Pin size={14} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                                <div
+                                                    key={product.id}
+                                                    className="festival-product bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200"
+                                                >
+                                                    <button
+                                                    disabled={loading || orderLoading || fetchError}
+                                                    onClick={() => addToCart(product)}
+                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
+                                                        <ProductMedia product={product} getImageUrl={getProductImage} />
+                                                    </div>
+                                                    <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
+                                                        <div>
+                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{displayName}</h3>
+                                                            {product.variant_group_name && product.variant_name && (
+                                                                <p className="mt-0.5 text-[11px] font-bold text-pink-700 truncate">{product.name}</p>
+                                                            )}
+                                                            <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
+                                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                                {promoBadges.slice(0, 2).map((badge) => (
+                                                                    <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
+                                                                ))}
+                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">{uiText(language, 'Low')}</span>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 flex items-end justify-between gap-2">
+                                                            <div className="text-[10px] font-bold text-gray-500">
+                                                                {Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}
+                                                            </div>
+                                                            <div className="text-base font-black text-pink-600">
+                                                                {formatPrice(product.price, product.currency)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    onClick={() => togglePinnedProduct(product.id)}
+                                                    className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
+                                                    aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
+                                                >
+                                                    <Pin size={12} />
+                                                </button>
+                                            </div>
+                                        );
+
+    };
 
     return (
         <div className="festival-pos flex flex-col h-full overflow-hidden">
@@ -1380,146 +1501,18 @@ export default function POSPanel({
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>{uiText(language, 'No products found.')}</p></div>
                         ) : (
                             <div className={effectiveViewMode === 'compact' ? 'space-y-2' : 'festival-product-grid grid gap-3'}>
-                                {filteredProducts.map((product, productIndex) => {
-                                    const groupName = product.variant_group_name?.trim() || '';
-                                    const previousGroupName = filteredProducts[productIndex - 1]?.variant_group_name?.trim() || '';
-                                    const showVariantHeader = groupName && groupName !== previousGroupName;
-
-                                    return (
-                                    <Fragment key={product.id}>
-                                        {showVariantHeader && (
-                                            <div className={effectiveViewMode === 'compact' ? 'rounded-xl border border-pink-100 bg-pink-50 px-3 py-2' : 'col-span-full rounded-xl border border-pink-100 bg-pink-50 px-3 py-2'}>
-                                                <div className="text-sm font-black text-pink-950">{groupName}</div>
-                                                <div className="text-[11px] font-bold text-pink-800">{uiText(language, 'Variants')}</div>
-                                            </div>
-                                        )}
-                                    {(() => {
-                                        const promoBadges = getPromotionBadgesForProduct(product, promotions);
-                                        const available = getAvailableUnits(product);
-                                        const lowStock = isLowStock(product);
-                                        const isPinned = pinnedProductIds.includes(product.id);
-                                        const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
-
-                                        if (effectiveViewMode === 'compact') {
-                                            return (
-                                                <div
-                                                    key={product.id}
-                                                    className="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 flex items-center gap-3"
-                                                >
-                                                    <button
-                                                        disabled={loading || orderLoading || fetchError}
-                                                        onClick={() => addToCart(product)}
-                                                        className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                                                    >
-                                                        <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
-                                                            {product.image_url ? (
-                                                                <img
-                                                                    src={getProductImage(product.image_url)}
-                                                                    alt={product.name}
-                                                                    className="w-full h-full object-cover"
-                                                                    loading="lazy"
-                                                                    decoding="async"
-                                                                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
-                                                                />
-                                                            ) : renderImageFallback(product.name, true)}
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="min-w-0">
-                                                                    <div className="font-bold text-sm text-gray-800 leading-tight break-words" title={product.name}>{displayName}</div>
-                                                                    {product.variant_group_name && product.variant_name && (
-                                                                        <div className="text-[11px] font-bold text-pink-700 break-words">{product.name}</div>
-                                                                    )}
-                                                                    <div className="text-[11px] text-gray-500 break-words">{(product.category || 'Other').trim() || 'Other'}</div>
-                                                                </div>
-                                                                <div className="text-right shrink-0">
-                                                                    <div className="font-black text-pink-600 text-sm">{formatPrice(product.price, product.currency)}</div>
-                                                                    <div className="text-[10px] text-gray-500">{Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}</div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                                                                {promoBadges.slice(0, 2).map((badge) => (
-                                                                    <span key={badge.id} className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-rose-50 text-rose-700 border-rose-100">
-                                                                        {badge.shortLabel}
-                                                                    </span>
-                                                                ))}
-                                                                {lowStock && (
-                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold bg-amber-50 text-amber-700 border-amber-100">
-                                                                        {uiText(language, 'Low stock')}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => togglePinnedProduct(product.id)}
-                                                        className={`p-2 rounded-lg border ${isPinned ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200'}`}
-                                                        aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
-                                                    >
-                                                        <Pin size={14} />
-                                                    </button>
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                                <div
-                                                    key={product.id}
-                                                    className="festival-product bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200"
-                                                >
-                                                    <button
-                                                    disabled={loading || orderLoading || fetchError}
-                                                    onClick={() => addToCart(product)}
-                                                    className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col disabled:cursor-not-allowed disabled:opacity-60"
-                                                >
-                                                    <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
-                                                        {product.image_url ? (
-                                                            <img
-                                                                src={getProductImage(product.image_url)}
-                                                                alt={product.name}
-                                                                className="w-full h-full object-contain bg-white group-hover:scale-[1.03] transition-transform"
-                                                                loading="lazy"
-                                                                decoding="async"
-                                                                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/nireq-mark.svg'; }}
-                                                            />
-                                                        ) : renderImageFallback(product.name)}
-                                                    </div>
-                                                    <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
-                                                        <div>
-                                                            <h3 className="font-black text-gray-900 text-sm leading-tight w-full line-clamp-2 min-h-[2.25rem]" title={product.name}>{displayName}</h3>
-                                                            {product.variant_group_name && product.variant_name && (
-                                                                <p className="mt-0.5 text-[11px] font-bold text-pink-700 truncate">{product.name}</p>
-                                                            )}
-                                                            <p className="mt-0.5 text-[11px] font-bold text-gray-500 truncate">{(product.category || 'Other').trim() || 'Other'}</p>
-                                                            <div className="mt-2 flex flex-wrap gap-1">
-                                                                {promoBadges.slice(0, 2).map((badge) => (
-                                                                    <span key={badge.id} className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-rose-50 text-rose-700 border-rose-100">{badge.shortLabel}</span>
-                                                                ))}
-                                                                {lowStock && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold bg-amber-50 text-amber-700 border-amber-100">{uiText(language, 'Low')}</span>}
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-3 flex items-end justify-between gap-2">
-                                                            <div className="text-[10px] font-bold text-gray-500">
-                                                                {Number.isFinite(available) ? uiText(language, '{count} left').replace('{count}', String(available)) : uiText(language, 'Unlimited')}
-                                                            </div>
-                                                            <div className="text-base font-black text-pink-600">
-                                                                {formatPrice(product.price, product.currency)}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                                <button
-                                                    onClick={() => togglePinnedProduct(product.id)}
-                                                    className={`absolute top-2 right-2 icon-touch min-w-9 min-h-9 rounded-xl shadow-sm ${isPinned ? 'bg-gray-900 text-white' : 'bg-white/95 text-gray-500 hover:text-pink-600'}`}
-                                                    aria-label={uiText(language, isPinned ? 'Unpin {name}' : 'Pin {name}').replace('{name}', product.name)}
-                                                >
-                                                    <Pin size={12} />
-                                                </button>
-                                            </div>
-                                        );
-                                    })()}
-                                    </Fragment>
-                                    );
+                                {productEntries.map(entry => {
+                                    if (entry.type === 'product') return renderProductItem(entry.product);
+                                    const representative = entry.products[0];
+                                    const prices = getProductPriceRange(entry.products);
+                                    return <details key={entry.key} className="col-span-full rounded-xl border border-pink-100 bg-white" data-pos-family={entry.key}>
+                                        <summary className="flex min-h-11 cursor-pointer items-center gap-3 p-3">
+                                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg"><ProductMedia product={representative} getImageUrl={getProductImage} /></div>
+                                            <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-black">{entry.label}</h3><p className="text-xs text-pink-700">{representative.category} · {entry.products.length} {language === 'th' ? 'รายการสินค้า' : 'items'}</p><p className="text-xs text-gray-500">{representative.tags?.join(' · ')}</p></div>
+                                            <span className="text-sm font-bold text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, representative.currency) : `${formatPrice(prices.min, representative.currency)}–${formatPrice(prices.max, representative.currency)}`}</span>
+                                        </summary>
+                                        <div className={`border-t border-pink-100 p-3 ${effectiveViewMode === 'compact' ? 'space-y-2' : 'festival-product-grid grid gap-3'}`}>{entry.products.map(renderProductItem)}</div>
+                                    </details>;
                                 })}
                             </div>
                         )}

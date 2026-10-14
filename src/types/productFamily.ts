@@ -28,6 +28,8 @@ export interface ProductParent {
 }
 
 export interface FamilyVariant {
+  variant_gallery_images?: string[] | null;
+  gallery_images?: string[] | null;
   id?: string;
   parent_product_id?: string;
   variant_name?: string | null;

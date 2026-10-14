@@ -33,8 +33,9 @@ import {
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { PaymentStatus, PreorderPaymentMethod } from '../../types/preorder';
 import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
+import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
 
-interface Product {
+interface Product extends ProductPresentationFields, ProductVariantFields {
   id: string;
   name: string;
   price: number;
@@ -48,9 +49,6 @@ interface Product {
   stock_reserved?: number;
   stock_sold?: number;
   is_unlimited?: boolean;
-  variant_group_name?: string | null;
-  variant_name?: string | null;
-  variant_sort_order?: number;
 }
 
 type CartItems = Record<string, number>;

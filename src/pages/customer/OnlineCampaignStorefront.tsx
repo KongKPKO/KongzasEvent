@@ -18,7 +18,7 @@ import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { ProductGallery, ProductMedia, ProductPresentationSummary } from '../../components/menu/ProductPresentation';
-import { buildProductPresentationEntries, getProductPresentationKind, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
+import { buildProductPresentationEntries, getProductImages, getProductPresentationKind, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
 
 type CampaignDisplayProduct = CampaignProduct & PresentableProduct;
 const ALL_CATEGORIES = '__nireq_all_categories__';
@@ -184,8 +184,23 @@ export default function OnlineCampaignStorefront() {
 
   const saleOpen = campaign.state === 'open';
   const categories = [...new Set(campaign.products.map(product => product.category?.trim() || UNCATEGORIZED))];
-  const visibleProducts = campaign.products.filter(product => (category === ALL_CATEGORIES || (product.category?.trim() || UNCATEGORIZED) === category) && `${product.name} ${product.variant_name || ''} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const visibleProducts = campaign.products.filter(product => (category === ALL_CATEGORIES || (product.category?.trim() || UNCATEGORIZED) === category) && `${product.name} ${product.variant_group_name || ''} ${product.variant_name || ''} ${product.category || ''} ${(product.tags || []).join(' ')} ${product.description || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const productEntries = buildProductPresentationEntries(visibleProducts.map(asDisplayProduct));
+  const productSections = productEntries.reduce<Array<{ category: string; entries: typeof productEntries }>>((result, entry) => {
+    const product = entry.type === 'product' ? entry.product : entry.products[0];
+    const sectionLabel = product?.category?.trim() || (language === 'th' ? 'อื่น ๆ' : 'Other');
+    const section = result.find(item => item.category === sectionLabel);
+    if (section) section.entries.push(entry);
+    else result.push({ category: sectionLabel, entries: [entry] });
+    return result;
+  }, []);
+  const selectedVariants = selectedProduct ? campaign.products
+    .map(asDisplayProduct)
+    .filter(product => selectedProduct.parent_product_id
+      ? product.parent_product_id === selectedProduct.parent_product_id
+      : Boolean(selectedProduct.variant_group_name && product.variant_group_name?.trim().toLocaleLowerCase() === selectedProduct.variant_group_name.trim().toLocaleLowerCase()))
+    .sort((a, b) => (a.variant_sort_order || 0) - (b.variant_sort_order || 0)) : [];
+  const itemName = (product: CampaignDisplayProduct) => product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name;
   const renderCampaignProduct = (product: CampaignDisplayProduct, index: number) => {
     const available = product.available_quantity ?? null;
     const soldOut = isProductPreorderClosed(product) || (available !== null && available <= 0);
@@ -211,6 +226,7 @@ export default function OnlineCampaignStorefront() {
           <div className="shop-product-copy">
             <div className="font-black text-gray-950">{product.variant_name && product.variant_name !== 'Default' ? product.variant_name : product.name}</div>
             {product.variant_name && product.variant_name !== 'Default' && <div className="text-xs font-bold text-gray-500">{product.name}</div>}
+            <div className="mt-1 flex flex-wrap gap-1">{(product.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{tag}</span>)}</div>
             <div className="mt-2 text-lg font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</div>
             <div className="mt-2"><ProductPresentationSummary product={product} language={language} compact /></div>
             {showStock && <div className="mt-1 text-xs font-semibold text-gray-500">
@@ -262,20 +278,23 @@ export default function OnlineCampaignStorefront() {
         </div>
         {visibleProducts.length === 0 && <div className="shop-empty"><h2>{t('menuNoProductsTitle')}</h2><p>{t('menuNoProductsDetail')}</p>{(search || category !== ALL_CATEGORIES) && <button className="shop-outline" onClick={() => { setSearch(''); setCategory(ALL_CATEGORIES); }}>{t('menuClearFilters')}</button>}</div>}
         <section className="shop-product-grid shop-campaign-grid">
-          {productEntries.map((entry, index) => {
-            if (entry.type === 'product') return renderCampaignProduct(entry.product, index);
-            const variants = entry.products.map((product) => inheritProductPresentation(product, entry.parent));
-            const representative = entry.parent || variants[0];
-            const prices = getProductPriceRange(variants);
-            const expanded = Boolean(expandedGroups[entry.key]);
-            return (
+          {productSections.flatMap((section) => [
+            <div key={`category:${section.category}`} className="col-span-full border-b border-pink-100 pb-2 pt-1"><h2 className="text-base font-extrabold text-gray-950">{section.category}</h2></div>,
+            ...section.entries.map((entry, index) => {
+              if (entry.type === 'product') return renderCampaignProduct(entry.product, index);
+              const variants = entry.products.map((product) => inheritProductPresentation(product, entry.parent));
+              const representative = variants[0];
+              const prices = getProductPriceRange(variants);
+              const expanded = Boolean(expandedGroups[entry.key]);
+              return (
               <article key={entry.key} className="overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm sm:col-span-2 lg:col-span-3">
                 <button type="button" onClick={() => setExpandedGroups((current) => ({ ...current, [entry.key]: !expanded }))} aria-expanded={expanded} className="flex min-h-32 w-full text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-pink-200">
                   <div className="relative w-32 shrink-0 overflow-hidden bg-pink-50 sm:w-40"><ProductMedia product={representative} getImageUrl={getMenuImageUrl} /></div>
                   <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">
                     <div className="min-w-0">
                       <h2 className="truncate font-black text-gray-950">{entry.label}</h2>
-                      <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {uiText(language, variants.length === 1 ? 'variant' : 'variants')}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">{(representative.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{tag}</span>)}</div>
+                      <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {language === 'th' ? 'รายการสินค้า' : variants.length === 1 ? 'item' : 'items'}</p>
                       <div className="mt-2 text-lg font-black text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, campaign.currency) : `${formatPrice(prices.min, campaign.currency)}–${formatPrice(prices.max, campaign.currency)}`}</div>
                       <div className="mt-2"><ProductPresentationSummary product={representative} language={language} compact /></div>
                     </div>
@@ -284,8 +303,9 @@ export default function OnlineCampaignStorefront() {
                 </button>
                 {expanded && <div className="grid gap-4 border-t border-pink-100 bg-pink-50/30 p-4 sm:grid-cols-2 lg:grid-cols-3">{variants.map((product, variantIndex) => renderCampaignProduct(product, variantIndex))}</div>}
               </article>
-            );
-          })}
+              );
+            }),
+          ])}
         </section>
       </div>
 
@@ -309,11 +329,14 @@ export default function OnlineCampaignStorefront() {
               <div className="flex flex-wrap gap-2">
                 {selectedProduct.category && <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">{selectedProduct.category}</span>}
                 {selectedProduct.variant_name && <span className="rounded-full bg-pink-50 px-3 py-1 text-xs font-black text-pink-700">{selectedProduct.variant_name}</span>}
+                {(selectedProduct.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-700">{tag}</span>)}
               </div>
-              <h2 className="mt-3 text-2xl font-black leading-tight text-gray-950">{selectedProduct.name}</h2>
+              <h2 className="mt-3 text-2xl font-black leading-tight text-gray-950">{itemName(selectedProduct)}</h2>
+              {selectedProduct.variant_group_name && <p className="mt-1 text-sm font-bold text-gray-600">{selectedProduct.variant_group_name}</p>}
               <div className="mt-2 text-3xl font-black text-pink-700">{formatPrice(selectedProduct.price, campaign.currency)}</div>
               <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 p-4"><ProductPresentationSummary product={selectedProduct} language={language} /></div>
               {selectedProduct.description && <p className="mt-5 whitespace-pre-line text-sm font-semibold leading-6 text-gray-600">{selectedProduct.description}</p>}
+              {selectedVariants.length > 1 && <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">{language === 'th' ? 'เลือกรายการสินค้า' : 'Choose item'}</legend><div className="grid gap-2">{selectedVariants.map(product => <button type="button" key={product.product_id} aria-pressed={product.product_id === selectedProduct.product_id} onClick={() => setSelectedProduct(product)} className="shop-variant-option flex w-full items-center justify-between gap-3 text-left"><span><strong className="block">{itemName(product)}</strong><span className="mt-0.5 block text-[11px] text-gray-500">{[product.category, ...(product.tags || [])].filter(Boolean).join(' · ')}</span></span><span className="shrink-0 text-xs font-semibold text-pink-700">{getProductImages(product).length} {language === 'th' ? 'รูป' : 'photos'}</span></button>)}</div></fieldset>}
               {saleOpen && !isProductPreorderClosed(selectedProduct) && (selectedProduct.available_quantity === null || selectedProduct.available_quantity === undefined || selectedProduct.available_quantity > 0) && (() => {
                 const quantity = cart[selectedProduct.product_id] || 0;
                 const available = selectedProduct.available_quantity ?? null;

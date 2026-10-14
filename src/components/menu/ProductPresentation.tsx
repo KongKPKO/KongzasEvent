@@ -112,7 +112,7 @@ export function ProductGallery({
   const images = getProductImages(product);
   const [selected, setSelected] = useState(0);
 
-  useEffect(() => setSelected(0), [product.id]);
+  useEffect(() => setSelected(0), [product.id, images.length]);
 
   if (images.length === 0) return <ImageFallback name={product.name} />;
 

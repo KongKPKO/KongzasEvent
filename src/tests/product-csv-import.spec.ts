@@ -49,3 +49,13 @@ test('CSV validation explains fields and rows in Thai', () => {
   expect(parseProductCsv(Array.from({length:2001}, () => row()), artist).issues[0].code).toBe('limit');
   expect(formatProductCsvIssue({row:3,field:'stock',code:'integer'},'th')).toBe('แถว 3: stock — ใช้จำนวนเต็มที่ถูกต้อง');
 });
+
+test('CSV keeps separate item galleries and validates the whole file before saving', () => {
+  const result = parseProductCsv([
+    row({ product_kind: 'photo', variant_gallery_images: '["a.jpg","b.jpg"]' }),
+    row({ product_kind: 'photo', variant_name: 'Lumine', variant_gallery_images: '["c.jpg"]' }),
+  ], artist);
+  expect(result.issues).toEqual([]);
+  expect(result.families[0].variants.map(item => item.variant_gallery_images)).toEqual([['a.jpg', 'b.jpg'], ['c.jpg']]);
+  expect(parseProductCsv([row({ product_kind: 'photo', variant_gallery_images: '[123]' })], artist).families).toEqual([]);
+});

@@ -58,10 +58,11 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
   // Stable local images exercise actual media layout without remote assets.
   const origin = new URL(page.url()).origin;
-  await editor.getByLabel('Photo gallery', { exact: true }).fill([1, 2, 3, 4, 5].map((n) => `${origin}/pwa-192x192.png?image=${n}`).join('\n'));
-  await editor.getByLabel('Variant name *', { exact: true }).fill('Aether');
-  await editor.getByRole('button', { name: 'Add variant', exact: true }).click();
-  await editor.getByLabel('Variant name *', { exact: true }).nth(1).fill('Lumine');
+  await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
+  await editor.getByLabel('Shared photo gallery', { exact: true }).fill([1, 2, 3, 4, 5].map((n) => `${origin}/pwa-192x192.png?image=${n}`).join('\n'));
+  await editor.getByLabel('Item name *', { exact: true }).fill('Aether');
+  await editor.getByRole('button', { name: 'Add item', exact: true }).click();
+  await editor.getByLabel('Item name *', { exact: true }).nth(1).fill('Lumine');
   await editor.getByLabel('Stock', { exact: true }).first().fill('10');
   await editor.getByRole('button', { name: 'Apply stock', exact: true }).click();
   await editor.getByLabel('Price', { exact: true }).nth(1).fill('130');
@@ -116,7 +117,12 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await manyCard.getByRole('button', { name: 'Product options · 30 variants', exact: true }).click();
   await manyPreview.getByLabel('Search variants or SKU', { exact: true }).fill('Design 30');
   await manyPreview.getByRole('button', { name: 'More actions for Design 30', exact: true }).click();
-  await manyPreview.getByRole('menuitem', { name: 'Stock history', exact: true }).click();
+  const actionMenu = page.getByRole('menu');
+  await expect(actionMenu).toBeVisible();
+  const menuBounds = await actionMenu.boundingBox();
+  expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  await page.getByRole('menuitem', { name: 'Stock history', exact: true }).click();
   await expect(manyPreview).toBeHidden();
   await page.getByRole('dialog', { name: 'Stock history', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
   await optionsTrigger.click();
@@ -154,8 +160,8 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await expect(productGroup.getByText('+1', { exact: true })).toBeVisible();
   await productGroup.getByRole('button', { name: 'View details: ' + name, exact: true }).click();
   const detail = storefront.getByRole('dialog');
-  await expect(detail.getByRole('button', { name: 'Lumine', exact: true })).toBeVisible();
-  await detail.getByRole('button', { name: 'Aether', exact: true }).click();
+  await expect(detail.getByRole('button', { name: /^Lumine(?:\s|$)/ })).toBeVisible();
+  await detail.getByRole('button', { name: /^Aether(?:\s|$)/ }).click();
   await expect(detail.getByRole('button', { name: 'View image 5 of 5', exact: true })).toBeVisible();
   await detail.getByRole('button', { name: 'View image 5 of 5', exact: true }).click();
   await storefront.keyboard.press('Escape');
@@ -185,7 +191,8 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await editor.getByLabel('Product name *', { exact: true }).fill(photoName);
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
-  await editor.getByLabel('Photo gallery', { exact: true }).fill(gallery);
+  await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
+  await editor.getByLabel('Shared photo gallery', { exact: true }).fill(gallery);
   await editor.getByLabel('Unlimited', { exact: true }).check();
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
   await expect(editor).toBeHidden();
@@ -202,10 +209,106 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await card.getByRole('button', { name: `Edit ${photoName}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: `Edit ${photoName}`, exact: true });
   await expect(edit.getByLabel('Product type', { exact: true })).toHaveValue('photo');
-  await expect(edit.getByLabel('Photo gallery', { exact: true })).toHaveValue(gallery);
+  await expect(edit.getByLabel('Shared photo gallery', { exact: true })).toHaveValue(gallery);
   await edit.getByRole('button', { name: 'Save family', exact: true }).click();
   await expect(edit).toBeHidden();
   await page.reload();
   await expect(card.locator('img')).toHaveCount(photoCount);
 });
 }
+
+test('photo items keep separate galleries through editor, Event, customer and POS', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto('/manage-products');
+  await page.getByRole('button', { name: /Add Product/i }).click();
+  const editor = page.getByRole('dialog', { name: 'Create product', exact: true });
+  await expect(editor.getByLabel('SKU', { exact: true })).toBeHidden();
+  const familyName = `Photoset Genshin ${runId.slice(0, 8)}`;
+  await editor.getByLabel('Product name *', { exact: true }).fill(familyName);
+  await editor.getByLabel('Category', { exact: true }).fill('Photoset');
+  await editor.getByLabel('Tags', { exact: true }).fill('Genshin Impact');
+  await editor.getByLabel('Base price *', { exact: true }).fill('150');
+  await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
+  await editor.getByLabel('Item name *', { exact: true }).fill('Ronova');
+  await editor.getByRole('button', { name: 'Add item', exact: true }).click();
+  await editor.getByLabel('Item name *', { exact: true }).nth(1).fill('Raiden');
+  const origin = new URL(page.url()).origin;
+  await editor.locator('details').filter({ has: page.getByLabel('Image path or URL', { exact: true }) }).locator('summary').first().click();
+  await editor.getByLabel('Image path or URL', { exact: true }).fill(`${origin}/pwa-192x192.png?shared-cover`);
+  const galleries = ['Ronova', 'Raiden'].map((name, index) => Array.from({ length: index + 3 }, (_, number) => `${origin}/pwa-192x192.png?set=${name}-${number}`));
+  for (const [index, name] of ['Ronova', 'Raiden'].entries()) {
+    const row = editor.locator('article').nth(index);
+    await row.getByRole('button', { name: 'Use a gallery for this item', exact: true }).click();
+    await row.locator('details > summary').click();
+    await row.getByLabel(`Item photo gallery ${name}`, { exact: true }).fill(galleries[index].join('\n'));
+    if (index === 0) {
+      await row.getByLabel(`Upload gallery photos ${name}`, { exact: true }).setInputFiles('public/pwa-192x192.png');
+      await expect(row.locator('img[alt^="Gallery photo"]')).toHaveCount(4, { timeout: 30_000 });
+      await row.getByRole('button', { name: 'Remove photo 4', exact: true }).click();
+      await expect(row.locator('img[alt^="Gallery photo"]')).toHaveCount(3);
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await editor.locator('form').evaluate(form => form.scrollWidth <= form.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('editor-item-galleries-mobile.png'), fullPage: false });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await editor.getByRole('button', { name: 'Create product', exact: true }).click();
+  await expect(editor).toBeHidden();
+  const parent = await service.from('product_parents').select('id').eq('artist_id', artistId).eq('name', familyName).single().throwOnError();
+  const items = await service.from('products').select('*').eq('parent_product_id', parent.data!.id).order('variant_sort_order').throwOnError();
+  expect(items.data!.map(item => item.variant_gallery_images)).toEqual(galleries);
+  expect(items.data!.every(item => Boolean(item.sku))).toBe(true);
+  await page.reload();
+  const familyCard = page.getByTestId(`catalog-family-card-${parent.data!.id}`);
+  await familyCard.getByRole('button', { name: `Edit ${familyName}`, exact: true }).click();
+  const edit = page.getByRole('dialog', { name: `Edit ${familyName}`, exact: true });
+  for (const [index, gallery] of galleries.entries()) await expect(edit.locator('article').nth(index).locator('img[alt^="Gallery photo"]')).toHaveCount(gallery.length);
+  await edit.getByRole('button', { name: 'Save family', exact: true }).click();
+  await expect(edit).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const single = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Simple service', exact: true }) });
+  await single.getByRole('button', { name: /More actions/ }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  const bounds = await menu.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath('product-actions-mobile.png'), fullPage: false });
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await service.from('event_products').insert(items.data!.map(item => ({ artist_id: artistId, event_id: eventId, product_id: item.id, is_enabled: true, is_unlimited: true }))).throwOnError();
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const eventFamily = page.locator(`[data-event-family="${parent.data!.id}"]`);
+  await expect(eventFamily).toBeVisible();
+  await eventFamily.locator('summary').click();
+  for (const [index, item] of items.data!.entries()) {
+    const card = eventFamily.locator('article').filter({ has: page.getByText(item.name, { exact: true }) });
+    await expect(card.locator('img')).toHaveCount(galleries[index].length);
+  }
+  await page.screenshot({ path: testInfo.outputPath('event-item-galleries.png'), fullPage: true });
+  await page.goto(`/live/pos?eventId=${eventId}`);
+  const posFamily = page.locator(`[data-pos-family="parent:${parent.data!.id}"]`);
+  await expect(posFamily).toBeVisible();
+  await posFamily.locator('summary').click();
+  const ronova = page.getByRole('region', { name: 'Product grid' }).getByRole('button').filter({ has: page.getByRole('heading', { name: 'Ronova', exact: true }) });
+  await expect(ronova.locator('img')).toHaveCount(3);
+  await ronova.click();
+  await expect(page.getByRole('button', { name: 'Charge ฿150', exact: true })).toBeEnabled();
+  await expect(page.getByAltText(items.data![0].name, { exact: true })).toHaveAttribute('src', /set=Ronova-0/);
+  await page.getByRole('button', { name: 'Detail list product view', exact: true }).click();
+  const compact = page.getByRole('region', { name: 'Product list' }).getByRole('button').filter({ has: page.getByText('Ronova', { exact: true }) });
+  await expect(compact.locator('img')).toHaveAttribute('src', /set=Ronova-0/);
+  await page.goto(`/${slug}/menu?event=${eventId}`);
+  const customerFamily = page.locator('article').filter({ has: page.getByRole('heading', { name: familyName, exact: true }) });
+  await customerFamily.getByRole('button', { name: 'Choose item', exact: true }).click();
+  const details = page.getByRole('dialog');
+  await expect(details.getByRole('heading', { name: 'Ronova', exact: true })).toBeVisible();
+  await details.getByRole('button', { name: /Raiden/ }).click();
+  await expect(details.getByRole('heading', { name: 'Raiden', exact: true })).toBeVisible();
+  await expect(details.locator('.shop-detail-image img')).toHaveCount(5); // selected image + four thumbnail images
+  await page.screenshot({ path: testInfo.outputPath('customer-item-gallery.png'), fullPage: true });
+});

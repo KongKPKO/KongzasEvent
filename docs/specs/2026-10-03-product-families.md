@@ -2,7 +2,7 @@
 
 ## Scope and decisions
 
-- One parent product owns name, description, category, tags, base price, currency and presentation metadata. One dimension of variants (character/design/color); no option combinations.
+- One parent product owns name, description, category, tags, base price, currency and shared presentation metadata. Each sellable item may override its photo gallery; null inherits the shared gallery and an empty array explicitly clears it. One dimension of variants (character/design/color); no option combinations.
 - Existing `products` rows become child inventory records via `parent_product_id`. Their UUIDs, SKUs, order references, channel allocation, promotions and sold/reserved counters remain intact. A simple product has one child.
 - `price_override = null` inherits the parent's base price; zero is a valid explicit override. Effective price remains materialized on children for existing checkout RPCs. Channel price overrides continue to take precedence.
 - An atomic owner/manager RPC saves the parent and children. Existing finite-stock corrections use the stock adjustment functions and cannot consume sold/held/allocated stock. Removing a variant archives it; live channel assignments and holds must be released first. Stock mode changes are blocked when a child has channel records or commitments.
@@ -36,6 +36,7 @@ Optional event/date appearance with character, series, image, day/time/note, boo
 | `product_kind` | `single`, `photo`, `bundle`, `preorder` หรือ `service` |
 | `category`, `tags`, `description`, `currency` | ข้อมูลส่วนกลาง โดย `currency` ใช้รหัสเช่น `THB` และ `tags` คั่นด้วยจุลภาค เครื่องหมายท่อ หรือเซมิโคลอน |
 | `cover_image` | พาธรูปปกสินค้าหลัก |
+| `variant_gallery_images` | JSON array ของรูปเฉพาะรายการ เว้นว่างเพื่อใช้รูปส่วนกลาง; `[]` ล้างรูปเฉพาะรายการ ไม่เปลี่ยนรายการอื่น |
 | `gallery_images` | JSON array ของพาธรูป เช่น `["/images/a.jpg","/images/b.jpg"]` |
 | `bundle_items` | JSON array เช่น `[{"name":"Postcard","quantity":3}]` ใช้กับ `bundle` |
 | `preorder_closes_at` | วันปิดรับแบบ ISO 8601 ที่ระบุ timezone ชัดเจน เช่น `2027-12-01T23:59:00+07:00` |

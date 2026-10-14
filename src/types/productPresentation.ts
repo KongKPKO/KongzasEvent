@@ -19,6 +19,7 @@ export interface ProductVariantFields {
   variant_name?: string | null;
   variant_sort_order?: number | null;
   variant_group_name?: string | null;
+  variant_gallery_images?: string[] | null;
   sku?: string | null;
 }
 
@@ -29,4 +30,5 @@ export interface PresentableProduct extends ProductPresentationFields, ProductVa
   image_url?: string | null;
   description?: string | null;
   category?: string | null;
+  tags?: string[] | null;
 }

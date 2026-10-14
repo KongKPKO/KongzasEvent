@@ -1,6 +1,7 @@
 import { eventCopy } from '../../lib/eventCopy';
 import './catalog-workspace.css';
 import { uploadImage } from '../../lib/imageUploads';
+import { createPortal } from 'react-dom';
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
@@ -22,6 +23,7 @@ import type { OnlineCampaignSummary } from '../../types/onlineCampaign';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
 import ProductFamilyEditor, { type ProductFamilySaveInput } from '../../components/products/ProductFamilyEditor';
+import { ProductMedia } from '../../components/menu/ProductPresentation';
 import ProductFamilyCatalog, { type CatalogProductFamily } from '../../components/products/ProductFamilyCatalog';
 import type { FamilyVariant, ProductParent } from '../../types/productFamily';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -38,6 +40,9 @@ import {
 } from '../../lib/stockAdjustments';
 
 interface Product {
+  product_kind?: ProductParent['product_kind'];
+  gallery_images?: string[] | null;
+  variant_gallery_images?: string[] | null;
   id: string;
   name: string;
   price: number;
@@ -305,6 +310,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
    const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
    const [catalogActionMenuKey, setCatalogActionMenuKey] = useState<string | null>(null);
+   const [catalogMenuPosition, setCatalogMenuPosition] = useState({ left: 8, top: 8 });
    const catalogActionMenuRef = useRef<HTMLDivElement | null>(null);
    const catalogActionTriggerRef = useRef<HTMLButtonElement | null>(null);
    const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<CatalogWorkspaceTab>(initialTab);
@@ -424,7 +430,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       });
 
       const handlePointerDown = (event: PointerEvent) => {
-         if (!catalogActionMenuRef.current?.contains(event.target as Node)) {
+         if (!catalogActionMenuRef.current?.contains(event.target as Node) && !catalogActionTriggerRef.current?.contains(event.target as Node)) {
             setCatalogActionMenuKey(null);
          }
       };
@@ -435,9 +441,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          requestAnimationFrame(() => trigger?.focus());
       };
 
+      const closeOnLayoutChange = () => setCatalogActionMenuKey(null);
+      window.addEventListener('resize', closeOnLayoutChange);
       document.addEventListener('pointerdown', handlePointerDown);
       document.addEventListener('keydown', handleKeyDown);
       return () => {
+         window.removeEventListener('resize', closeOnLayoutChange);
          document.removeEventListener('pointerdown', handlePointerDown);
          document.removeEventListener('keydown', handleKeyDown);
       };
@@ -760,6 +769,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       return matchesSearch && matchesCategory && matchesTag && matchesView;
    });
+   const eventCatalogFamilies = Array.from(filteredEventCatalogProducts.reduce((groups, product) => {
+      const key = product.parent_product_id || product.id;
+      const items = groups.get(key) || [];
+      items.push(product);
+      groups.set(key, items);
+      return groups;
+   }, new Map<string, Product[]>())).map(([id, items]) => ({ id, items, parent: productParents.find(parent => parent.id === id) }));
+
    const selectedEventOption = eventOptions.find((event) => event.id === selectedEventId);
    const hasUnsavedNewEventProducts = Boolean(selectedEventId) && products.some((product) => {
       const savedDraft = eventCatalogSavedDraft[product.id];
@@ -1353,6 +1370,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             parent_product_id: product.parent_product_id || undefined,
             variant_name: product.variant_name || (products.filter((item) => item.parent_product_id === familyEditorParent.id).length === 1 ? 'Default' : product.name),
             sku: product.sku,
+            variant_gallery_images: product.variant_gallery_images ?? null,
+            gallery_images: product.gallery_images,
             price_override: product.price_override,
             stock_total: product.stock_total,
             is_unlimited: product.is_unlimited,
@@ -2016,7 +2035,6 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             </div>
             <div
                className="relative shrink-0"
-               ref={menuOpen ? catalogActionMenuRef : undefined}
             >
                <button
                   type="button"
@@ -2027,19 +2045,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   onClick={(event) => {
                      event.stopPropagation();
                      catalogActionTriggerRef.current = event.currentTarget;
+                     const bounds = event.currentTarget.getBoundingClientRect();
+                     const height = Math.min(240, window.innerHeight - 16);
+                     setCatalogMenuPosition({
+                        left: Math.max(8, Math.min(bounds.left, window.innerWidth - 216)),
+                        top: Math.max(8, Math.min(bounds.top >= height + 8 ? bounds.top - height - 4 : bounds.bottom + 4, window.innerHeight - height - 8)),
+                     });
                      setCatalogActionMenuKey((current) => current === menuKey ? null : menuKey);
                   }}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:border-pink-200 hover:text-pink-700"
                >
                   <MoreHorizontal size={18} aria-hidden="true" />
                </button>
-               {menuOpen && (
+               {menuOpen && createPortal(
                   <div
+                     ref={catalogActionMenuRef}
+                     style={catalogMenuPosition}
                      id={`catalog-actions-${surface}-${product.id}`}
                      role="menu"
                      aria-label={t('catalogMoreActions', { name: product.name })}
                      onKeyDown={handleCatalogActionMenuKeyDown}
-                     className={`absolute right-0 z-30 w-52 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl ${surface === 'card' ? 'bottom-12' : 'top-12'}`}
+                     className="fixed z-[220] max-h-[calc(100dvh-1rem)] w-52 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl"
                   >
                      <button
                         type="button"
@@ -2047,7 +2073,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         onClick={(event) => { event.stopPropagation(); onAction?.(); openFamilyEditorForProduct(product); }}
                         className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-pink-700"
                      >
-                        Manage variants
+                        {language === 'th' ? 'จัดการรายการสินค้า' : 'Manage items'}
                      </button>
                      <button
                         type="button"
@@ -2055,7 +2081,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         onClick={(event) => { event.stopPropagation(); onAction?.(); openFamilyEditorForProduct(product); }}
                         className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50"
                      >
-                        {language === 'th' ? 'แก้ไขสินค้าหลักและตัวเลือก' : 'Edit product family'}
+                        {language === 'th' ? 'แก้ไขสินค้าหลักและรายการ' : 'Edit product family'}
                      </button>
                      <button type="button" role="menuitem" className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-50" onClick={() => { onAction?.(); setCatalogActionMenuKey(null); setHistoryProduct(product); }}>{language === 'th' ? 'ประวัติสต็อก' : 'Stock history'}</button>
                      <button
@@ -2066,7 +2092,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      >
                         {t('catalogDeleteProduct')}
                      </button>
-                  </div>
+                  </div>, document.body
                )}
             </div>
          </div>
@@ -3202,8 +3228,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      ) : (
                         <>
 	                           {eventCatalogDisplayMode === 'visual' ? (
-	                              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-	                                 {filteredEventCatalogProducts.map((product) => {
+	                              <div className="space-y-4">
+	                                 {eventCatalogFamilies.map(family => (
+                                 <details key={family.id} data-event-family={family.id} className="group/family rounded-2xl border border-pink-100 bg-white" open={family.items.length === 1}>
+                                    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-4 rounded-2xl p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-pink-600">
+                                       <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-pink-50"><ProductMedia product={family.items[0]} getImageUrl={getMenuImageUrl} /></div>
+                                       <div className="min-w-0 flex-1"><p className="text-xs font-bold text-pink-700">{family.parent?.category || family.items[0].category}</p><h3 className="break-words text-lg font-black text-gray-950">{family.parent?.name || family.items[0].variant_group_name || family.items[0].name}</h3><p className="mt-1 text-xs font-semibold text-gray-600">{family.items.length} {language === 'th' ? 'รายการสินค้า · ตั้งราคาและสต็อกแยกแต่ละรายการ' : 'items · Separate price and stock per item'}</p><p className="mt-1 text-xs text-gray-500">{family.parent?.tags?.join(' · ')}</p></div>
+                                       <ChevronDown className="shrink-0 text-pink-700 transition-transform group-open/family:rotate-180" size={20} />
+                                    </summary>
+                                    <div className="grid gap-4 border-t border-pink-100 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                                    {family.items.map((product) => {
 	                                    const draft = eventCatalogDraft[product.id] || buildEventCatalogFallback(product);
 	                                    const stockLimit = getEventCatalogStockLimit(product);
 	                                    const eventStockValue = Number(draft.stock_total || 0);
@@ -3229,18 +3263,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                          }`}
 	                                       >
 	                                          <div className="relative aspect-[4/3] bg-pink-50/50">
-	                                             {product.image_url ? (
-	                                                <img
-	                                                   src={getMenuImageUrl(product.image_url)}
-	                                                   alt={product.name}
-	                                                   className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${draft.is_enabled ? '' : 'grayscale'}`}
-	                                                   loading="lazy"
-	                                                   decoding="async"
-	                                                />
-	                                             ) : (
-	                                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-black text-gray-400">{eventText("No image")}</div>
-	                                             )}
-	                                             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+	                                             <ProductMedia product={product} getImageUrl={getMenuImageUrl} />
+                                             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
 	                                                <button
 	                                                   type="button"
 	                                                   onClick={() => updateEventCatalogDraft(product.id, { is_enabled: !draft.is_enabled })}
@@ -3351,6 +3375,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                       </article>
 	                                    );
 	                                 })}
+                                    </div>
+                                 </details>
+                                 ))}
 	                              </div>
                            ) : (
                               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -3381,20 +3408,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                           >
                                              <div className="min-w-0 flex items-center gap-3">
                                                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
-                                                   {product.image_url ? (
-                                                      <img
-                                                         src={getMenuImageUrl(product.image_url)}
-                                                         alt={product.name}
-                                                         className="h-full w-full object-cover"
-                                                         loading="lazy"
-                                                         decoding="async"
-                                                      />
-                                                   ) : (
-                                                      <div className="flex h-full w-full items-center justify-center text-[9px] font-black text-gray-400">{eventText("No image")}</div>
-                                                   )}
+                                                   <ProductMedia product={product} getImageUrl={getMenuImageUrl} />
                                                 </div>
                                                 <div className="min-w-0">
                                                    <div className="truncate text-sm font-black text-gray-900">{product.name}</div>
+                                                   <p className="mt-1 break-words text-[11px] font-bold text-pink-700">{language === 'th' ? 'สินค้าหลัก: ' : 'Main product: '}{productParents.find(parent => parent.id === product.parent_product_id)?.name || product.variant_group_name || product.name}</p>
                                                    <div className="mt-1 flex flex-wrap gap-1">
                                                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
                                                          draft.is_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
@@ -3724,10 +3742,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             {/* PRODUCT LIST */}
             <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
                <div>
-                  <h2 className="text-lg font-bold text-gray-800">{language === 'th' ? 'สินค้าและตัวเลือก' : 'Products & variants'} ({filteredProductFamilies.length})</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{language === 'th' ? 'สินค้าหลัก' : 'Main products'} ({filteredProductFamilies.length})</h2>
                   <p className="text-xs font-semibold text-gray-500">
                      {catalogDisplayMode === 'visual'
-                        ? (language === 'th' ? 'ตรวจรูป ราคา และสต็อกแยกตามตัวเลือกสินค้า' : 'Review photos, prices, and stock for each variant.')
+                        ? (language === 'th' ? 'เลือกสินค้าหลักเพื่อดูรูป ราคา และสต็อกของแต่ละรายการ' : 'Open a main product to review photos, prices, and stock for each item.')
                         : (language === 'th' ? 'เทียบยอดพร้อมจัดสรร และจัดการสินค้าในตาราง' : 'Compare stock ready to allocate and manage products in a table.')}
                   </p>
                </div>

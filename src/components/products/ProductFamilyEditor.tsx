@@ -6,6 +6,8 @@ import { getMenuImageUrl } from '../../utils/imageUtils';
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../utils/currency';
 import type { BundleItem, FamilyVariant, ProductKind, ProductParent } from '../../types/productFamily';
 
+type FamilyVariantWithGallery = FamilyVariant & { variant_gallery_images?: string[] | null };
+
 type EditableVariant = {
   key: string;
   id?: string;
@@ -16,6 +18,7 @@ type EditableVariant = {
   stockTotal: string;
   isUnlimited: boolean;
   imageUrl: string;
+  galleryImages: string[] | null;
   status: 'enable' | 'disable' | 'soldout';
 };
 
@@ -30,6 +33,7 @@ export interface ProductFamilySaveInput {
     stock_total: number | null;
     is_unlimited: boolean;
     image_url: string | null;
+    variant_gallery_images?: string[] | null;
     status: 'enable' | 'disable' | 'soldout';
     variant_sort_order: number;
   }>;
@@ -54,10 +58,11 @@ const newVariant = (index = 0): EditableVariant => ({
   stockTotal: '0',
   isUnlimited: true,
   imageUrl: '',
+  galleryImages: null,
   status: 'enable',
 });
 
-const toEditableVariant = (variant: FamilyVariant, index: number): EditableVariant => ({
+const toEditableVariant = (variant: FamilyVariantWithGallery, index: number): EditableVariant => ({
   key: variant.id || `existing-${index}`,
   id: variant.id,
   updatedAt: variant.updated_at,
@@ -67,8 +72,11 @@ const toEditableVariant = (variant: FamilyVariant, index: number): EditableVaria
   stockTotal: variant.stock_total == null ? '0' : String(variant.stock_total),
   isUnlimited: Boolean(variant.is_unlimited),
   imageUrl: variant.image_url || '',
+  galleryImages: variant.variant_gallery_images == null ? null : [...variant.variant_gallery_images],
   status: variant.status || 'enable',
 });
+
+const uniqueImages = (images: string[]) => Array.from(new Set(images.map((image) => image.trim()).filter(Boolean)));
 
 const toLocalDateTimeInput = (value: string) => {
   const date = new Date(value);
@@ -79,47 +87,79 @@ const toLocalDateTimeInput = (value: string) => {
 const inputClass = 'min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-pink-300 focus:ring-2 focus:ring-pink-100';
 const labelClass = 'mb-1.5 block text-[11px] font-black uppercase tracking-wide text-gray-500';
 
+interface GalleryPreviewProps {
+  images: string[];
+  galleryPhoto: (index: number) => string;
+  movePhotoUp: (index: number) => string;
+  movePhotoDown: (index: number) => string;
+  removePhoto: (index: number) => string;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onRemove: (index: number) => void;
+  readOnly?: boolean;
+}
+
+function GalleryPreview({ images, galleryPhoto, movePhotoUp, movePhotoDown, removePhoto, onMove, onRemove, readOnly = false }: GalleryPreviewProps) {
+  return (
+    <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+      {images.map((image, index) => (
+        <div key={`${image}-${index}`} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+          <img src={getMenuImageUrl(image)} alt={galleryPhoto(index + 1)} className="aspect-square w-full object-cover" />
+          {!readOnly && <div className="flex items-center justify-center gap-1 border-t border-gray-200 bg-white p-1">
+            <button type="button" onClick={() => onMove(index, -1)} disabled={index === 0} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={movePhotoUp(index + 1)}><ArrowUp size={14} /></button>
+            <button type="button" onClick={() => onMove(index, 1)} disabled={index === images.length - 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={movePhotoDown(index + 1)}><ArrowDown size={14} /></button>
+            <button type="button" onClick={() => onRemove(index)} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" aria-label={removePhoto(index + 1)}><Trash2 size={14} /></button>
+          </div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const editorCopy = {
   en: {
     product: 'Product', editProduct: (name: string) => `Edit ${name}`, createProduct: 'Create product',
-    intro: 'Add your designs or characters here. Each option has its own price and stock.', closeEditor: 'Close product editor',
-    sharedDetails: 'Shared product details', sharedDetailsHint: 'Shown once across every design, character, or color.',
+    intro: 'Add the items sold under this product. Each item has its own price and stock.', closeEditor: 'Close product editor',
+    sharedDetails: 'Shared product details', sharedDetailsHint: 'Shown across every item under this product.',
     productName: 'Product name *', productNamePlaceholder: 'Traveler acrylic stand', productType: 'Product type', category: 'Category',
     kindSingle: 'Single item', kindPhoto: 'Photo / image set', kindBundle: 'Bundle', kindPreorder: 'Pre-order', kindService: 'Service',
     basePrice: 'Base price *', currency: 'Currency', tags: 'Tags', tagsPlaceholder: 'Genshin, Traveler, Event exclusive',
-    description: 'Description', descriptionPlaceholder: 'Size, material, and anything customers should know.', coverImage: 'Cover image', imagePath: 'Image path or URL', uploadCover: 'Upload cover image',
-    photoGallery: 'Photo gallery', photoGalleryHint: 'One image path or URL per line. The product card counts these automatically.', addPhotos: 'Add photos', uploadGallery: 'Upload gallery photos', galleryPhoto: (index: number) => `Gallery photo ${index}`,
+    description: 'Description', descriptionPlaceholder: 'Size, material, and anything customers should know.', coverImage: 'Cover image', imagePath: 'Image path or URL', uploadCover: 'Upload cover image', removeImage: 'Remove image',
+    photoGallery: 'Shared photo gallery', photoGalleryHint: 'Items can inherit these photos or use their own gallery.', addPhotos: 'Add photos', uploadGallery: 'Upload gallery photos', galleryPhoto: (index: number) => `Gallery photo ${index}`,
+    itemGallery: 'Item photo gallery', inheritedGallery: 'Using the shared photo gallery', useOwnGallery: 'Use a gallery for this item', useSharedGallery: 'Use shared gallery', emptyGallery: 'This item has an empty gallery.', movePhotoUp: (index: number) => `Move photo ${index} up`, movePhotoDown: (index: number) => `Move photo ${index} down`, removePhoto: (index: number) => `Remove photo ${index}`,
     includedItems: 'Included items', includedItemsHint: 'The card will show the item count and contents.', item: 'Item', bundleItemName: (index: number) => `Name for bundle item ${index}`, bundleItemQuantity: (index: number) => `Quantity for bundle item ${index}`, removeBundleItem: (index: number) => `Remove bundle item ${index}`,
     preorderTiming: 'Pre-order timing', ordersClose: 'Orders close', estimatedDelivery: 'Estimated delivery', etaPlaceholder: 'Ships late November',
     serviceSetup: 'Service setup', service: 'Service', serviceCheki: 'Cheki / photo', serviceSigning: 'Signing', serviceCommission: 'Commission', other: 'Other', minutes: 'Minutes', slotsPerSession: 'Slots per session',
-    variants: 'Variants', inventoryItem: 'Inventory item', variantsHint: 'One dimension only, such as character, design, or color. Every row has its own stock.', addVariant: 'Add variant',
+    variants: 'Items under this product', inventoryItem: 'Item under this product', variantsHint: 'Add each character, design, or color as an item with its own stock.', addVariant: 'Add item',
     priceOverride: 'Price override', basePlaceholder: (price: number) => `Base ${price}`, applyPrice: 'Apply price', stock: 'Stock', applyStock: 'Apply stock',
-    existingSku: 'Existing SKU', newSku: 'New SKU', variantFallback: (index: number) => `variant ${index}`, moveUp: (name: string) => `Move ${name} up`, moveDown: (name: string) => `Move ${name} down`, removeVariant: (name: string) => `Remove ${name}`,
-    variantName: 'Variant name *', sku: 'SKU', price: 'Price', inheritsPrice: (price: number) => `Inherits ${price}`, inheritHint: 'Leave blank to inherit the base price.', unlimited: 'Unlimited', stockFor: (name: string) => `Stock for ${name}`,
+    existingSku: 'Existing item', newSku: 'New item', variantFallback: (index: number) => `variant ${index}`, moveUp: (name: string) => `Move ${name} up`, moveDown: (name: string) => `Move ${name} down`, removeVariant: (name: string) => `Remove ${name}`,
+    variantName: 'Item name *', sku: 'SKU', price: 'Price', inheritsPrice: (price: number) => `Inherits ${price}`, inheritHint: 'Leave blank to inherit the base price.', unlimited: 'Unlimited', stockFor: (name: string) => `Stock for ${name}`,
     image: 'Image', imageFor: (name: string) => `Image for ${name}`, imagePlaceholder: 'Optional variant image', uploadImageFor: (name: string) => `Upload image for ${name}`, availability: 'Availability', active: 'Active', hidden: 'Hidden', soldOut: 'Sold out',
+    advanced: 'Advanced', advancedHint: 'Description, currency, SKU, and image paths',
     cancel: 'Cancel', saveFamily: 'Save family',
-    errorProduct: 'Add a product name and a valid base price.', errorVariantName: 'Every variant needs a name.', errorDuplicateVariant: 'Variant names must be unique inside this product.', errorVariantPrice: (name: string) => `Enter a valid price for ${name}.`, errorVariantStock: (name: string) => `Enter a whole-number stock quantity for ${name}.`,
+    errorProduct: 'Add a product name and a valid base price.', errorVariantName: 'Every item needs a name.', errorDuplicateVariant: 'Item names must be unique inside this product.', errorVariantPrice: (name: string) => `Enter a valid price for ${name}.`, errorVariantStock: (name: string) => `Enter a whole-number stock quantity for ${name}.`,
     errorService: 'Use a positive whole number for duration and a nonnegative whole number for slots.', errorBundle: 'Each included item needs a whole-number quantity of at least one.', errorGalleryLimit: 'Use up to 50 gallery images.', errorGalleryUpload: 'Gallery upload failed.', errorImageUpload: 'Image upload failed.', errorSave: 'Could not save this product family.',
   },
   th: {
     product: 'สินค้า', editProduct: (name: string) => `แก้ไข ${name}`, createProduct: 'เพิ่มสินค้า',
-    intro: 'เพิ่มแบบ ลาย หรือตัวละครของสินค้านี้ แต่ละตัวเลือกกำหนดราคาและสต็อกแยกกันได้', closeEditor: 'ปิดหน้าต่างสินค้า',
-    sharedDetails: 'ข้อมูลหลักของสินค้า', sharedDetailsHint: 'ข้อมูลส่วนนี้ใช้ร่วมกันกับทุกแบบ ตัวละคร หรือสี',
+    intro: 'เพิ่มรายการที่ขายภายใต้สินค้าหลัก แต่ละรายการกำหนดราคาและสต็อกแยกกันได้', closeEditor: 'ปิดหน้าต่างสินค้า',
+    sharedDetails: 'ข้อมูลหลักของสินค้า', sharedDetailsHint: 'ข้อมูลส่วนนี้ใช้ร่วมกันกับทุกรายการภายใต้สินค้าหลัก',
     productName: 'ชื่อสินค้า *', productNamePlaceholder: 'อะคริลิกสแตนด์ Traveler', productType: 'ประเภทสินค้า', category: 'หมวดหมู่',
     kindSingle: 'สินค้าชิ้นเดียว', kindPhoto: 'ชุดรูปภาพ', kindBundle: 'ชุดสินค้า', kindPreorder: 'พรีออเดอร์', kindService: 'บริการ',
     basePrice: 'ราคาหลัก *', currency: 'สกุลเงิน', tags: 'แท็ก', tagsPlaceholder: 'Genshin, Traveler, เฉพาะงาน',
-    description: 'รายละเอียด', descriptionPlaceholder: 'ขนาด วัสดุ และข้อมูลที่ลูกค้าควรรู้', coverImage: 'รูปปกสินค้า', imagePath: 'พาธรูปภาพหรือ URL', uploadCover: 'อัปโหลดรูปปก',
-    photoGallery: 'แกลเลอรีรูปภาพ', photoGalleryHint: 'ใส่พาธหรือ URL รูปละหนึ่งบรรทัด ระบบจะนับจำนวนรูปบนการ์ดให้อัตโนมัติ', addPhotos: 'เพิ่มรูป', uploadGallery: 'อัปโหลดรูปเข้าแกลเลอรี', galleryPhoto: (index: number) => `รูปในแกลเลอรี ${index}`,
+    description: 'รายละเอียด', descriptionPlaceholder: 'ขนาด วัสดุ และข้อมูลที่ลูกค้าควรรู้', coverImage: 'รูปปกสินค้า', imagePath: 'พาธรูปภาพหรือ URL', uploadCover: 'อัปโหลดรูปปก', removeImage: 'ลบรูป',
+    photoGallery: 'แกลเลอรีรูปภาพร่วม', photoGalleryHint: 'แต่ละรายการเลือกใช้รูปชุดนี้หรือแกลเลอรีของตัวเองได้', addPhotos: 'เพิ่มรูป', uploadGallery: 'อัปโหลดรูปเข้าแกลเลอรี', galleryPhoto: (index: number) => `รูปในแกลเลอรี ${index}`,
+    itemGallery: 'แกลเลอรีรูปภาพของรายการ', inheritedGallery: 'กำลังใช้แกลเลอรีรูปภาพร่วม', useOwnGallery: 'ใช้แกลเลอรีเฉพาะรายการนี้', useSharedGallery: 'ใช้แกลเลอรีรูปภาพร่วม', emptyGallery: 'รายการนี้ตั้งค่าแกลเลอรีว่างไว้', movePhotoUp: (index: number) => `เลื่อนรูปที่ ${index} ขึ้น`, movePhotoDown: (index: number) => `เลื่อนรูปที่ ${index} ลง`, removePhoto: (index: number) => `ลบรูปที่ ${index}`,
     includedItems: 'ของที่รวมในชุด', includedItemsHint: 'การ์ดสินค้าจะแสดงจำนวนและรายการของในชุด', item: 'เพิ่มรายการ', bundleItemName: (index: number) => `ชื่อของชิ้นที่ ${index}`, bundleItemQuantity: (index: number) => `จำนวนของชิ้นที่ ${index}`, removeBundleItem: (index: number) => `ลบของชิ้นที่ ${index}`,
     preorderTiming: 'กำหนดเวลาพรีออเดอร์', ordersClose: 'ปิดรับออเดอร์', estimatedDelivery: 'กำหนดส่งโดยประมาณ', etaPlaceholder: 'จัดส่งช่วงปลายเดือนพฤศจิกายน',
     serviceSetup: 'ตั้งค่าบริการ', service: 'ประเภทบริการ', serviceCheki: 'เชกิ / ถ่ายรูป', serviceSigning: 'เซ็นลายเซ็น', serviceCommission: 'คอมมิชชัน', other: 'อื่น ๆ', minutes: 'ระยะเวลา (นาที)', slotsPerSession: 'จำนวนคิวต่อรอบ',
-    variants: 'ตัวเลือกสินค้า', inventoryItem: 'ข้อมูลสต็อก', variantsHint: 'ใช้ตัวเลือกหนึ่งมิติ เช่น ตัวละคร ลาย หรือสี แต่ละแถวมีสต็อกของตัวเอง', addVariant: 'เพิ่มตัวเลือก',
-    priceOverride: 'ราคาสำหรับตัวเลือก', basePlaceholder: (price: number) => `ราคาหลัก ${price}`, applyPrice: 'ใช้ราคานี้ทั้งหมด', stock: 'สต็อก', applyStock: 'ใช้สต็อกนี้ทั้งหมด',
-    existingSku: 'SKU ที่มีอยู่', newSku: 'SKU ใหม่', variantFallback: (index: number) => `ตัวเลือกที่ ${index}`, moveUp: (name: string) => `เลื่อน ${name} ขึ้น`, moveDown: (name: string) => `เลื่อน ${name} ลง`, removeVariant: (name: string) => `ลบ ${name}`,
-    variantName: 'ชื่อตัวเลือก *', sku: 'SKU', price: 'ราคา', inheritsPrice: (price: number) => `ใช้ราคาหลัก ${price}`, inheritHint: 'เว้นว่างเพื่อใช้ราคาหลักของสินค้า', unlimited: 'ไม่จำกัด', stockFor: (name: string) => `สต็อกของ ${name}`,
-    image: 'รูปภาพ', imageFor: (name: string) => `รูปของ ${name}`, imagePlaceholder: 'รูปเฉพาะตัวเลือก (ไม่บังคับ)', uploadImageFor: (name: string) => `อัปโหลดรูปของ ${name}`, availability: 'สถานะการขาย', active: 'เปิดขาย', hidden: 'ซ่อน', soldOut: 'หมด',
+    variants: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', inventoryItem: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', variantsHint: 'เพิ่มตัวละคร ลาย หรือสีเป็นแต่ละรายการ โดยมีสต็อกแยกกัน', addVariant: 'เพิ่มรายการ',
+    priceOverride: 'ราคาสำหรับรายการ', basePlaceholder: (price: number) => `ราคาหลัก ${price}`, applyPrice: 'ใช้ราคานี้ทั้งหมด', stock: 'สต็อก', applyStock: 'ใช้สต็อกนี้ทั้งหมด',
+    existingSku: 'รายการเดิม', newSku: 'รายการใหม่', variantFallback: (index: number) => `รายการที่ ${index}`, moveUp: (name: string) => `เลื่อน ${name} ขึ้น`, moveDown: (name: string) => `เลื่อน ${name} ลง`, removeVariant: (name: string) => `ลบ ${name}`,
+    variantName: 'ชื่อรายการสินค้า *', sku: 'SKU', price: 'ราคา', inheritsPrice: (price: number) => `ใช้ราคาหลัก ${price}`, inheritHint: 'เว้นว่างเพื่อใช้ราคาหลักของสินค้า', unlimited: 'ไม่จำกัด', stockFor: (name: string) => `สต็อกของ ${name}`,
+    image: 'รูปภาพ', imageFor: (name: string) => `รูปของ ${name}`, imagePlaceholder: 'รูปเฉพาะรายการ (ไม่บังคับ)', uploadImageFor: (name: string) => `อัปโหลดรูปของ ${name}`, availability: 'สถานะการขาย', active: 'เปิดขาย', hidden: 'ซ่อน', soldOut: 'หมด',
+    advanced: 'ขั้นสูง', advancedHint: 'รายละเอียด สกุลเงิน SKU และพาธรูปภาพ',
     cancel: 'ยกเลิก', saveFamily: 'บันทึกสินค้า',
-    errorProduct: 'กรอกชื่อสินค้าและราคาหลักที่ถูกต้อง', errorVariantName: 'ตัวเลือกสินค้าทุกแถวต้องมีชื่อ', errorDuplicateVariant: 'ชื่อตัวเลือกสินค้าต้องไม่ซ้ำกัน', errorVariantPrice: (name: string) => `กรอกราคาที่ถูกต้องสำหรับ ${name}`, errorVariantStock: (name: string) => `กรอกสต็อกเป็นจำนวนเต็มสำหรับ ${name}`,
+    errorProduct: 'กรอกชื่อสินค้าและราคาหลักที่ถูกต้อง', errorVariantName: 'รายการสินค้าทุกแถวต้องมีชื่อ', errorDuplicateVariant: 'ชื่อรายการสินค้าต้องไม่ซ้ำกัน', errorVariantPrice: (name: string) => `กรอกราคาที่ถูกต้องสำหรับ ${name}`, errorVariantStock: (name: string) => `กรอกสต็อกเป็นจำนวนเต็มสำหรับ ${name}`,
     errorService: 'ระยะเวลาต้องเป็นจำนวนเต็มมากกว่าศูนย์ และจำนวนคิวต้องเป็นจำนวนเต็มตั้งแต่ศูนย์ขึ้นไป', errorBundle: 'ของแต่ละรายการในชุดต้องมีจำนวนเต็มอย่างน้อยหนึ่งชิ้น', errorGalleryLimit: 'เพิ่มรูปในแกลเลอรีได้ไม่เกิน 50 รูป', errorGalleryUpload: 'อัปโหลดรูปในแกลเลอรีไม่สำเร็จ', errorImageUpload: 'อัปโหลดรูปไม่สำเร็จ', errorSave: 'บันทึกสินค้านี้ไม่สำเร็จ',
   },
 } as const;
@@ -144,7 +184,7 @@ export default function ProductFamilyEditor({
   const [basePrice, setBasePrice] = useState('');
   const [kind, setKind] = useState<ProductKind>('single');
   const [imageUrl, setImageUrl] = useState('');
-  const [galleryImages, setGalleryImages] = useState('');
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [bundleItems, setBundleItems] = useState<BundleItem[]>([]);
   const [preorderClosesAt, setPreorderClosesAt] = useState('');
   const [preorderEta, setPreorderEta] = useState('');
@@ -175,7 +215,7 @@ export default function ProductFamilyEditor({
     setBasePrice(parent == null ? '' : String(parent.base_price));
     setKind(parent?.product_kind || 'single');
     setImageUrl(parent?.image_url || '');
-    setGalleryImages((parent?.gallery_images || []).join('\n'));
+    setGalleryImages(uniqueImages(parent?.gallery_images || []));
     setBundleItems(parent?.bundle_items?.length ? parent.bundle_items : [{ name: '', quantity: 1 }]);
     setPreorderClosesAt(parent?.preorder_closes_at ? toLocalDateTimeInput(parent.preorder_closes_at) : '');
     setPreorderEta(parent?.preorder_eta || '');
@@ -191,6 +231,7 @@ export default function ProductFamilyEditor({
   const hasMultipleVariants = variants.length > 1 || variants.some((variant) => variant.name.trim() !== 'Default');
   const parsedBasePrice = Number(basePrice);
   const effectivePriceLabel = useMemo(() => Number.isFinite(parsedBasePrice) ? parsedBasePrice : 0, [parsedBasePrice]);
+  const sharedGalleryImages = uniqueImages(galleryImages);
 
   if (!open) return null;
 
@@ -208,20 +249,43 @@ export default function ProductFamilyEditor({
     });
   };
 
-  const uploadGallery = async (files: FileList) => {
+  const uploadGallery = async (files: FileList, variantKey?: string) => {
     if (!onUploadImage || uploadingKey) return;
-    setUploadingKey('gallery');
+    const currentImages = variantKey
+      ? variants.find((variant) => variant.key === variantKey)?.galleryImages || []
+      : sharedGalleryImages;
+    if (currentImages.length + files.length > 50) {
+      setError(copy.errorGalleryLimit);
+      return;
+    }
+    const uploadKey = variantKey ? `gallery-${variantKey}` : 'gallery';
+    setUploadingKey(uploadKey);
     setError('');
     try {
+      const uploadedImages: string[] = [];
       for (const file of Array.from(files)) {
-        const path = await onUploadImage(file);
-        setGalleryImages((current) => current ? `${current}\n${path}` : path);
+        uploadedImages.push(await onUploadImage(file));
+      }
+      if (variantKey) {
+        setVariants((current) => current.map((variant) => variant.key === variantKey
+          ? { ...variant, galleryImages: uniqueImages([...(variant.galleryImages || []), ...uploadedImages]) }
+          : variant));
+      } else {
+        setGalleryImages((current) => uniqueImages([...current, ...uploadedImages]));
       }
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : copy.errorGalleryUpload);
     } finally {
       setUploadingKey('');
     }
+  };
+
+  const moveGalleryImage = (images: string[], index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return images;
+    const next = [...images];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
   };
 
   const uploadImage = async (file: File, target: 'parent' | string) => {
@@ -278,8 +342,12 @@ export default function ProductFamilyEditor({
     const cleanBundleItems = bundleItems
       .map((item) => ({ name: item.name.trim(), quantity: item.quantity }))
       .filter((item) => item.name);
-    const cleanGallery = Array.from(new Set(galleryImages.split('\n').map((item) => item.trim()).filter(Boolean)));
+    const cleanGallery = uniqueImages(galleryImages);
     if (cleanGallery.length > 50) { setError(copy.errorGalleryLimit); return; }
+    if (variants.some((variant) => variant.galleryImages != null && uniqueImages(variant.galleryImages).length > 50)) {
+      setError(copy.errorGalleryLimit);
+      return;
+    }
     const cleanTags = Array.from(new Set(tags.split(',').map((item) => item.trim()).filter(Boolean)));
 
     try {
@@ -313,6 +381,7 @@ export default function ProductFamilyEditor({
         stock_total: variant.isUnlimited ? null : Number(variant.stockTotal),
         is_unlimited: variant.isUnlimited,
         image_url: variant.imageUrl.trim() || null,
+        variant_gallery_images: variant.galleryImages == null ? null : uniqueImages(variant.galleryImages),
         status: variant.status,
         variant_sort_order: index,
         })),
@@ -348,25 +417,30 @@ export default function ProductFamilyEditor({
                     <div><label className={labelClass}>{copy.productType}</label><select aria-label={copy.productType} value={kind} onChange={(event) => setKind(event.target.value as ProductKind)} className={inputClass}><option value="single">{copy.kindSingle}</option><option value="photo">{copy.kindPhoto}</option><option value="bundle">{copy.kindBundle}</option><option value="preorder">{copy.kindPreorder}</option><option value="service">{copy.kindService}</option></select></div>
                     <div><label className={labelClass}>{copy.category}</label><input aria-label={copy.category} value={category} onChange={(event) => setCategory(event.target.value)} className={inputClass} /></div>
                   </div>
-                  <div className="grid grid-cols-[1fr_112px] gap-3">
-                    <div><label className={labelClass}>{copy.basePrice}</label><input aria-label={copy.basePrice} type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} className={inputClass} placeholder="120" /></div>
-                    <div><label className={labelClass}>{copy.currency}</label><select aria-label={copy.currency} value={currency} onChange={(event) => setCurrency(event.target.value)} className={inputClass}>{Object.entries(CURRENCIES).map(([code, info]) => <option key={code} value={code}>{info.symbol} {code}</option>)}</select></div>
-                  </div>
+                  <div><label className={labelClass}>{copy.basePrice}</label><input aria-label={copy.basePrice} type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} className={inputClass} placeholder="120" /></div>
                   <div><label className={labelClass}>{copy.tags}</label><input aria-label={copy.tags} value={tags} onChange={(event) => setTags(event.target.value)} className={inputClass} placeholder={copy.tagsPlaceholder} /></div>
-                  <div><label className={labelClass}>{copy.description}</label><textarea aria-label={copy.description} value={description} onChange={(event) => setDescription(event.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder={copy.descriptionPlaceholder} /></div>
                   <div>
                     <label className={labelClass}>{copy.coverImage}</label>
-                    <div className="flex gap-2">
-                      <input aria-label={copy.coverImage} value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className={inputClass} placeholder={copy.imagePath} />
-                      {onUploadImage && <label className="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100" aria-label={copy.uploadCover}>{uploadingKey === 'parent' ? <Loader className="animate-spin" size={17} /> : <ImagePlus size={17} />}<input type="file" accept="image/*,.heic,.heif" className="sr-only" onChange={(event) => { const selected = event.target.files?.[0]; if (selected) void uploadImage(selected, 'parent'); event.target.value = ''; }} /></label>}
+                    <div className="flex items-center gap-3">
+                      {imageUrl ? <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50"><img src={getMenuImageUrl(imageUrl)} alt={copy.coverImage} className="h-full w-full object-cover" /><button type="button" onClick={() => setImageUrl('')} className="absolute right-1 top-1 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/95 text-red-500 shadow" aria-label={copy.removeImage}><X size={14} /></button></div> : <div className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-gray-400"><ImagePlus size={22} /></div>}
+                      {onUploadImage && <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700 hover:bg-pink-100" aria-label={copy.uploadCover}>{uploadingKey === 'parent' ? <Loader className="animate-spin" size={17} /> : <ImagePlus size={17} />}{copy.uploadCover}<input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={Boolean(uploadingKey) || saving} onChange={(event) => { const selected = event.target.files?.[0]; if (selected) void uploadImage(selected, 'parent'); event.target.value = ''; }} /></label>}
                     </div>
                   </div>
+                  <details className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <summary className="cursor-pointer text-xs font-black text-gray-700">{copy.advanced} <span className="font-semibold text-gray-400">· {copy.advancedHint}</span></summary>
+                    <div className="mt-3 space-y-3">
+                      <div><label className={labelClass}>{copy.description}</label><textarea aria-label={copy.description} value={description} onChange={(event) => setDescription(event.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder={copy.descriptionPlaceholder} /></div>
+                      <div><label className={labelClass}>{copy.currency}</label><select aria-label={copy.currency} value={currency} onChange={(event) => setCurrency(event.target.value)} className={inputClass}>{Object.entries(CURRENCIES).map(([code, info]) => <option key={code} value={code}>{info.symbol} {code}</option>)}</select></div>
+                      <div><label className={labelClass}>{copy.imagePath}</label><input aria-label={copy.imagePath} value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className={inputClass} placeholder={copy.imagePath} /></div>
+                    </div>
+                  </details>
                 </div>
               </section>
 
-              {kind === 'photo' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h3 className="text-sm font-black text-gray-900">{copy.photoGallery}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.photoGalleryHint}</p><textarea aria-label={copy.photoGallery} value={galleryImages} onChange={(event) => setGalleryImages(event.target.value)} className={`${inputClass} mt-3 min-h-36 py-3 font-mono text-xs`} placeholder={'public/photo-1.webp\npublic/photo-2.webp'} />
-                {onUploadImage && <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700">{uploadingKey === 'gallery' ? <Loader size={16} className="animate-spin" /> : <ImagePlus size={16} />}{copy.addPhotos}<input aria-label={copy.uploadGallery} type="file" accept="image/*,.heic,.heif" multiple className="sr-only" disabled={Boolean(uploadingKey) || saving} onChange={(event) => { if (event.target.files?.length) void uploadGallery(event.target.files); event.target.value = ''; }} /></label>}
-                <div className="mt-3 flex flex-wrap gap-2">{galleryImages.split('\n').map((value) => value.trim()).filter(Boolean).map((image, index) => <img key={`${image}-${index}`} src={getMenuImageUrl(image)} alt={copy.galleryPhoto(index + 1)} className="h-16 w-16 rounded-lg object-cover" />)}</div>
+              {kind === 'photo' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h3 className="text-sm font-black text-gray-900">{copy.photoGallery}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.photoGalleryHint}</p>
+                {onUploadImage && <label className="my-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 text-xs font-black text-pink-700">{uploadingKey === 'gallery' ? <Loader size={16} className="animate-spin" /> : <ImagePlus size={16} />}{copy.addPhotos}<input aria-label={copy.uploadGallery} type="file" accept="image/*,.heic,.heif" multiple className="sr-only" disabled={Boolean(uploadingKey) || saving} onChange={(event) => { if (event.target.files?.length) void uploadGallery(event.target.files); event.target.value = ''; }} /></label>}
+                {sharedGalleryImages.length > 0 && <GalleryPreview images={sharedGalleryImages} galleryPhoto={copy.galleryPhoto} movePhotoUp={copy.movePhotoUp} movePhotoDown={copy.movePhotoDown} removePhoto={copy.removePhoto} onMove={(index, direction) => setGalleryImages((current) => moveGalleryImage(uniqueImages(current), index, direction))} onRemove={(index) => setGalleryImages((current) => uniqueImages(current).filter((_, imageIndex) => imageIndex !== index))} />}
+                <details className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><summary className="cursor-pointer text-xs font-black text-gray-700">{copy.advanced}</summary><textarea aria-label={copy.photoGallery} value={galleryImages.join('\n')} onChange={(event) => setGalleryImages(event.target.value.split('\n'))} className={`${inputClass} mt-3 min-h-28 py-3 font-mono text-xs`} placeholder={'public/photo-1.webp\npublic/photo-2.webp'} /></details>
               </section>}
 
               {kind === 'bundle' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><div><h3 className="text-sm font-black text-gray-900">{copy.includedItems}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.includedItemsHint}</p></div><button type="button" onClick={() => setBundleItems((items) => [...items, { name: '', quantity: 1 }])} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700"><Plus size={14} /> {copy.item}</button></div><div className="mt-3 space-y-2">{bundleItems.map((item, index) => <div key={index} className="grid grid-cols-[1fr_76px_44px] gap-2"><input aria-label={copy.bundleItemName(index + 1)} value={item.name} onChange={(event) => setBundleItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, name: event.target.value } : current))} className={inputClass} placeholder={uiText(language, 'Postcard')} /><input type="number" min="1" value={item.quantity} onChange={(event) => setBundleItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: Number(event.target.value) } : current))} className={inputClass} aria-label={copy.bundleItemQuantity(index + 1)} /><button type="button" onClick={() => setBundleItems((items) => items.filter((_, itemIndex) => itemIndex !== index))} className="inline-flex h-11 items-center justify-center rounded-xl text-red-500 hover:bg-red-50" aria-label={copy.removeBundleItem(index + 1)}><Trash2 size={16} /></button></div>)}</div></section>}
@@ -393,17 +467,24 @@ export default function ProductFamilyEditor({
                 {variants.map((variant, index) => (
                   <article key={variant.key} className="rounded-2xl border border-gray-200 p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2"><span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-pink-50 px-2 text-xs font-black text-pink-700">{index + 1}</span><span className="text-xs font-black text-gray-500">{variant.id ? copy.existingSku : copy.newSku}</span></div>
+                      <div className="flex items-center gap-2"><span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-pink-50 px-2 text-xs font-black text-pink-700">{index + 1}</span><span className="text-xs font-black text-gray-500">{variant.name || copy.variantFallback(index + 1)}</span></div>
                       <div className="flex items-center gap-1"><button type="button" onClick={() => moveVariant(index, -1)} disabled={index === 0} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveUp(variant.name || copy.variantFallback(index + 1))}><ArrowUp size={16} /></button><button type="button" onClick={() => moveVariant(index, 1)} disabled={index === variants.length - 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveDown(variant.name || copy.variantFallback(index + 1))}><ArrowDown size={16} /></button><button type="button" onClick={() => setVariants((current) => current.filter((item) => item.key !== variant.key))} disabled={variants.length === 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-30" aria-label={copy.removeVariant(variant.name || copy.variantFallback(index + 1))}><Trash2 size={16} /></button></div>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <div><label className={labelClass}>{copy.variantName}</label><input aria-label={copy.variantName} value={variant.name} onChange={(event) => updateVariant(variant.key, { name: event.target.value })} className={inputClass} placeholder={uiText(language, 'Aether')} /></div>
-                      <div><label className={labelClass}>{copy.sku}</label><input aria-label={copy.sku} value={variant.sku} onChange={(event) => updateVariant(variant.key, { sku: event.target.value })} className={`${inputClass} font-mono`} placeholder="TRAVELER-AETHER" /></div>
+                      <div><label className={labelClass}>{copy.availability}</label><select aria-label={copy.availability} value={variant.status} onChange={(event) => updateVariant(variant.key, { status: event.target.value as EditableVariant['status'] })} className={inputClass}><option value="enable">{copy.active}</option><option value="disable">{copy.hidden}</option><option value="soldout">{copy.soldOut}</option></select></div>
                       <div><label className={labelClass}>{copy.price}</label><input aria-label={copy.price} type="number" min="0" step="0.01" value={variant.priceOverride} onChange={(event) => updateVariant(variant.key, { priceOverride: event.target.value })} className={inputClass} placeholder={copy.inheritsPrice(effectivePriceLabel)} /><p className="mt-1 text-[10px] font-semibold text-gray-400">{copy.inheritHint}</p></div>
                       <div><label className={labelClass}>{copy.stock}</label><div className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3"><label className="flex items-center gap-2 text-xs font-black text-gray-600"><input type="checkbox" checked={variant.isUnlimited} onChange={(event) => updateVariant(variant.key, { isUnlimited: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-pink-600" /> {copy.unlimited}</label><input type="number" min="0" step="1" value={variant.stockTotal} onChange={(event) => updateVariant(variant.key, { stockTotal: event.target.value })} disabled={variant.isUnlimited} className="ml-auto w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm font-bold disabled:bg-gray-100 disabled:text-gray-400" aria-label={copy.stockFor(variant.name || copy.variantFallback(index + 1))} /></div></div>
-                      <div><label className={labelClass}>{copy.image}</label><div className="flex gap-2"><input aria-label={copy.imageFor(variant.name || copy.variantFallback(index + 1))} value={variant.imageUrl} onChange={(event) => updateVariant(variant.key, { imageUrl: event.target.value })} className={inputClass} placeholder={copy.imagePlaceholder} />{onUploadImage && <label className="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border border-gray-200 text-gray-600 hover:border-pink-200 hover:text-pink-700" aria-label={copy.uploadImageFor(variant.name || copy.variantFallback(index + 1))}>{uploadingKey === variant.key ? <Loader className="animate-spin" size={16} /> : <ImagePlus size={16} />}<input type="file" accept="image/*,.heic,.heif" className="sr-only" onChange={(event) => { const selected = event.target.files?.[0]; if (selected) void uploadImage(selected, variant.key); event.target.value = ''; }} /></label>}</div></div>
-                      <div><label className={labelClass}>{copy.availability}</label><select aria-label={copy.availability} value={variant.status} onChange={(event) => updateVariant(variant.key, { status: event.target.value as EditableVariant['status'] })} className={inputClass}><option value="enable">{copy.active}</option><option value="disable">{copy.hidden}</option><option value="soldout">{copy.soldOut}</option></select></div>
+                      {kind !== 'photo' && <div className="sm:col-span-2"><label className={labelClass}>{copy.image}</label><div className="flex items-center gap-3">{variant.imageUrl ? <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50"><img src={getMenuImageUrl(variant.imageUrl)} alt={copy.imageFor(variant.name || copy.variantFallback(index + 1))} className="h-full w-full object-cover" /><button type="button" onClick={() => updateVariant(variant.key, { imageUrl: '' })} className="absolute right-1 top-1 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/95 text-red-500 shadow" aria-label={copy.removeImage}><X size={14} /></button></div> : <div className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-gray-400"><ImagePlus size={22} /></div>}{onUploadImage && <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-gray-200 px-3 text-xs font-black text-gray-700 hover:border-pink-200 hover:text-pink-700" aria-label={copy.uploadImageFor(variant.name || copy.variantFallback(index + 1))}>{uploadingKey === variant.key ? <Loader className="animate-spin" size={16} /> : <ImagePlus size={16} />}{copy.uploadImageFor(variant.name || copy.variantFallback(index + 1))}<input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={Boolean(uploadingKey) || saving} onChange={(event) => { const selected = event.target.files?.[0]; if (selected) void uploadImage(selected, variant.key); event.target.value = ''; }} /></label>}</div></div>}
                     </div>
+                    {kind === 'photo' && <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-black text-gray-800">{copy.itemGallery}</h4><p className="mt-1 text-[11px] font-semibold text-gray-500">{variant.galleryImages === null ? copy.inheritedGallery : variant.galleryImages.length === 0 ? copy.emptyGallery : `${variant.galleryImages.length}/50`}</p></div>{variant.galleryImages === null ? <button type="button" onClick={() => updateVariant(variant.key, { galleryImages: [] })} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:border-pink-200">{copy.useOwnGallery}</button> : <button type="button" onClick={() => updateVariant(variant.key, { galleryImages: null })} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:border-pink-200">{copy.useSharedGallery}</button>}</div>
+                      {variant.galleryImages === null ? (sharedGalleryImages.length > 0 && <div className="mt-3 opacity-70"><GalleryPreview images={sharedGalleryImages} galleryPhoto={copy.galleryPhoto} movePhotoUp={copy.movePhotoUp} movePhotoDown={copy.movePhotoDown} removePhoto={copy.removePhoto} onMove={() => undefined} onRemove={() => undefined} readOnly /></div>) : <>
+                        {onUploadImage && <label className="my-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700">{uploadingKey === `gallery-${variant.key}` ? <Loader size={16} className="animate-spin" /> : <ImagePlus size={16} />}{copy.addPhotos}<input aria-label={`${copy.uploadGallery} ${variant.name || index + 1}`} type="file" accept="image/*,.heic,.heif" multiple className="sr-only" disabled={Boolean(uploadingKey) || saving} onChange={(event) => { if (event.target.files?.length) void uploadGallery(event.target.files, variant.key); event.target.value = ''; }} /></label>}
+                        {variant.galleryImages.length > 0 && <GalleryPreview images={variant.galleryImages} galleryPhoto={copy.galleryPhoto} movePhotoUp={copy.movePhotoUp} movePhotoDown={copy.movePhotoDown} removePhoto={copy.removePhoto} onMove={(imageIndex, direction) => updateVariant(variant.key, { galleryImages: moveGalleryImage(variant.galleryImages || [], imageIndex, direction) })} onRemove={(imageIndex) => updateVariant(variant.key, { galleryImages: (variant.galleryImages || []).filter((_, currentIndex) => currentIndex !== imageIndex) })} />}
+                      </>}
+                    </div>}
+                    <details className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><summary className="cursor-pointer text-xs font-black text-gray-700">{copy.advanced}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>{copy.sku}</label><input aria-label={copy.sku} value={variant.sku} onChange={(event) => updateVariant(variant.key, { sku: event.target.value })} className={`${inputClass} font-mono`} placeholder="TRAVELER-AETHER" /></div><div><label className={labelClass}>{copy.imagePath}</label><input aria-label={copy.imageFor(variant.name || copy.variantFallback(index + 1))} value={variant.imageUrl} onChange={(event) => updateVariant(variant.key, { imageUrl: event.target.value })} className={inputClass} placeholder={copy.imagePlaceholder} /></div>{kind === 'photo' && variant.galleryImages !== null && <div className="sm:col-span-2"><label className={labelClass}>{copy.itemGallery}</label><textarea aria-label={`${copy.itemGallery} ${variant.name || index + 1}`} value={variant.galleryImages.join('\n')} onChange={(event) => updateVariant(variant.key, { galleryImages: event.target.value.split('\n') })} className={`${inputClass} min-h-24 py-3 font-mono text-xs`} /></div>}</div></details>
                   </article>
                 ))}
               </div>

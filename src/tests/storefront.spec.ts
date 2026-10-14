@@ -27,7 +27,7 @@ test('storefront supports variants, stock limits, keyboard details and a persist
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Pink', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: 'Print Pink' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Pink', exact: true })).toBeVisible();
     await expect(dialog.getByText('฿150', { exact: true })).toBeVisible();
     await dialog.getByRole('button', { name: 'Add: Print Pink', exact: true }).click();
     await dialog.getByRole('button', { name: 'Increase quantity of Print Pink' }).click();

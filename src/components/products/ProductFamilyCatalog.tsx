@@ -2,10 +2,13 @@ import { useState, type ReactNode } from 'react';
 import { CalendarClock, Clock3, Images, Package, PackageSearch, Pencil, Search, Users, X } from 'lucide-react';
 import type { ProductParent } from '../../types/productFamily';
 import { formatPrice } from '../../utils/currency';
+import { getProductImages } from '../../utils/productPresentation';
 import { uiText, useI18n } from '../../i18n';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 export interface CatalogFamilyVariant {
+  variant_gallery_images?: string[] | null;
+  gallery_images?: string[] | null;
   id: string;
   name: string;
   price: number;
@@ -54,10 +57,11 @@ function ProductVisual<TVariant extends CatalogFamilyVariant>({ parent, variants
   getImageUrl: ProductFamilyCatalogProps<TVariant>['getImageUrl'];
   language: 'en' | 'th';
 }) {
+  const item = variants[0];
   const gallery = parent.product_kind === 'photo'
-    ? [parent.image_url, ...(parent.gallery_images || [])].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
+    ? (item?.variant_gallery_images != null ? item.variant_gallery_images : [item?.image_url || parent.image_url, ...(item?.gallery_images || parent.gallery_images || [])]).filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
     : [];
-  const fallbackImage = gallery[0] || parent.image_url || variants.find((variant) => variant.image_url)?.image_url;
+  const fallbackImage = item?.variant_gallery_images != null ? gallery[0] : gallery[0] || parent.image_url || variants.find((variant) => variant.image_url)?.image_url;
 
   if (gallery.length > 1) {
     const shown = gallery.slice(0, 4);
@@ -112,7 +116,7 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
         <div data-testid="product-options-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
           {filteredVariants.map((variant) => (
             <article key={variant.id} data-testid={`catalog-variant-${variant.id}`} className="rounded-xl border border-gray-200 p-3">
-              <div className="flex items-start gap-3"><div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">{variant.image_url || preview.parent.image_url ? <img src={getImageUrl(variant.image_url || preview.parent.image_url, 160)} alt="" className="h-full w-full object-cover" /> : <PackageSearch className="m-4 text-gray-400" />}</div><div className="min-w-0 flex-1"><h3 className="break-words text-sm font-black text-gray-900">{variant.variant_name || variant.name}</h3>{variant.sku && <p className="mt-1 break-all font-mono text-[10px] text-gray-500">SKU: {variant.sku}</p>}<span className="mt-1 inline-block text-xs font-bold text-gray-600">{variant.status === 'enable' ? (thai ? 'เปิดใช้งาน' : 'Active') : variant.status === 'soldout' ? (thai ? 'ขายหมด' : 'Sold out') : (thai ? 'ปิดใช้งาน' : 'Inactive')}</span></div><p className="shrink-0 text-sm font-black text-pink-700">{formatPrice(variant.price_override ?? preview.parent.base_price, preview.parent.currency)}</p></div>
+              <div className="flex items-start gap-3"><div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100">{getProductImages(variant)[0] ? <img src={getImageUrl(getProductImages(variant)[0], 160)} alt="" className="h-full w-full object-cover" /> : <PackageSearch className="m-4 text-gray-400" />}</div><div className="min-w-0 flex-1"><h3 className="break-words text-sm font-black text-gray-900">{variant.variant_name || variant.name}</h3>{variant.sku && <p className="mt-1 break-all font-mono text-[10px] text-gray-500">SKU: {variant.sku}</p>}<span className="mt-1 inline-block text-xs font-bold text-gray-600">{variant.status === 'enable' ? (thai ? 'เปิดใช้งาน' : 'Active') : variant.status === 'soldout' ? (thai ? 'ขายหมด' : 'Sold out') : (thai ? 'ปิดใช้งาน' : 'Inactive')}</span></div><p className="shrink-0 text-sm font-black text-pink-700">{formatPrice(variant.price_override ?? preview.parent.base_price, preview.parent.currency)}</p></div>
               <div className="mt-3 rounded-xl bg-gray-50 p-3">{renderVariantStock(variant, true)}</div>
               <div className="mt-3">{renderVariantActions(variant, 'card', closePreview)}</div>
             </article>
@@ -138,12 +142,13 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
         {families.map((family) => {
           const primary = family.variants[0];
           const activeCount = family.variants.filter((variant) => variant.status === 'enable').length;
-          const pictureCount = new Set([family.parent.image_url, ...(family.parent.gallery_images || [])].filter(Boolean)).size;
+          const pictureCount = new Set((primary?.variant_gallery_images != null ? primary.variant_gallery_images : [primary?.image_url || family.parent.image_url, ...(primary?.gallery_images || family.parent.gallery_images || [])]).filter(Boolean)).size;
           const bundleCount = (family.parent.bundle_items || []).reduce((sum, item) => sum + item.quantity, 0);
           return (
-            <article key={family.parent.id} data-testid={family.variants.length === 1 ? `catalog-card-${primary.id}` : `catalog-family-card-${family.parent.id}`} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/50">
-              <div className="relative aspect-[4/3] overflow-hidden bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} language={language} /><div className="absolute left-3 top-3 flex flex-wrap gap-1.5"><span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">{kindLabel(language, family.parent.product_kind)}</span>{family.parent.product_kind === 'photo' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Images size={11} /> {pictureCount} {uiText(language, 'pics')}</span>}{family.parent.product_kind === 'bundle' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Package size={11} /> {bundleCount} {uiText(language, 'items')}</span>}{family.parent.product_kind === 'preorder' && <span className="rounded-full bg-amber-500 px-2 py-1 text-[10px] font-black text-white">{uiText(language, 'PRE-ORDER')}</span>}</div></div>
+            <article key={family.parent.id} data-testid={family.variants.length === 1 ? `catalog-card-${primary.id}` : `catalog-family-card-${family.parent.id}`} className="overflow-visible rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:border-pink-100 hover:shadow-lg hover:shadow-pink-100/50">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-t-2xl bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} language={language} /><div className="absolute left-3 top-3 flex flex-wrap gap-1.5"><span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-gray-700 shadow-sm">{kindLabel(language, family.parent.product_kind)}</span>{family.parent.product_kind === 'photo' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Images size={11} /> {pictureCount} {uiText(language, 'pics')}</span>}{family.parent.product_kind === 'bundle' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/80 px-2 py-1 text-[10px] font-black text-white"><Package size={11} /> {bundleCount} {uiText(language, 'items')}</span>}{family.parent.product_kind === 'preorder' && <span className="rounded-full bg-amber-500 px-2 py-1 text-[10px] font-black text-white">{uiText(language, 'PRE-ORDER')}</span>}</div></div>
               <div className="space-y-3 p-4">
+                <div className="flex flex-wrap gap-1 text-[11px] font-bold text-gray-600"><span className="rounded-full bg-pink-50 px-2 py-1 text-pink-700">{family.parent.category || (thai ? 'อื่น ๆ' : 'Other')}</span>{family.parent.tags?.map(tag => <span key={tag} className="rounded-full bg-gray-100 px-2 py-1">{tag}</span>)}</div>
                 <div><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base font-black text-gray-950">{family.parent.name}</h3><p className="mt-1 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{thai ? `เปิดใช้งาน ${activeCount}` : `${activeCount} active`}</p></div><button type="button" onClick={() => onEditFamily(family)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-600 hover:border-pink-200 hover:text-pink-700" aria-label={uiText(language, 'Edit {name}').replace('{name}', family.parent.name)}><Pencil size={16} /></button></div><div className="mt-2 text-xl font-black text-pink-600">{priceRange(family)}</div></div>
                 {family.parent.product_kind === 'bundle' && <ul className="space-y-1 rounded-xl bg-gray-50 p-3 text-xs font-semibold text-gray-600">{(family.parent.bundle_items || []).slice(0, 3).map((item, index) => <li key={`${item.name}-${index}`}>{item.name} ×{item.quantity}</li>)}</ul>}
                 {family.parent.product_kind === 'preorder' && <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">{family.parent.preorder_closes_at && <div className="flex items-center gap-1.5"><CalendarClock size={14} /> {uiText(language, 'Closes')} {formatDateTime(family.parent.preorder_closes_at, dateLocale)}</div>}{family.parent.preorder_eta && <div className="mt-1 text-amber-700">{uiText(language, 'ETA')} {family.parent.preorder_eta}</div>}</div>}
@@ -162,25 +167,20 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
 
   return (
     <>
-    <div className="space-y-3">
-      {families.map((family) => {
-        const primary = family.variants[0];
-        const totalStock = family.variants.some((variant) => variant.is_unlimited) ? uiText(language, 'Unlimited') : family.variants.reduce((sum, variant) => sum + Number(variant.stock_total || 0), 0);
-        return (
-          <article key={family.parent.id} data-testid={family.variants.length === 1 ? `catalog-row-${primary.id}` : `catalog-family-row-${family.parent.id}`} className="overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="grid items-center gap-3 p-3 md:grid-cols-[minmax(260px,1.5fr)_110px_130px_110px_210px]">
-              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100"><ProductVisual parent={family.parent} variants={family.variants} getImageUrl={getImageUrl} language={language} /></div><div className="min-w-0"><h3 className="truncate text-sm font-black text-gray-900">{family.parent.name}</h3><p className="mt-0.5 text-[11px] font-bold text-gray-500">{family.variants.length > 1 ? `${family.variants.length} ${thai ? 'แบบ · ' : 'variants · '}` : ''}{kindLabel(language, family.parent.product_kind)}</p></div></div>
-              <div><span className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{family.parent.category || 'Other'}</span></div>
-              <div className="text-sm font-black text-pink-700">{priceRange(family)}</div>
-              <div className="text-sm font-black text-gray-800">{totalStock}</div>
-              <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => onEditFamily(family)} aria-label={uiText(language, 'Edit {name}').replace('{name}', family.parent.name)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700 hover:bg-pink-50"><Pencil size={14} />{thai ? 'แก้ไขสินค้า' : 'Edit product'}</button>{family.variants.length > 1 && optionsButton(family)}</div>
+      <div className="space-y-3">
+        {families.flatMap(family => family.variants.map(variant => (
+          <article key={variant.id} data-testid={`catalog-row-${variant.id}`} className="overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="grid gap-3 p-3 xl:grid-cols-[minmax(200px,1fr)_minmax(160px,1fr)_100px_120px_220px] xl:items-center">
+              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100"><ProductVisual parent={family.parent} variants={[variant]} getImageUrl={getImageUrl} language={language} /></div><div className="min-w-0"><h3 className="break-words text-sm font-black">{variant.variant_name && variant.variant_name !== 'Default' ? variant.variant_name : family.parent.name}</h3><p className="mt-1 text-xs text-gray-500">{kindLabel(language, family.parent.product_kind)}</p></div></div>
+              <div><p className="text-[10px] font-bold text-gray-500">{thai ? 'สินค้าหลัก / หมวดหมู่' : 'Main product / category'}</p><p className="break-words text-sm font-bold text-pink-800">{family.parent.name}</p><p className="text-xs text-gray-600">{family.parent.category || (thai ? 'อื่น ๆ' : 'Other')}</p></div>
+              <div className="text-sm font-black text-pink-700">{formatPrice(variant.price_override ?? family.parent.base_price, family.parent.currency)}</div>
+              <div>{renderVariantStock(variant, true)}</div>
+              <div>{renderVariantActions(variant, 'table')}</div>
             </div>
-            {family.variants.length === 1 && primary && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-3"><div>{renderVariantStock(primary, true)}</div>{renderVariantActions(primary, 'table')}</div>}
           </article>
-        );
-      })}
-    </div>
-    {popup}
+        )))}
+      </div>
+      {popup}
     </>
   );
 }

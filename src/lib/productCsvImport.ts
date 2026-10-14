@@ -59,6 +59,9 @@ export function parseProductCsv(rows: Record<string, string>[], artistId: string
       issue(line, field, 'json'); return [];
     };
     const gallery = parseArray('gallery_images');
+    const itemGallery = cell(row, 'variant_gallery_images') ? parseArray('variant_gallery_images') : null;
+    if (itemGallery && (itemGallery.length > 50 || itemGallery.some(value => typeof value !== 'string'))) issue(line, 'variant_gallery_images', 'json');
+    if (productKind !== 'photo' && itemGallery?.length) issue(line, 'variant_gallery_images / product_kind', 'choice');
     if (gallery.length > 50 || gallery.some((value) => typeof value !== 'string' || !value.trim())) issue(line, 'gallery_images', 'json');
     const bundles = parseArray('bundle_items');
     if (bundles.length > 100 || bundles.some((value) => !value || typeof value !== 'object' || !('name' in value) || typeof value.name !== 'string' || !value.name.trim() || !('quantity' in value) || !Number.isSafeInteger(value.quantity) || Number(value.quantity) <= 0)) issue(line, 'bundle_items', 'json');
@@ -91,7 +94,7 @@ export function parseProductCsv(rows: Record<string, string>[], artistId: string
     if (!group) { group = { family: { parent, variants: [] }, signature, rows: [], legacyPrices: [], explicitBase: Boolean(baseRaw), explicitOverrides: [] }; grouped.set(groupKey, group); }
     const variantName = cell(row, 'variant_name', 'variant', 'option', 'option_name') || 'Default';
     if (group.family.variants.some((variant) => variant.name.toLowerCase() === variantName.toLowerCase())) issue(line, 'variant_name', 'duplicate');
-    group.family.variants.push({ name: variantName, sku: sku || null, price_override: override, stock_total: unlimited ? null : stock, is_unlimited: Boolean(unlimited), image_url: cell(row, 'image_url') || null, status: status as 'enable' | 'disable' | 'soldout', variant_sort_order: sort });
+    group.family.variants.push({ name: variantName, sku: sku || null, price_override: override, stock_total: unlimited ? null : stock, is_unlimited: Boolean(unlimited), image_url: cell(row, 'image_url') || null, variant_gallery_images: itemGallery as string[] | null, status: status as 'enable' | 'disable' | 'soldout', variant_sort_order: sort });
     group.explicitOverrides.push(Boolean(overrideRaw));
     group.rows.push(line);
     if (priceRaw) group.legacyPrices.push(number(priceRaw));

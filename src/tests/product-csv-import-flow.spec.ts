@@ -68,6 +68,9 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await page.getByRole('button', { name: 'เพิ่มสินค้า', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'เพิ่มสินค้า', exact: true });
   await expect(editor).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', exact: true })).toBeVisible();
+  await expect(editor.getByLabel('ชื่อรายการสินค้า *', { exact: true })).toBeVisible();
+  await expect(editor.getByLabel('SKU', { exact: true })).toBeHidden();
   await expect(editor.getByText('ข้อมูลหลักของสินค้า', { exact: true })).toBeVisible();
   await expect(editor.getByLabel('ชื่อสินค้า *', { exact: true })).toBeVisible();
   await expect(editor.getByLabel('ราคาหลัก *', { exact: true })).toBeVisible();
@@ -77,7 +80,7 @@ test('localizes the family editor and imports current and legacy CSV atomically'
 
   const productType = editor.getByLabel('ประเภทสินค้า', { exact: true });
   await productType.selectOption('photo');
-  await expect(editor.getByRole('heading', { name: 'แกลเลอรีรูปภาพ', exact: true })).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'แกลเลอรีรูปภาพร่วม', exact: true })).toBeVisible();
   await productType.selectOption('bundle');
   await expect(editor.getByRole('heading', { name: 'ของที่รวมในชุด', exact: true })).toBeVisible();
   await productType.selectOption('preorder');

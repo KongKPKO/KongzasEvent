@@ -382,7 +382,7 @@ export default function OnlineCampaignStorefront() {
               </fieldset>
             </div>
             <aside className="checkout-receipt">
-              <CheckoutItems currency={campaign.currency} items={cartItems.map(({ product, quantity }) => ({ id: product.product_id, name: product.name, image: product.image_url, quantity, price: product.price }))} />
+              <CheckoutItems currency={campaign.currency} items={cartItems.map(({ product, quantity }) => ({ ...asDisplayProduct(product), quantity }))} />
               <button type="button" className="checkout-edit" disabled={submitting} onClick={() => setCheckoutOpen(false)}>{language === 'th' ? 'กลับไปแก้รายการสินค้า' : 'Edit your items'}</button>
             {quote?.applied_promotions.length ? (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">

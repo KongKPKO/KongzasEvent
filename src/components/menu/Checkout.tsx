@@ -2,7 +2,9 @@ import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X, ShoppingBag } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { formatPrice } from '../../utils/currency';
-import { ShopImage } from './StorefrontHeader';
+import { ProductMedia } from './ProductPresentation';
+import { getMenuImageUrl } from '../../utils/imageUtils';
+import type { PresentableProduct } from '../../types/productPresentation';
 
 export function CheckoutDialog({ open, title, busy = false, onClose, children }: {
   open: boolean; title: string; busy?: boolean; onClose: () => void; children: ReactNode;
@@ -26,13 +28,13 @@ export function CheckoutDialog({ open, title, busy = false, onClose, children }:
 }
 
 export function CheckoutItems({ items, currency }: {
-  items: Array<{ id: string; name: string; image?: string | null; quantity: number; price: number }>; currency?: string;
+  items: Array<PresentableProduct & { quantity: number }>; currency?: string;
 }) {
   const { language } = useI18n();
   return <section className="checkout-items" aria-label={language === 'th' ? 'รายการสินค้า' : 'Order items'}>
     <h3><ShoppingBag size={18} aria-hidden="true" />{language === 'th' ? 'รายการสินค้า' : 'Your items'}</h3>
     <ul>{items.map(item => <li key={item.id}>
-      <ShopImage src={item.image} name={item.name} />
+      <div className="checkout-product-media"><ProductMedia product={item} getImageUrl={getMenuImageUrl} /></div>
       <div><strong>{item.name}</strong><span>{item.quantity} × {formatPrice(item.price, currency)}</span></div>
       <b>{formatPrice(item.price * item.quantity, currency)}</b>
     </li>)}</ul>

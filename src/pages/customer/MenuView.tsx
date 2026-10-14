@@ -8,6 +8,7 @@ import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, T
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
+import { ProductMedia } from '../../components/menu/ProductPresentation';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 
 const ProductList = lazy(() => import('../../components/menu/ProductList'));
@@ -1035,7 +1036,7 @@ const MenuView = () => {
       {confirmAction === 'submit_order' && <CheckoutDialog open title={isAdvanceOrderFlow ? t('menuPreorderConfirmTitle') : t('menuConfirmOrderTitle')} busy={submitting} onClose={() => setConfirmAction(null)}>
         <div className="checkout-form">
           <div className="checkout-fields">
-            <CheckoutItems currency={cartCurrency} items={Object.entries(cart).filter(([, quantity]) => quantity > 0).flatMap(([id, quantity]) => { const product = productById.get(id); return product ? [{ id, name: product.name, image: product.image_url, quantity, price: product.price }] : []; })} />
+            <CheckoutItems currency={cartCurrency} items={Object.entries(cart).filter(([, quantity]) => quantity > 0).flatMap(([id, quantity]) => { const product = productById.get(id); return product ? [{ ...product, quantity }] : []; })} />
             <button type="button" className="checkout-edit" disabled={submitting} onClick={() => { setConfirmAction(null); setIsCartOpen(true); }}>{language === 'th' ? 'กลับไปแก้รายการหรือข้อมูล' : 'Edit items or details'}</button>
           </div>
           <aside className="checkout-receipt">
@@ -1291,7 +1292,7 @@ const MenuView = () => {
                                         <div key={id} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2 min-w-0 basis-full">
-                                                    <div className="w-8 h-8 rounded-md bg-gray-200 bg-cover bg-center shrink-0" style={{backgroundImage: `url(${getMenuImageUrl(product.image_url)})`}}></div>
+                                                    <div className="relative w-12 h-12 rounded-md overflow-hidden bg-gray-100 shrink-0"><ProductMedia product={product} getImageUrl={getMenuImageUrl} /></div>
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-sm text-gray-800 break-words">{product.name}</div>
                                                         <div className="text-[11px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>

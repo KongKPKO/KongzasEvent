@@ -37,6 +37,7 @@ test.afterAll(async () => {
   if (!service || !artistId) return;
   must(await service.from('event_appearances').delete().eq('event_id', eventId));
   must(await service.from('event_products').delete().eq('event_id', eventId));
+  must(await service.from('queues').delete().eq('event_id', eventId));
   must(await service.from('events').delete().eq('id', eventId));
   must(await service.from('products').delete().eq('artist_id', artistId));
   must(await service.from('product_parents').delete().eq('artist_id', artistId));
@@ -401,4 +402,28 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await expect(details.getByRole('heading', { name: 'Raiden', exact: true })).toBeVisible();
   await expect(details.locator('.shop-detail-image img:visible')).toHaveCount(5); // selected image + four thumbnail images
   await page.screenshot({ path: testInfo.outputPath('customer-item-gallery.png'), fullPage: true });
+  await details.getByRole('button', { name: `Add: ${items.data![1].name}`, exact: true }).click();
+  await details.getByRole('button', { name: 'Ronova', exact: true }).click();
+  await details.getByRole('button', { name: `Add: ${items.data![0].name}`, exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.goto(`/${slug}/queue`);
+  await page.getByRole('button', { name: /Get Ticket|Join (?:the )?Queue/i }).click();
+  await expect(page.locator('.queue-ticket-number')).toBeVisible();
+  must(await service.from('queues').update({ status: 'calling' }).eq('event_id', eventId));
+  await page.goto(`/${slug}/menu?event=${eventId}`);
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  const checkout = page.getByRole('dialog', { name: 'Confirm Order?', exact: true });
+  await expect(checkout).toBeVisible();
+  for (const [index, item] of items.data!.entries()) {
+    const line = checkout.locator('.checkout-items li').filter({ has: page.getByText(item.name, { exact: true }) });
+    await expect(line.locator('.checkout-product-media img')).toHaveCount(galleries[index].length);
+    expect((await line.locator('.checkout-product-media').boundingBox())!.width).toBe(64);
+    const sources = await line.locator('.checkout-product-media img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src));
+    expect(sources.every(source => source.includes(`set=${item.variant_name}-`))).toBe(true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await checkout.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.screenshot({ path: '../customer-checkout-photoset-local.png' });
+  await checkout.getByRole('button', { name: 'Close', exact: true }).click();
+
 });

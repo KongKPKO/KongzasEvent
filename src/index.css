@@ -534,3 +534,6 @@ body {
 .pos-pin-symbol { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #ffffffd9; font-size: 18px; line-height: 1; filter: grayscale(1); }
 .pos-pin-button[aria-pressed="true"] .pos-pin-symbol { background: #fce7f3; outline: 2px solid #db2777; filter: none; }
 .pos-pin-button:hover .pos-pin-symbol { background: #fce7f3; }
+
+.checkout-items li > div.checkout-product-media { position: relative; width: 64px; height: 64px; flex: 0 0 64px; overflow: hidden; border-radius: 7px; background: #fff3f9; }
+.checkout-product-media span { margin: 0; display: inline-flex; font-size: 10px; color: white; }

@@ -8,7 +8,7 @@ export default function CustomerBrandHeader({ children }: { children?: ReactNode
   return (
     <header className="customer-brand-header">
       <div className="customer-brand-inner">
-        <Link to="/discover" className="customer-brand-logo" aria-label={language === 'th' ? 'NireQ — สำรวจร้านครีเอเตอร์' : 'NireQ — Discover creator shops'}>
+        <Link to="/discover" className="customer-brand-logo" aria-label={language === 'th' ? 'NireQ — สำรวจร้านค้า' : 'NireQ — Discover shops'}>
           <span>Nire<span className="customer-brand-q">Q</span></span>
           <Star size={19} className="customer-brand-star" fill="currentColor" aria-hidden="true" />
         </Link>

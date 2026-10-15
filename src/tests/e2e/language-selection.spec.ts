@@ -84,7 +84,7 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
 test('public login and legal pages follow the selected language after reload', async ({ page }) => {
   await page.goto('/manage-login');
   await selectLanguage(page, 'th');
-  await expect(page.getByRole('tab', { name: 'ครีเอเตอร์ / ผู้จัดการ', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'ผู้ขาย / ผู้จัดการ', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
   await page.goto('/privacy');

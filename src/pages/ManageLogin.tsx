@@ -321,7 +321,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
   return (
     <PublicShell auth>
       <main className="public-auth-layout public-width">
-        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับครีเอเตอร์และทีมงาน' : 'FOR CREATORS & TEAMS'}</p><h1>{th ? 'กลับมาดูแลร้าน' : 'Back to your shop.'}<span>{th ? 'ที่คุณรัก' : 'Ready for your next event.'}</span></h1><p>{th ? 'สินค้า ออเดอร์ และคิวของคุณ พร้อมให้จัดการต่อในที่เดียว' : 'Your products, orders and queues. Pick up where you left off.'}</p><div className="public-auth-note"><strong>{th ? 'มาเลือกซื้อหรือเข้าคิว?' : 'Here to shop or join a queue?'}</strong><p>{th ? 'ค้นหาร้านครีเอเตอร์ได้เลย ไม่ต้องสมัครบัญชีครีเอเตอร์' : 'Explore creator shops directly. You do not need a creator account.'}</p><Link to="/discover" className="public-text-link">{th ? 'ค้นหาครีเอเตอร์ →' : 'Discover creators →'}</Link></div></aside>
+        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับผู้ขายและทีมงาน' : 'FOR SELLERS & TEAMS'}</p><h1>{th ? 'กลับมาดูแลร้าน' : 'Back to your shop.'}<span>{th ? 'ที่คุณรัก' : 'Ready for your next event.'}</span></h1><p>{th ? 'สินค้า ออเดอร์ และคิวของคุณ พร้อมให้จัดการต่อในที่เดียว' : 'Your products, orders and queues. Pick up where you left off.'}</p><div className="public-auth-note"><strong>{th ? 'มาเลือกซื้อหรือเข้าคิว?' : 'Here to shop or join a queue?'}</strong><p>{th ? 'ค้นหาร้านได้เลย ไม่ต้องสมัครบัญชีผู้ขาย' : 'Explore shops directly. You do not need a seller account.'}</p><Link to="/discover" className="public-text-link">{th ? 'ค้นหาร้านค้า →' : 'Discover shops →'}</Link></div></aside>
         <div className="public-auth-form">
         <Card className="public-auth-panel">
           <div role="tablist" aria-label="Login mode" className="public-auth-tabs">
@@ -336,7 +336,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              {th ? 'ครีเอเตอร์ / ผู้จัดการ' : 'Creator / Manager'}
+              {th ? 'ผู้ขาย / ผู้จัดการ' : 'Seller / Manager'}
             </button>
             <button
               type="button"
@@ -532,7 +532,7 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
           <form onSubmit={handleForgotPassword} className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <h2 id="reset-password-title" className="text-lg font-black text-gray-900">{th ? 'ตั้งรหัสผ่านใหม่' : 'Reset password'}</h2>
             <p className="mt-2 text-sm font-medium text-gray-600">
-              {th ? 'ระบุอีเมลครีเอเตอร์หรือผู้จัดการ เพื่อรับลิงก์ตั้งรหัสผ่านใหม่' : "Enter your creator or manager email and we'll send a reset link."}
+              {th ? 'ระบุอีเมลผู้ขายหรือผู้จัดการ เพื่อรับลิงก์ตั้งรหัสผ่านใหม่' : "Enter your seller or manager email and we'll send a reset link."}
             </p>
             <div className="mt-4">
               <label htmlFor="reset-email" className="block text-sm font-bold text-gray-700 mb-1">{th ? 'อีเมลสำหรับตั้งรหัสผ่านใหม่' : 'Reset email'}</label>

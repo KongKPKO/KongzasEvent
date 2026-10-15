@@ -82,6 +82,7 @@ test.beforeAll(async () => {
     artist_id: artistId,
     method_type: 'promptpay',
     display_name: 'Pilot PromptPay',
+    payment_deadline_at: new Date(Date.now() + 86400000).toISOString(),
     promptpay_id: '0812345678',
     account_name: 'Pilot Merchant',
     is_enabled: true,
@@ -159,6 +160,11 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await login.goto();
     await login.login(adminEmail, adminPassword);
     await expect(adminPage.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20_000 });
+    await adminPage.goto(`/manage-events/${eventId}/preorder`);
+    await expect(adminPage.getByText('Payment deadline', { exact: true })).toHaveCount(0);
+    await expect(adminPage.getByText(/require payment and slip submission within 15 minutes/)).toBeVisible();
+    await adminPage.getByRole('button', { name: 'Save settings', exact: true }).first().click();
+    await expect.poll(async () => dataOrThrow(await service.from('event_payment_methods').select('payment_deadline_at').eq('event_id', eventId).single(), 'read saved payment policy').payment_deadline_at).toBeNull();
     await adminPage.goto(`/manage-events/${eventId}/preorder-dashboard`);
     await expect(adminPage.getByText(pickupCode, { exact: true })).toBeVisible({ timeout: 20_000 });
     await adminPage.getByRole('button', { name: 'Reject', exact: true }).click();

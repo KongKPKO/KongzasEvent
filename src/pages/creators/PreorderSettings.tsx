@@ -412,7 +412,8 @@ export default function PreorderSettings() {
         promptpay_id: paymentMethod.promptpay_id.trim() || null,
         qr_image_url: paymentMethod.qr_image_url.trim() || null,
         instructions: paymentMethod.instructions.trim() || null,
-        payment_deadline_at: paymentMethod.payment_deadline_at,
+        // Each order owns its 15-minute hold; discard legacy per-method dates.
+        payment_deadline_at: null,
         is_enabled: paymentMethod.is_enabled,
       };
       const { error: paymentError } = paymentMethod.id
@@ -739,15 +740,7 @@ export default function PreorderSettings() {
                         className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
-                    <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{copy("Payment deadline")}</span>
-                      <input
-                        type="datetime-local"
-                        value={toInputValue(paymentMethod.payment_deadline_at, eventTimeZone)}
-                        onChange={(e) => updatePaymentMethod('payment_deadline_at', fromInputValue(e.target.value, eventTimeZone))}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
+                    <p className="self-center text-sm text-gray-600">{language === 'th' ? 'ออเดอร์สั่งก่อนงานและหลังงานต้องชำระและแนบสลิปภายใน 15 นาทีหลังสร้างออเดอร์ การขายหน้าบูธไม่มีเวลานับถอยหลังนี้' : 'Pre-orders and post-event orders require payment and slip submission within 15 minutes of placing the order. This timer does not apply to booth sales.'}</p>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">

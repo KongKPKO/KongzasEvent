@@ -65,6 +65,7 @@ test('creator registers, confirms email, resets password and signs in again', as
     'creator-primary-social': 'https://example.com/pilot-test',
     'creator-application-note': 'Testing creator registration for the controlled beta release.',
   })) await page.locator(`#${id}`).fill(value);
+  await page.locator('#seller-type').selectOption('cosplayer');
   await page.getByTestId('creator-truthful').check();
   const signupResponse = page.waitForResponse(response => response.url().includes('/auth/v1/signup') && response.request().method() === 'POST');
   await page.getByTestId('creator-register-submit').click();
@@ -77,8 +78,15 @@ test('creator registers, confirms email, resets password and signs in again', as
 
   await page.goto(await emailLink(request, /confirm/i));
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible({ timeout: 20_000 });
-  const artist = await service.from('artists').select('id, slug, is_public').eq('id', userId).single().throwOnError();
-  expect(artist.data).toMatchObject({ id: userId, slug, is_public: false });
+  const artist = await service.from('artists').select('id, slug, is_public, seller_type').eq('id', userId).single().throwOnError();
+  expect(artist.data).toMatchObject({ id: userId, slug, is_public: false, seller_type: 'cosplayer' });
+  await page.goto('/manage-events?tab=profile');
+  await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');
+  await page.locator('#artist-seller-type').selectOption('shop');
+  await page.getByRole('button', { name: 'Save Updates', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Shop profile saved.' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#artist-seller-type')).toHaveValue('shop');
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/\/manage-login/, { timeout: 15_000 });
   await page.getByRole('button', { name: 'Forgot password?' }).click();

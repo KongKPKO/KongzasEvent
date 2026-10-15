@@ -73,7 +73,7 @@ export default function StaffSignup() {
             </p>
           ) : (
             <p className="mt-2 text-sm leading-6 text-gray-500">
-              {th ? 'บัญชีนี้ใช้รับคำเชิญเป็นผู้จัดการร้านเท่านั้น ไม่ได้สร้างร้านครีเอเตอร์ใหม่' : 'This account is only for accepting a manager invitation. It will not create a creator profile or public booth page.'}
+              {th ? 'บัญชีนี้ใช้รับคำเชิญเป็นผู้จัดการร้านเท่านั้น ไม่ได้สร้างร้านค้าใหม่' : 'This account is only for accepting a manager invitation. It will not create a shop profile or public booth page.'}
             </p>
           )}
 

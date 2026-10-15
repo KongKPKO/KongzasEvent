@@ -94,7 +94,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
         <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 shadow-sm relative">
             {/* Left: Brand + Event Badge */}
             <div className="flex items-center gap-2">
-                <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักครีเอเตอร์' : 'Creator workspace'} className="festival-wordmark">Nire<span>Q</span></Link>
+                <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักร้าน' : 'Shop workspace'} className="festival-wordmark">Nire<span>Q</span></Link>
                 {/* Active Event Badge */}
                 {activeEvent && (
                     <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex items-center gap-1.5 max-w-[140px] md:max-w-none">

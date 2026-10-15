@@ -12,7 +12,7 @@ export class LoginPage {
   }
 
   get creatorModeButton() {
-    return this.page.getByRole('tab', { name: 'Creator / Manager' });
+    return this.page.getByRole('tab', { name: 'Seller / Manager' });
   }
 
   get staffModeButton() {

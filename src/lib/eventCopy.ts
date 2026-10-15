@@ -11,7 +11,7 @@ const thai: Record<string, string> = {
   "Confirm": "ยืนยัน",
   "Refresh": "โหลดใหม่",
   "Export CSV": "ดาวน์โหลด CSV",
-  "Customers pay the creator directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.": "ลูกค้าโอนเงินเข้าบัญชีของคุณโดยตรง ตรวจยอดเงินจริงก่อนยืนยันสลิป",
+  "Customers pay the seller directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.": "ลูกค้าโอนเงินเข้าบัญชีของคุณโดยตรง ตรวจยอดเงินจริงก่อนยืนยันสลิป",
   "Order saved · email not sent": "บันทึกออเดอร์แล้ว แต่ส่งอีเมลไม่สำเร็จ",
   "Retry only sends the email for": "ลองส่งอีเมลอีกครั้งสำหรับ",
   "; it does not repeat payment, stock, or fulfillment changes.": "โดยไม่ยืนยันเงิน ตัดสต็อก หรือส่งมอบซ้ำ",

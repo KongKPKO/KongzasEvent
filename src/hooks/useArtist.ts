@@ -1,7 +1,9 @@
+import type { SellerType } from '../utils/sellerType';
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
 export interface Artist {
+  seller_type?: SellerType;
   id: string;
   slug: string;
   display_name?: string;
@@ -36,7 +38,7 @@ export const useArtist = (slug: string | undefined) => {
       try {
         const { data, error } = await supabase
           .from('artists')
-          .select('id, slug, display_name, bio, x_url, ig_url, facebook_url, tiktok_url, email, broadcast_message')
+          .select('id, slug, seller_type, display_name, bio, x_url, ig_url, facebook_url, tiktok_url, email, broadcast_message')
           .eq('slug', slug)
           .maybeSingle();
 

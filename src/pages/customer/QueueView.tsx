@@ -18,6 +18,7 @@ import {
     ticketStorageKey,
 } from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
+import { getSellerLabels, normalizeSellerType } from '../../utils/sellerType';
 
 interface Ticket {
     id: string;
@@ -49,6 +50,8 @@ const QueueView = () => {
         setSelectedEventId,
     } = useOutletContext<CustomerOutletContext>();
     const displayArtist = contextArtist;
+    const sellerType = normalizeSellerType(displayArtist?.seller_type);
+    const sellerLabels = getSellerLabels(sellerType, language);
 
     const [myTicket, setMyTicket] = useState<Ticket | null>(null);
     const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
@@ -723,8 +726,8 @@ const QueueView = () => {
                     <section className={`queue-guidance queue-guidance-${queueActionGuidance.tone}`}>
                         <p className="queue-eyebrow">{t('queueNextStep')}</p><h2>{queueActionGuidance.title}</h2><p>{queueActionGuidance.detail}</p>
                     </section>
-                    <Link to="../menu" className="queue-browse"><Ticket size={21} aria-hidden="true" /><span><strong>{language === 'th' ? 'ดูสินค้าของครีเอเตอร์' : 'Browse creator goods'}</strong><small>{language === 'th' ? 'กลับมาดูคิวได้จากแถบด้านล่าง' : 'Return to your queue from navigation'}</small></span><span aria-hidden="true">→</span></Link>
-                    <p className="order-caption">{language === 'th' ? 'ขอบคุณที่รอคิวและสนับสนุนครีเอเตอร์ พักและดื่มน้ำระหว่างรอได้นะ' : 'Thanks for supporting creators. Stay hydrated while you wait.'}</p>
+                    <Link to="../menu" className="queue-browse"><Ticket size={21} aria-hidden="true" /><span><strong>{language === 'th' ? (sellerType === 'shop' ? 'ดูสินค้าในร้าน' : `ดูผลงานของ${sellerLabels.person}`) : (sellerType === 'shop' ? 'Browse this shop’s products' : `Browse this ${sellerLabels.person.toLowerCase()}’s work`)}</strong><small>{language === 'th' ? 'กลับมาดูคิวได้จากแถบด้านล่าง' : 'Return to your queue from navigation'}</small></span><span aria-hidden="true">→</span></Link>
+                    <p className="order-caption">{language === 'th' ? `ขอบคุณที่รอคิวและสนับสนุน${sellerLabels.person} พักและดื่มน้ำระหว่างรอได้นะ` : `Thanks for supporting this ${sellerLabels.person.toLowerCase()}. Stay hydrated while you wait.`}</p>
                 </aside>
             </div>
         </main>

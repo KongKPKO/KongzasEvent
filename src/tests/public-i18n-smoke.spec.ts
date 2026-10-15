@@ -80,14 +80,14 @@ test.describe('Public Nireq smoke', () => {
     await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: /Find creator booths|ค้นหาบูธครีเอเตอร์/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Find shops and booths|ค้นหาร้านและบูธ/i })).toBeVisible();
     await expect(page.getByTestId('public-creator-search')).toBeVisible();
     await expect(page.getByTestId('public-discovery')).toBeVisible();
 
     await selectLanguage(page, 'th');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
-    const thaiHeading = page.getByRole('heading', { name: /ค้นหาบูธครีเอเตอร์/ });
+    const thaiHeading = page.getByRole('heading', { name: /ค้นหาร้านและบูธ/ });
     await expect(thaiHeading).toBeVisible();
     await expect(thaiHeading).toHaveCSS('font-family', /Noto Sans Thai/);
     expect((await thaiHeading.boundingBox())?.height).toBeGreaterThan(0);
@@ -156,7 +156,7 @@ test.describe('Public Nireq fixture smoke', () => {
     await page.context().clearCookies();
     await page.goto(`/${privateSlug}/home`);
 
-    await expect(page.getByRole('heading', { name: 'Creator not found' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Shop not found' })).toBeVisible();
     await expect(page.getByText(privateSlug)).toBeVisible();
   });
 
@@ -164,9 +164,9 @@ test.describe('Public Nireq fixture smoke', () => {
     await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
     await page.goto('/missing-creator-smoke/home');
 
-    await expect(page.getByRole('heading', { name: 'Creator not found' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Shop not found' })).toBeVisible();
     await expect(page.getByText('missing-creator-smoke')).toBeVisible();
-    await expect(page.getByRole('link', { name: /Browse creators/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Browse shops/ })).toBeVisible();
   });
 });
 
@@ -186,4 +186,28 @@ test.describe('Public release assets', () => {
       expect(response.headers()['content-type']).toContain('image/png');
     }
   });
+});
+
+
+test('discovery previews resolve stored images, include photosets and show distinct product families', async ({ page }) => {
+  const artistId = '11111111-1111-4111-8111-111111111111';
+  await page.route('**/preview-art.svg*', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60" fill="pink"/></svg>' }));
+  await page.route('**/rest/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    const rows = path.endsWith('/artists') ? [{ id: artistId, slug: 'preview-shop', display_name: 'Preview Shop', published_at: new Date().toISOString() }]
+      : path.endsWith('/products') ? [
+        { id: 'photo-a', parent_product_id: 'photos', name: 'Photoset A', product_kind: 'photo', image_url: null, variant_gallery_images: ['preview-art.svg', 'preview-art.svg?two'] },
+        { id: 'photo-b', parent_product_id: 'photos', name: 'Photoset B', product_kind: 'photo', image_url: null, gallery_images: ['preview-art.svg'] },
+        ...[1, 2, 3, 4].map(index => ({ id: `single-${index}`, name: `Single ${index}`, image_url: 'preview-art.svg' })),
+      ].map(product => ({ ...product, artist_id: artistId, price: 100 })) : [];
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(rows) });
+  });
+  await page.goto('/');
+  const card = page.getByTestId('creator-card').filter({ hasText: 'Preview Shop' });
+  await expect(card.locator('.discovery-work')).toHaveCount(4);
+  await expect(card.getByRole('img', { name: 'Photoset A 1', exact: true })).toBeVisible();
+  await expect(card.getByRole('img', { name: 'Photoset B', exact: true })).toHaveCount(0);
+  const image = card.getByRole('img', { name: 'Single 1', exact: true });
+  await expect(image).toHaveAttribute('src', /\/storage\/v1\/object\/public\/Menu\/preview-art.svg$/);
+  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 });

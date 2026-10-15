@@ -254,7 +254,7 @@ export default function OnlineCampaignStorefront() {
       <CustomerBrandHeader>
         <Link to={`/${slug}/home`} className="inline-flex min-h-11 items-center text-sm font-bold text-pink-800">{t('customerNavHome')}</Link>
       </CustomerBrandHeader>
-      <StorefrontHeader name={campaign.artist_name} avatar={resolveAvatarUrl(campaign.artist_image_url)} artworks={campaign.products.map(product => ({ ...product, id: product.product_id }))} />
+      <StorefrontHeader name={campaign.artist_name} avatar={resolveAvatarUrl(campaign.artist_image_url)} artworks={campaign.products.map(product => ({ ...product, id: product.product_id }))} sellerType={campaign.artist_seller_type} />
       <div className="mx-auto max-w-6xl px-4 py-5">
         <StoreSuspensionNotice artistId={campaign.artist_id} />
         <section className="rounded-2xl border border-pink-100 bg-white p-5">

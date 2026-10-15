@@ -202,11 +202,9 @@ body {
 .shop-artwork { position: relative; height: 210px; overflow: hidden; border: 1px solid #ffcee4; border-radius: 22px; background: radial-gradient(circle, #ffffffab 1.5px, transparent 2px) 0 0 / 19px 19px, repeating-linear-gradient(-35deg, #ffe3f0 0 24px, #fff0f7 24px 48px); }
 .shop-banner-heart { position: absolute; bottom: 18px; right: 18px; color: #ff8cbe; transform: rotate(16deg); }
 .shop-banner-sparkles { position: absolute; top: 18px; right: 16px; color: #dd2374; }
-.shop-artwork-caption, .shop-artwork-note { position: absolute; z-index: 1; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 18%; padding: 20px 14px; border-radius: 35% 22% 32% 18%; background: #fffafbe8; font-size: clamp(14px, 1.7vw, 20px); font-weight: 650; line-height: 1.7; color: #a33368; text-align: center; text-wrap: balance; box-shadow: 0 2px 0 #ffffff8a; }
+.shop-artwork-caption { position: absolute; z-index: 1; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 18%; padding: 20px 14px; border-radius: 35% 22% 32% 18%; background: #fffafbe8; font-size: clamp(14px, 1.7vw, 20px); font-weight: 650; line-height: 1.7; color: #a33368; text-align: center; text-wrap: balance; box-shadow: 0 2px 0 #ffffff8a; }
 .shop-artwork-caption { left: 2%; transform: translateY(-50%) rotate(-8deg); }
-.shop-artwork-note { right: 2%; transform: translateY(-50%) rotate(7deg); }
 .shop-artwork-caption svg { color: #f89bc5; }
-.shop-artwork-note svg { color: #ed77b0; }
 .shop-artwork-pictures { display: flex; align-items: center; justify-content: center; gap: 10px; height: 100%; margin-inline: 20%; padding: 20px 6px; }
 .shop-banner-confetti { position: absolute; inset: 0; pointer-events: none; color: #faabd1; }
 .shop-confetti { position: absolute; transform: rotate(-14deg); }
@@ -265,8 +263,8 @@ body {
 @media (max-width: 639px) {
   .shop-intro { padding: 12px 12px 8px; }
   .shop-artwork { height: 142px; border-radius: 15px; }
-  .shop-artwork-caption, .shop-artwork-note { width: 19%; padding: 9px 4px; font-size: 10px; line-height: 1.65; gap: 5px; }
-  .shop-artwork-caption svg, .shop-artwork-note svg { width: 14px; height: 14px; }
+  .shop-artwork-caption { width: 19%; padding: 9px 4px; font-size: 10px; line-height: 1.65; gap: 5px; }
+  .shop-artwork-caption svg { width: 14px; height: 14px; }
   .shop-banner-heart { width: 18px; right: 5px; bottom: 6px; }
   .shop-banner-sparkles { width: 18px; top: 3px; right: 6px; }
   .shop-artwork-pictures { gap: 4px; padding: 20px 2px; margin-inline: 21%; }

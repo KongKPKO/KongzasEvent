@@ -15,6 +15,7 @@ import {
   uploadPaymentEvidence,
 } from '../../lib/preorders';
 import type { PublicPreorderDetail } from '../../types/preorder';
+import { getSellerLabels } from '../../utils/sellerType';
 
 type Feedback = { tone: 'success' | 'warning' | 'error'; title: string; detail?: string };
 
@@ -329,7 +330,7 @@ const OrderStatus: React.FC = () => {
           </div>
         ) : (
           <>
-            <header className="order-heading"><p className="text-sm font-bold text-pink-700">{detail.artist_name} · {detail.event_name}</p><h1>{t('orderPageTitle')}</h1><p className="order-caption">{t('orderTrustNote')}</p></header>
+            <header className="order-heading"><p className="text-sm font-bold text-pink-700">{getSellerLabels(detail.artist_seller_type, language).shop} · {detail.artist_name} · {detail.event_name}</p><h1>{t('orderPageTitle')}</h1><p className="order-caption">{t('orderTrustNote')}</p></header>
             {/* Step indicator */}
             <nav aria-label={t('orderStepsLabel')} className="order-progress rounded-2xl border border-pink-100 bg-white p-4">
               <ol className="flex items-start">

@@ -1,5 +1,6 @@
 import type { PromotionChoice } from './promotion';
 import type { ProductPresentationFields, ProductVariantFields } from './productPresentation';
+import type { SellerType } from '../utils/sellerType';
 
 export type CampaignPublicationStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type CampaignState = CampaignPublicationStatus | 'scheduled' | 'open' | 'sold_out' | 'closed';
@@ -90,6 +91,7 @@ export interface OnlineCampaignSummary {
 export interface PublicOnlineCampaign extends OnlineCampaignSummary {
   artist_slug: string;
   artist_name: string;
+  artist_seller_type?: SellerType;
   artist_image_url?: string | null;
   products: CampaignProduct[];
   pickup_points: CampaignPickupPoint[];
@@ -115,6 +117,7 @@ export interface CampaignOrder {
   campaign_slug?: string;
   artist_slug?: string;
   artist_name?: string;
+  artist_seller_type?: SellerType;
   order_code: string;
   created_at: string;
   status: string;
@@ -192,6 +195,7 @@ export interface DiscoverableOnlineCampaign {
   id: string;
   artist_id: string;
   artist_slug: string;
+  artist_seller_type?: SellerType;
   slug: string;
   name: string;
   description: string;

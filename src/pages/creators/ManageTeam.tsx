@@ -292,7 +292,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
               setInviteResultMsg(tr('สร้างคำเชิญแล้ว แต่ส่งอีเมลไม่สำเร็จ กรุณากดส่งอีกครั้ง', 'Invitation created, but the notification email failed to send.'));
             } else {
               setInviteResult('invitation_sent');
-              setInviteResultMsg(tr('ส่งคำเชิญผู้จัดการแล้ว ผู้รับสร้างบัญชีผู้จัดการได้โดยไม่ต้องสร้างร้านครีเอเตอร์', 'Manager invitation sent. They can create a password-based manager account without a creator profile.'));
+              setInviteResultMsg(tr('ส่งคำเชิญผู้จัดการแล้ว ผู้รับสร้างบัญชีผู้จัดการได้โดยไม่ต้องสร้างร้านค้า', 'Manager invitation sent. They can create a password-based manager account without a shop profile.'));
             }
           } catch {
             setInviteResult('email_failed');

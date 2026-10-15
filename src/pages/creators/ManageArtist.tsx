@@ -1,3 +1,4 @@
+import { SELLER_TYPES, getSellerLabels, normalizeSellerType, type SellerType } from '../../utils/sellerType';
 import { uiText, useI18n } from '../../i18n';
 import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { supabase } from '../../supabaseClient';
@@ -22,6 +23,7 @@ import {
 } from '../../utils/timezone';
 
 interface Artist {
+  seller_type?: SellerType;
   id: string;
   slug?: string;
   display_name: string;
@@ -230,7 +232,7 @@ const ManageArtist = () => {
         // an artists row, so auth user id is not the artist id for them.
         const { data: artistData, error: artistError } = await supabase
           .from('artists')
-          .select('id, slug, display_name, bio, image_url, is_public, is_verified, published_at, x_url, ig_url, facebook_url, tiktok_url, email')
+          .select('id, slug, seller_type, display_name, bio, image_url, is_public, is_verified, published_at, x_url, ig_url, facebook_url, tiktok_url, email')
           .eq('id', ctx.artist_id)
           .maybeSingle();
 
@@ -382,6 +384,7 @@ const ManageArtist = () => {
       const { error } = await supabase
         .from('artists')
         .update({
+          seller_type: normalizeSellerType(artist.seller_type),
           display_name: artist.display_name,
           bio: artist.bio,
           x_url: artist.x_url,
@@ -864,9 +867,17 @@ const ManageArtist = () => {
                   />
                </div>
 
+               <label className="grid gap-2 text-sm font-bold text-slate-700" htmlFor="artist-seller-type">
+                 {language === 'th' ? 'ประเภทผู้ขาย' : 'Seller type'}
+                 <select id="artist-seller-type" value={normalizeSellerType(artist.seller_type)} onChange={event => setArtist({ ...artist, seller_type: normalizeSellerType(event.target.value) })} className="input-surface">
+                   {SELLER_TYPES.map(type => <option key={type} value={type}>{type === 'shop' ? (language === 'th' ? 'ร้านค้า' : 'Shop') : getSellerLabels(type, language).person}</option>)}
+                 </select>
+                 <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ใช้เปลี่ยนคำเรียกบนหน้าร้าน ไม่เปลี่ยนสิทธิ์หรือรูปแบบการขาย และแก้ภายหลังได้' : 'Changes how your shop is described. Permissions and sales stay the same. You can change this later.'}</span>
+               </label>
+
                {/* Display Name */}
                <div className="space-y-1">
-                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{language === 'th' ? 'ชื่อร้าน / ครีเอเตอร์' : 'Display Name'}</label>
+                  <label htmlFor="artist-display-name" className="text-xs font-bold uppercase text-slate-500 tracking-wider">{language === 'th' ? 'ชื่อร้าน / ชื่อที่แสดง' : 'Shop / display name'}</label>
                   <input 
                     id="artist-display-name"
                     name="display_name" required pattern=".*\S.*"

@@ -9,6 +9,7 @@ import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { uiText, useI18n } from '../../i18n';
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { EventAppearance } from '../../types/eventAppearance';
+import type { SellerType } from '../../utils/sellerType';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
@@ -39,6 +40,7 @@ interface NearbyCreator {
   location?: string | null;
   booth_detail?: string | null;
   is_booth_open: boolean;
+  seller_type?: SellerType;
 }
 
 const normalizeEventLocation = (event?: NearbyCreatorEventRecord | null) => {
@@ -180,7 +182,7 @@ const Home = () => {
 
       const { data: artistsData, error: artistsError } = await supabase
         .from('artists')
-        .select('id, slug, display_name, bio, image_url')
+        .select('id, slug, display_name, bio, image_url, seller_type')
         .in('id', prioritizedArtistIds)
         .eq('is_public', true)
         .not('published_at', 'is', null);
@@ -205,6 +207,7 @@ const Home = () => {
             location: normalizeEventLocation(event),
             booth_detail: normalizeEventBooth(event),
             is_booth_open: event.is_booth_open,
+            seller_type: creator.seller_type,
           };
         })
         .filter(Boolean)
@@ -229,7 +232,7 @@ const Home = () => {
          </div>
       )}
 
-      <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Creator')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)}>
+      <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Shop')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)} sellerType={displayArtist.seller_type}>
         {/* Status Badge */}
         <div className="flex justify-center mb-1">
           {isBoothActive ? (

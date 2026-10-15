@@ -58,7 +58,7 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'th'));
   const login = new LoginPage(page);
   await login.goto();
-  await expect(page.getByRole('heading', { name: 'เข้าสู่ระบบครีเอเตอร์ / ผู้จัดการ', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'เข้าสู่ระบบผู้ขาย / ผู้จัดการ', exact: true })).toBeVisible();
   await expect(page.getByLabel('อีเมล', { exact: true })).toBeVisible();
   await expect(page.getByLabel('รหัสผ่าน', { exact: true })).toBeVisible();
   await login.login(email, password);

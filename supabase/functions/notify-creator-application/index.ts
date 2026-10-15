@@ -142,8 +142,8 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
     const to = String(application.email ?? "");
     return {
       to,
-      toName: String(application.contact_name ?? "Creator"),
-      subject: `Creator workspace approved: ${String(application.creator_name ?? "")}`,
+      toName: String(application.contact_name ?? "Seller"),
+      subject: `Shop workspace approved: ${String(application.creator_name ?? "")}`,
       html: renderApprovedEmail(application),
       text: renderApprovedText(application),
     };
@@ -153,8 +153,8 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
     const to = String(application.email ?? "");
     return {
       to,
-      toName: String(application.contact_name ?? "Creator"),
-      subject: `Creator application update: ${String(application.creator_name ?? "")}`,
+      toName: String(application.contact_name ?? "Seller"),
+      subject: `Shop application update: ${String(application.creator_name ?? "")}`,
       html: renderRejectedEmail(application),
       text: renderRejectedText(application),
     };
@@ -164,7 +164,7 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
     return {
       to: adminEmail,
       toName: "Nireq Admin",
-      subject: `New self-serve creator workspace: ${String(application.creator_name ?? "")}`,
+      subject: `New self-serve shop workspace: ${String(application.creator_name ?? "")}`,
       html: renderAutoApprovedApplicationEmail(application),
       text: renderAutoApprovedApplicationText(application),
     };
@@ -173,7 +173,7 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
   return {
     to: adminEmail,
     toName: "Nireq Admin",
-    subject: `New creator application: ${String(application.creator_name ?? "")}`,
+    subject: `New shop application: ${String(application.creator_name ?? "")}`,
     html: renderApplicationEmail(application),
     text: renderApplicationText(application),
   };
@@ -181,7 +181,7 @@ function buildEmailMessage(application: Record<string, unknown>, event: string, 
 
 function renderAutoApprovedApplicationText(application: Record<string, unknown>) {
   return [
-    "New self-serve creator workspace",
+    "New self-serve shop workspace",
     `Status: ${String(application.status ?? "")}`,
     `Monitor page: ${appUrl("/admin/applications")}`,
     `Creator: ${String(application.creator_name ?? "")}`,
@@ -202,7 +202,7 @@ function renderAutoApprovedApplicationText(application: Record<string, unknown>)
 function renderAutoApprovedApplicationEmail(application: Record<string, unknown>) {
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h1 style="font-size:20px;margin:0 0 12px">New self-serve creator workspace</h1>
+      <h1 style="font-size:20px;margin:0 0 12px">New self-serve shop workspace</h1>
       <p>The workspace was created automatically and is logged for monitoring.</p>
       <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open signup monitor</a></p>
       <p><strong>Status:</strong> ${escapeHtml(application.status)}</p>
@@ -228,7 +228,7 @@ function appUrl(path: string) {
 
 function renderApplicationText(application: Record<string, unknown>) {
   return [
-    "New creator application",
+    "New shop application",
     `Status: ${String(application.status ?? "")}`,
     `Review page: ${appUrl("/admin/applications")}`,
     `Creator: ${String(application.creator_name ?? "")}`,
@@ -248,7 +248,7 @@ function renderApplicationText(application: Record<string, unknown>) {
 function renderApplicationEmail(application: Record<string, unknown>) {
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h1 style="font-size:20px;margin:0 0 12px">New creator application</h1>
+      <h1 style="font-size:20px;margin:0 0 12px">New shop application</h1>
       <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Review application</a></p>
       <p><strong>Status:</strong> ${escapeHtml(application.status)}</p>
       <p><strong>Creator:</strong> ${escapeHtml(application.creator_name)}</p>
@@ -268,10 +268,10 @@ function renderApplicationEmail(application: Record<string, unknown>) {
 
 function renderApprovedText(application: Record<string, unknown>) {
   return [
-    "Your creator workspace has been approved",
+    "Your shop workspace has been approved",
     `Creator: ${String(application.creator_name ?? "")}`,
     `Workspace URL: ${appUrl(`/${String(application.desired_slug ?? "")}/home`)}`,
-    `Creator login: ${appUrl("/manage-login")}`,
+    `Shop login: ${appUrl("/manage-login")}`,
     "",
     "Use the email and password you created when you applied. We do not send or store your password in emails.",
   ].join("\n");
@@ -280,10 +280,10 @@ function renderApprovedText(application: Record<string, unknown>) {
 function renderApprovedEmail(application: Record<string, unknown>) {
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h1 style="font-size:20px;margin:0 0 12px">Your creator workspace is approved</h1>
+      <h1 style="font-size:20px;margin:0 0 12px">Your shop workspace is approved</h1>
       <p><strong>${escapeHtml(application.creator_name)}</strong> is ready to use.</p>
       <p>Sign in with the email and password you created when you applied. We do not send passwords by email.</p>
-      <p><a href="${escapeHtml(appUrl("/manage-login"))}" style="display:inline-block;background:#047857;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open creator login</a></p>
+      <p><a href="${escapeHtml(appUrl("/manage-login"))}" style="display:inline-block;background:#047857;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open shop login</a></p>
       <p style="color:#4b5563"><strong>Public page:</strong> <a href="${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}">${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}</a></p>
     </div>
   `;
@@ -291,7 +291,7 @@ function renderApprovedEmail(application: Record<string, unknown>) {
 
 function renderRejectedText(application: Record<string, unknown>) {
   return [
-    "Creator application update",
+    "Shop application update",
     `Creator: ${String(application.creator_name ?? "")}`,
     "",
     "Review note:",
@@ -304,7 +304,7 @@ function renderRejectedText(application: Record<string, unknown>) {
 function renderRejectedEmail(application: Record<string, unknown>) {
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h1 style="font-size:20px;margin:0 0 12px">Creator application update</h1>
+      <h1 style="font-size:20px;margin:0 0 12px">Shop application update</h1>
       <p>Your application for <strong>${escapeHtml(application.creator_name)}</strong> was not approved at this time.</p>
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:16px 0">
         <strong>Review note</strong>

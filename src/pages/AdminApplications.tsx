@@ -1,3 +1,4 @@
+import { getSellerLabels, type SellerType } from '../utils/sellerType';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +20,7 @@ import { invokeNotificationFunction } from '../utils/edgeFunctions';
 type ApplicationStatus = 'pending' | 'auto_approved' | 'approved' | 'rejected';
 
 type CreatorApplication = {
+  seller_type?: SellerType;
   id: string;
   auth_user_id: string | null;
   email: string;
@@ -319,6 +321,7 @@ export default function AdminApplications() {
                     </div>
 
                     <h2 className="text-2xl font-black text-gray-950">{application.creator_name}</h2>
+                    <p className="text-sm font-bold text-pink-700">{getSellerLabels(application.seller_type, language).shop}</p>
                     <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">
                       <span className="inline-flex items-center gap-2">
                         <Mail size={15} />

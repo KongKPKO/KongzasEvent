@@ -206,7 +206,7 @@ function buildInviteHtml(artistName: string, roleLabel: string, inviteUrl: strin
   <p>You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p>
   <p>
     To accept this invitation, create a manager account or log in using
-    <strong>this exact email address</strong>. This will not create a creator page.
+    <strong>this exact email address</strong>. This will not create a shop page.
   </p>
   <p>
     <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;background:#db2777;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">
@@ -226,7 +226,7 @@ function buildInviteText(artistName: string, roleLabel: string, inviteUrl: strin
     `Role: ${roleLabel}`,
     "",
     "To accept this invitation, create a manager account or log in using this exact email address.",
-    "This will not create a creator page.",
+    "This will not create a shop page.",
     inviteUrl,
     "",
     "If you did not expect this invitation, you can ignore this email.",

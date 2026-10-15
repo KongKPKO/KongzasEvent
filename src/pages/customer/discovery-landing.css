@@ -88,7 +88,7 @@
 .discovery-card-bottom { display: grid; grid-template-columns: minmax(0,1fr) 120px; gap: .75rem; margin-top: .75rem; }
 .discovery-card-artwork { display: flex; gap: .375rem; align-items: center; min-width: 0; }
 .discovery-work { position: relative; flex: 1; max-width: 62px; min-width: 0; aspect-ratio: 1; display: grid; place-items: center; background: var(--color-entry-soft); border-radius: .375rem; overflow: hidden; color: var(--color-catalog-accent); }
-.discovery-work img { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.discovery-work img { width: 100%; height: 100%; object-fit: cover; }
 .discovery-work-placeholder { display: flex; align-items: center; gap: .5rem; font-size: .75rem; color: var(--color-entry-secondary); }
 .discovery-work-placeholder svg { flex-shrink: 0; color: var(--color-catalog-accent); }
 .discovery-card-visit { border-left: 1px solid var(--color-entry-border); padding-left: .75rem; }

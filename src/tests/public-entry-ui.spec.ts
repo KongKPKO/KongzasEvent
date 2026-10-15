@@ -1,3 +1,4 @@
+import { selectLanguage } from './helpers/languageMenu';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -12,7 +13,7 @@ test('creator discovery recovers from failures and preserves useful filters', as
   ] }));
   await page.route('**/rest/v1/products?*', route => route.fulfill({ json: [{ id: 'art-one', artist_id: 'mali', name: 'Mali print', image_url: null, category: 'Art' }] }));
   await page.goto('/');
-  await expect(page.getByRole('alert')).toContainText('Could not load creators');
+  await expect(page.getByRole('alert')).toContainText('Could not load shops');
   failed = false;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(2);
@@ -26,21 +27,21 @@ test('creator discovery recovers from failures and preserves useful filters', as
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.getByTestId('public-creator-search').fill('Paper');
   await expect(page.getByTestId('creator-card')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show all creators' }).click();
+  await page.getByRole('button', { name: 'Show all shops' }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(2);
   await page.getByRole('button', { name: 'Has queue', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Has products', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Like this creator on this page: Mali Studio' }).click();
-  await expect(page.getByRole('button', { name: 'Like this creator on this page: Mali Studio' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Like this creator shop: Mali Studio' }).click();
+  await expect(page.getByRole('button', { name: 'Like this creator shop: Mali Studio' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('Illustrative booth · example data')).toBeVisible();
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.locator('#discovery-results')).toBeFocused();
   await page.getByRole('button', { name: 'All events', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(2);
-  await page.getByRole('button', { name: 'Switch language' }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('ค้นหาบูธครีเอเตอร์');
+  await selectLanguage(page, 'th');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('ค้นหาร้านและบูธ');
   for (const width of [320, 375, 414, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.locator('.public-entry').evaluate(el => el.scrollWidth), JSON.stringify(await page.locator('.public-entry').evaluate(el => [...el.querySelectorAll('*')].filter(node => node.getBoundingClientRect().right > innerWidth).map(node => [node.className, Math.round(node.getBoundingClientRect().right)])))).toBeLessThanOrEqual(width);

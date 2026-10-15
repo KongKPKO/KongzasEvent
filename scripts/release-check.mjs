@@ -264,6 +264,7 @@ if (mode === 'local') {
     'src/tests/queue-availability.spec.ts',
     'src/tests/online-shop-discovery.spec.ts',
     'src/tests/storefront.spec.ts',
+    'src/tests/seller-type-customer.spec.ts',
     'src/tests/catalog-stock-retry.spec.ts',
     'src/tests/image-upload.spec.ts',
     'src/tests/image-storage.spec.ts',

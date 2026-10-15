@@ -35,6 +35,12 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - Live-day sales have no 15-minute online payment timer. Preserve existing queue reservations; staff payment completion finalizes stock.
 - An order successfully created in its hold window already owns its price/promotion snapshot. Later promotion edits must not reprice that order.
 
+### Seller identity
+
+- Shops choose one seller type: `creator`, `cosplayer`, or `shop`. Existing shops default to `creator`. New sellers choose during registration and owners/managers may edit it in the shop profile under existing profile permissions.
+- Seller type controls Thai/English shop-specific wording, including public storefronts, discovery, queue and order pages. It never changes roles, authorization, inventory, payment windows or available sales channels.
+- The `shop` label is a self-selected presentation category, not verification of licensing or product authenticity. General entry and navigation text uses neutral shop/seller wording.
+
 ### Products, SKU and stock
 
 - A product parent owns shared merchandising and has single-dimension child variants. Each child retains its own UUID, SKU and independent stock; the parent is not a shared stock pool. The existing `products` table stores sellable children for compatibility with orders, allocations and promotions. See [product families](docs/specs/2026-10-03-product-families.md).

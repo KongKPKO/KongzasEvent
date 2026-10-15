@@ -1137,7 +1137,7 @@ const MenuView = () => {
          </div>
        )}
 
-      <StorefrontHeader name={displayArtist?.display_name || t('customerNavMerch')} bio={displayArtist?.bio} avatar={resolveAvatarUrl(displayArtist?.image_url)} artworks={products.filter(product => product.status !== 'disable')}>
+      <StorefrontHeader name={displayArtist?.display_name || t('customerNavMerch')} bio={displayArtist?.bio} avatar={resolveAvatarUrl(displayArtist?.image_url)} artworks={products.filter(product => product.status !== 'disable')} sellerType={displayArtist?.seller_type}>
         <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/home`}><ShoppingBag size={22} aria-hidden="true" /><span>{t('customerNavHome')}</span><span aria-hidden="true">→</span></Link>
         <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/queue`}><Ticket size={22} aria-hidden="true" /><span>{userQueueNumber ? `${t('menuQueueNumber')} #${userQueueNumber}` : t('menuQueueNumber')}</span><span aria-hidden="true">→</span></Link>
       </StorefrontHeader>

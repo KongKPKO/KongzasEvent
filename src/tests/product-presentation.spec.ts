@@ -1,3 +1,4 @@
+import { getSellerLabels, normalizeSellerType } from '../utils/sellerType';
 import { expect, test } from '@playwright/test';
 import {
   buildProductPresentationEntries,
@@ -75,4 +76,15 @@ test('item gallery overrides exclude the inherited cover and explicit clears sta
   expect(getProductImages(product({ image_url: 'shared.jpg', gallery_images: ['shared.jpg'], variant_gallery_images: [] }))).toEqual([]);
   expect(getProductImages(product({ image_url: 'shared.jpg', gallery_images: ['legacy.jpg'], variant_gallery_images: null }))).toEqual(['shared.jpg', 'legacy.jpg']);
   expect(getProductImages(product({ product_kind: 'single', image_url: 'new-cover.jpg', gallery_images: ['old-photo.jpg'], variant_gallery_images: ['old-photo.jpg'] }))[0]).toBe('new-cover.jpg');
+});
+
+
+test('seller labels cover the three shop identities in both languages with a legacy creator default', () => {
+  expect(getSellerLabels('creator', 'th')).toEqual({ person: 'ครีเอเตอร์', shop: 'ร้านครีเอเตอร์', artwork: 'ผลงานจากครีเอเตอร์' });
+  expect(getSellerLabels('cosplayer', 'th')).toEqual({ person: 'คอสเพลย์เยอร์', shop: 'ร้านคอสเพลย์เยอร์', artwork: 'ผลงานจากคอสเพลย์เยอร์' });
+  expect(getSellerLabels('shop', 'th')).toEqual({ person: 'ผู้ขาย', shop: 'ร้านค้า', artwork: 'สินค้า' });
+  expect(getSellerLabels('creator', 'en').shop).toBe('Creator shop');
+  expect(getSellerLabels('cosplayer', 'en').shop).toBe('Cosplayer shop');
+  expect(getSellerLabels('shop', 'en').artwork).toBe('Products');
+  for (const value of [undefined, null, '', 'unknown']) expect(normalizeSellerType(value)).toBe('creator');
 });

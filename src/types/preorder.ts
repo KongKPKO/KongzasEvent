@@ -1,4 +1,5 @@
 import type { PromotionChoice } from './promotion';
+import type { SellerType } from '../utils/sellerType';
 
 export type EventSellingMode = 'preorder' | 'live' | 'post_event' | 'closed';
 
@@ -115,6 +116,7 @@ export interface ExpirePreordersResult {
 }
 
 export interface PublicOrderReceipt {
+  artist_seller_type?: SellerType;
   status: string;
   pickup_status: PickupStatus;
   pickup_code: string;
@@ -144,6 +146,7 @@ export interface PublicPreorderDetail {
   event_id: string;
   event_name: string;
   artist_name: string;
+  artist_seller_type?: SellerType;
   artist_facebook_url: string | null;
   order_type: OrderType;
   shipping_address: string | null;

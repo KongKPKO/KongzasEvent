@@ -12,12 +12,14 @@ import {
 } from '../../lib/onlineCampaigns';
 import type { CampaignOrder } from '../../types/onlineCampaign';
 import { formatPrice } from '../../utils/currency';
+import { getSellerLabels } from '../../utils/sellerType';
 import OrderStatus from './OrderStatus';
 
 function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
   const { slug, code } = useParams<{ slug: string; code: string }>();
   const { t, dateLocale, language } = useI18n();
   const [order, setOrder] = useState(initialOrder);
+  const sellerLabels = getSellerLabels(order.artist_seller_type, language);
   const [now, setNow] = useState(Date.now());
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -112,7 +114,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
       <CustomerBrandHeader />
       <div className="order-layout">
         <header className="order-heading">
-          <div className="text-xs font-black uppercase tracking-wide text-pink-600">{order.artist_name}</div>
+          <div className="text-xs font-black uppercase tracking-wide text-pink-600">{sellerLabels.shop} · {order.artist_name}</div>
           <h1 className="mt-1 text-xl font-black text-gray-950">{t('campaignOrderTitle')}</h1>
           <div className="order-reference">{order.order_code}</div>
           <p className="order-caption">{language === 'th' ? 'เก็บลิงก์หน้านี้ไว้เพื่อกลับมาดูสถานะออเดอร์' : 'Keep this page link to return to your order.'}</p>

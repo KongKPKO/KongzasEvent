@@ -1,3 +1,4 @@
+import { SELLER_TYPES, getSellerLabels, normalizeSellerType, type SellerType } from '../utils/sellerType';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
@@ -9,6 +10,7 @@ import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../util
 import { getAuthRedirectError } from '../utils/authRedirect';
 
 type FormState = {
+  sellerType: SellerType;
   email: string;
   password: string;
   confirmPassword: string;
@@ -26,6 +28,7 @@ type FormState = {
 };
 
 const initialForm: FormState = {
+  sellerType: 'creator',
   email: '',
   password: '',
   confirmPassword: '',
@@ -212,6 +215,7 @@ export default function CreatorRegister() {
 
       const creatorMetadata = {
         creator_signup: 'self_serve',
+        seller_type: form.sellerType,
         creator_name: form.creatorName.trim(),
         contact_name: form.contactName.trim(),
         desired_slug: desiredSlug,
@@ -316,8 +320,8 @@ export default function CreatorRegister() {
   return (
     <PublicShell>
       <div className="public-auth-layout public-width public-register-layout">
-        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับครีเอเตอร์' : 'FOR CREATORS'}</p><h1>{th ? 'ให้ผลงานของคุณ' : 'Make room'}<span>{th ? 'ได้เจอคนที่รัก' : 'for your people.'}</span></h1><p>{th ? 'สร้างร้าน เตรียมสินค้าและคิวให้พร้อมสำหรับงานถัดไป เริ่มตั้งค่าก่อนได้ แล้วค่อยเผยแพร่เมื่อคุณพร้อม' : 'Create your shop and prepare products and queues for your next event. Set up first, publish when you are ready.'}</p>
-          <ol className="public-onboarding"><li><strong>{th ? 'สร้างบัญชี' : 'Create your account'}</strong><span>{th ? 'ใช้อีเมลหรือบัญชี Google ของคุณ' : 'Use your email or Google account'}</span></li><li><strong>{th ? 'แนะนำร้านของคุณ' : 'Introduce your shop'}</strong><span>{th ? 'ชื่อครีเอเตอร์และลิงก์ผลงานหลัก' : 'Your creator name and main social link'}</span></li><li><strong>{th ? 'ยืนยันอีเมล แล้วเริ่มตั้งค่า' : 'Confirm your email and set up'}</strong><span>{th ? 'คุณเป็นคนเลือกว่าจะเผยแพร่ร้านเมื่อไหร่' : 'You choose when your shop goes public'}</span></li></ol>
+        <aside className="public-auth-intro"><p className="public-kicker">{th ? 'สำหรับผู้ขาย' : 'FOR SELLERS'}</p><h1>{th ? 'ให้ผลงานของคุณ' : 'Make room'}<span>{th ? 'ได้เจอคนที่รัก' : 'for your people.'}</span></h1><p>{th ? 'สร้างร้าน เตรียมสินค้าและคิวให้พร้อมสำหรับงานถัดไป เริ่มตั้งค่าก่อนได้ แล้วค่อยเผยแพร่เมื่อคุณพร้อม' : 'Create your shop and prepare products and queues for your next event. Set up first, publish when you are ready.'}</p>
+          <ol className="public-onboarding"><li><strong>{th ? 'สร้างบัญชี' : 'Create your account'}</strong><span>{th ? 'ใช้อีเมลหรือบัญชี Google ของคุณ' : 'Use your email or Google account'}</span></li><li><strong>{th ? 'แนะนำร้านของคุณ' : 'Introduce your shop'}</strong><span>{th ? 'ชื่อร้านและลิงก์หลักของร้าน' : 'Your shop name and main social link'}</span></li><li><strong>{th ? 'ยืนยันอีเมล แล้วเริ่มตั้งค่า' : 'Confirm your email and set up'}</strong><span>{th ? 'คุณเป็นคนเลือกว่าจะเผยแพร่ร้านเมื่อไหร่' : 'You choose when your shop goes public'}</span></li></ol>
           <Link to="/manage-login" className="public-text-link">{th ? 'มีบัญชีแล้ว? เข้าสู่ระบบ →' : 'Already registered? Log in →'}</Link>
         </aside>
         <main className="public-auth-form">
@@ -390,9 +394,15 @@ export default function CreatorRegister() {
                   </Field>
                 </>
               )}
-              <h3 className="public-form-section">{th ? 'ข้อมูลครีเอเตอร์' : 'Creator details'}</h3>
+              <h3 className="public-form-section">{th ? 'ข้อมูลร้าน' : 'Shop details'}</h3>
               <Field label={t('registerContactName')} required>
                 <IconInput id="creator-contact-name" name="contactName" icon={<UserRound size={17} />} value={form.contactName} onChange={(value) => updateField('contactName', value)} placeholder={t('registerContactNamePlaceholder')} />
+              </Field>
+              <Field label={th ? 'ประเภทผู้ขาย' : 'Seller type'} required>
+                <select id="seller-type" name="sellerType" className="input-surface" value={form.sellerType} onChange={event => updateField('sellerType', normalizeSellerType(event.target.value))}>
+                  {SELLER_TYPES.map(type => <option key={type} value={type}>{type === 'shop' ? (th ? 'ร้านค้า' : 'Shop') : getSellerLabels(type, language).person}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">{th ? 'ใช้เป็นคำเรียกบนหน้าร้าน แก้ได้ภายหลังในโปรไฟล์ร้าน' : 'Used to describe your shop. Change it later in your shop profile.'}</p>
               </Field>
               <Field label={t('registerCreatorName')} required>
                 <input id="creator-name" name="creatorName" className="input-surface" value={form.creatorName} onChange={(event) => handleCreatorNameChange(event.target.value)} placeholder={t('registerCreatorNamePlaceholder')} required />

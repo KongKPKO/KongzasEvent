@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Compass, MapPin, Sparkles } from 'lucide-react';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { useI18n } from '../../i18n';
+import { getSellerLabels, type SellerType } from '../../utils/sellerType';
 
 interface CreatorCard {
   id: string;
@@ -13,6 +14,7 @@ interface CreatorCard {
   location?: string | null;
   booth_detail?: string | null;
   is_booth_open: boolean;
+  seller_type?: SellerType;
 }
 
 interface CreatorDirectoryProps {
@@ -20,7 +22,7 @@ interface CreatorDirectoryProps {
 }
 
 const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   if (creators.length === 0) return null;
 
   return (
@@ -56,6 +58,7 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[15px] font-black leading-tight text-gray-900 truncate">{creator.display_name}</div>
+                    <div className="mt-1 text-[11px] font-bold text-pink-700">{getSellerLabels(creator.seller_type, language).shop}</div>
                     {creator.bio && (
                       <div className="mt-1 text-xs leading-[1.35] text-gray-600 line-clamp-2">{creator.bio}</div>
                     )}

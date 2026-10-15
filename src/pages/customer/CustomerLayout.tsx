@@ -21,6 +21,7 @@ const CustomerLayout = () => {
       initialArtist: artist
          ? {
             id: artist.id,
+            seller_type: artist.seller_type,
             display_name: artist.display_name || '',
             bio: artist.bio || '',
             image_url: (artist as any).image_url,

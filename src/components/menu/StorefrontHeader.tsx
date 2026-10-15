@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Heart, ImageOff, Sparkles, Star } from 'lucide-react';
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
@@ -12,12 +13,13 @@ export function ShopImage({ src, name, className = '', eager = false }: { src?: 
   return <img src={getMenuImageUrl(src)} alt={name} className={className} loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFailedSource(src)} />;
 }
 
-export default function StorefrontHeader({ name, bio, avatar, artworks = [], sellerType, children }: {
-  name: string; bio?: string | null; avatar?: string | null; artworks?: Array<{ id: string; name: string; image_url?: string | null }>; sellerType?: SellerType; children?: ReactNode;
+export default function StorefrontHeader({ name, bio, avatar, artworks = [], sellerType, homeHref, children }: {
+  name: string; bio?: string | null; avatar?: string | null; artworks?: Array<{ id: string; name: string; image_url?: string | null }>; sellerType?: SellerType; homeHref?: string; children?: ReactNode;
 }) {
   const { language } = useI18n();
   const sellerLabels = getSellerLabels(sellerType, language);
   const pictures = artworks.filter(product => product.image_url).slice(0, 3);
+  const profileImage = avatar ? <ShopImage src={avatar} name={name} className="shop-avatar" eager /> : <span className="shop-avatar shop-initial inline-flex items-center justify-center" aria-hidden="true">{name.charAt(0)}</span>;
   return <section className="shop-intro">
     {pictures.length > 0 && <div className="shop-artwork" aria-hidden="true">
       <Heart className="shop-banner-heart" size={28} fill="currentColor" />
@@ -27,7 +29,7 @@ export default function StorefrontHeader({ name, bio, avatar, artworks = [], sel
       <div className="shop-artwork-pictures">{pictures.map(product => <div className="shop-print" key={product.id}><ShopImage src={product.image_url} name="" eager /></div>)}</div>
     </div>}
     <div className="shop-identity">
-      {avatar ? <ShopImage src={avatar} name={name} className="shop-avatar" eager /> : <span className="shop-avatar shop-initial" aria-hidden="true">{name.charAt(0)}</span>}
+      {homeHref ? <Link to={homeHref} aria-label={language === 'th' ? `หน้าหลักร้าน ${name}` : `${name} shop home`} className="inline-flex shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-pink-600">{profileImage}</Link> : profileImage}
       <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-pink-800">{sellerLabels.shop}</p><h1 className="shop-name">{name}</h1>{bio && <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-gray-600">{bio}</p>}</div>
     </div>
     {children && <div className="shop-channels">{children}</div>}

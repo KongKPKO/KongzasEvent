@@ -10,6 +10,8 @@ import { uiText, useI18n } from '../../i18n';
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { EventAppearance } from '../../types/eventAppearance';
 import type { SellerType } from '../../utils/sellerType';
+import type { RealtimeEvent } from '../../hooks/useArtistRealtime';
+import { getEventSalesPhase } from '../../utils/customerEvents';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
@@ -66,6 +68,12 @@ const shuffleNearbyCreatorIds = (artistIds: string[]) => {
   return shuffled;
 };
 
+const getVisibleHomeEvents = (events: RealtimeEvent[], nowIso = new Date().toISOString()) => events.filter((event) => {
+  const isUpcomingOrLive = event.end_date >= nowIso && (event.status === 'Confirmed' || event.status === 'Cancelled');
+  const isOpenPostOrder = getEventSalesPhase(event, nowIso) === 'post_event';
+  return isUpcomingOrLive || isOpenPostOrder;
+});
+
 const Home = () => {
   const { t, language } = useI18n();
   // Midnight Watcher
@@ -77,10 +85,11 @@ const Home = () => {
     events,
     isConnected,
     refresh,
-    selectedEvent,
+    setSelectedEventId,
   } = useOutletContext<CustomerOutletContext>();
   const [nearbyCreators, setNearbyCreators] = useState<NearbyCreator[]>([]);
   const [eventAppearances, setEventAppearances] = useState<EventAppearance[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   
   const displayArtist = contextArtist;
   
@@ -89,14 +98,16 @@ const Home = () => {
     refresh();
   }, [currentDate, refresh]);
 
-  const now = new Date().toISOString();
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const now = new Date(nowMs).toISOString();
   
-  // Show only non-expired events that should remain visible to customers.
-  const visibleEvents = events.filter(e => {
-     const isNotExpired = e.end_date >= now;
-     const isShowStatus = e.status === 'Confirmed' || e.status === 'Cancelled';
-     return isNotExpired && isShowStatus;
-  });
+  // Upcoming events stay discoverable; ended events remain visible only while
+  // their event-scoped post-order window is open.
+  const visibleEvents = getVisibleHomeEvents(events, now);
 
   // Derive Booth Status: Check if ANY valid event is currently open AND not ended
   const activeOpenEvent = events.find(e => {
@@ -110,10 +121,10 @@ const Home = () => {
 
   // Pick the first non-cancelled event from the visible list.
   const sortedValidEvents = visibleEvents
-    .filter(e => e.status !== 'Cancelled')
+    .filter(e => e.status !== 'Cancelled' && e.end_date >= now)
     .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
 
-  const nextUpEventId = sortedValidEvents[0]?.id || selectedEvent?.id;
+  const nextUpEventId = sortedValidEvents[0]?.id;
   const visibleEventIdsKey = visibleEvents.map((event) => event.id).join(',');
 
   useEffect(() => {
@@ -232,7 +243,7 @@ const Home = () => {
          </div>
       )}
 
-      <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Shop')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)} sellerType={displayArtist.seller_type}>
+      <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Shop')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)} sellerType={displayArtist.seller_type} homeHref={`/${displayArtist.slug}/home`}>
         {/* Status Badge */}
         <div className="flex justify-center mb-1">
           {isBoothActive ? (
@@ -273,7 +284,14 @@ const Home = () => {
 
       {/* Events Section - Lazy Loaded */}
       <Suspense fallback={<div className="h-32 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
-         <EventsList events={visibleEvents} nextUpEventId={nextUpEventId} appearances={eventAppearances} />
+         <EventsList
+           events={visibleEvents}
+           artistSlug={displayArtist.slug}
+           onSelectEvent={setSelectedEventId}
+           nextUpEventId={nextUpEventId}
+           appearances={eventAppearances}
+           nowIso={now}
+         />
       </Suspense>
 
       {/* Social Footer - Lazy Loaded */}

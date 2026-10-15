@@ -353,6 +353,7 @@ const ManageArtist = () => {
 
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (!artist) return;
+    setProfileFeedback(null);
     setArtist({ ...artist, [e.target.name]: e.target.value });
   };
 
@@ -381,7 +382,7 @@ const ManageArtist = () => {
     setProfileFeedback(null);
     try {
       setIsSaving(true);
-      const { error } = await supabase
+      const { data: savedProfile, error } = await supabase
         .from('artists')
         .update({
           seller_type: normalizeSellerType(artist.seller_type),
@@ -394,9 +395,12 @@ const ManageArtist = () => {
           email: artist.email,
           image_url: artist.image_url
         })
-        .eq('id', artist.id);
+        .eq('id', artist.id)
+        .select('seller_type')
+        .single();
 
       if (error) throw error;
+      if (savedProfile.seller_type !== normalizeSellerType(artist.seller_type)) throw new Error('Saved seller type does not match the requested profile.');
       setProfileFeedback({ error: false, text: language === 'th' ? 'บันทึกข้อมูลร้านแล้ว' : 'Shop profile saved.' });
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -869,10 +873,10 @@ const ManageArtist = () => {
 
                <label className="grid gap-2 text-sm font-bold text-slate-700" htmlFor="artist-seller-type">
                  {language === 'th' ? 'ประเภทผู้ขาย' : 'Seller type'}
-                 <select id="artist-seller-type" value={normalizeSellerType(artist.seller_type)} onChange={event => setArtist({ ...artist, seller_type: normalizeSellerType(event.target.value) })} className="input-surface">
+                 <select id="artist-seller-type" value={normalizeSellerType(artist.seller_type)} onChange={event => { setProfileFeedback(null); setArtist({ ...artist, seller_type: normalizeSellerType(event.target.value) }); }} className="input-surface">
                    {SELLER_TYPES.map(type => <option key={type} value={type}>{type === 'shop' ? (language === 'th' ? 'ร้านค้า' : 'Shop') : getSellerLabels(type, language).person}</option>)}
                  </select>
-                 <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'ใช้เปลี่ยนคำเรียกบนหน้าร้าน ไม่เปลี่ยนสิทธิ์หรือรูปแบบการขาย และแก้ภายหลังได้' : 'Changes how your shop is described. Permissions and sales stay the same. You can change this later.'}</span>
+                 <span className="text-xs font-normal text-slate-500">{language === 'th' ? 'เลือกประเภท แล้วกดบันทึกข้อมูลร้านด้านล่างเพื่อเปลี่ยนคำบนหน้าร้าน ไม่เปลี่ยนสิทธิ์หรือรูปแบบการขาย' : 'Choose a type, then save below to update the wording on your shop. Permissions and sales stay the same.'}</span>
                </label>
 
                {/* Display Name */}

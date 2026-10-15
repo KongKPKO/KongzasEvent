@@ -82,7 +82,21 @@ test('creator registers, confirms email, resets password and signs in again', as
   expect(artist.data).toMatchObject({ id: userId, slug, is_public: false, seller_type: 'cosplayer' });
   await page.goto('/manage-events?tab=profile');
   await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');
+  await page.locator('#artist-seller-type').selectOption('creator');
+  const unchangedProfile = async (route: import('@playwright/test').Route) => {
+    if (route.request().method() === 'PATCH') {
+      await route.fulfill({ json: { seller_type: 'cosplayer' } });
+    } else await route.continue();
+  };
+  await page.route('**/rest/v1/artists*', unchangedProfile);
+  await page.getByRole('button', { name: 'Save Updates', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not save.' })).toBeVisible();
+  await expect(page.getByText('Shop profile saved.', { exact: true })).toHaveCount(0);
+  await page.unroute('**/rest/v1/artists*', unchangedProfile);
+  await page.getByRole('button', { name: 'Save Updates', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Shop profile saved.' })).toBeVisible();
   await page.locator('#artist-seller-type').selectOption('shop');
+  await expect(page.getByRole('status').filter({ hasText: 'Shop profile saved.' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Save Updates', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Shop profile saved.' })).toBeVisible();
   await page.reload();

@@ -28,9 +28,12 @@ test('customer storefront uses seller-specific labels with creator fallback and 
           slug,
           display_name: `${slug} storefront`,
           bio: '',
-          ...(fixture.sellerType ? { seller_type: fixture.sellerType } : {}),
+          ...(fixture.sellerType && url.searchParams.get('select')?.includes('seller_type') ? { seller_type: fixture.sellerType } : {}),
         },
       });
+    }
+    if (path.endsWith('/get_public_online_campaign')) {
+      return route.fulfill({ json: { id: 'campaign', artist_id: '00000000-0000-4000-8000-000000000002', artist_slug: 'cosplayer', artist_name: 'cosplayer storefront', artist_seller_type: 'cosplayer', name: 'Online test', slug: 'test', state: 'open', currency: 'THB', shipping_enabled: true, flat_shipping_fee: 0, opens_at: new Date(Date.now() - 1000).toISOString(), closes_at: new Date(Date.now() + 86400000).toISOString(), pickup_points: [], payment_methods: [], products: [{ product_id: 'product', name: 'Test photo', price: 100, currency: 'THB', category: 'Photo', status: 'enable', is_unlimited: true, image_url: 'seller-type-product.png' }] } });
     }
     if (path.endsWith('/products')) {
       return route.fulfill({ json: [{
@@ -52,6 +55,14 @@ test('customer storefront uses seller-specific labels with creator fallback and 
     await expect(page.getByText(fixture.artwork, { exact: true })).toBeVisible();
   }
 
+  await page.goto('/cosplayer/menu');
+  await page.getByRole('link', { name: 'cosplayer storefront shop home', exact: true }).click();
+  await expect(page).toHaveURL(/\/cosplayer\/home$/);
+  await expect(page.getByText('Cosplayer shop', { exact: true })).toBeVisible();
+  await page.goto('/cosplayer/campaign/test');
+  await expect(page.getByText('Works by a cosplayer', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'cosplayer storefront shop home', exact: true }).click();
+  await expect(page).toHaveURL(/\/cosplayer\/home$/);
   await page.goto('/cosplayer/menu');
   await selectLanguage(page, 'th');
   await expect(page.getByText('ร้านคอสเพลย์เยอร์', { exact: true })).toBeVisible();

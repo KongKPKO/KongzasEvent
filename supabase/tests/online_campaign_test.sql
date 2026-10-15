@@ -1,6 +1,6 @@
 begin;
 
-select plan(56);
+select plan(60);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -75,9 +75,9 @@ begin
   );
 
   insert into public.campaign_pickup_points (
-    id, campaign_id, artist_id, name, address, starts_at, ends_at
+    id, campaign_id, artist_id, name, starts_at, ends_at
   ) values (
-    v_pickup, v_campaign, v_artist, 'Siam pickup', 'Siam Square',
+    v_pickup, v_campaign, v_artist, 'Siam pickup',
     now() + interval '2 days', now() + interval '2 days 2 hours'
   );
 
@@ -594,6 +594,11 @@ select throws_ok(
   null,
   'order must belong to exactly one Event or Campaign'
 );
+
+select is((select address from public.campaign_pickup_points where id=(select pickup_point_id from _campaign_ids)), '', 'pickup address is optional and defaults to an empty string');
+select is((select pickup_point_snapshot->>'address' from public.orders where id=(select order_id from _pickup_order)), '', 'pickup order retains the intentionally empty address');
+select ok((select starts_at > now() from public.campaign_pickup_points where id=(select pickup_point_id from _campaign_ids)), 'successful checkout happens before the future pickup appointment');
+select is((select (pickup_point_snapshot->>'starts_at')::timestamptz from public.orders where id=(select order_id from _pickup_order)), (select starts_at from public.campaign_pickup_points where id=(select pickup_point_id from _campaign_ids)), 'order preserves the pickup appointment instant');
 
 select * from finish();
 

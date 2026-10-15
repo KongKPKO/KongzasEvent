@@ -24,6 +24,7 @@ import type { ActorContext } from '../../types/access';
 import type { CampaignOrder, CampaignWorkspace } from '../../types/onlineCampaign';
 import { fetchActorContext } from '../../utils/access';
 import { formatPrice } from '../../utils/currency';
+import { getBrowserTimeZone } from '../../utils/timezone';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
@@ -791,7 +792,7 @@ export default function OnlineCampaignWorkspace() {
                     <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{t(({ awaiting_payment: 'campaignOrderAwaitingPayment', payment_submitted: 'campaignOrderReview', payment_submitted_late: 'campaignOrderLateReview', payment_confirmed: 'campaignOrderConfirmed', payment_expired: 'campaignOrderExpired', payment_rejected: 'orderStatusRejectedTitle', payment_cancelled: 'orderStatusCancelledTitle', refund_pending: 'campaignOrderRefundPending', refunded: 'campaignOrderRefunded' } as const)[order.payment_status])}</div><div className="text-xs font-bold text-gray-500">{order.fulfillment_status !== 'not_required' && t(({ awaiting_shipment: 'campaignAwaitingShipment', shipped: 'orderStatusShippedTitle', awaiting_pickup: 'campaignAwaitingPickup', picked_up: 'orderStatusPickedUpTitle', cancelled: 'orderStatusCancelledTitle', expired: 'campaignOrderExpired' } as const)[order.fulfillment_status])}</div></div>
                   </div>
                   {order.shipping_address && <p className="mt-2 whitespace-pre-line break-words text-sm text-gray-600">{order.shipping_address}</p>}
-                  {order.pickup_point && <p className="mt-2 text-sm text-gray-600">{order.pickup_point.name} · {order.pickup_point.address}</p>}
+                  {order.pickup_point && <p className="mt-2 text-sm text-gray-600">{order.pickup_point.name}{order.pickup_point.address && <> · {order.pickup_point.address}</>}</p>}
                   {order.tracking_number && <p className="mt-2 break-words text-sm font-bold">{order.shipping_carrier} · {order.tracking_number}</p>}
                   <fieldset disabled={orderBusy} className="mt-3 flex flex-wrap gap-2">
                     {canManage && order.slip_url && <button disabled={evidenceLoadingId === order.id} onClick={() => void openEvidence(order)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-4 text-xs font-black text-gray-700 disabled:opacity-50">{evidenceLoadingId === order.id ? <Loader2 className="animate-spin" size={15} /> : <Eye size={15} />}{t('campaignViewEvidence')}</button>}
@@ -839,8 +840,8 @@ export default function OnlineCampaignWorkspace() {
                   <article key={point.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <div className="min-w-0">
                       <h3 className="font-black text-gray-950">{point.name}</h3>
-                      <p className="text-sm font-semibold text-gray-600">{point.address}</p>
-                      <p className="mt-1 text-xs font-semibold text-gray-500">{new Date(point.starts_at).toLocaleString(dateLocale)} – {new Date(point.ends_at).toLocaleString(dateLocale)}</p>
+                      {point.address && <p className="text-sm font-semibold text-gray-600">{point.address}</p>}
+                      <p className="mt-1 text-xs font-semibold text-gray-500">{language === 'th' ? 'นัดรับสินค้า: ' : 'Pickup appointment: '}{new Date(point.starts_at).toLocaleString(dateLocale, { timeZoneName: 'short' })} – {new Date(point.ends_at).toLocaleString(dateLocale, { timeZoneName: 'short' })}</p>
                       {point.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{point.instructions}</p>}
                     </div>
                     <button type="button" aria-label={t('campaignRemovePickupPoint', { name: point.name })} onClick={() => setRemoveTarget({ kind: 'pickup', id: point.id, name: point.name })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
@@ -850,11 +851,13 @@ export default function OnlineCampaignWorkspace() {
               {addingPickup && (
                 <form onSubmit={addPickupPoint} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
                   <h3 className="font-black">{t('campaignAddPickupPoint')}</h3>
+                  <p className="mt-2 text-sm text-gray-600">{language === 'th' ? 'ช่วงเวลาที่ลูกค้าต้องไปรับสินค้า ลูกค้าเลือกจุดรับล่วงหน้าได้ ไม่ต้องรอถึงเวลานัดรับ' : 'When customers should collect their items. They can choose this point in advance without waiting for the appointment.'}</p>
+                  <p className="mt-1 text-xs text-gray-500">{language === 'th' ? 'เวลาตามอุปกรณ์นี้' : 'Time zone on this device'}: {getBrowserTimeZone()}</p>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
                     <input name="name" required placeholder={t('campaignPickupName')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                    <input name="address" required placeholder={t('campaignPickupAddress')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                    <input name="starts_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                    <input name="ends_at" required type="datetime-local" className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="address" aria-label={t('campaignPickupAddress')} placeholder={`${t('campaignPickupAddress')} (${language === 'th' ? 'ไม่บังคับ' : 'optional'})`} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <label className="text-xs font-bold">{language === 'th' ? 'เริ่มนัดรับสินค้าวันที่ / เวลา' : 'Pickup appointment starts'}<input name="starts_at" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                    <label className="text-xs font-bold">{language === 'th' ? 'รับสินค้าได้ถึงวันที่ / เวลา' : 'Pickup appointment ends'}<input name="ends_at" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
                     <input name="instructions" placeholder={t('campaignPickupInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
                   </div>
                   <div className="mt-3 flex gap-2">

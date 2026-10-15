@@ -366,9 +366,9 @@ export default function OnlineCampaignStorefront() {
                 </div>
                 {fulfillment === 'pickup' && <label className="checkout-field">{language === 'th' ? 'จุดรับสินค้า' : 'Pickup point'}
                   <select required value={pickupPointId} onChange={event => setPickupPointId(event.target.value)}>
-                    {campaign.pickup_points.map(point => <option key={point.id} value={point.id}>{point.name} · {new Date(point.starts_at).toLocaleString(dateLocale)}</option>)}
+                    {campaign.pickup_points.map(point => <option key={point.id} value={point.id}>{point.name} · {new Date(point.starts_at).toLocaleString(dateLocale, { timeZoneName: 'short' })}</option>)}
                   </select>
-                  {campaign.pickup_points.filter(point => point.id === pickupPointId).map(point => <span className="checkout-help" key={point.id}>{point.address}<br />{new Date(point.starts_at).toLocaleString(dateLocale)} – {new Date(point.ends_at).toLocaleString(dateLocale)}{point.instructions && <><br />{point.instructions}</>}</span>)}
+                  {campaign.pickup_points.filter(point => point.id === pickupPointId).map(point => <span className="checkout-help" key={point.id}>{point.address && <>{point.address}<br /></>}{language === 'th' ? 'นัดรับสินค้า: ' : 'Pickup appointment: '}{new Date(point.starts_at).toLocaleString(dateLocale, { timeZoneName: 'short' })} – {new Date(point.ends_at).toLocaleString(dateLocale, { timeZoneName: 'short' })}{point.instructions && <><br />{point.instructions}</>}</span>)}
                 </label>}
               </fieldset>
               <fieldset className="checkout-section" disabled={submitting}>

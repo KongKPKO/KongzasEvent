@@ -21,6 +21,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - Online Campaign is a separate entity from Physical Event. It uses explicitly allocated catalog stock, not an implicit shared pool with an Event.
 - Event Pre-order, live-day sales and Post-order remain distinct phases. Live-day queue/POS must not acquire the online payment timer.
 - Online Campaign supports shipping or pickup. Shipping is a merchant-defined flat fee per order, included in the checkout total. The merchant can configure multiple pickup points with dates/times; the customer chooses at checkout.
+- Pickup point names are required; address details are optional. Pickup start/end times describe the collection appointment, not checkout eligibility. Customers can select an enabled point in advance while the Campaign accepts orders. Times are stored as instants; entry uses the creator device time zone and displayed appointments identify the viewer time zone.
 - A closed Campaign stops new checkout but keeps its closed storefront and existing order lookup accessible according to visibility rules. Do not redirect customers away from an expired order's payment-exception route.
 - Purchase limits are optional, per product within each Campaign, per order. Unset means unlimited by this rule, not unlimited stock. This is not a per-person limit across multiple orders.
 

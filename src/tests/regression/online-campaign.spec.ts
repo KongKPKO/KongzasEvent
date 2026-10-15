@@ -654,6 +654,43 @@ test.describe('online campaign', () => {
     }
   });
 
+  test('merchant saves a named pickup point without address and customers can select it before the appointment', async ({ page }) => {
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: /Settings|ตั้งค่า/, exact: true }).click();
+    await page.getByRole('button', { name: /^Add pickup point$|^เพิ่มจุดรับสินค้า$/ }).click();
+    const form = page.locator('form').filter({ has: page.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/) });
+    await expect(form).toContainText(/choose this point in advance|เลือกจุดรับล่วงหน้า/);
+    await form.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/).fill('Named future pickup');
+    await expect(form.locator('[name="address"]')).not.toHaveAttribute('required');
+    await form.locator('[name="starts_at"]').fill(new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 16));
+    await form.locator('[name="ends_at"]').fill(new Date(Date.now() + 2 * 86400_000 + 7200_000).toISOString().slice(0, 16));
+    await form.getByRole('button', { name: /Save pickup point|บันทึกจุดรับ/ }).click();
+    const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Named future pickup' }) });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(/Pickup appointment|นัดรับสินค้า/);
+    const point = await fixture.service.from('campaign_pickup_points').select('id,address,starts_at').eq('campaign_id', campaignId).eq('name', 'Named future pickup').single();
+    if (point.error) throw point.error;
+    try {
+      expect(point.data.address).toBe('');
+      expect(Date.parse(point.data.starts_at)).toBeGreaterThan(Date.now());
+      await page.reload();
+      await page.getByRole('button', { name: /Settings|ตั้งค่า/, exact: true }).click();
+      await expect(card).toBeVisible();
+      await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+      await page.getByRole('button', { name: /(?:Increase quantity|เพิ่มจำนวน).*E2E Cheki/ }).click();
+      await page.getByRole('button', { name: /Checkout|สั่งซื้อ/ }).click();
+      await page.getByRole('button', { name: /^Pickup$|^รับเอง$/ }).click();
+      const select = page.getByRole('dialog').getByRole('combobox');
+      await select.selectOption(point.data.id);
+      await expect(select).toHaveValue(point.data.id);
+      await expect(page.getByRole('dialog')).toContainText(/Pickup appointment|นัดรับสินค้า/);
+    } finally {
+      const removed = await fixture.service.from('campaign_pickup_points').delete().eq('id', point.data.id);
+      if (removed.error) throw removed.error;
+    }
+  });
+
   test('merchant types and saves a decimal shipping fee without spinner controls', async ({ page }) => {
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);

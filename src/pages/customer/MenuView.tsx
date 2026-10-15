@@ -175,6 +175,7 @@ const MenuView = () => {
   const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
   const [promotionQuote, setPromotionQuote] = useState<PromotionQuote | null>(null);
   const [promotionQuoteLoading, setPromotionQuoteLoading] = useState(false);
+  const [promotionQuoteFailed, setPromotionQuoteFailed] = useState(false);
   const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
   const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
   const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
@@ -301,10 +302,14 @@ const MenuView = () => {
   useEffect(() => {
     if (!isAdvanceOrderFlow || !selectedEvent?.id || cartItems.length === 0) {
       setPromotionQuote(null);
+      setPromotionQuoteLoading(false);
+      setPromotionQuoteFailed(false);
       return;
     }
     let active = true;
+    setPromotionQuote(null);
     setPromotionQuoteLoading(true);
+    setPromotionQuoteFailed(false);
     const timer = window.setTimeout(() => {
       void quotePromotions({
         eventId: selectedEvent.id,
@@ -313,7 +318,13 @@ const MenuView = () => {
         rewardChoices,
         promotionChoices,
       }).then((nextQuote) => { if (active) setPromotionQuote(nextQuote); })
-        .catch((error) => { console.error(error); if (active) setToast({ tone: 'error', title: uiText(language, 'Could not calculate promotions') }); })
+        .catch((error) => {
+          console.error(error);
+          if (active) {
+            setPromotionQuoteFailed(true);
+            setToast({ tone: 'error', title: uiText(language, 'Could not calculate promotions') });
+          }
+        })
         .finally(() => { if (active) setPromotionQuoteLoading(false); });
     }, 150);
     return () => { active = false; window.clearTimeout(timer); };
@@ -438,6 +449,7 @@ const MenuView = () => {
 
   // --- 2. Fetch Data ---
   useEffect(() => {
+    let active = true;
     const initData = async () => {
         setLoading(true);
         setProductsLoaded(false);
@@ -452,6 +464,7 @@ const MenuView = () => {
                 .eq('id', localQueueId)
                 .maybeSingle();
 
+            if (!active) return;
             if (getStoredTicketId(displayArtist.id) === localQueueId) {
                 // Only show queue number if status is active
                 if (queueData && isQueueFromToday(queueData) && ['waiting', 'calling', 'serving'].includes(queueData.status)) {
@@ -483,6 +496,7 @@ const MenuView = () => {
                 .order('created_at', { ascending: false });
 
         const { data, error } = await productRequest;
+        if (!active) return;
 
         if (error) setCatalogError(true);
         if (!error && data) {
@@ -491,7 +505,7 @@ const MenuView = () => {
         }
 
         await fetchPromotions(displayArtist.id, selectedEvent?.id || null);
-        setLoading(false);
+        if (active) setLoading(false);
     };
 
     if (displayArtist?.id) {
@@ -517,6 +531,7 @@ const MenuView = () => {
          .subscribe();
          
        return () => {
+         active = false;
          supabase.removeChannel(productChannel);
          supabase.removeChannel(promotionChannel);
        };
@@ -1059,7 +1074,39 @@ const MenuView = () => {
     : canConfirmOrder;
   const orderGuidance = isAdvanceOrderFlow ? preorderGuidance : queueGuidance;
   const orderStatusReadyLabel = isAdvanceOrderFlow ? t('menuPreorderReady') : t('menuReadyConfirm');
-  const orderStatusWaitingLabel = isAdvanceOrderFlow ? t('menuPreorderClosed') : t('menuSelectionOnly');
+  const orderStatus = (() => {
+    if (canSubmitSelection) return { label: orderStatusReadyLabel, tone: 'ready' as const };
+    if (!isAdvanceOrderFlow) return { label: t('menuSelectionOnly'), tone: 'warning' as const };
+    if (!preorderWindowOpen) return { label: t('menuPreorderClosed'), tone: 'warning' as const };
+    if (totalItems === 0) return { label: uiText(language, 'Select items'), tone: 'waiting' as const };
+    if (promotionQuoteLoading || (!promotionQuote && !promotionQuoteFailed)) {
+      return { label: t('commonWorking'), tone: 'waiting' as const };
+    }
+    if (requiredPromotionChoices.length > 0) {
+      return { label: language === 'th' ? 'เลือกของแถมโปรโมชั่นให้ครบ' : 'Choose your promotion gifts', tone: 'warning' as const };
+    }
+    if (exhaustedPromotionChoices.length > 0 && !acceptExhaustedRewards) {
+      return { label: uiText(language, 'Review the new total without this promotion, then confirm to continue.'), tone: 'warning' as const };
+    }
+    return { label: uiText(language, 'Could not calculate promotions'), tone: 'warning' as const };
+  })();
+  const orderStatusClasses = orderStatus.tone === 'ready'
+    ? {
+        box: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+        title: 'text-emerald-800',
+        detail: 'text-emerald-700',
+      }
+    : orderStatus.tone === 'waiting'
+      ? {
+          box: 'border-pink-200 bg-pink-50 text-pink-800',
+          title: 'text-pink-800',
+          detail: 'text-pink-700',
+        }
+      : {
+          box: 'border-amber-200 bg-amber-50 text-amber-800',
+          title: 'text-amber-800',
+          detail: 'text-amber-700',
+        };
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -1324,12 +1371,8 @@ const MenuView = () => {
                 <p className="mt-2 text-sm font-semibold leading-6 text-gray-600">
                   {isAdvanceOrderFlow ? preorderGuidance : queueGuidance}
                 </p>
-                <div className={`mt-4 rounded-xl border px-3 py-2 text-left text-xs font-bold ${
-                  canSubmitSelection
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border-amber-200 bg-amber-50 text-amber-800'
-                }`}>
-                  {canSubmitSelection ? orderStatusReadyLabel : orderStatusWaitingLabel}
+                <div className={`mt-4 rounded-xl border px-3 py-2 text-left text-xs font-bold ${orderStatusClasses.box}`}>
+                  {orderStatus.label}
                 </div>
               </div>
             </aside>
@@ -1534,11 +1577,11 @@ const MenuView = () => {
                                 </div>
                             )}
 
-                            <div className={`mt-3 rounded-lg border px-2.5 py-2 ${canSubmitSelection ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                                <div className={`text-[11px] font-black uppercase tracking-wide ${canSubmitSelection ? 'text-emerald-800' : 'text-amber-800'}`}>
-                                    {canSubmitSelection ? orderStatusReadyLabel : orderStatusWaitingLabel}
+                            <div className={`mt-3 rounded-lg border px-2.5 py-2 ${orderStatusClasses.box}`}>
+                                <div className={`text-[11px] font-black uppercase tracking-wide ${orderStatusClasses.title}`}>
+                                    {orderStatus.label}
                                 </div>
-                                <div className={`mt-1 text-[11px] leading-relaxed ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                <div className={`mt-1 text-[11px] leading-relaxed ${orderStatusClasses.detail}`}>
                                     {orderGuidance}
                                 </div>
                             </div>

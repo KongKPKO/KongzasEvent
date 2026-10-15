@@ -7,8 +7,8 @@ const closedEventId = '20000000-0000-4000-8000-000000000003';
 const artistSlug = 'event-card-shop';
 const now = Date.now();
 
-const json = (route: Route, body: unknown) => route.fulfill({
-  status: 200,
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({
+  status,
   contentType: 'application/json',
   body: JSON.stringify(body),
 });
@@ -98,7 +98,13 @@ const eventRows = [
   },
 ];
 
-const mockCustomerStorefront = async (page: Page) => {
+interface StorefrontMockState {
+  failPromotionQuote?: boolean;
+  delayGlobalCatalog?: boolean;
+  globalCatalogFinished?: boolean;
+}
+
+const mockCustomerStorefront = async (page: Page, state: StorefrontMockState = {}) => {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -122,13 +128,39 @@ const mockCustomerStorefront = async (page: Page) => {
     if (path.includes('/rest/v1/rpc/get_store_suspension')) return json(route, false);
     if (path.includes('/rest/v1/rpc/list_active_promotions')) return json(route, []);
 
+    if (path.includes('/rest/v1/rpc/quote_sale_promotions')) {
+      if (state.failPromotionQuote) return json(route, { message: 'Promotion quote unavailable' }, 503);
+      const body = JSON.parse(route.request().postData() || '{}') as { p_items?: Array<{ quantity?: number }> };
+      const subtotal = (body.p_items || []).reduce((sum, item) => sum + (item.quantity || 0) * 120, 0);
+      return json(route, {
+        subtotal,
+        merchandise_total: subtotal,
+        discount_total: 0,
+        shipping_fee: 0,
+        total: subtotal,
+        applied_promotions: [],
+        reward_lines: [],
+        required_choices: [],
+        pricing_hash: `event-card-quote-${subtotal}`,
+      });
+    }
+
     if (path.includes('/rest/v1/rpc/list_event_products')) {
       const body = JSON.parse(route.request().postData() || '{}') as { p_event_id?: string };
       return json(route, body.p_event_id ? [productFor(body.p_event_id)] : []);
     }
 
     if (path.includes('/rest/v1/event_appearances')) return json(route, []);
-    if (path.includes('/rest/v1/events')) return json(route, eventRows);
+    if (path.includes('/rest/v1/events')) {
+      if (state.delayGlobalCatalog) await new Promise(resolve => setTimeout(resolve, 100));
+      return json(route, eventRows);
+    }
+    if (path.includes('/rest/v1/products') && state.delayGlobalCatalog) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      await json(route, []);
+      state.globalCatalogFinished = true;
+      return;
+    }
 
     if (path.includes('/rest/v1/artists')) {
       return json(route, {
@@ -167,6 +199,8 @@ test('event cards open their own preorder and postorder catalogs while online ca
   await preorderLink.click();
   await expect(page).toHaveURL(new RegExp(`/${artistSlug}/menu$`));
   await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
+  await expect(page.getByText('Select items', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('Pre-order unavailable', { exact: true })).toHaveCount(0);
   await expect.poll(() => page.evaluate(
     (key) => localStorage.getItem(key),
     `customerSelectedEventId:${artistId}`
@@ -182,4 +216,36 @@ test('event cards open their own preorder and postorder catalogs while online ca
     (key) => localStorage.getItem(key),
     `customerSelectedEventId:${artistId}`
   )).toBe(postorderEventId);
+});
+
+test('a failed re-quote clears stale preorder readiness and keeps checkout disabled', async ({ page }) => {
+  const state: StorefrontMockState = {};
+  await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
+  await mockCustomerStorefront(page, state);
+  await page.goto(`/${artistSlug}/home`);
+  await page.getByRole('link', { name: /Future Preorder Event.*Pre-order open/ }).click();
+
+  await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add: Preorder-only product', exact: true }).click();
+  const submitButton = page.getByRole('button', { name: 'Pre-order', exact: true });
+  await expect(page.locator('.shop-cart-panel').getByText('Ready for pre-order', { exact: true })).toHaveCount(1);
+  await expect(submitButton).toBeEnabled();
+
+  state.failPromotionQuote = true;
+  await page.getByRole('article', { name: 'Preorder-only product' }).getByRole('button', { name: 'Increase quantity of Preorder-only product', exact: true }).click();
+
+  await expect(page.locator('.shop-cart-panel').getByText('Could not calculate promotions', { exact: true })).toHaveCount(1);
+  await expect(page.locator('.shop-cart-panel').getByText('Pre-order unavailable', { exact: true })).toHaveCount(0);
+  await expect(submitButton).toBeDisabled();
+});
+
+
+test('a late global catalog response cannot erase the selected event products', async ({ page }) => {
+  const state: StorefrontMockState = { delayGlobalCatalog: true };
+  await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
+  await mockCustomerStorefront(page, state);
+  await page.goto(`/${artistSlug}/menu`);
+  await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
+  await expect.poll(() => state.globalCatalogFinished).toBe(true);
+  await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
 });

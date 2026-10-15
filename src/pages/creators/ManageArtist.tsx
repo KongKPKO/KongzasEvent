@@ -382,9 +382,9 @@ const ManageArtist = () => {
     setProfileFeedback(null);
     try {
       setIsSaving(true);
-      const { data: savedProfile, error } = await supabase
-        .from('artists')
-        .update({
+      const { data: savedProfile, error } = await supabase.rpc('update_shop_profile', {
+        p_artist_id: artist.id,
+        p_profile: {
           seller_type: normalizeSellerType(artist.seller_type),
           display_name: artist.display_name,
           bio: artist.bio,
@@ -393,14 +393,12 @@ const ManageArtist = () => {
           facebook_url: artist.facebook_url,
           tiktok_url: artist.tiktok_url,
           email: artist.email,
-          image_url: artist.image_url
-        })
-        .eq('id', artist.id)
-        .select('seller_type')
-        .single();
+          image_url: artist.image_url,
+        },
+      });
 
       if (error) throw error;
-      if (savedProfile.seller_type !== normalizeSellerType(artist.seller_type)) throw new Error('Saved seller type does not match the requested profile.');
+      if (!savedProfile || savedProfile.seller_type !== normalizeSellerType(artist.seller_type)) throw new Error('Saved seller type does not match the requested profile.');
       setProfileFeedback({ error: false, text: language === 'th' ? 'บันทึกข้อมูลร้านแล้ว' : 'Shop profile saved.' });
     } catch (error) {
       console.error("Error updating profile:", error);

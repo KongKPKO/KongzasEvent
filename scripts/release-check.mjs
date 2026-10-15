@@ -266,6 +266,7 @@ if (mode === 'local') {
     'src/tests/storefront.spec.ts',
     'src/tests/seller-type-customer.spec.ts',
     'src/tests/event-card-order-link.spec.ts',
+    'src/tests/profile-member-save.spec.ts',
     'src/tests/multi-payment-display.spec.ts',
     'src/tests/event-multi-payment.spec.ts',
     'src/tests/campaign-multi-payment.spec.ts',

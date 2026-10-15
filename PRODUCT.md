@@ -25,6 +25,11 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - A closed Campaign stops new checkout but keeps its closed storefront and existing order lookup accessible according to visibility rules. Do not redirect customers away from an expired order's payment-exception route.
 - Purchase limits are optional, per product within each Campaign, per order. Unset means unlimited by this rule, not unlimited stock. This is not a per-person limit across multiple orders.
 
+### Payment instructions
+
+- Online Campaign, Pre-order and Post-order may show several enabled payment instruction entries. Every populated PromptPay, bank account, account holder, QR and instruction field is displayed together; method_type is a compatibility classification, not a display filter.
+- Merchants may add several bank accounts. Event payment entries can be independently enabled or disabled; Campaign entries use the existing add/remove controls. These are alternative destinations for one order payment, not split payments or automatic bank verification. Existing 15-minute payment/hold rules remain unchanged.
+
 ### Payment and reservations
 
 - Online Campaign, Pre-order and Post-order hold finite purchased items and gifts together for a fixed 15-minute payment window after order creation. Adding to cart alone does not hold stock.

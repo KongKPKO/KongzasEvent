@@ -4,7 +4,7 @@ import './sales-readiness.css';
 import { uploadImage } from '../../lib/imageUploads';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, PackageCheck, Save, Settings, ShoppingCart, Store, Truck, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, PackageCheck, Plus, Save, Settings, ShoppingCart, Store, Truck, X, type LucideIcon } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import { Toast } from '../../components/ui/Feedback';
@@ -39,7 +39,8 @@ interface EventSettingsRow {
 }
 
 interface PaymentMethodDraft {
-  id: string | null;
+  id: string;
+  persisted: boolean;
   method_type: 'promptpay' | 'bank_transfer' | 'qr_image' | 'other';
   display_name: string;
   account_name: string;
@@ -63,10 +64,11 @@ interface EventProductRow {
 
 const DEFAULT_TIME_ZONE = 'Asia/Bangkok';
 
-const emptyPaymentMethod: PaymentMethodDraft = {
-  id: null,
+const createEmptyPaymentMethod = (): PaymentMethodDraft => ({
+  id: crypto.randomUUID(),
+  persisted: false,
   method_type: 'promptpay',
-  display_name: 'PromptPay / Bank transfer',
+  display_name: '',
   account_name: '',
   account_number: '',
   bank_name: '',
@@ -75,7 +77,7 @@ const emptyPaymentMethod: PaymentMethodDraft = {
   instructions: '',
   payment_deadline_at: null,
   is_enabled: true,
-};
+});
 
 const toInputValue = (value: string | null, timeZone: string) => formatDateTimeForInput(value, timeZone);
 
@@ -97,32 +99,43 @@ const getFiniteAvailable = (product: EventProductRow) => {
   return Math.max(0, Number(product.stock_total || 0) - Number(product.stock_reserved || 0) - Number(product.stock_sold || 0));
 };
 
+const hasPaymentMethodDetails = (paymentMethod: PaymentMethodDraft) =>
+  paymentMethod.promptpay_id.trim().length > 0 ||
+  paymentMethod.account_number.trim().length > 0 ||
+  paymentMethod.qr_image_url.trim().length > 0 ||
+  paymentMethod.instructions.trim().length > 0;
+
 export default function PreorderSettings() {
   const { language } = useI18n();
   const copy = (value: string) => eventCopy(language, value);
+  const localize = (english: string, thai: string) => language === 'th' ? thai : english;
 
   const { eventId } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState<EventSettingsRow | null>(null);
   const [catalogProducts, setCatalogProducts] = useState<EventProductRow[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodDraft>(emptyPaymentMethod);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDraft[]>(() => [createEmptyPaymentMethod()]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [qrUploading, setQrUploading] = useState(false);
+  const [qrUploadingById, setQrUploadingById] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
-  const handleQrUpload = async (file: File | null) => {
+  const handleQrUpload = async (paymentMethodId: string, file: File | null) => {
     if (!file || !event?.artist_id) return;
-    setQrUploading(true);
+    setQrUploadingById((current) => ({ ...current, [paymentMethodId]: true }));
     try {
       const path = await uploadImage(file, 'qr', { artistId: event.artist_id });
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(path);
-      updatePaymentMethod('qr_image_url', publicUrl);
+      updatePaymentMethod(paymentMethodId, 'qr_image_url', publicUrl);
       setToast({ tone: 'success', title: uiText(language, 'QR image uploaded'), detail: uiText(language, 'Remember to save payment settings.') });
     } catch (error) {
       setToast({ tone: 'error', title: uiText(language, 'QR upload failed'), detail: error instanceof Error ? error.message : uiText(language, 'Could not upload the image.') });
     } finally {
-      setQrUploading(false);
+      setQrUploadingById((current) => {
+        const next = { ...current };
+        delete next[paymentMethodId];
+        return next;
+      });
     }
   };
 
@@ -142,9 +155,7 @@ export default function PreorderSettings() {
           .from('event_payment_methods')
           .select('id, method_type, display_name, account_name, account_number, bank_name, promptpay_id, qr_image_url, instructions, payment_deadline_at, is_enabled')
           .eq('event_id', eventId)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle(),
+          .order('created_at', { ascending: true }),
       ]);
 
       if (eventError) throw eventError;
@@ -153,10 +164,11 @@ export default function PreorderSettings() {
 
       setEvent(eventData as EventSettingsRow);
       setCatalogProducts((catalogData || []) as EventProductRow[]);
-      const payment = paymentData as Partial<PaymentMethodDraft> | null;
-      setPaymentMethod(payment ? {
-        ...emptyPaymentMethod,
-        id: payment.id || null,
+      const payments = (paymentData || []) as Array<Partial<PaymentMethodDraft> & { id: string }>;
+      setPaymentMethods(payments.length > 0 ? payments.map((payment) => ({
+        ...createEmptyPaymentMethod(),
+        id: payment.id,
+        persisted: true,
         method_type: (payment.method_type as PaymentMethodDraft['method_type']) || 'promptpay',
         display_name: payment.display_name || '',
         account_name: payment.account_name || '',
@@ -167,7 +179,7 @@ export default function PreorderSettings() {
         instructions: payment.instructions || '',
         payment_deadline_at: payment.payment_deadline_at || null,
         is_enabled: payment.is_enabled ?? true,
-      } : emptyPaymentMethod);
+      })) : [createEmptyPaymentMethod()]);
     } catch (error: any) {
       setToast({ tone: 'error', title: uiText(language, 'Could not load order settings'), detail: error.message });
       setEvent(null);
@@ -188,14 +200,8 @@ export default function PreorderSettings() {
   const isAdvanceOrderMode = preorderEnabled || postorderEnabled;
   const readinessScope = uiText(language, isAdvanceOrderMode ? 'customer order pages' : 'live selling flow');
   const hasPickupInstructions = (event?.preorder_pickup_instructions || '').trim().length > 0;
-  const hasPaymentInstructions =
-    paymentMethod.is_enabled &&
-    (
-      paymentMethod.promptpay_id.trim().length > 0 ||
-      paymentMethod.account_number.trim().length > 0 ||
-      paymentMethod.qr_image_url.trim().length > 0 ||
-      paymentMethod.instructions.trim().length > 0
-    );
+  const hasPaymentInstructions = paymentMethods.some((paymentMethod) =>
+    paymentMethod.is_enabled && hasPaymentMethodDetails(paymentMethod));
   const hasCatalogProducts = catalogProducts.length > 0;
   const finiteProducts = catalogProducts.filter((product) => !product.is_unlimited);
   const finiteProductsWithStock = finiteProducts.filter((product) => getFiniteAvailable(product) > 0).length;
@@ -315,8 +321,16 @@ export default function PreorderSettings() {
     setEvent((current) => current ? { ...current, [key]: value } : current);
   };
 
-  const updatePaymentMethod = <K extends keyof PaymentMethodDraft>(key: K, value: PaymentMethodDraft[K]) => {
-    setPaymentMethod((current) => ({ ...current, [key]: value }));
+  const updatePaymentMethod = <K extends keyof PaymentMethodDraft>(id: string, key: K, value: PaymentMethodDraft[K]) => {
+    setPaymentMethods((current) => current.map((method) => method.id === id ? { ...method, [key]: value } : method));
+  };
+
+  const addPaymentMethod = () => {
+    setPaymentMethods((current) => [...current, createEmptyPaymentMethod()]);
+  };
+
+  const discardNewPaymentMethod = (id: string) => {
+    setPaymentMethods((current) => current.filter((method) => method.id !== id));
   };
 
   const togglePreorder = () => {
@@ -359,7 +373,7 @@ export default function PreorderSettings() {
   };
 
   const saveSettings = async () => {
-    if (!event || saving) return;
+    if (!event || saving || Object.values(qrUploadingById).some(Boolean)) return;
     if (!event.event_name.trim() || new Date(event.end_date).getTime() <= new Date(event.start_date).getTime() || !Number.isFinite(new Date(event.start_date).getTime()) || !Number.isFinite(new Date(event.end_date).getTime()) || !preorderWindowReady || !postorderWindowReady) {
       setToast({ tone: 'error', title: language === 'th' ? 'ตรวจชื่อและช่วงเวลาของงาน' : 'Check event name and schedule', detail: language === 'th' ? 'เวลาจบต้องหลังเวลาเริ่ม ช่วงสั่งก่อนงานต้องปิดก่อนเริ่มงาน และช่วงสั่งหลังงานต้องเริ่มหลังจบงาน' : 'End must follow start. Pre-order must close by event start; post-order must open after the event ends.' });
       return;
@@ -401,26 +415,33 @@ export default function PreorderSettings() {
         .eq('id', event.id);
 
       if (error) throw error;
-      const paymentPayload = {
-        event_id: event.id,
-        artist_id: event.artist_id,
-        method_type: paymentMethod.method_type,
-        display_name: paymentMethod.display_name.trim() || null,
-        account_name: paymentMethod.account_name.trim() || null,
-        account_number: paymentMethod.account_number.trim() || null,
-        bank_name: paymentMethod.bank_name.trim() || null,
-        promptpay_id: paymentMethod.promptpay_id.trim() || null,
-        qr_image_url: paymentMethod.qr_image_url.trim() || null,
-        instructions: paymentMethod.instructions.trim() || null,
-        // Each order owns its 15-minute hold; discard legacy per-method dates.
-        payment_deadline_at: null,
-        is_enabled: paymentMethod.is_enabled,
-      };
-      const { error: paymentError } = paymentMethod.id
-        ? await supabase.from('event_payment_methods').update(paymentPayload).eq('id', paymentMethod.id)
-        : await supabase.from('event_payment_methods').insert(paymentPayload);
+      if (paymentMethods.length > 0) {
+        const paymentPayloads = paymentMethods
+          .filter((paymentMethod) => paymentMethod.persisted || hasPaymentMethodDetails(paymentMethod))
+          .map((paymentMethod) => ({
+            id: paymentMethod.id,
+            event_id: event.id,
+            artist_id: event.artist_id,
+            // The public order pages show every populated field together. Keep the
+            // legacy type for stored rows and use PromptPay for new combined cards.
+            method_type: paymentMethod.method_type,
+            display_name: paymentMethod.display_name.trim() || null,
+            account_name: paymentMethod.account_name.trim() || null,
+            account_number: paymentMethod.account_number.trim() || null,
+            bank_name: paymentMethod.bank_name.trim() || null,
+            promptpay_id: paymentMethod.promptpay_id.trim() || null,
+            qr_image_url: paymentMethod.qr_image_url.trim() || null,
+            instructions: paymentMethod.instructions.trim() || null,
+            // Each order owns its 15-minute hold; discard legacy per-method dates.
+            payment_deadline_at: null,
+            is_enabled: paymentMethod.is_enabled,
+          }));
+        const { error: paymentError } = paymentPayloads.length > 0
+          ? await supabase.from('event_payment_methods').upsert(paymentPayloads, { onConflict: 'id' })
+          : { error: null };
 
-      if (paymentError) throw paymentError;
+        if (paymentError) throw paymentError;
+      }
       setToast({ tone: 'success', title: copy('Order settings saved') });
       await loadSettings();
     } catch (error: any) {
@@ -691,128 +712,96 @@ export default function PreorderSettings() {
               <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-4">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 id="payment-settings" tabIndex={-1} className="text-base font-black text-gray-950">{copy("Payment instructions")}</h2>
+                    <h2 id="payment-settings" tabIndex={-1} className="text-base font-black text-gray-950">{localize('Payment methods', 'ช่องทางชำระเงิน')}</h2>
                     <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Money goes directly to your account. NireQ only stores the instruction and slip workflow.")}</p>
                   </div>
-                  <label className="inline-flex items-center gap-2 text-xs font-black text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={paymentMethod.is_enabled}
-                      onChange={(e) => updatePaymentMethod('is_enabled', e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200"
-                    />
-                    {copy("Enabled")}</label>
+                  <button type="button" onClick={addPaymentMethod} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 hover:bg-pink-50">
+                    <Plus size={17} aria-hidden="true" /> {localize('Add payment method', 'เพิ่มช่องทางชำระเงิน')}
+                  </button>
                 </div>
 
+                <p className="mb-4 text-sm text-gray-600">{language === 'th' ? 'ออเดอร์สั่งก่อนงานและหลังงานต้องชำระและแนบสลิปภายใน 15 นาทีหลังสร้างออเดอร์ การขายหน้าบูธไม่มีเวลานับถอยหลังนี้' : 'Pre-orders and post-event orders require payment and slip submission within 15 minutes of placing the order. This timer does not apply to booth sales.'}</p>
+
                 <div className="grid gap-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{copy("Method type")}</span>
-                      <select
-                        value={paymentMethod.method_type}
-                        onChange={(e) => updatePaymentMethod('method_type', e.target.value as PaymentMethodDraft['method_type'])}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      >
-                        <option value="promptpay">PromptPay</option>
-                        <option value="bank_transfer">{copy("Bank transfer")}</option>
-                        <option value="qr_image">{copy("QR image")}</option>
-                        <option value="other">{copy("Other")}</option>
-                      </select>
-                    </label>
-                    <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{copy("Display name")}</span>
-                      <input
-                        value={paymentMethod.display_name}
-                        onChange={(e) => updatePaymentMethod('display_name', e.target.value)}
-                        placeholder={uiText(language, 'PromptPay / Bank transfer')}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="grid gap-2">
-                      <span className="text-sm font-black text-gray-700">{copy("PromptPay ID")}</span>
-                      <input
-                        value={paymentMethod.promptpay_id}
-                        onChange={(e) => updatePaymentMethod('promptpay_id', e.target.value)}
-                        placeholder={copy("Phone / national ID / e-wallet ID")}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
-                    <p className="self-center text-sm text-gray-600">{language === 'th' ? 'ออเดอร์สั่งก่อนงานและหลังงานต้องชำระและแนบสลิปภายใน 15 นาทีหลังสร้างออเดอร์ การขายหน้าบูธไม่มีเวลานับถอยหลังนี้' : 'Pre-orders and post-event orders require payment and slip submission within 15 minutes of placing the order. This timer does not apply to booth sales.'}</p>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">{copy("Bank name")}</span>
-                      <input
-                        value={paymentMethod.bank_name}
-                        onChange={(e) => updatePaymentMethod('bank_name', e.target.value)}
-                        placeholder={uiText(language, 'KBank, SCB, etc.')}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
-                    <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">{copy("Account name")}</span>
-                      <input
-                        value={paymentMethod.account_name}
-                        onChange={(e) => updatePaymentMethod('account_name', e.target.value)}
-                        placeholder={copy("Account holder")}
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
-                    <label className="grid gap-2 md:col-span-1">
-                      <span className="text-sm font-black text-gray-700">{copy("Account number")}</span>
-                      <input
-                        value={paymentMethod.account_number}
-                        onChange={(e) => updatePaymentMethod('account_number', e.target.value)}
-                        placeholder="000-0-00000-0"
-                        className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">{copy("Payment QR image")}</span>
-                    {paymentMethod.qr_image_url ? (
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={paymentMethod.qr_image_url}
-                          alt={copy("Payment QR preview")}
-                          className="h-28 w-28 rounded-xl border border-pink-100 bg-white object-contain"
-                        />
-                        <div className="grid gap-2">
-                          <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 px-4 text-sm font-black text-pink-700 hover:bg-pink-100">
-                            {qrUploading ? copy("Uploading…") : copy("Replace image")}
-                            <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => updatePaymentMethod('qr_image_url', '')}
-                            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-600 hover:bg-gray-50"
-                          >
-                            {copy("Remove")}</button>
+                  {paymentMethods.length === 0 && (
+                    <p className="rounded-xl border border-dashed border-pink-200 bg-white px-4 py-5 text-center text-sm font-semibold text-gray-500">
+                      {localize('No payment methods yet. Add one for customer orders.', 'ยังไม่มีช่องทางชำระเงิน เพิ่มช่องทางสำหรับออเดอร์ลูกค้า')}
+                    </p>
+                  )}
+                  {paymentMethods.map((paymentMethod, index) => {
+                    const qrUploading = Boolean(qrUploadingById[paymentMethod.id]);
+                    return (
+                      <section key={paymentMethod.id} data-testid="payment-method-card" aria-label={`${localize('Payment method', 'ช่องทางชำระเงิน')} ${index + 1}`} className={`rounded-2xl border bg-white p-4 ${paymentMethod.is_enabled ? 'border-pink-100' : 'border-gray-300'}`}>
+                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="text-sm font-black text-gray-900">{paymentMethod.display_name.trim() || `${localize('Payment method', 'ช่องทางชำระเงิน')} ${index + 1}`}</h3>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label className="inline-flex min-h-11 items-center gap-2 text-xs font-black text-gray-700">
+                              <input type="checkbox" checked={paymentMethod.is_enabled} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'is_enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200" />
+                              {copy("Enabled")}
+                            </label>
+                            {!paymentMethod.persisted && (
+                              <button type="button" onClick={() => discardNewPaymentMethod(paymentMethod.id)} aria-label={localize('Discard new payment method', 'ยกเลิกช่องทางชำระเงินใหม่')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-600 hover:bg-gray-50">
+                                <X size={16} aria-hidden="true" /> {localize('Discard', 'ยกเลิก')}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50">
-                        {qrUploading ? copy("Uploading…") : copy("Upload PromptPay / transfer QR image")}
-                        <input type="file" accept="image/*" className="sr-only" disabled={qrUploading} onChange={(e) => void handleQrUpload(e.target.files?.[0] || null)} />
-                      </label>
-                    )}
-                  </div>
 
-                  <label className="grid gap-2">
-                    <span className="text-sm font-black text-gray-700">{copy("Extra instructions")}</span>
-                    <textarea
-                      value={paymentMethod.instructions}
-                      onChange={(e) => updatePaymentMethod('instructions', e.target.value)}
-                      rows={3}
-                      placeholder={copy("Example: Transfer exact amount, upload slip, then wait for confirmation.")}
-                      className="rounded-xl border border-pink-100 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300"
-                    />
-                  </label>
+                        <div className="grid gap-4">
+                          <label className="grid gap-2">
+                            <span className="text-sm font-black text-gray-700">{copy("Display name")}</span>
+                            <input value={paymentMethod.display_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'display_name', e.target.value)} placeholder={uiText(language, 'PromptPay / Bank transfer')} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
+                          </label>
+
+                          <label className="grid gap-2">
+                            <span className="text-sm font-black text-gray-700">{copy("PromptPay ID")}</span>
+                            <input value={paymentMethod.promptpay_id} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'promptpay_id', e.target.value)} placeholder={copy("Phone / national ID / e-wallet ID")} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
+                          </label>
+
+                          <div className="grid gap-4 md:grid-cols-3">
+                            <label className="grid gap-2">
+                              <span className="text-sm font-black text-gray-700">{copy("Bank name")}</span>
+                              <input value={paymentMethod.bank_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'bank_name', e.target.value)} placeholder={uiText(language, 'KBank, SCB, etc.')} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
+                            </label>
+                            <label className="grid gap-2">
+                              <span className="text-sm font-black text-gray-700">{copy("Account name")}</span>
+                              <input value={paymentMethod.account_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'account_name', e.target.value)} placeholder={copy("Account holder")} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
+                            </label>
+                            <label className="grid gap-2">
+                              <span className="text-sm font-black text-gray-700">{copy("Account number")}</span>
+                              <input value={paymentMethod.account_number} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'account_number', e.target.value)} placeholder="000-0-00000-0" className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
+                            </label>
+                          </div>
+
+                          <div className="grid gap-2">
+                            <span className="text-sm font-black text-gray-700">{copy("Payment QR image")}</span>
+                            {paymentMethod.qr_image_url ? (
+                              <div className="flex flex-wrap items-center gap-3">
+                                <img src={paymentMethod.qr_image_url} alt={copy("Payment QR preview")} className="h-28 w-28 rounded-xl border border-pink-100 bg-white object-contain" />
+                                <div className="grid gap-2">
+                                  <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-pink-200 bg-pink-50 px-4 text-sm font-black text-pink-700 hover:bg-pink-100">
+                                    {qrUploading ? copy("Uploading…") : copy("Replace image")}
+                                    <input type="file" accept="image/*" className="sr-only" disabled={qrUploading || saving} onChange={(e) => void handleQrUpload(paymentMethod.id, e.target.files?.[0] || null)} />
+                                  </label>
+                                  <button type="button" onClick={() => updatePaymentMethod(paymentMethod.id, 'qr_image_url', '')} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-600 hover:bg-gray-50">{copy("Remove")}</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="flex min-h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/40 px-3 text-sm font-bold text-pink-700 hover:bg-pink-50">
+                                {qrUploading ? copy("Uploading…") : copy("Upload PromptPay / transfer QR image")}
+                                <input type="file" accept="image/*" className="sr-only" disabled={qrUploading || saving} onChange={(e) => void handleQrUpload(paymentMethod.id, e.target.files?.[0] || null)} />
+                              </label>
+                            )}
+                          </div>
+
+                          <label className="grid gap-2">
+                            <span className="text-sm font-black text-gray-700">{copy("Extra instructions")}</span>
+                            <textarea value={paymentMethod.instructions} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'instructions', e.target.value)} rows={3} placeholder={copy("Example: Transfer exact amount, upload slip, then wait for confirmation.")} className="rounded-xl border border-pink-100 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-pink-300" />
+                          </label>
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               </div>
               )}
@@ -827,7 +816,7 @@ export default function PreorderSettings() {
                 <button
                   type="button"
                   onClick={saveSettings}
-                  disabled={saving}
+                  disabled={saving || Object.values(qrUploadingById).some(Boolean)}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:opacity-60"
                 >
                   <Save size={17} /> {saving ? copy("Saving...") : copy("Save settings")}

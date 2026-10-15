@@ -1,5 +1,5 @@
 begin;
-select plan(54);
+select plan(57);
 
 do $$
 declare
@@ -76,6 +76,15 @@ begin
   values (v_owner_id, v_staff_id, v_other_id, v_artist_id, v_event_id, v_product_id, v_event_product_id);
 end $$;
 
+-- Mixed fields and additional banks remain alternative ways to pay one order.
+update public.event_payment_methods
+set bank_name = 'Test Bank A', account_name = 'Test Merchant', account_number = 'TEST-ACCOUNT-A', qr_image_url = 'https://example.com/test-qr.png'
+where event_id = (select event_id from _preorder_ids);
+insert into public.event_payment_methods (event_id, artist_id, method_type, display_name, bank_name, account_name, account_number, is_enabled)
+select event_id, artist_id, 'bank_transfer', 'Additional bank ' || number, 'Test Bank ' || number, 'Test Merchant', 'TEST-ACCOUNT-' || number, number < 4
+from _preorder_ids cross join generate_series(2, 4) number;
+
+
 create or replace function set_preorder_jwt(p_email text) returns void as $$
 declare
   v_uid uuid;
@@ -109,6 +118,10 @@ update _preorder_ids
 set first_order_id = (select order_id from _created_preorder),
     first_pickup_code = (select pickup_code from _created_preorder);
 
+
+select is(jsonb_array_length((select payment_methods from public.get_public_preorder_by_code('preorder-test-artist', (select first_pickup_code from _preorder_ids)))), 3, 'all enabled payment entries are exposed and disabled banks are hidden');
+select ok((select payment_methods from public.get_public_preorder_by_code('preorder-test-artist', (select first_pickup_code from _preorder_ids))) @> '[{"promptpay_id":"0812345678","bank_name":"Test Bank A","account_number":"TEST-ACCOUNT-A","qr_image_url":"https://example.com/test-qr.png"}]'::jsonb, 'PromptPay, bank and QR fields are exposed together regardless of method classification');
+select ok((select payment_methods from public.get_public_preorder_by_code('preorder-test-artist', (select first_pickup_code from _preorder_ids))) @> '[{"account_number":"TEST-ACCOUNT-2"},{"account_number":"TEST-ACCOUNT-3"}]'::jsonb, 'multiple additional bank accounts remain visible');
 select is(
   (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
   2,

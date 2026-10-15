@@ -1,3 +1,4 @@
+import PaymentMethodDetails from '../../components/PaymentMethodDetails';
 import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import OrderProblemForm from '../../components/OrderProblemForm';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -139,14 +140,7 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
             {!order.payment_methods?.length && <p className="checkout-hold-note">{t('orderPayNoMethods')}</p>}
             <div className="mt-3 space-y-2">
               {(order.payment_methods || []).map((method) => (
-                <div key={method.id} className="order-method">
-                  <div className="font-black">{method.display_name || method.method_type}</div>
-                  {method.promptpay_id && <div className="mt-1 text-lg font-black">{uiText(language, 'PromptPay')}: {method.promptpay_id}</div>}
-                  {method.account_number && <div className="mt-1 font-black">{method.bank_name} · {method.account_number}</div>}
-                  {method.account_name && <p className="mt-1 text-sm">{method.account_name}</p>}
-                  {method.qr_image_url && <img src={method.qr_image_url} alt={`${method.display_name || method.method_type} QR`} className="order-payment-qr" />}
-                  {method.instructions && <p className="mt-1 text-sm font-semibold text-gray-600">{method.instructions}</p>}
-                </div>
+                <PaymentMethodDetails key={method.id} method={method} />
               ))}
             </div>
           </section>

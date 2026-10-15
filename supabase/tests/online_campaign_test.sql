@@ -1,6 +1,6 @@
 begin;
 
-select plan(60);
+select plan(63);
 
 select has_table('public', 'online_campaigns', 'online campaigns are separate from events');
 select has_table('public', 'online_campaign_products', 'campaign allocations have dedicated stock');
@@ -103,6 +103,15 @@ begin
     null, null, null, null
   );
 end $$;
+
+-- Mixed fields and additional banks remain alternative ways to pay one order.
+update public.campaign_payment_methods
+set bank_name = 'Test Bank A', account_name = 'Test Merchant', account_number = 'TEST-ACCOUNT-A', qr_image_url = 'https://example.com/test-qr.png'
+where campaign_id = (select campaign_id from _campaign_ids);
+insert into public.campaign_payment_methods (campaign_id, artist_id, method_type, display_name, bank_name, account_name, account_number, is_enabled)
+select campaign_id, artist_id, 'bank_transfer', 'Additional bank ' || number, 'Test Bank ' || number, 'Test Merchant', 'TEST-ACCOUNT-' || number, number < 4
+from _campaign_ids cross join generate_series(2, 4) number;
+
 
 insert into public.products (
   artist_id, name, category, variant_name, sku, price, currency, stock_total,
@@ -335,6 +344,9 @@ select is(
   'public campaign includes the product order limit'
 );
 
+
+select is(jsonb_array_length(public.get_public_online_campaign('campaign-test-artist', 'cheki-online') -> 'payment_methods'), 3, 'all enabled payment entries are exposed and disabled banks are hidden');
+select ok(public.get_public_online_campaign('campaign-test-artist', 'cheki-online') -> 'payment_methods' @> '[{"promptpay_id":"0812345678","bank_name":"Test Bank A","account_number":"TEST-ACCOUNT-A","qr_image_url":"https://example.com/test-qr.png"}]'::jsonb, 'PromptPay, bank and QR fields are exposed together regardless of method classification');
 create temp table _shipping_order as
 select * from public.create_online_campaign_order(
   (select campaign_id from _campaign_ids),
@@ -349,6 +361,8 @@ select * from public.create_online_campaign_order(
 update _campaign_ids
 set shipping_order_id = (select order_id from _shipping_order),
     shipping_order_code = (select order_code from _shipping_order);
+
+select is(jsonb_array_length(public.get_public_online_order_by_code('campaign-test-artist', (select shipping_order_code from _campaign_ids)) -> 'payment_methods'), 3, 'the created campaign order exposes every enabled destination');
 
 select results_eq(
   $$ select subtotal_price, shipping_fee, total_price, discount_total

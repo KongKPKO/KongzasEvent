@@ -1,3 +1,4 @@
+import PaymentMethodDetails from '../../components/PaymentMethodDetails';
 import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import OrderProblemForm from '../../components/OrderProblemForm';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -489,27 +490,7 @@ const OrderStatus: React.FC = () => {
                     </div>
                   ) : (
                     detail.payment_methods.map((method) => (
-                      <div key={method.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <div className="text-sm font-black text-gray-900">{method.display_name || method.method_type}</div>
-                        {method.promptpay_id && (
-                          <div className="mt-0.5 text-base font-black tracking-wide text-gray-900">{uiText(language, 'PromptPay')}: {method.promptpay_id}</div>
-                        )}
-                        {method.account_number && (
-                          <div className="mt-0.5 text-base font-black tracking-wide text-gray-900">
-                            {[method.bank_name, method.account_number].filter(Boolean).join(' · ')}
-                          </div>
-                        )}
-                        {method.account_name && <div className="text-sm font-bold text-gray-700">{method.account_name}</div>}
-                        {method.qr_image_url && (
-                          <img
-                            src={method.qr_image_url}
-                            alt={`${method.display_name || method.method_type} QR`}
-                            loading="lazy"
-                            className="order-payment-qr"
-                          />
-                        )}
-                        {method.instructions && <div className="mt-1 text-sm font-medium text-gray-600">{method.instructions}</div>}
-                      </div>
+                      <PaymentMethodDetails key={method.id} method={method} />
                     ))
                   )}
                 </div>

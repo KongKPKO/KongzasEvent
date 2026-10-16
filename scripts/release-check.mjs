@@ -87,6 +87,7 @@ const checkHygiene = () => {
               lowerLine.includes('.test(') ||
               lowerLine.includes('const secretpatterns') ||
               // SQL Role/Permission statements
+              (file.startsWith('supabase/migrations/') && file.endsWith('.sql') && label === 'service_role token' && /^\s*(?:to|from)\s+(?:(?:public|anon|authenticated|service_role)\s*,\s*)*(?:public|anon|authenticated|service_role)\s*;\s*$/i.test(line)) ||
               lowerLine.includes('to "service_role"') ||
               lowerLine.includes('to service_role') ||
               /current_user\s+(?:not\s+)?in\s*\([^)]*['"]service_role['"]/.test(lowerLine) ||

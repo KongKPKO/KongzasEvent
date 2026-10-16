@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, Eye, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
+import PaymentBankAccountsEditor from '../../components/PaymentBankAccountsEditor';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { uiText, useI18n } from '../../i18n';
 import { uploadImage } from '../../lib/imageUploads';
@@ -27,6 +28,12 @@ import { fetchActorContext } from '../../utils/access';
 import { formatPrice } from '../../utils/currency';
 import { getBrowserTimeZone } from '../../utils/timezone';
 import { getMenuImageUrl } from '../../utils/imageUtils';
+import {
+  createEmptyBankAccount,
+  getPaymentBankAccounts,
+  normalizePaymentBankAccounts,
+  type PaymentBankAccount,
+} from '../../utils/paymentBanks';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
 type ProductMembership = 'all' | 'included' | 'not_added';
@@ -53,46 +60,19 @@ const normalizePaymentNumber = (value?: string | null) =>
 
 const paymentDetailsKey = (method: {
   promptpay_id?: string | null;
+  bank_accounts?: PaymentBankAccount[] | null;
   bank_name?: string | null;
   account_name?: string | null;
   account_number?: string | null;
   qr_image_url?: string | null;
 }) => [
   normalizePaymentNumber(method.promptpay_id),
-  normalizeSetting(method.bank_name),
-  normalizeSetting(method.account_name),
-  normalizePaymentNumber(method.account_number),
+  getPaymentBankAccounts(method)
+    .map((account) => [normalizeSetting(account.bank_name), normalizeSetting(account.account_name), normalizePaymentNumber(account.account_number)].join('|'))
+    .sort()
+    .join('~'),
   normalizeSetting(method.qr_image_url),
 ].join('|');
-
-const defaultPaymentDisplayName = (details: {
-  promptPayId: string;
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  qrImageUrl: string;
-  instructions: string;
-}) => {
-  const english: string[] = [];
-  const thai: string[] = [];
-  if (details.promptPayId) {
-    english.push('PromptPay');
-    thai.push('พร้อมเพย์');
-  }
-  if (details.bankName || details.accountName || details.accountNumber) {
-    english.push('Bank transfer');
-    thai.push('โอนผ่านธนาคาร');
-  }
-  if (details.qrImageUrl) {
-    english.push('Payment QR');
-    thai.push('คิวอาร์ชำระเงิน');
-  }
-  if (english.length === 0 && details.instructions) {
-    english.push('Payment instructions');
-    thai.push('คำแนะนำการชำระเงิน');
-  }
-  return `${english.join(' + ')} / ${thai.join(' + ')}`;
-};
 
 export default function OnlineCampaignWorkspace() {
   const { campaignId } = useParams<{ campaignId: string }>();
@@ -120,6 +100,8 @@ export default function OnlineCampaignWorkspace() {
   const [addingPayment, setAddingPayment] = useState(false);
   const [paymentQrUrl, setPaymentQrUrl] = useState('');
   const [paymentQrUploading, setPaymentQrUploading] = useState(false);
+  const [paymentBankAccounts, setPaymentBankAccounts] = useState<PaymentBankAccount[]>([createEmptyBankAccount()]);
+  const [editingPaymentBanks, setEditingPaymentBanks] = useState<{ methodId: string; accounts: PaymentBankAccount[] } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ kind: 'pickup' | 'payment'; id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft | null>(null);
@@ -396,14 +378,11 @@ export default function OnlineCampaignWorkspace() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const promptPayId = String(form.get('promptpay_id') || '').trim();
-    const bankName = String(form.get('bank_name') || '').trim();
-    const accountName = String(form.get('account_name') || '').trim();
-    const accountNumber = String(form.get('account_number') || '').trim();
+    const bankAccounts = normalizePaymentBankAccounts(paymentBankAccounts);
+    const firstBankAccount = bankAccounts[0];
     const qrImageUrl = paymentQrUrl.trim();
     const instructions = String(form.get('instructions') || '').trim();
-    const details = { promptPayId, bankName, accountName, accountNumber, qrImageUrl, instructions };
-    const displayName = String(form.get('display_name') || '').trim() || defaultPaymentDisplayName(details);
-    const hasPaymentDetails = Boolean(promptPayId || bankName || accountName || accountNumber || qrImageUrl);
+    const hasPaymentDetails = Boolean(promptPayId || bankAccounts.length || qrImageUrl);
     if (!hasPaymentDetails && !instructions) {
       setToast({
         tone: 'warning',
@@ -414,9 +393,10 @@ export default function OnlineCampaignWorkspace() {
     }
     const nextDetailsKey = paymentDetailsKey({
       promptpay_id: promptPayId,
-      bank_name: bankName,
-      account_name: accountName,
-      account_number: accountNumber,
+      bank_accounts: bankAccounts,
+      bank_name: firstBankAccount?.bank_name,
+      account_name: firstBankAccount?.account_name,
+      account_number: firstBankAccount?.account_number,
       qr_image_url: qrImageUrl,
     });
     const duplicate = workspace.payment_methods.some((method) =>
@@ -432,12 +412,13 @@ export default function OnlineCampaignWorkspace() {
     const { error } = await supabase.from('campaign_payment_methods').insert({
       campaign_id: workspace.campaign.id,
       artist_id: workspace.campaign.artist_id,
-      method_type: promptPayId ? 'promptpay' : (bankName || accountName || accountNumber) ? 'bank_transfer' : qrImageUrl ? 'qr_image' : 'other',
-      display_name: displayName,
+      method_type: promptPayId ? 'promptpay' : bankAccounts.length ? 'bank_transfer' : qrImageUrl ? 'qr_image' : 'other',
+      display_name: null,
       promptpay_id: promptPayId || null,
-      bank_name: bankName || null,
-      account_name: accountName || null,
-      account_number: accountNumber || null,
+      bank_accounts: bankAccounts,
+      bank_name: firstBankAccount?.bank_name || null,
+      account_name: firstBankAccount?.account_name || null,
+      account_number: firstBankAccount?.account_number || null,
       qr_image_url: qrImageUrl || null,
       instructions: instructions || null,
     });
@@ -445,11 +426,63 @@ export default function OnlineCampaignWorkspace() {
     else {
       formElement.reset();
       setPaymentQrUrl('');
+      setPaymentBankAccounts([createEmptyBankAccount()]);
       setAddingPayment(false);
       await load();
-      setToast({ tone: 'success', title: t('campaignPaymentAdded'), detail: displayName });
+      setToast({ tone: 'success', title: t('campaignPaymentAdded') });
     }
     setSaving(false);
+  };
+
+  const savePaymentBankAccounts = async () => {
+    if (!workspace || !editingPaymentBanks) return;
+    const method = workspace.payment_methods.find((item) => item.id === editingPaymentBanks.methodId);
+    if (!method) return;
+    const bankAccounts = normalizePaymentBankAccounts(editingPaymentBanks.accounts);
+    const firstBankAccount = bankAccounts[0];
+    if (!bankAccounts.length && !method.promptpay_id?.trim() && !method.qr_image_url?.trim() && !method.instructions?.trim()) {
+      setToast({
+        tone: 'warning',
+        title: language === 'th' ? 'กรุณาเก็บข้อมูลการชำระเงินอย่างน้อยหนึ่งรายการ' : 'Keep at least one payment detail.',
+      });
+      return;
+    }
+    const candidateKey = paymentDetailsKey({
+      ...method,
+      bank_accounts: bankAccounts,
+      bank_name: firstBankAccount?.bank_name || null,
+      account_name: firstBankAccount?.account_name || null,
+      account_number: firstBankAccount?.account_number || null,
+    });
+    const duplicate = workspace.payment_methods.some((item) => item.id !== method.id && paymentDetailsKey(item) === candidateKey);
+    if (duplicate) {
+      setToast({ tone: 'warning', title: t('campaignDuplicateSetting') });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('campaign_payment_methods')
+        .update({
+          bank_accounts: bankAccounts,
+          bank_name: firstBankAccount?.bank_name || null,
+          account_name: firstBankAccount?.account_name || null,
+          account_number: firstBankAccount?.account_number || null,
+        })
+        .eq('id', method.id)
+        .eq('campaign_id', workspace.campaign.id)
+        .select('id')
+        .single();
+      if (error) throw error;
+      setEditingPaymentBanks(null);
+      await load();
+      setToast({ tone: 'success', title: t('campaignSaved') });
+    } catch (error) {
+      console.error(error);
+      setToast({ tone: 'error', title: t('campaignSaveFailed') });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const uploadPaymentQr = async (file: File | null) => {
@@ -971,48 +1004,54 @@ export default function OnlineCampaignWorkspace() {
             <section className="rounded-2xl border border-gray-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-black">{t('campaignPaymentMethods')} <span className="text-pink-700">({workspace.payment_methods.length})</span></h2>
-                {!addingPayment && <button type="button" onClick={() => { setPaymentQrUrl(''); setAddingPayment(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPaymentMethod')}</button>}
+                {!addingPayment && !editingPaymentBanks && <button type="button" onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPaymentMethod')}</button>}
               </div>
               <div className="mt-3 space-y-2">
-                {workspace.payment_methods.map((method) => (
-                  <article key={method.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                {workspace.payment_methods.map((method, index) => {
+                  const methodName = language === 'th' ? `ช่องทางชำระเงิน ${index + 1}` : `Payment method ${index + 1}`;
+                  const bankAccounts = getPaymentBankAccounts(method);
+                  const isEditingBanks = editingPaymentBanks?.methodId === method.id;
+                  return (
+                  <article data-testid="campaign-payment-method" key={method.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <div className="min-w-0">
-                      <h3 className="font-black text-gray-950">{method.display_name || 'PromptPay'}</h3>
+                      <h3 className="font-black text-gray-950">{methodName}</h3>
                       {method.promptpay_id && <p className="text-sm font-semibold text-gray-600">{uiText(language, 'PromptPay')}: {maskPaymentId(method.promptpay_id)}</p>}
-                      {(method.bank_name || method.account_number) && <p className="text-sm font-semibold text-gray-600">{[method.bank_name, method.account_number ? maskPaymentId(method.account_number) : null].filter(Boolean).join(' · ')}</p>}
-                      {method.account_name && <p className="text-xs font-semibold text-gray-500">{method.account_name}</p>}
-                      {method.qr_image_url && <img src={method.qr_image_url} alt={`${method.display_name || method.method_type} QR`} className="mt-2 h-24 w-24 rounded-xl border border-gray-200 bg-white object-contain" />}
+                      {bankAccounts.map((account, bankIndex) => (
+                        <div key={`${account.bank_name}-${account.account_number}-${bankIndex}`} className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2" aria-label={`${language === 'th' ? 'บัญชีธนาคาร' : 'Bank account'} ${bankIndex + 1}`}>
+                          <p className="text-sm font-semibold text-gray-700">{[account.bank_name, account.account_number ? maskPaymentId(account.account_number) : null].filter(Boolean).join(' · ')}</p>
+                          {account.account_name && <p className="text-xs font-semibold text-gray-500">{account.account_name}</p>}
+                        </div>
+                      ))}
+                      {method.qr_image_url && <img src={method.qr_image_url} alt={`${methodName} QR`} className="mt-2 h-24 w-24 rounded-xl border border-gray-200 bg-white object-contain" />}
                       {method.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{method.instructions}</p>}
                     </div>
-                    <button type="button" aria-label={t('campaignRemovePaymentMethod', { name: method.display_name || 'PromptPay' })} onClick={() => setRemoveTarget({ kind: 'payment', id: method.id, name: method.display_name || 'PromptPay' })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                    <div className="flex flex-wrap gap-2">
+                      {!editingPaymentBanks && <button type="button" onClick={() => setEditingPaymentBanks({ methodId: method.id, accounts: [...bankAccounts, createEmptyBankAccount()] })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700"><Plus size={15} />{language === 'th' ? 'เพิ่มบัญชีธนาคาร' : 'Add bank account'}</button>}
+                      <button type="button" aria-label={t('campaignRemovePaymentMethod', { name: methodName })} onClick={() => setRemoveTarget({ kind: 'payment', id: method.id, name: methodName })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                    </div>
+                    {isEditingBanks && (
+                      <div className="w-full rounded-xl border border-pink-100 bg-pink-50/40 p-3">
+                        <PaymentBankAccountsEditor accounts={editingPaymentBanks.accounts} onChange={(accounts) => setEditingPaymentBanks({ methodId: method.id, accounts })} disabled={saving} />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" disabled={saving} onClick={() => void savePaymentBankAccounts()} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{language === 'th' ? 'บันทึกบัญชีธนาคาร' : 'Save bank accounts'}</button>
+                          <button type="button" disabled={saving} onClick={() => setEditingPaymentBanks(null)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600 disabled:opacity-50">{t('commonCancel')}</button>
+                        </div>
+                      </div>
+                    )}
                   </article>
-                ))}
+                  );
+                })}
               </div>
               {addingPayment && (
                 <form data-testid="campaign-payment-form" onSubmit={addPaymentMethod} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
                   <h3 className="font-black">{t('campaignAddPaymentMethod')}</h3>
-                  <p className="mt-1 text-sm font-medium text-gray-600">{language === 'th' ? 'ใส่พร้อมเพย์ บัญชีธนาคาร และรูป QR ร่วมกันได้ ลูกค้าจะเห็นข้อมูลทั้งหมดในรายการเดียว' : 'Add PromptPay, bank details, and a QR image together. Customers will see every detail in this entry.'}</p>
+                  <p className="mt-1 text-sm font-medium text-gray-600">{language === 'th' ? 'หนึ่งช่องทางคือผู้รับเงินหนึ่งคน ใส่พร้อมเพย์ รูป QR และบัญชีธนาคารหลายบัญชีของผู้รับคนนี้ได้ หากเป็นผู้รับคนอื่นให้สร้างช่องทางชำระเงินใหม่' : 'One payment method is one recipient. Add this recipient’s PromptPay, QR image, and bank accounts here. Create another payment method for another recipient.'}</p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1 text-xs font-bold text-gray-700 md:col-span-2">
-                      {language === 'th' ? 'ชื่อช่องทาง (ไม่บังคับ)' : 'Display name (optional)'}
-                      <input data-testid="payment-display-name" name="display_name" placeholder={language === 'th' ? 'เว้นว่างเพื่อสร้างชื่อไทย / อังกฤษอัตโนมัติ' : 'Leave blank for an automatic Thai / English name'} className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
-                    </label>
                     <label className="grid gap-1 text-xs font-bold text-gray-700 md:col-span-2">
                       {t('campaignPromptPayId')}
                       <input data-testid="payment-promptpay-id" name="promptpay_id" placeholder={t('campaignPromptPayId')} inputMode="numeric" className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
                     </label>
-                    <label className="grid gap-1 text-xs font-bold text-gray-700">
-                      {language === 'th' ? 'ธนาคาร' : 'Bank name'}
-                      <input data-testid="payment-bank-name" name="bank_name" placeholder={language === 'th' ? 'เช่น KBank, SCB' : 'KBank, SCB, etc.'} className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
-                    </label>
-                    <label className="grid gap-1 text-xs font-bold text-gray-700">
-                      {language === 'th' ? 'ชื่อบัญชี' : 'Account name'}
-                      <input data-testid="payment-account-name" name="account_name" placeholder={language === 'th' ? 'ชื่อเจ้าของบัญชี' : 'Account holder'} className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
-                    </label>
-                    <label className="grid gap-1 text-xs font-bold text-gray-700 md:col-span-2">
-                      {language === 'th' ? 'เลขบัญชี' : 'Account number'}
-                      <input data-testid="payment-account-number" name="account_number" placeholder="000-0-00000-0" inputMode="numeric" className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
-                    </label>
+                    <div className="md:col-span-2"><PaymentBankAccountsEditor accounts={paymentBankAccounts} onChange={setPaymentBankAccounts} disabled={saving || paymentQrUploading} /></div>
                     <div className="grid gap-2 md:col-span-2">
                       <span className="text-xs font-bold text-gray-700">{language === 'th' ? 'รูป QR ชำระเงิน' : 'Payment QR image'}</span>
                       {paymentQrUrl ? (
@@ -1040,7 +1079,7 @@ export default function OnlineCampaignWorkspace() {
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button disabled={saving || paymentQrUploading} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{t('campaignSavePaymentMethod')}</button>
-                    <button type="button" disabled={paymentQrUploading || saving} onClick={() => { setPaymentQrUrl(''); setAddingPayment(false); }} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600 disabled:opacity-50">{t('commonCancel')}</button>
+                    <button type="button" disabled={paymentQrUploading || saving} onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(false); }} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600 disabled:opacity-50">{t('commonCancel')}</button>
                   </div>
                 </form>
               )}

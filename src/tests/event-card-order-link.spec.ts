@@ -212,6 +212,9 @@ test('event cards open their own preorder and postorder catalogs while online ca
   await postorderLink.click();
   await expect(page.getByText('Post-event store', { exact: true })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Postorder-only product' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add: Postorder-only product', exact: true }).click();
+  await expect(page.getByText('Shipping address (required for shipping)', { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder('Name, address, province, postal code, phone number', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(
     (key) => localStorage.getItem(key),
     `customerSelectedEventId:${artistId}`

@@ -1,3 +1,4 @@
+import type { PaymentBankAccount } from '../utils/paymentBanks';
 import type { PromotionChoice } from './promotion';
 import type { ProductPresentationFields, ProductVariantFields } from './productPresentation';
 import type { SellerType } from '../utils/sellerType';
@@ -57,6 +58,7 @@ export interface CampaignPickupPoint {
 }
 
 export interface CampaignPaymentMethod {
+  bank_accounts?: PaymentBankAccount[] | null;
   id: string;
   method_type: 'promptpay' | 'bank_transfer' | 'qr_image' | 'other';
   display_name?: string | null;

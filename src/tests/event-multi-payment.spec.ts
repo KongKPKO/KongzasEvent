@@ -48,6 +48,10 @@ test('event order settings preserve, disable, and add multiple payment methods w
         bank_name: 'KBank',
         account_name: 'Main Artist',
         account_number: '111-1-11111-1',
+        bank_accounts: [
+          { bank_name: 'KBank', account_name: 'Main Artist', account_number: '111-1-11111-1' },
+          { bank_name: 'Krungthai', account_name: 'Event Artist', account_number: '333-3-33333-3' },
+        ],
         qr_image_url: '/pwa-192x192.png',
         instructions: 'Use this account first.',
         is_enabled: true,
@@ -58,6 +62,7 @@ test('event order settings preserve, disable, and add multiple payment methods w
         artist_id: fixture.userId,
         method_type: 'bank_transfer',
         display_name: 'Backup SCB account',
+        bank_accounts: [],
         promptpay_id: '0822222222',
         bank_name: 'SCB',
         account_name: 'Backup Artist',
@@ -79,36 +84,52 @@ test('event order settings preserve, disable, and add multiple payment methods w
     const cards = page.getByTestId('payment-method-card');
     await expect(cards).toHaveCount(2);
     await expect(page.getByText('Method type', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Display name', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Main KBank account', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Backup SCB account', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/require payment and slip submission within 15 minutes/)).toBeVisible();
 
-    const primaryCard = cards.filter({ has: page.locator('input[value="Main KBank account"]') });
-    const disabledCard = cards.filter({ has: page.locator('input[value="Backup SCB account"]') });
-    await expect(primaryCard.getByLabel('Display name')).toHaveValue('Main KBank account');
+    const headings = await cards.getByRole('heading', { level: 3 }).allTextContents();
+    expect(headings).toEqual(['Payment method 1', 'Payment method 2']);
+    const primaryCard = cards.filter({ has: page.locator('input[value="0811111111"]') });
+    const disabledCard = cards.filter({ has: page.locator('input[value="0822222222"]') });
     await expect(primaryCard.getByLabel('PromptPay ID')).toHaveValue('0811111111');
-    await expect(primaryCard.getByLabel('Bank name')).toHaveValue('KBank');
-    await expect(primaryCard.getByLabel('Account name')).toHaveValue('Main Artist');
-    await expect(primaryCard.getByLabel('Account number')).toHaveValue('111-1-11111-1');
+    const primaryBankOne = primaryCard.getByRole('group', { name: 'Bank account 1' });
+    const primaryBankTwo = primaryCard.getByRole('group', { name: 'Bank account 2' });
+    await expect(primaryBankOne.getByLabel('Bank name')).toHaveValue('KBank');
+    await expect(primaryBankOne.getByLabel('Account name')).toHaveValue('Main Artist');
+    await expect(primaryBankOne.getByLabel('Account number')).toHaveValue('111-1-11111-1');
+    await expect(primaryBankTwo.getByLabel('Bank name')).toHaveValue('Krungthai');
+    await expect(primaryBankTwo.getByLabel('Account name')).toHaveValue('Event Artist');
+    await expect(primaryBankTwo.getByLabel('Account number')).toHaveValue('333-3-33333-3');
     await expect(primaryCard.getByAltText('Payment QR preview')).toBeVisible();
     await expect(primaryCard.getByLabel('Enabled')).toBeChecked();
 
-    await expect(disabledCard.getByLabel('Display name')).toHaveValue('Backup SCB account');
     await expect(disabledCard.getByLabel('PromptPay ID')).toHaveValue('0822222222');
-    await expect(disabledCard.getByLabel('Bank name')).toHaveValue('SCB');
-    await expect(disabledCard.getByLabel('Account number')).toHaveValue('222-2-22222-2');
+    const disabledBank = disabledCard.getByRole('group', { name: 'Bank account 1' });
+    await expect(disabledBank.getByLabel('Bank name')).toHaveValue('SCB');
+    await expect(disabledBank.getByLabel('Account number')).toHaveValue('222-2-22222-2');
     await expect(disabledCard.getByAltText('Payment QR preview')).toBeVisible();
     await expect(disabledCard.getByLabel('Enabled')).not.toBeChecked();
 
     await primaryCard.getByLabel('Enabled').uncheck();
     await disabledCard.getByLabel('Extra instructions').fill('Keep this disabled account for order history.');
+    await primaryCard.getByRole('button', { name: 'Add bank account', exact: true }).click();
+    const primaryBankThree = primaryCard.getByRole('group', { name: 'Bank account 3' });
+    await primaryBankThree.getByLabel('Bank name').fill('Bangkok Bank');
+    await primaryBankThree.getByLabel('Account name').fill('Convention Artist');
+    await primaryBankThree.getByLabel('Account number').fill('444-4-44444-4');
+    await primaryCard.getByRole('button', { name: 'Add bank account', exact: true }).click();
+    await expect(primaryCard.getByRole('group', { name: 'Bank account 4' })).toBeVisible();
     await page.getByRole('button', { name: 'Add payment method', exact: true }).click();
     await expect(cards).toHaveCount(3);
 
     const newCard = cards.nth(2);
-    await newCard.getByLabel('Display name').fill('Event Krungthai account');
     await newCard.getByLabel('PromptPay ID').fill('0833333333');
-    await newCard.getByLabel('Bank name').fill('Krungthai');
-    await newCard.getByLabel('Account name').fill('Event Artist');
-    await newCard.getByLabel('Account number').fill('333-3-33333-3');
+    const newBank = newCard.getByRole('group', { name: 'Bank account 1' });
+    await newBank.getByLabel('Bank name').fill('Krungsri');
+    await newBank.getByLabel('Account name').fill('Weekend Artist');
+    await newBank.getByLabel('Account number').fill('555-5-55555-5');
     await newCard.getByLabel('Extra instructions').fill('Upload the transfer slip after paying.');
     await page.getByRole('button', { name: 'Add payment method', exact: true }).click();
     await expect(cards).toHaveCount(4);
@@ -136,27 +157,49 @@ test('event order settings preserve, disable, and add multiple payment methods w
     await page.getByRole('button', { name: 'Save settings', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Order settings saved');
     await expect(cards).toHaveCount(3);
+    await expect(page.getByLabel('Display name', { exact: true })).toHaveCount(0);
+    const reloadedPrimaryCard = cards.filter({ has: page.locator('input[value="0811111111"]') });
+    await expect(reloadedPrimaryCard.getByRole('group')).toHaveCount(3);
+    await expect(reloadedPrimaryCard.getByRole('group', { name: 'Bank account 4' })).toHaveCount(0);
 
     const afterFirstSave = await fixture.service
       .from('event_payment_methods')
-      .select('id, method_type, display_name, promptpay_id, bank_name, account_name, account_number, instructions, is_enabled, payment_deadline_at')
+      .select('id, method_type, display_name, promptpay_id, bank_accounts, bank_name, account_name, account_number, instructions, is_enabled, payment_deadline_at')
       .eq('event_id', eventId);
     if (afterFirstSave.error) throw afterFirstSave.error;
     expect(afterFirstSave.data).toHaveLength(3);
-    expect(afterFirstSave.data.find((method) => method.id === primaryMethodId)).toMatchObject({
+    const savedPrimary = afterFirstSave.data.find((method) => method.id === primaryMethodId);
+    expect(savedPrimary).toMatchObject({
       method_type: 'promptpay',
+      display_name: 'Main KBank account',
+      bank_name: 'KBank',
+      account_name: 'Main Artist',
+      account_number: '111-1-11111-1',
       is_enabled: false,
     });
+    expect(savedPrimary?.bank_accounts).toEqual([
+      { bank_name: 'KBank', account_name: 'Main Artist', account_number: '111-1-11111-1' },
+      { bank_name: 'Krungthai', account_name: 'Event Artist', account_number: '333-3-33333-3' },
+      { bank_name: 'Bangkok Bank', account_name: 'Convention Artist', account_number: '444-4-44444-4' },
+    ]);
     expect(afterFirstSave.data.find((method) => method.id === disabledMethodId)).toMatchObject({
       method_type: 'bank_transfer',
+      display_name: 'Backup SCB account',
+      bank_accounts: [
+        { bank_name: 'SCB', account_name: 'Backup Artist', account_number: '222-2-22222-2' },
+      ],
       is_enabled: false,
       instructions: 'Keep this disabled account for order history.',
     });
-    expect(afterFirstSave.data.find((method) => method.display_name === 'Event Krungthai account')).toMatchObject({
+    expect(afterFirstSave.data.find((method) => method.promptpay_id === '0833333333')).toMatchObject({
+      display_name: null,
       promptpay_id: '0833333333',
-      bank_name: 'Krungthai',
-      account_name: 'Event Artist',
-      account_number: '333-3-33333-3',
+      bank_accounts: [
+        { bank_name: 'Krungsri', account_name: 'Weekend Artist', account_number: '555-5-55555-5' },
+      ],
+      bank_name: 'Krungsri',
+      account_name: 'Weekend Artist',
+      account_number: '555-5-55555-5',
       is_enabled: true,
       payment_deadline_at: null,
     });

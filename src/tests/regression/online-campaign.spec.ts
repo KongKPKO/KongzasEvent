@@ -141,7 +141,9 @@ test.describe('online campaign', () => {
     await page.getByPlaceholder(/Customer name|ชื่อลูกค้า/).fill('Shipping Buyer');
     await page.getByPlaceholder(/Email|อีเมล/).fill('shipping@example.com');
     await page.getByPlaceholder(/Phone or contact|โทรศัพท์/).fill('0800000000');
-    await page.getByPlaceholder(/Shipping address|ที่อยู่จัดส่ง/).fill('Bangkok');
+    await expect(page.locator('textarea[name="shipping_address"]')).toHaveAttribute('placeholder', /Name, address, province, postal code, phone number|ชื่อ ที่อยู่ จังหวัด รหัสไปรษณีย์ เบอร์โทร/);
+    await expect(page.getByText(/Shipping address \(required for shipping\)|ที่อยู่จัดส่ง \(จำเป็นสำหรับจัดส่ง\)/)).toBeVisible();
+    await page.locator('textarea[name="shipping_address"]').fill('Bangkok');
     await expect(page.getByText(/140(?:\.00)?/)).toBeVisible();
     await page.getByRole('button', { name: /Confirm order and hold stock|ยืนยันออเดอร์/ }).click();
     await expect(page).toHaveURL(new RegExp(`/${ARTIST_SLUG}/order/`), { timeout: 15_000 });
@@ -262,11 +264,11 @@ test.describe('online campaign', () => {
     await expect(dialog.getByRole('region', { name: /Order items|รายการสินค้า/ })).toContainText('E2E Cheki');
     await page.getByPlaceholder(/Customer name|ชื่อลูกค้า/).fill('Checkout Review');
     await page.getByPlaceholder(/Email|อีเมล/).fill('review@example.com');
-    await page.getByPlaceholder(/Shipping address|ที่อยู่จัดส่ง/).fill('Saved address');
+    await page.locator('textarea[name="shipping_address"]').fill('Saved address');
     await dialog.getByRole('button', { name: /^Pickup$|^รับเอง$/ }).click();
     await expect(dialog.getByText('Siam Square')).toBeVisible();
     await dialog.getByRole('button', { name: /^Shipping$|^จัดส่ง$/ }).click();
-    await expect(page.getByPlaceholder(/Shipping address|ที่อยู่จัดส่ง/)).toHaveValue('Saved address');
+    await expect(page.locator('textarea[name="shipping_address"]')).toHaveValue('Saved address');
     await dialog.getByRole('button', { name: /Edit your items|กลับไปแก้รายการสินค้า/ }).click();
     await expect(dialog).not.toBeVisible();
     await openCheckout.press('Enter');
@@ -777,7 +779,7 @@ test.describe('online campaign', () => {
 
     await page.getByRole('button', { name: /^Add payment method$|^เพิ่มช่องทางชำระเงิน$/ }).click();
     let paymentForm = page.locator('form').filter({ has: page.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/) });
-    await paymentForm.locator('[name="display_name"]').fill('Backup PromptPay');
+    await expect(paymentForm.locator('[name="display_name"]')).toHaveCount(0);
     await paymentForm.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/).fill('0899994321');
     await paymentForm.getByRole('button', { name: /Save payment method|บันทึกช่องทางชำระเงิน/ }).click();
     await expect(page.getByRole('status')).toContainText(/Payment method added|เพิ่มช่องทางชำระเงินแล้ว/);
@@ -785,7 +787,7 @@ test.describe('online campaign', () => {
 
     await page.getByRole('button', { name: /^Add payment method$|^เพิ่มช่องทางชำระเงิน$/ }).click();
     paymentForm = page.locator('form').filter({ has: page.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/) });
-    await paymentForm.locator('[name="display_name"]').fill(' backup promptpay ');
+    await expect(paymentForm.locator('[name="display_name"]')).toHaveCount(0);
     await paymentForm.getByPlaceholder(/PromptPay ID|หมายเลขพร้อมเพย์/).fill('0899994321');
     await paymentForm.getByRole('button', { name: /Save payment method|บันทึกช่องทางชำระเงิน/ }).click();
     await expect(page.getByRole('status')).toContainText(/already exists|มีรายการนี้แล้ว/);

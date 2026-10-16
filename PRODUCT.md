@@ -28,7 +28,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 ### Payment instructions
 
 - Online Campaign, Pre-order and Post-order may show several enabled payment instruction entries. Every populated PromptPay, bank account, account holder, QR and instruction field is displayed together; method_type is a compatibility classification, not a display filter.
-- Merchants may add several bank accounts. Event payment entries can be independently enabled or disabled; Campaign entries use the existing add/remove controls. These are alternative destinations for one order payment, not split payments or automatic bank verification. Existing 15-minute payment/hold rules remain unchanged.
+- Each payment entry groups one recipient’s PromptPay, QR and multiple bank accounts; adding another entry represents an alternative recipient. The editor has no custom payment display-name field. Existing names and legacy bank fields remain compatible. Event payment entries can be independently enabled or disabled; Campaign entries use the existing add/remove controls. These are alternative destinations for one order payment, not split payments or automatic bank verification. Existing 15-minute payment/hold rules remain unchanged.
 
 ### Payment and reservations
 

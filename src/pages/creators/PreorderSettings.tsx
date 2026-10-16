@@ -7,9 +7,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, PackageCheck, Plus, Save, Settings, ShoppingCart, Store, Truck, X, type LucideIcon } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
+import PaymentBankAccountsEditor from '../../components/PaymentBankAccountsEditor';
 import { Toast } from '../../components/ui/Feedback';
 import { supabase } from '../../supabaseClient';
 import type { EventSellingMode } from '../../types/preorder';
+import { createEmptyBankAccount, getPaymentBankAccounts, normalizePaymentBankAccounts, type PaymentBankAccount } from '../../utils/paymentBanks';
 import { formatDateTimeForInput, parseDateTimeInputInTimeZone } from '../../utils/timezone';
 
 interface EventSettingsRow {
@@ -43,15 +45,21 @@ interface PaymentMethodDraft {
   persisted: boolean;
   method_type: 'promptpay' | 'bank_transfer' | 'qr_image' | 'other';
   display_name: string;
-  account_name: string;
-  account_number: string;
-  bank_name: string;
+  bank_accounts: PaymentBankAccount[];
   promptpay_id: string;
   qr_image_url: string;
   instructions: string;
   payment_deadline_at: string | null;
   is_enabled: boolean;
 }
+
+type PaymentMethodRow = Omit<Partial<PaymentMethodDraft>, 'bank_accounts'> & {
+  id: string;
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number?: string | null;
+  bank_accounts?: PaymentBankAccount[] | null;
+};
 
 interface EventProductRow {
   id: string;
@@ -69,9 +77,7 @@ const createEmptyPaymentMethod = (): PaymentMethodDraft => ({
   persisted: false,
   method_type: 'promptpay',
   display_name: '',
-  account_name: '',
-  account_number: '',
-  bank_name: '',
+  bank_accounts: [createEmptyBankAccount()],
   promptpay_id: '',
   qr_image_url: '',
   instructions: '',
@@ -101,7 +107,7 @@ const getFiniteAvailable = (product: EventProductRow) => {
 
 const hasPaymentMethodDetails = (paymentMethod: PaymentMethodDraft) =>
   paymentMethod.promptpay_id.trim().length > 0 ||
-  paymentMethod.account_number.trim().length > 0 ||
+  normalizePaymentBankAccounts(paymentMethod.bank_accounts).length > 0 ||
   paymentMethod.qr_image_url.trim().length > 0 ||
   paymentMethod.instructions.trim().length > 0;
 
@@ -153,7 +159,7 @@ export default function PreorderSettings() {
         supabase.rpc('list_event_products', { p_event_id: eventId }),
         supabase
           .from('event_payment_methods')
-          .select('id, method_type, display_name, account_name, account_number, bank_name, promptpay_id, qr_image_url, instructions, payment_deadline_at, is_enabled')
+          .select('id, method_type, display_name, account_name, account_number, bank_name, bank_accounts, promptpay_id, qr_image_url, instructions, payment_deadline_at, is_enabled')
           .eq('event_id', eventId)
           .order('created_at', { ascending: true }),
       ]);
@@ -164,22 +170,23 @@ export default function PreorderSettings() {
 
       setEvent(eventData as EventSettingsRow);
       setCatalogProducts((catalogData || []) as EventProductRow[]);
-      const payments = (paymentData || []) as Array<Partial<PaymentMethodDraft> & { id: string }>;
-      setPaymentMethods(payments.length > 0 ? payments.map((payment) => ({
-        ...createEmptyPaymentMethod(),
-        id: payment.id,
-        persisted: true,
-        method_type: (payment.method_type as PaymentMethodDraft['method_type']) || 'promptpay',
-        display_name: payment.display_name || '',
-        account_name: payment.account_name || '',
-        account_number: payment.account_number || '',
-        bank_name: payment.bank_name || '',
-        promptpay_id: payment.promptpay_id || '',
-        qr_image_url: payment.qr_image_url || '',
-        instructions: payment.instructions || '',
-        payment_deadline_at: payment.payment_deadline_at || null,
-        is_enabled: payment.is_enabled ?? true,
-      })) : [createEmptyPaymentMethod()]);
+      const payments = (paymentData || []) as PaymentMethodRow[];
+      setPaymentMethods(payments.length > 0 ? payments.map((payment) => {
+        const bankAccounts = getPaymentBankAccounts(payment);
+        return {
+          ...createEmptyPaymentMethod(),
+          id: payment.id,
+          persisted: true,
+          method_type: (payment.method_type as PaymentMethodDraft['method_type']) || 'promptpay',
+          display_name: payment.display_name || '',
+          bank_accounts: bankAccounts.length > 0 ? bankAccounts : [createEmptyBankAccount()],
+          promptpay_id: payment.promptpay_id || '',
+          qr_image_url: payment.qr_image_url || '',
+          instructions: payment.instructions || '',
+          payment_deadline_at: payment.payment_deadline_at || null,
+          is_enabled: payment.is_enabled ?? true,
+        };
+      }) : [createEmptyPaymentMethod()]);
     } catch (error: any) {
       setToast({ tone: 'error', title: uiText(language, 'Could not load order settings'), detail: error.message });
       setEvent(null);
@@ -418,24 +425,30 @@ export default function PreorderSettings() {
       if (paymentMethods.length > 0) {
         const paymentPayloads = paymentMethods
           .filter((paymentMethod) => paymentMethod.persisted || hasPaymentMethodDetails(paymentMethod))
-          .map((paymentMethod) => ({
-            id: paymentMethod.id,
-            event_id: event.id,
-            artist_id: event.artist_id,
-            // The public order pages show every populated field together. Keep the
-            // legacy type for stored rows and use PromptPay for new combined cards.
-            method_type: paymentMethod.method_type,
-            display_name: paymentMethod.display_name.trim() || null,
-            account_name: paymentMethod.account_name.trim() || null,
-            account_number: paymentMethod.account_number.trim() || null,
-            bank_name: paymentMethod.bank_name.trim() || null,
-            promptpay_id: paymentMethod.promptpay_id.trim() || null,
-            qr_image_url: paymentMethod.qr_image_url.trim() || null,
-            instructions: paymentMethod.instructions.trim() || null,
-            // Each order owns its 15-minute hold; discard legacy per-method dates.
-            payment_deadline_at: null,
-            is_enabled: paymentMethod.is_enabled,
-          }));
+          .map((paymentMethod) => {
+            const bankAccounts = normalizePaymentBankAccounts(paymentMethod.bank_accounts);
+            const primaryBankAccount = bankAccounts[0];
+            return {
+              id: paymentMethod.id,
+              event_id: event.id,
+              artist_id: event.artist_id,
+              // The public order pages show every populated field together. Keep the
+              // legacy type for stored rows and use PromptPay for new combined cards.
+              method_type: paymentMethod.method_type,
+              // Existing names are retained for compatibility, but are no longer edited.
+              display_name: paymentMethod.display_name || null,
+              bank_accounts: bankAccounts,
+              bank_name: primaryBankAccount?.bank_name || null,
+              account_name: primaryBankAccount?.account_name || null,
+              account_number: primaryBankAccount?.account_number || null,
+              promptpay_id: paymentMethod.promptpay_id.trim() || null,
+              qr_image_url: paymentMethod.qr_image_url.trim() || null,
+              instructions: paymentMethod.instructions.trim() || null,
+              // Each order owns its 15-minute hold; discard legacy per-method dates.
+              payment_deadline_at: null,
+              is_enabled: paymentMethod.is_enabled,
+            };
+          });
         const { error: paymentError } = paymentPayloads.length > 0
           ? await supabase.from('event_payment_methods').upsert(paymentPayloads, { onConflict: 'id' })
           : { error: null };
@@ -714,6 +727,12 @@ export default function PreorderSettings() {
                   <div>
                     <h2 id="payment-settings" tabIndex={-1} className="text-base font-black text-gray-950">{localize('Payment methods', 'ช่องทางชำระเงิน')}</h2>
                     <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Money goes directly to your account. NireQ only stores the instruction and slip workflow.")}</p>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">
+                      {localize(
+                        'One payment method groups one recipient’s PromptPay, QR, and bank accounts. Add another method for another recipient.',
+                        'หนึ่งช่องทางชำระเงินรวมพร้อมเพย์ QR และบัญชีธนาคารของผู้รับคนเดียว หากเป็นผู้รับคนอื่นให้เพิ่มช่องทางชำระเงินใหม่',
+                      )}
+                    </p>
                   </div>
                   <button type="button" onClick={addPaymentMethod} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 hover:bg-pink-50">
                     <Plus size={17} aria-hidden="true" /> {localize('Add payment method', 'เพิ่มช่องทางชำระเงิน')}
@@ -733,7 +752,7 @@ export default function PreorderSettings() {
                     return (
                       <section key={paymentMethod.id} data-testid="payment-method-card" aria-label={`${localize('Payment method', 'ช่องทางชำระเงิน')} ${index + 1}`} className={`rounded-2xl border bg-white p-4 ${paymentMethod.is_enabled ? 'border-pink-100' : 'border-gray-300'}`}>
                         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <h3 className="text-sm font-black text-gray-900">{paymentMethod.display_name.trim() || `${localize('Payment method', 'ช่องทางชำระเงิน')} ${index + 1}`}</h3>
+                          <h3 className="text-sm font-black text-gray-900">{localize('Payment method', 'ช่องทางชำระเงิน')} {index + 1}</h3>
                           <div className="flex flex-wrap items-center gap-3">
                             <label className="inline-flex min-h-11 items-center gap-2 text-xs font-black text-gray-700">
                               <input type="checkbox" checked={paymentMethod.is_enabled} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'is_enabled', e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-200" />
@@ -749,29 +768,15 @@ export default function PreorderSettings() {
 
                         <div className="grid gap-4">
                           <label className="grid gap-2">
-                            <span className="text-sm font-black text-gray-700">{copy("Display name")}</span>
-                            <input value={paymentMethod.display_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'display_name', e.target.value)} placeholder={uiText(language, 'PromptPay / Bank transfer')} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
-                          </label>
-
-                          <label className="grid gap-2">
                             <span className="text-sm font-black text-gray-700">{copy("PromptPay ID")}</span>
                             <input value={paymentMethod.promptpay_id} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'promptpay_id', e.target.value)} placeholder={copy("Phone / national ID / e-wallet ID")} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
                           </label>
 
-                          <div className="grid gap-4 md:grid-cols-3">
-                            <label className="grid gap-2">
-                              <span className="text-sm font-black text-gray-700">{copy("Bank name")}</span>
-                              <input value={paymentMethod.bank_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'bank_name', e.target.value)} placeholder={uiText(language, 'KBank, SCB, etc.')} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
-                            </label>
-                            <label className="grid gap-2">
-                              <span className="text-sm font-black text-gray-700">{copy("Account name")}</span>
-                              <input value={paymentMethod.account_name} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'account_name', e.target.value)} placeholder={copy("Account holder")} className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
-                            </label>
-                            <label className="grid gap-2">
-                              <span className="text-sm font-black text-gray-700">{copy("Account number")}</span>
-                              <input value={paymentMethod.account_number} onChange={(e) => updatePaymentMethod(paymentMethod.id, 'account_number', e.target.value)} placeholder="000-0-00000-0" className="min-h-12 rounded-xl border border-pink-100 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300" />
-                            </label>
-                          </div>
+                          <PaymentBankAccountsEditor
+                            accounts={paymentMethod.bank_accounts}
+                            onChange={(accounts) => updatePaymentMethod(paymentMethod.id, 'bank_accounts', accounts)}
+                            disabled={saving}
+                          />
 
                           <div className="grid gap-2">
                             <span className="text-sm font-black text-gray-700">{copy("Payment QR image")}</span>

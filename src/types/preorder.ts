@@ -1,3 +1,4 @@
+import type { PaymentBankAccount } from '../utils/paymentBanks';
 import type { PromotionChoice } from './promotion';
 import type { SellerType } from '../utils/sellerType';
 
@@ -48,6 +49,7 @@ export interface CreatePreorderInput {
 }
 
 export interface PreorderPaymentMethod {
+  bank_accounts?: PaymentBankAccount[] | null;
   id: string;
   event_id: string;
   artist_id?: string;

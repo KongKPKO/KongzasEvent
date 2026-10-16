@@ -4,7 +4,7 @@ for (const channel of ['campaign', 'preorder', 'post_event']) {
   test(`${channel} displays PromptPay, QR and several bank accounts together`, async ({ page }) => {
     const deadline = new Date(Date.now() + 15 * 60_000).toISOString();
     const methods = [
-      { id: 'one', method_type: 'promptpay', display_name: 'All payment options', promptpay_id: 'TEST-PROMPTPAY', bank_name: 'Test Bank A', account_number: 'TEST-ACCOUNT-A', account_name: 'Test Merchant A', qr_image_url: 'https://ik.imagekit.io/kongzas/Menu/testqr.png', instructions: 'Choose any listed destination.' },
+      { id: 'one', method_type: 'promptpay', display_name: 'All payment options', promptpay_id: 'TEST-PROMPTPAY', bank_name: 'Test Bank A', account_number: 'TEST-ACCOUNT-A', account_name: 'Test Merchant A', qr_image_url: 'https://ik.imagekit.io/kongzas/Menu/testqr.png', instructions: 'Choose any listed destination.', bank_accounts: [{ bank_name: 'Test Bank A', account_number: 'TEST-ACCOUNT-A', account_name: 'Test Merchant A' }, { bank_name: 'Test Bank A2', account_number: 'TEST-ACCOUNT-A2', account_name: 'Test Merchant A' }] },
       { id: 'two', method_type: 'bank_transfer', display_name: 'Second bank', bank_name: 'Test Bank B', account_number: 'TEST-ACCOUNT-B', account_name: 'Test Merchant B' },
       { id: 'three', method_type: 'bank_transfer', display_name: 'Third bank', bank_name: 'Test Bank C', account_number: 'TEST-ACCOUNT-C', account_name: 'Test Merchant C' },
     ];
@@ -29,6 +29,9 @@ for (const channel of ['campaign', 'preorder', 'post_event']) {
     await expect(page.getByTestId('payment-method-card')).toHaveCount(3);
     const combined = page.getByTestId('payment-method-card').first();
     for (const text of ['TEST-PROMPTPAY', 'Test Bank A', 'TEST-ACCOUNT-A', 'Test Merchant A']) await expect(combined).toContainText(text);
+    await expect(combined.getByTestId('payment-bank-account')).toHaveCount(2);
+    await expect(combined.getByText('Account number: TEST-ACCOUNT-A2', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('payment-method-card').nth(1).getByTestId('payment-bank-account')).toHaveCount(1);
     await expect(page.getByText('Account number: TEST-ACCOUNT-B', { exact: true })).toBeVisible();
     await expect(page.getByText('Account number: TEST-ACCOUNT-C', { exact: true })).toBeVisible();
     const qr = combined.getByRole('img', { name: 'All payment options QR' });

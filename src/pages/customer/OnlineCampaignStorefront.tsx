@@ -377,7 +377,7 @@ export default function OnlineCampaignStorefront() {
                 <label className="checkout-field">{t('campaignCustomerName')} *<input name="customer_name" autoComplete="name" required placeholder={t('campaignCustomerName')} /></label>
                 <label className="checkout-field">{t('campaignCustomerEmail')} *<input name="customer_email" autoComplete="email" required type="email" placeholder={t('campaignCustomerEmail')} /><span className="checkout-help">{language === 'th' ? 'ใช้อีเมลที่เปิดอ่านได้เพื่อรับข้อมูลออเดอร์' : 'Use an email address you can access for order updates.'}</span></label>
                 <label className="checkout-field">{t('campaignCustomerPhone')} *<input name="customer_phone" autoComplete="tel" required type="tel" placeholder={t('campaignCustomerPhone')} /></label>
-                <label className="checkout-field" hidden={fulfillment !== 'shipping'}>{t('campaignShippingAddress')} *<textarea name="shipping_address" autoComplete="street-address" required={fulfillment === 'shipping'} placeholder={t('campaignShippingAddress')} rows={3} /></label>
+                <label className="checkout-field" hidden={fulfillment !== 'shipping'}>{t('menuPostOrderAddressLabel')}<textarea name="shipping_address" autoComplete="street-address" required={fulfillment === 'shipping'} placeholder={t('menuPostOrderAddressPlaceholder')} rows={3} /></label>
                 <label className="checkout-field">{t('campaignCustomerNote')}<textarea name="customer_note" placeholder={t('campaignCustomerNote')} rows={2} /></label>
               </fieldset>
             </div>

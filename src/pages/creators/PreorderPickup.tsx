@@ -1,3 +1,4 @@
+import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, Clock3, PackageCheck, Search, Trash2 } from 'lucide-react';
@@ -69,6 +70,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
   const { eventId } = useParams();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [orders, setOrders] = useState<PickupOrderRow[]>([]);
+  const productionStock = useProductionOrderStock(eventId, undefined, orders.map(order => [order.id,order.pickup_status].join(':')).join('|'));
   const actionInFlight = useRef(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<PickupFilter>('awaiting_pickup');
@@ -346,6 +348,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                     </div>
                     <div className="mt-1 whitespace-pre-line text-sm font-semibold text-gray-600">
                       {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}`).join('\n')}
+                      <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
 
                   </div>

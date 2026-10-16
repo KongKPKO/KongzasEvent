@@ -1,0 +1,14 @@
+# Stock tracking and made-to-order inventory
+
+Approved scope: preserve product UUIDs and historical orders; catalog tracking is independent of per-channel order supply. Preorder/postorder can use allocated stock or production demand (optional cap); live defaults to existing stock. Online Campaign supports the same supply choice. New receipts supply confirmed production demand before the remainder is allocated; existing ready stock moves only through explicit merchant earmarking. Unpaid demand uses the existing 15-minute order hold, without reserving physical units. Fulfillment requires enough earmarked physical stock.
+
+- [x] Add append-only migration for per-phase supply settings, immutable order-item supply snapshots, production earmarks, safe tracking initialization and management summaries.
+- [x] Integrate reservation, release, payment, fulfillment, promotion and allocation callers. Retain legacy stock totals/counters; no counter reset or historical order rewriting on ordinary mode edits.
+- [x] Add catalog tracking switch, explicit initialization/receipt preview and item stock breakdown.
+- [x] Add Event phase and Campaign supply controls, customer availability/production labels, and staff production readiness details.
+- [x] Add transaction regressions for receipt50/demand20, insufficient receipts, cancellation, cap concurrency, retry safety, conversion/history, permissions and fulfillment protection.
+- [x] Exercise browser flows; run narrow checks, npm run verify and one fresh diff review.
+
+Safety: all mutating validation targets disposable local NireqDevLocalization20261013 (API60321/DB60322). No remote migration, deploy, commit or push is part of this implementation request. New private helpers have no direct API grants; public RPCs enforce existing shop management permissions. Existing finite products retain recorded-total semantics; physical stock is displayed separately. Deployment must migrate DB before clients; reverting frontend does not undo new orders/stock movements.
+
+Fresh-context review completed: clarified bulk stock applies to new items only; protected newer stock/Event snapshots from older requests; added expected supply-policy validation at checkout and policy modes in promotion quote hashes; kept POS on physical stock projections. Final complete verification passed on 2026-10-16 against the disposable local target: npm run verify exit 0 (lint/build, 28 SQL files / 710 assertions, 5 allocation races, 117 desktop Chromium browser tests, 8 API smoke checks). The focused production suite passed 96 SQL assertions and 2 browser scenarios, including interrupted-response retry and cap concurrency; responsive overflow was checked at 320/390/768px. Real mobile devices and remote environments were not tested. A fresh migration reset from the final source also passed.

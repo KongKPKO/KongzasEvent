@@ -37,6 +37,9 @@ const getErrorMessage = (error: unknown) => {
 
 export const getPreorderErrorMessage = (error: unknown) => {
   const message = getErrorMessage(error);
+  if (message.includes('supply_policy_changed_reload')) return 'วิธีขายเปลี่ยนแล้ว กรุณาโหลดสินค้าใหม่และตรวจรายการก่อนยืนยัน / Supply policy changed. Reload and review your items.';
+  if (message.includes('production_stock_not_ready')) return 'สินค้ารับสั่งผลิตยังไม่ครบ กรุณารับสินค้าเข้าก่อนส่งมอบ / Receive the missing production stock before fulfillment.';
+  if (message.includes('production_limit_exceeded')) return 'ยอดรับสั่งผลิตเต็มแล้ว กรุณาตรวจรายการอีกครั้ง / The production order cap has been reached.';
   if (message.includes('store_suspended')) return 'ร้านนี้ถูกระงับการรับออเดอร์ใหม่ / This store is not accepting new orders.';
   if (message.includes('customer_name_required')) return 'Please enter a pickup name.';
   if (message.includes('customer_email_required')) return 'Please enter an email address for pre-order updates.';

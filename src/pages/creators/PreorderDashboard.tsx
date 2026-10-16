@@ -1,3 +1,4 @@
+import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
 import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import EvidenceReview from '../../components/EvidenceReview';
@@ -74,6 +75,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
   const [orders, setOrders] = useState<PreorderPaymentReviewRow[]>([]);
+  const productionStock = useProductionOrderStock(eventId, undefined, orders.map(order => [order.order_id, order.pickup_status, order.payment_status].join(':')).join('|'));
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<StatusFilter>('needs_review');
   const [search, setSearch] = useState('');
@@ -598,6 +600,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                     )}
                     <div className="mt-2 text-xs font-semibold text-gray-600">
                       {order.items.map((item) => `${item.quantity}x ${item.name}`).join(', ')}
+                      <OrderProductionStock value={productionStock.rows[order.order_id]} error={productionStock.error} />
                     </div>
                     {order.order_type === 'post_event' && order.pickup_status === 'shipped' && order.tracking_number && (
                       <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">

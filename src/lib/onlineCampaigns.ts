@@ -12,6 +12,9 @@ import type {
 } from '../types/onlineCampaign';
 
 const knownCodes = new Set([
+  'production_limit_exceeded',
+  'supply_policy_changed_reload',
+  'production_stock_not_ready',
   'store_suspended',
   'campaign_not_found',
   'campaign_not_open',

@@ -1,3 +1,6 @@
+import { fetchInventoryOverview, type InventoryOverview } from '../../lib/inventory';
+import { InventoryBreakdown } from '../../components/products/InventoryBreakdown';
+import { SupplyPolicyEditor, type SupplySettings } from '../../components/products/SupplyPolicyEditor';
 import { eventCopy } from '../../lib/eventCopy';
 import './catalog-workspace.css';
 import { uploadImage } from '../../lib/imageUploads';
@@ -104,7 +107,7 @@ interface EventOption {
   currency_override?: string | null;
 }
 
-interface EventProductRecord {
+interface EventProductRecord extends SupplySettings {
   id?: string;
   event_id: string;
   product_id: string;
@@ -331,6 +334,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [eventCatalogDisplayMode, setEventCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
    const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
+   const catalogRequest = useRef(0);
+   const eventCatalogRequest = useRef(0);
+   const [inventory, setInventory] = useState<Record<string, InventoryOverview>>({});
+   const [supplyPolicies, setSupplyPolicies] = useState<Record<string, SupplySettings>>({});
    const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
    const [stockAction, setStockAction] = useState<StockAction>(null);
    const [stockActionQuantity, setStockActionQuantity] = useState('');
@@ -513,7 +520,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const getCatalogStockValues = (product: Product) => {
       const summary = getProductStockSummary(product);
-      const total = Math.max(summary.on_hand || 0, 0);
+      const total = Math.max(inventory[product.id]?.physical_on_hand ?? summary.on_hand ?? 0, 0);
       const available = Math.max(summary.available || 0, 0);
       const allocated = Math.max(summary.allocated || 0, 0);
       return {
@@ -524,11 +531,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       };
    };
 
-   const renderCatalogStockFlow = (product: Product, compact = false) => {
+   const renderCatalogStockNumbers = (product: Product, compact = false) => {
       if (product.is_unlimited) {
          return (
             <div className={compact ? 'mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600' : 'inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600'}>
-               {t('catalogUnlimited')}
+               {language === 'th' ? 'ไม่นับสต็อก' : 'Stock not tracked'}
             </div>
          );
       }
@@ -540,7 +547,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
                <div>
                   <div className="font-black text-gray-900">{total}</div>
-                  <div className="font-bold text-gray-400">{t('catalogTotalStock')}</div>
+                  <div className="font-bold text-gray-400">{language === 'th' ? 'ของที่มีอยู่' : 'Physical on hand'}</div>
                </div>
                <div>
                   <div className="font-black text-emerald-700">{available}</div>
@@ -560,7 +567,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
-   const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => {
+   const renderCatalogStockFlow = (product: Product, compact = false) => <div className="space-y-2">
+      {renderCatalogStockNumbers(product, compact)}
+      {inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+   </div>;
+
+   const renderEventCatalogStockNumbers = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => {
       if (product.is_unlimited) {
          return (
             <div className={compact ? 'space-y-1' : 'min-w-[220px] space-y-1.5'}>
@@ -613,6 +625,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          </div>
       );
    };
+
+   const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => <div className="space-y-2">
+      {renderEventCatalogStockNumbers(product, draft, stockLimit, compact)}
+      {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
+      {inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+   </div>;
 
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
       setToast(message);
@@ -904,6 +922,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    };
 
    const fetchEventCatalog = async (eventId: string) => {
+      const request = ++eventCatalogRequest.current;
       if (!eventId || products.length === 0) {
          setEventCatalogDraft({});
          setEventCatalogSavedDraft({});
@@ -917,26 +936,29 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       try {
          const { data, error } = await supabase
             .from('event_products')
-            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited')
+            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited, preorder_supply_mode, preorder_production_limit, postorder_supply_mode, postorder_production_limit')
             .eq('event_id', eventId);
 
          if (error) throw error;
 
          const catalogRows = (data || []) as EventProductRecord[];
          const nextStockLimits = await fetchEventCatalogStockLimits(eventId, catalogRows);
+         if (request !== eventCatalogRequest.current) return;
          const nextDraft = buildDefaultCatalogDraft(catalogRows, nextStockLimits);
          setEventCatalogDraft(nextDraft);
          setEventCatalogSavedDraft(nextDraft);
+         setSupplyPolicies(Object.fromEntries((data || []).map((row: EventProductRecord) => [row.product_id, row])));
          setEventCatalogStockLimitByProduct(nextStockLimits);
          const selectedEvent = eventOptions.find((event) => event.id === eventId);
          const nextEventCurrency = selectedEvent?.currency_override || '';
          setEventCurrencyDraft(nextEventCurrency);
          setEventCurrencySaved(nextEventCurrency);
       } catch (error) {
+         if (request !== eventCatalogRequest.current) return;
          console.error('[ManageProducts] fetchEventCatalog failed:', error);
          showToast({ tone: 'error', title: uiText(language, 'Event catalog failed to load') });
       } finally {
-         setEventCatalogLoading(false);
+         if (request === eventCatalogRequest.current) setEventCatalogLoading(false);
       }
    };
 
@@ -1113,6 +1135,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    };
 
    const fetchProducts = async () => {
+      const request = ++catalogRequest.current;
       setLoading(true);
       setCatalogLoadError('');
       try {
@@ -1147,16 +1170,19 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          if (error) throw error;
          if (data) {
             if (parentResult.error) throw parentResult.error;
+            const [summaries, overview] = await Promise.all([fetchProductStockSummaries(ctx.artist_id), fetchInventoryOverview(ctx.artist_id)]);
+            if (request !== catalogRequest.current) return;
             setProducts((data || []).map((product) => normalizeProductRecord(product) as Product));
             setProductParents((parentResult.data || []) as ProductParent[]);
-            const summaries = await fetchProductStockSummaries(ctx.artist_id);
+            setInventory(Object.fromEntries(overview.map(item => [item.product_id, item])));
             setStockSummaries(Object.fromEntries(summaries.map((summary) => [summary.product_id, summary])));
          }
       } catch (error) {
+         if (request !== catalogRequest.current) return;
          console.error('[ManageProducts] fetchProducts failed:', error);
          setCatalogLoadError(uiText(language, 'Could not load products. Please retry.'));
       } finally {
-         setLoading(false);
+         if (request === catalogRequest.current) setLoading(false);
       }
    };
    const openStockAction = (action: StockAction) => {
@@ -2103,7 +2129,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       {historyLoading ? <p>{language === 'th' ? 'กำลังโหลดประวัติ…' : 'Loading history…'}</p> : historyError ? <div role="alert"><p>{historyError}</p><button type="button" onClick={() => setHistoryRevision(value => value + 1)}>{language === 'th' ? 'ลองใหม่' : 'Retry'}</button></div> : stockHistory.length === 0 ? <p>{language === 'th' ? 'ยังไม่มีประวัติที่บันทึก' : 'No recorded changes yet'}</p> :
       <ol className="catalog-history-list">{stockHistory.map(row => <li key={row.id}>
          <time>{new Date(row.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</time>
-         <strong>{row.quantity_before ?? '∞'} → {row.quantity_after ?? '∞'}</strong>
+         <strong>{row.kind === 'start_tracking' ? (language === 'th' ? `เริ่มนับของจริง ${row.reason.replace('Physical opening count: ', '')}` : row.reason) : row.kind === 'stop_tracking' ? (language === 'th' ? 'หยุดนับสต็อก' : 'Stopped tracking') : `${row.quantity_before ?? '∞'} → ${row.quantity_after ?? '∞'}`}</strong>
          <span>{row.reason === 'received' ? (language === 'th' ? 'รับสินค้าเพิ่ม' : 'Stock received') : row.reason}</span>
          <small>{language === 'th' ? 'ผู้ทำ: ' : 'Actor: '}{row.actor_id || (language === 'th' ? 'ระบบ' : 'System')}</small>
       </li>)}</ol>}
@@ -2119,7 +2145,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       <div className="catalog-workspace min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
          <dialog ref={historyDialogRef} aria-label={language === 'th' ? 'ประวัติสต็อก' : 'Stock history'} className="catalog-history-dialog" onCancel={() => setHistoryProduct(null)}>
             <header><div><h2>{language === 'th' ? 'ประวัติสต็อก' : 'Stock history'}</h2><p>{historyProduct?.name} · {historyProduct?.sku}</p></div><button autoFocus type="button" onClick={() => setHistoryProduct(null)}>{language === 'th' ? 'ปิด' : 'Close'}</button></header>
-            <p>{language === 'th' ? 'การรับและปรับยอดคลังกลาง 30 รายการล่าสุด' : 'Latest 30 central stock receipts and adjustments'}</p>
+            <p>{language === 'th' ? 'ประวัติยอดบันทึกสะสม (รวมขายแล้ว) 30 รายการล่าสุด ดูของที่มีอยู่จริงในรายละเอียดสต็อก' : 'Latest 30 recorded-total changes (including sold). See stock details for physical units.'}</p>
             {historyProduct && renderStockHistory()}
          </dialog>
          {/* ✅ NEW: Unified Admin Header */}
@@ -2248,7 +2274,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               const quantity = Number(stockActionQuantity || 0);
                               return (
                                  <>
-                                    <div>{t('catalogStockOnHand')}: {summary.on_hand}</div>
+                                    {stockAction.kind !== 'remove' && inventory[stockAction.product.id] && <div className="mb-2 rounded-lg bg-pink-50 p-2 text-pink-800">
+                                       {language === 'th'
+                                          ? `รับสินค้าเข้า ${quantity} · กันให้ออเดอร์ยืนยันเดิม ${Math.min(quantity, inventory[stockAction.product.id].production_shortfall)} · เหลือพร้อมจัดสรร ${summary.available + Math.max(quantity-inventory[stockAction.product.id].production_shortfall,0)} · ยังขาด ${Math.max(inventory[stockAction.product.id].production_shortfall-quantity,0)}`
+                                          : `Receive ${quantity} · earmark ${Math.min(quantity, inventory[stockAction.product.id].production_shortfall)} · available ${summary.available + Math.max(quantity-inventory[stockAction.product.id].production_shortfall,0)} · shortfall ${Math.max(inventory[stockAction.product.id].production_shortfall-quantity,0)}`}
+                                       <p className="mt-1 text-[11px]">{language === 'th' ? 'ระบบคำนวณใหม่ขณะบันทึก โดยกันให้ยอดยืนยันก่อนตามลำดับออเดอร์' : 'Recalculated at save; confirmed orders receive units in order.'}</p>
+                                    </div>}
+                                    <div>{language === 'th' ? 'ยอดบันทึกสะสม (รวมขายแล้ว)' : 'Recorded total (includes sold)'}: {summary.on_hand}</div>
                                     <div>{t('catalogStockAllocated')}: {summary.allocated}</div>
                                     <div>{t('catalogStockAvailable')}: {summary.available}</div>
                                     <div className="mt-2 font-black text-gray-900">

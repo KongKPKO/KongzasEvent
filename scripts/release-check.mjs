@@ -272,6 +272,7 @@ if (mode === 'local') {
     'src/tests/event-multi-payment.spec.ts',
     'src/tests/campaign-multi-payment.spec.ts',
     'src/tests/catalog-stock-retry.spec.ts',
+    'src/tests/production-inventory.spec.ts',
     'src/tests/image-upload.spec.ts',
     'src/tests/image-storage.spec.ts',
     'src/tests/offline-operations.spec.ts',

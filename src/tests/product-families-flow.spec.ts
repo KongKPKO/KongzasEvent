@@ -136,7 +136,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await editor.getByRole('button', { name: 'Add item', exact: true }).click();
   await editor.getByLabel('Item name *', { exact: true }).nth(1).fill('Lumine');
   await editor.getByLabel('Stock', { exact: true }).first().fill('10');
-  await editor.getByRole('button', { name: 'Apply stock', exact: true }).click();
+  await editor.getByRole('button', { name: 'Apply to new items', exact: true }).click();
   await editor.getByLabel('Price', { exact: true }).nth(1).fill('130');
   await editor.getByRole('button', { name: 'Move Lumine up' }).click();
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
@@ -284,7 +284,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill(gallery);
-  await editor.getByLabel('Unlimited', { exact: true }).check();
+  await editor.getByRole('button', { name: 'Do not track stock', exact: true }).click();
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
   await expect(editor).toBeHidden();
   const parent = await service.from('product_parents').select('id,product_kind,gallery_images').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
@@ -375,7 +375,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.goto(`/manage-events/${eventId}/catalog`);
   const eventFamily = page.locator(`[data-event-family="${parent.data!.id}"]`);
   await expect(eventFamily).toBeVisible();
-  await eventFamily.locator('summary').click();
+  await eventFamily.locator(':scope > summary').click();
   for (const [index, item] of items.data!.entries()) {
     const card = eventFamily.locator('article').filter({ has: page.getByText(item.name, { exact: true }) });
     await expect(card.locator('img')).toHaveCount(galleries[index].length);

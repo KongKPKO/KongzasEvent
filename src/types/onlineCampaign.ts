@@ -43,6 +43,8 @@ export interface CampaignProduct extends ProductPresentationFields, ProductVaria
   stock_total?: number | null;
   stock_reserved?: number;
   stock_sold?: number;
+  supply_mode?: 'stock' | 'production';
+  production_limit?: number | null;
   max_quantity_per_order?: number | null;
   available_quantity?: number | null;
 }
@@ -165,7 +167,7 @@ export interface CampaignWorkspace {
 
 export interface CreateCampaignOrderInput {
   campaignId: string;
-  items: Array<{ product_id: string; quantity: number }>;
+  items: Array<{ product_id: string; quantity: number; expected_supply_mode?: 'stock' | 'production' }>;
   fulfillmentMethod: CampaignFulfillmentMethod;
   pickupPointId?: string | null;
   customerName: string;

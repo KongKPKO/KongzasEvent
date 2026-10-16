@@ -1,3 +1,5 @@
+import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
+import { SupplyPolicyEditor } from '../../components/products/SupplyPolicyEditor';
 import './sales-readiness.css';
 import { ProductMedia } from '../../components/menu/ProductPresentation';
 import EvidenceReview from '../../components/EvidenceReview';
@@ -84,6 +86,7 @@ export default function OnlineCampaignWorkspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const productionStock = useProductionOrderStock(undefined, campaignId, (workspace?.orders || []).map(order => [order.id, order.status, order.payment_status].join(':')).join('|'));
   const [orderFilter, setOrderFilter] = useState('needs_action');
   const [search, setSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -562,7 +565,7 @@ export default function OnlineCampaignWorkspace() {
     } catch (error) {
       console.error(error);
       setFeedback(t('campaignOrderActionFailed'));
-      setFulfillmentError(t('campaignOrderActionFailed'));
+      setFulfillmentError(error instanceof Error && error.message === 'production_stock_not_ready' ? (language === 'th' ? 'สินค้ารับสั่งผลิตยังไม่ครบ กรุณารับสินค้าเข้าก่อนส่งมอบ' : 'Receive the missing production stock before fulfillment.') : t('campaignOrderActionFailed'));
     } finally { orderInFlight.current = false; setOrderBusy(false); setReviewTarget(null); }
   };
 
@@ -608,7 +611,7 @@ export default function OnlineCampaignWorkspace() {
   const readinessChecks: Array<{ label: string; ready: boolean; tab: Tab }> = [
     { label: language === 'th' ? 'วันเปิด–ปิดขาย' : 'Sales dates', ready: new Date(campaign.closes_at) > new Date(campaign.opens_at), tab: 'settings' },
     { label: language === 'th' ? 'สินค้าเปิดใช้งาน' : 'Enabled products', ready: workspace.products.some(item => item.is_enabled), tab: 'products' },
-    { label: language === 'th' ? 'สต็อกพร้อมขาย' : 'Stock available', ready: workspace.products.some(item => item.is_enabled && (item.is_unlimited || Number(item.available_quantity ?? Number(item.stock_total || 0) - Number(item.stock_reserved || 0) - Number(item.stock_sold || 0)) > 0)), tab: 'products' },
+    { label: language === 'th' ? 'สต็อกพร้อมขาย' : 'Stock available', ready: workspace.products.some(item => item.is_enabled && ((item.supply_mode === 'production' && item.production_limit == null) || item.is_unlimited || Number(item.available_quantity ?? Number(item.stock_total || 0) - Number(item.stock_reserved || 0) - Number(item.stock_sold || 0)) > 0)), tab: 'products' },
     { label: language === 'th' ? 'ช่องทางรับเงิน' : 'Payment method', ready: workspace.payment_methods.some(item => item.is_enabled), tab: 'settings' },
     { label: language === 'th' ? 'วิธีส่งมอบสินค้า' : 'Fulfillment method', ready: campaign.shipping_enabled || campaign.pickup_enabled, tab: 'settings' },
     ...(campaign.pickup_enabled ? [{ label: language === 'th' ? 'จุดรับสินค้า' : 'Pickup point', ready: workspace.pickup_points.some(item => item.is_enabled), tab: 'settings' as Tab }] : []),
@@ -823,6 +826,7 @@ export default function OnlineCampaignWorkspace() {
                                   {isIncluded && <span className="shrink-0 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700">{t('campaignIncluded')}</span>}
                                 </div>
                                 <div className="mt-0.5 font-mono text-[10px] font-bold text-gray-400">{product.sku || '—'}</div>
+                                {allocated && <SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} />}
                                 {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-0.5 text-[10px] font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
                               </div>
                             </div>
@@ -921,6 +925,7 @@ export default function OnlineCampaignWorkspace() {
                       <div className="font-mono text-sm font-black">{order.order_code}</div>
                       <div className="text-sm font-bold text-gray-700">{order.customer_name} · {t(order.fulfillment_method === 'shipping' ? 'campaignShipping' : 'campaignPickup')}</div>
                       <div className="text-xs font-semibold text-gray-500">{order.items.map((item) => item.name + ' ×' + item.quantity).join(', ')}</div>
+                      <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
                     <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{t(({ awaiting_payment: 'campaignOrderAwaitingPayment', payment_submitted: 'campaignOrderReview', payment_submitted_late: 'campaignOrderLateReview', payment_confirmed: 'campaignOrderConfirmed', payment_expired: 'campaignOrderExpired', payment_rejected: 'orderStatusRejectedTitle', payment_cancelled: 'orderStatusCancelledTitle', refund_pending: 'campaignOrderRefundPending', refunded: 'campaignOrderRefunded' } as const)[order.payment_status])}</div><div className="text-xs font-bold text-gray-500">{order.fulfillment_status !== 'not_required' && t(({ awaiting_shipment: 'campaignAwaitingShipment', shipped: 'orderStatusShippedTitle', awaiting_pickup: 'campaignAwaitingPickup', picked_up: 'orderStatusPickedUpTitle', cancelled: 'orderStatusCancelledTitle', expired: 'campaignOrderExpired' } as const)[order.fulfillment_status])}</div></div>
                   </div>

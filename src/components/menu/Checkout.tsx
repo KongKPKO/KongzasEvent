@@ -35,7 +35,7 @@ export function CheckoutItems({ items, currency }: {
     <h3><ShoppingBag size={18} aria-hidden="true" />{language === 'th' ? 'รายการสินค้า' : 'Your items'}</h3>
     <ul>{items.map(item => <li key={item.id}>
       <div className="checkout-product-media"><ProductMedia product={item} getImageUrl={getMenuImageUrl} /></div>
-      <div><strong>{item.name}</strong><span>{item.quantity} × {formatPrice(item.price, currency)}</span></div>
+      <div><strong>{item.name}</strong>{item.supply_mode === 'production' && <p className="text-xs font-bold text-amber-800">{language === 'th' ? 'รับสั่งผลิต' : 'Made to order'}</p>}<span>{item.quantity} × {formatPrice(item.price, currency)}</span></div>
       <b>{formatPrice(item.price * item.quantity, currency)}</b>
     </li>)}</ul>
   </section>;

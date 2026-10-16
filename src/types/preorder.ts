@@ -26,6 +26,7 @@ export type PaymentStatus =
   | 'payment_cancelled';
 
 export interface CreatePreorderItem {
+  expected_supply_mode?: 'stock' | 'production';
   product_id: string;
   quantity: number;
   notes?: string;

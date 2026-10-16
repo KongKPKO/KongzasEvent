@@ -108,7 +108,7 @@ export default function OnlineCampaignStorefront() {
     const timer = window.setTimeout(() => {
       void quotePromotions({
         campaignId: campaign.id,
-        items: cartItems.map((item) => ({ product_id: item.product.product_id, quantity: item.quantity })),
+        items: cartItems.map((item) => ({ product_id: item.product.product_id, quantity: item.quantity, expected_supply_mode: item.product.supply_mode })),
         rewardChoices,
         promotionChoices,
       }).then((nextQuote) => {
@@ -143,7 +143,7 @@ export default function OnlineCampaignStorefront() {
     try {
       const result = await createCampaignOrder({
         campaignId: campaign.id,
-        items: cartItems.map((item) => ({ product_id: item.product.product_id, quantity: item.quantity })),
+        items: cartItems.map((item) => ({ product_id: item.product.product_id, quantity: item.quantity, expected_supply_mode: item.product.supply_mode })),
         fulfillmentMethod: fulfillment,
         pickupPointId: fulfillment === 'pickup' ? pickupPointId : null,
         customerName: String(form.get('customer_name') || ''),
@@ -164,6 +164,10 @@ export default function OnlineCampaignStorefront() {
       console.error(checkoutError);
       if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'campaign_product_order_limit_exceeded') {
         setError(t('campaignProductOrderLimitExceeded'));
+      } else if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'supply_policy_changed_reload') {
+        setError(language === 'th' ? 'วิธีขายเปลี่ยนแล้ว กรุณาโหลดสินค้าใหม่และตรวจรายการก่อนยืนยัน' : 'Supply policy changed. Reload and review your items.');
+      } else if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'production_limit_exceeded') {
+        setError(language === 'th' ? 'ยอดรับสั่งผลิตเต็มแล้ว กรุณาตรวจรายการอีกครั้ง' : 'The production order cap has been reached. Review your items.');
       } else if (checkoutError instanceof OnlineCampaignError && checkoutError.code === 'store_suspended') {
         setError(uiText(language, 'This store is not accepting new orders. Existing orders remain accessible.'));
       } else if (requiresPromotionReview(checkoutError)) {

@@ -265,7 +265,7 @@ export default function POSPanel({
             return;
         }
 
-        const { data, error } = await supabase.rpc('list_event_products', {
+        const { data, error } = await supabase.rpc('list_event_products_for_phase', { p_phase: 'live',
             p_event_id: activeEvent.id,
         });
 

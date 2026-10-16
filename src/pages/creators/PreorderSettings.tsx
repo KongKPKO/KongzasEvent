@@ -156,7 +156,7 @@ export default function PreorderSettings() {
           .select('id, artist_id, event_name, start_date, end_date, event_timezone, location, location_name, location_detail, booth_detail, booth_number, queueing_area, entrance_fee, transit_info, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions')
           .eq('id', eventId)
           .single(),
-        supabase.rpc('list_event_products', { p_event_id: eventId }),
+        supabase.rpc('list_event_products_for_phase', { p_event_id: eventId, p_phase: 'setup' }),
         supabase
           .from('event_payment_methods')
           .select('id, method_type, display_name, account_name, account_number, bank_name, bank_accounts, promptpay_id, qr_image_url, instructions, payment_deadline_at, is_enabled')

@@ -835,7 +835,7 @@ const MenuView = () => {
         eventId: selectedEvent.id,
         items: Object.entries(cart)
           .filter(([, qty]) => qty > 0)
-          .map(([productId, qty]) => ({ product_id: productId, quantity: qty, notes: '' })),
+          .map(([productId, qty]) => ({ product_id: productId, quantity: qty, notes: '', expected_supply_mode: productById.get(productId)?.supply_mode })),
         customerName: preorderCustomer.name.trim(),
         customerContact: preorderContactDisplay,
         customerPhone: preorderCustomer.phone.trim(),

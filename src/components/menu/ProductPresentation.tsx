@@ -159,7 +159,7 @@ export function ProductGallery({
   );
 }
 
-export function ProductPresentationSummary({
+function ProductKindSummary({
   product,
   language = 'en',
   compact = false,
@@ -209,4 +209,12 @@ export function ProductPresentationSummary({
     );
   }
   return null;
+}
+
+
+export function ProductPresentationSummary(props: { product: PresentableProduct; language?: 'en' | 'th'; compact?: boolean }) {
+  return <div className="space-y-1">
+    {props.product.supply_mode === 'production' && <p className="text-xs font-bold text-amber-800">{props.language === 'th' ? 'รับสั่งผลิต' : 'Made to order'}</p>}
+    <ProductKindSummary {...props} />
+  </div>;
 }

@@ -132,9 +132,15 @@ test('creator family editor saves and reorders variants, customer sees one famil
   const origin = new URL(page.url()).origin;
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill([1, 2, 3, 4, 5].map((n) => `${origin}/pwa-192x192.png?image=${n}`).join('\n'));
-  await editor.getByLabel('Item name *', { exact: true }).fill('Aether');
+  await editor.getByLabel('Item name', { exact: true }).fill('Aether');
   await editor.getByRole('button', { name: 'Add item', exact: true }).click();
-  await editor.getByLabel('Item name *', { exact: true }).nth(1).fill('Lumine');
+  const unnamedItem = editor.getByLabel('Item name', { exact: true }).nth(1);
+  await expect(unnamedItem).toHaveValue('');
+  await expect(unnamedItem).toHaveAttribute('required');
+  await editor.getByRole('button', { name: 'Create product', exact: true }).click();
+  await expect(editor).toBeVisible();
+  expect(await unnamedItem.evaluate((input: HTMLInputElement) => input.validity.valueMissing)).toBe(true);
+  await editor.getByLabel('Item name', { exact: true }).nth(1).fill('Lumine');
   await editor.getByLabel('Stock', { exact: true }).first().fill('10');
   await editor.getByRole('button', { name: 'Apply to new items', exact: true }).click();
   await editor.getByLabel('Price', { exact: true }).nth(1).fill('130');
@@ -281,6 +287,13 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   const gallery = [1, 2, 3].slice(0, photoCount).map(n => `${origin}/pwa-192x192.png?reload-photo=${n}`).join('\n');
   await editor.getByLabel('Product name *', { exact: true }).fill(photoName);
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
+  const itemName = editor.getByLabel('Item name', { exact: true });
+  await expect(itemName).toHaveValue('');
+  await expect(itemName).toHaveAttribute('placeholder', 'e.g. A4 Mavuika');
+  if (photoCount === 1) await editor.screenshot({ path: 'output/playwright/item-name-inherit.png' });
+  await expect(itemName).not.toHaveAttribute('required');
+  await expect(editor.getByText('(For one item, leave blank to use the product name)', { exact: true })).toBeVisible();
+
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill(gallery);
@@ -289,6 +302,9 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await expect(editor).toBeHidden();
   const parent = await service.from('product_parents').select('id,product_kind,gallery_images').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
   expect(parent.data?.product_kind).toBe('photo');
+  const savedItem = await service.from('products').select('name').eq('parent_product_id', parent.data!.id).single().throwOnError();
+  expect(savedItem.data?.name).toBe(photoName);
+
   expect(parent.data?.gallery_images).toEqual(gallery.split('\n'));
   await page.goto('/manage-events');
   await page.goto('/manage-products');
@@ -300,6 +316,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await card.getByRole('button', { name: `Edit ${photoName}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: `Edit ${photoName}`, exact: true });
   await expect(edit.getByLabel('Product type', { exact: true })).toHaveValue('photo');
+  await expect(edit.getByLabel('Item name', { exact: true })).toHaveValue('');
   await expect(edit.getByLabel('Shared photo gallery', { exact: true })).toHaveValue(gallery);
   await edit.getByRole('button', { name: 'Save family', exact: true }).click();
   await expect(edit).toBeHidden();
@@ -323,9 +340,9 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await editor.getByLabel('Tags', { exact: true }).fill('Genshin Impact');
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
-  await editor.getByLabel('Item name *', { exact: true }).fill('Ronova');
+  await editor.getByLabel('Item name', { exact: true }).fill('Ronova');
   await editor.getByRole('button', { name: 'Add item', exact: true }).click();
-  await editor.getByLabel('Item name *', { exact: true }).nth(1).fill('Raiden');
+  await editor.getByLabel('Item name', { exact: true }).nth(1).fill('Raiden');
   const origin = new URL(page.url()).origin;
   await editor.locator('details').filter({ has: page.getByLabel('Image path or URL', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Image path or URL', { exact: true }).fill(`${origin}/pwa-192x192.png?shared-cover`);

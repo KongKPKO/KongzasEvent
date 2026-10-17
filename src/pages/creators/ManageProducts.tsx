@@ -1394,7 +1394,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          .map((product) => ({
             id: product.id,
             parent_product_id: product.parent_product_id || undefined,
-            variant_name: product.variant_name || (products.filter((item) => item.parent_product_id === familyEditorParent.id).length === 1 ? 'Default' : product.name),
+            variant_name: product.variant_name || (products.filter((item) => item.parent_product_id === familyEditorParent.id).length === 1 ? '' : product.name),
             sku: product.sku,
             variant_gallery_images: product.variant_gallery_images ?? null,
             gallery_images: product.gallery_images,

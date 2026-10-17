@@ -52,7 +52,7 @@ interface ProductFamilyEditorProps {
 
 const newVariant = (index = 0): EditableVariant => ({
   key: `new-${Date.now()}-${index}`,
-  name: index === 0 ? 'Default' : '',
+  name: '',
   sku: '',
   priceOverride: '',
   stockTotal: '0',
@@ -62,11 +62,11 @@ const newVariant = (index = 0): EditableVariant => ({
   status: 'enable',
 });
 
-const toEditableVariant = (variant: FamilyVariantWithGallery, index: number): EditableVariant => ({
+const toEditableVariant = (variant: FamilyVariantWithGallery, index: number, singleItem: boolean): EditableVariant => ({
   key: variant.id || `existing-${index}`,
   id: variant.id,
   updatedAt: variant.updated_at,
-  name: variant.variant_name || (index === 0 ? 'Default' : ''),
+  name: singleItem && variant.variant_name === 'Default' ? '' : variant.variant_name || '',
   sku: variant.sku || '',
   priceOverride: variant.price_override == null ? '' : String(variant.price_override),
   stockTotal: variant.stock_total == null ? '0' : String(variant.stock_total),
@@ -132,7 +132,7 @@ const editorCopy = {
     variants: 'Items under this product', inventoryItem: 'Item under this product', variantsHint: 'Add each character, design, or color as an item with its own stock.', addVariant: 'Add item',
     priceOverride: 'Price override', basePlaceholder: (price: number) => `Base ${price}`, applyPrice: 'Apply price', stock: 'Stock', applyStock: 'Apply to new items',
     existingSku: 'Existing item', newSku: 'New item', variantFallback: (index: number) => `variant ${index}`, moveUp: (name: string) => `Move ${name} up`, moveDown: (name: string) => `Move ${name} down`, removeVariant: (name: string) => `Remove ${name}`,
-    variantName: 'Item name *', sku: 'SKU', price: 'Price', inheritsPrice: (price: number) => `Inherits ${price}`, inheritHint: 'Leave blank to inherit the base price.', unlimited: 'Do not track stock', stockFor: (name: string) => `Stock for ${name}`,
+    variantName: 'Item name', variantNameHint: '(For one item, leave blank to use the product name)', variantNamePlaceholder: 'e.g. A4 Mavuika', sku: 'SKU', price: 'Price', inheritsPrice: (price: number) => `Inherits ${price}`, inheritHint: 'Leave blank to inherit the base price.', unlimited: 'Do not track stock', stockFor: (name: string) => `Stock for ${name}`,
     image: 'Image', imageFor: (name: string) => `Image for ${name}`, imagePlaceholder: 'Optional variant image', uploadImageFor: (name: string) => `Upload image for ${name}`, availability: 'Availability', active: 'Active', hidden: 'Hidden', soldOut: 'Sold out',
     advanced: 'Advanced', advancedHint: 'Description, currency, SKU, and image paths',
     cancel: 'Cancel', saveFamily: 'Save family',
@@ -155,7 +155,7 @@ const editorCopy = {
     variants: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', inventoryItem: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', variantsHint: 'เพิ่มตัวละคร ลาย หรือสีเป็นแต่ละรายการ โดยมีสต็อกแยกกัน', addVariant: 'เพิ่มรายการ',
     priceOverride: 'ราคาสำหรับรายการ', basePlaceholder: (price: number) => `ราคาหลัก ${price}`, applyPrice: 'ใช้ราคานี้ทั้งหมด', stock: 'สต็อก', applyStock: 'ใช้กับรายการใหม่',
     existingSku: 'รายการเดิม', newSku: 'รายการใหม่', variantFallback: (index: number) => `รายการที่ ${index}`, moveUp: (name: string) => `เลื่อน ${name} ขึ้น`, moveDown: (name: string) => `เลื่อน ${name} ลง`, removeVariant: (name: string) => `ลบ ${name}`,
-    variantName: 'ชื่อรายการสินค้า *', sku: 'SKU', price: 'ราคา', inheritsPrice: (price: number) => `ใช้ราคาหลัก ${price}`, inheritHint: 'เว้นว่างเพื่อใช้ราคาหลักของสินค้า', unlimited: 'ไม่นับสต็อก', stockFor: (name: string) => `สต็อกของ ${name}`,
+    variantName: 'ชื่อรายการสินค้า', variantNameHint: '(ถ้ามีรายการเดียว เว้นว่างเพื่อใช้ชื่อสินค้าหลัก)', variantNamePlaceholder: 'เช่น A4 Mavuika', sku: 'SKU', price: 'ราคา', inheritsPrice: (price: number) => `ใช้ราคาหลัก ${price}`, inheritHint: 'เว้นว่างเพื่อใช้ราคาหลักของสินค้า', unlimited: 'ไม่นับสต็อก', stockFor: (name: string) => `สต็อกของ ${name}`,
     image: 'รูปภาพ', imageFor: (name: string) => `รูปของ ${name}`, imagePlaceholder: 'รูปเฉพาะรายการ (ไม่บังคับ)', uploadImageFor: (name: string) => `อัปโหลดรูปของ ${name}`, availability: 'สถานะการขาย', active: 'เปิดขาย', hidden: 'ซ่อน', soldOut: 'หมด',
     advanced: 'ขั้นสูง', advancedHint: 'รายละเอียด สกุลเงิน SKU และพาธรูปภาพ',
     cancel: 'ยกเลิก', saveFamily: 'บันทึกสินค้า',
@@ -222,13 +222,13 @@ export default function ProductFamilyEditor({
     setServiceKind(parent?.service_kind || 'cheki');
     setServiceDuration(parent?.service_duration_minutes == null ? '' : String(parent.service_duration_minutes));
     setServiceSlots(parent?.service_slots == null ? '' : String(parent.service_slots));
-    setVariants(initialVariants.length ? initialVariants.map(toEditableVariant) : [newVariant()]);
+    setVariants(initialVariants.length ? initialVariants.map((variant, index) => toEditableVariant(variant, index, initialVariants.length === 1)) : [newVariant()]);
     setBulkPrice('');
     setBulkStock('');
     setError('');
   }, [open, parent, initialVariants]);
 
-  const hasMultipleVariants = variants.length > 1 || variants.some((variant) => variant.name.trim() !== 'Default');
+  const hasMultipleVariants = variants.length > 1;
   const parsedBasePrice = Number(basePrice);
   const effectivePriceLabel = useMemo(() => Number.isFinite(parsedBasePrice) ? parsedBasePrice : 0, [parsedBasePrice]);
   const sharedGalleryImages = uniqueImages(galleryImages);
@@ -311,7 +311,7 @@ export default function ProductFamilyEditor({
       setError(copy.errorProduct);
       return;
     }
-    if (variants.length === 0 || variants.some((variant) => !variant.name.trim())) {
+    if (variants.length === 0 || (hasMultipleVariants && variants.some((variant) => !variant.name.trim()))) {
       setError(copy.errorVariantName);
       return;
     }
@@ -375,7 +375,8 @@ export default function ProductFamilyEditor({
         variants: variants.map((variant, index) => ({
         ...(variant.id ? { id: variant.id } : {}),
         ...(variant.updatedAt ? { updated_at: variant.updatedAt } : {}),
-        name: variant.name.trim(),
+        // The save RPC uses this internal sentinel to inherit the parent product name.
+        name: variant.name.trim() || 'Default',
         sku: variant.sku.trim() || null,
         price_override: variant.priceOverride === '' ? null : Number(variant.priceOverride),
         stock_total: variant.isUnlimited ? null : Number(variant.stockTotal),
@@ -471,7 +472,7 @@ export default function ProductFamilyEditor({
                       <div className="flex items-center gap-1"><button type="button" onClick={() => moveVariant(index, -1)} disabled={index === 0} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveUp(variant.name || copy.variantFallback(index + 1))}><ArrowUp size={16} /></button><button type="button" onClick={() => moveVariant(index, 1)} disabled={index === variants.length - 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveDown(variant.name || copy.variantFallback(index + 1))}><ArrowDown size={16} /></button><button type="button" onClick={() => setVariants((current) => current.filter((item) => item.key !== variant.key))} disabled={variants.length === 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-30" aria-label={copy.removeVariant(variant.name || copy.variantFallback(index + 1))}><Trash2 size={16} /></button></div>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div><label className={labelClass}>{copy.variantName}</label><input aria-label={copy.variantName} value={variant.name} onChange={(event) => updateVariant(variant.key, { name: event.target.value })} className={inputClass} placeholder={uiText(language, 'Aether')} /></div>
+                      <div><label htmlFor={`item-name-${variant.key}`} className={labelClass}>{copy.variantName}</label><p id={`item-name-hint-${variant.key}`} className="mb-1.5 text-[11px] font-semibold text-gray-500">{copy.variantNameHint}</p><input id={`item-name-${variant.key}`} aria-describedby={`item-name-hint-${variant.key}`} required={hasMultipleVariants} value={variant.name} onChange={(event) => updateVariant(variant.key, { name: event.target.value })} className={`${inputClass} placeholder:text-gray-400`} placeholder={copy.variantNamePlaceholder} /></div>
                       <div><label className={labelClass}>{copy.availability}</label><select aria-label={copy.availability} value={variant.status} onChange={(event) => updateVariant(variant.key, { status: event.target.value as EditableVariant['status'] })} className={inputClass}><option value="enable">{copy.active}</option><option value="disable">{copy.hidden}</option><option value="soldout">{copy.soldOut}</option></select></div>
                       <div><label className={labelClass}>{copy.price}</label><input aria-label={copy.price} type="number" min="0" step="0.01" value={variant.priceOverride} onChange={(event) => updateVariant(variant.key, { priceOverride: event.target.value })} className={inputClass} placeholder={copy.inheritsPrice(effectivePriceLabel)} /><p className="mt-1 text-[10px] font-semibold text-gray-400">{copy.inheritHint}</p></div>
                       <div><label className={labelClass}>{copy.stock}</label><div className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3"><div className="flex gap-1" aria-label={copy.stock}>{[true, false].map(untracked => <button key={String(untracked)} type="button" disabled={Boolean(variant.id)} aria-pressed={variant.isUnlimited === untracked} onClick={() => updateVariant(variant.key, { isUnlimited: untracked })} className={`min-h-11 rounded-lg px-2 text-xs font-bold ${variant.isUnlimited === untracked ? 'bg-pink-50 text-pink-700' : 'text-gray-500'}`}>{untracked ? copy.unlimited : language === 'th' ? 'นับสต็อก' : 'Track stock'}</button>)}</div><input type="number" min="0" step="1" value={variant.stockTotal} onChange={(event) => updateVariant(variant.key, { stockTotal: event.target.value })} disabled={variant.isUnlimited || Boolean(variant.id)} className="ml-auto w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm font-bold disabled:bg-gray-100 disabled:text-gray-400" aria-label={copy.stockFor(variant.name || copy.variantFallback(index + 1))} /></div>{variant.id && <p className="mt-1 text-xs text-gray-500">{language === 'th' ? 'เริ่มนับและรับสินค้าเข้าได้ที่รายการในหน้าแคตตาล็อก' : 'Start tracking and receive stock from the catalog item.'}</p>}</div>

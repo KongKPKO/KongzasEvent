@@ -133,7 +133,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill([1, 2, 3, 4, 5].map((n) => `${origin}/pwa-192x192.png?image=${n}`).join('\n'));
   await editor.getByLabel('Item name', { exact: true }).fill('Aether');
-  await editor.getByRole('button', { name: 'Add item', exact: true }).click();
+  await editor.getByRole('button', { name: 'Add item', exact: true }).first().click();
   const unnamedItem = editor.getByLabel('Item name', { exact: true }).nth(1);
   await expect(unnamedItem).toHaveValue('');
   await expect(unnamedItem).toHaveAttribute('required');
@@ -343,7 +343,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
   await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
   await editor.getByLabel('Item name', { exact: true }).fill('Ronova');
-  await editor.getByRole('button', { name: 'Add item', exact: true }).click();
+  await editor.getByRole('button', { name: 'Add item', exact: true }).last().click();
   await editor.getByLabel('Item name', { exact: true }).nth(1).fill('Raiden');
   const origin = new URL(page.url()).origin;
   await editor.locator('details').filter({ has: page.getByLabel('Image path or URL', { exact: true }) }).locator('summary').first().click();

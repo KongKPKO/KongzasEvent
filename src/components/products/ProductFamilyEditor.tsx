@@ -239,6 +239,8 @@ export default function ProductFamilyEditor({
     setVariants((current) => current.map((variant) => variant.key === key ? { ...variant, ...update } : variant));
   };
 
+  const addVariant = () => setVariants((current) => [...current, newVariant(current.length)]);
+
   const moveVariant = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= variants.length) return;
@@ -453,8 +455,8 @@ export default function ProductFamilyEditor({
 
             <section className="self-start rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div><h3 className="text-sm font-black text-gray-900">{hasMultipleVariants ? copy.variants : copy.inventoryItem}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.variantsHint}</p></div>
-                <button type="button" onClick={() => setVariants((current) => [...current, newVariant(current.length)])} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"><Plus size={14} /> {copy.addVariant}</button>
+                <div><h3 className="text-sm font-black text-gray-900">{hasMultipleVariants ? copy.variants : copy.inventoryItem}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.variantsHint}</p><p id="product-family-item-name-hint" className="mt-1 text-xs font-semibold text-gray-500">{copy.variantNameHint}</p></div>
+                <button type="button" onClick={addVariant} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"><Plus size={14} /> {copy.addVariant}</button>
               </div>
 
               <div className="my-4 grid gap-2 rounded-xl bg-gray-50 p-3 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-end">
@@ -472,7 +474,7 @@ export default function ProductFamilyEditor({
                       <div className="flex items-center gap-1"><button type="button" onClick={() => moveVariant(index, -1)} disabled={index === 0} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveUp(variant.name || copy.variantFallback(index + 1))}><ArrowUp size={16} /></button><button type="button" onClick={() => moveVariant(index, 1)} disabled={index === variants.length - 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30" aria-label={copy.moveDown(variant.name || copy.variantFallback(index + 1))}><ArrowDown size={16} /></button><button type="button" onClick={() => setVariants((current) => current.filter((item) => item.key !== variant.key))} disabled={variants.length === 1} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-30" aria-label={copy.removeVariant(variant.name || copy.variantFallback(index + 1))}><Trash2 size={16} /></button></div>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div><label htmlFor={`item-name-${variant.key}`} className={labelClass}>{copy.variantName}</label><p id={`item-name-hint-${variant.key}`} className="mb-1.5 text-[11px] font-semibold text-gray-500">{copy.variantNameHint}</p><input id={`item-name-${variant.key}`} aria-describedby={`item-name-hint-${variant.key}`} required={hasMultipleVariants} value={variant.name} onChange={(event) => updateVariant(variant.key, { name: event.target.value })} className={`${inputClass} placeholder:text-gray-400`} placeholder={copy.variantNamePlaceholder} /></div>
+                      <div><label htmlFor={`item-name-${variant.key}`} className={labelClass}>{copy.variantName}</label><input id={`item-name-${variant.key}`} aria-describedby="product-family-item-name-hint" required={hasMultipleVariants} value={variant.name} onChange={(event) => updateVariant(variant.key, { name: event.target.value })} className={`${inputClass} placeholder:text-gray-400`} placeholder={copy.variantNamePlaceholder} /></div>
                       <div><label className={labelClass}>{copy.availability}</label><select aria-label={copy.availability} value={variant.status} onChange={(event) => updateVariant(variant.key, { status: event.target.value as EditableVariant['status'] })} className={inputClass}><option value="enable">{copy.active}</option><option value="disable">{copy.hidden}</option><option value="soldout">{copy.soldOut}</option></select></div>
                       <div><label className={labelClass}>{copy.price}</label><input aria-label={copy.price} type="number" min="0" step="0.01" value={variant.priceOverride} onChange={(event) => updateVariant(variant.key, { priceOverride: event.target.value })} className={inputClass} placeholder={copy.inheritsPrice(effectivePriceLabel)} /><p className="mt-1 text-[10px] font-semibold text-gray-400">{copy.inheritHint}</p></div>
                       <div><label className={labelClass}>{copy.stock}</label><div className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3"><div className="flex gap-1" aria-label={copy.stock}>{[true, false].map(untracked => <button key={String(untracked)} type="button" disabled={Boolean(variant.id)} aria-pressed={variant.isUnlimited === untracked} onClick={() => updateVariant(variant.key, { isUnlimited: untracked })} className={`min-h-11 rounded-lg px-2 text-xs font-bold ${variant.isUnlimited === untracked ? 'bg-pink-50 text-pink-700' : 'text-gray-500'}`}>{untracked ? copy.unlimited : language === 'th' ? 'นับสต็อก' : 'Track stock'}</button>)}</div><input type="number" min="0" step="1" value={variant.stockTotal} onChange={(event) => updateVariant(variant.key, { stockTotal: event.target.value })} disabled={variant.isUnlimited || Boolean(variant.id)} className="ml-auto w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-right text-sm font-bold disabled:bg-gray-100 disabled:text-gray-400" aria-label={copy.stockFor(variant.name || copy.variantFallback(index + 1))} /></div>{variant.id && <p className="mt-1 text-xs text-gray-500">{language === 'th' ? 'เริ่มนับและรับสินค้าเข้าได้ที่รายการในหน้าแคตตาล็อก' : 'Start tracking and receive stock from the catalog item.'}</p>}</div>
@@ -489,6 +491,7 @@ export default function ProductFamilyEditor({
                   </article>
                 ))}
               </div>
+              <button type="button" onClick={addVariant} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-dashed border-pink-300 bg-pink-50 px-3 text-sm font-black text-pink-700 hover:bg-pink-100"><Plus size={16} /> {copy.addVariant}</button>
             </section>
           </div>
 

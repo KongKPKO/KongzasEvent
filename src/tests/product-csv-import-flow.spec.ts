@@ -76,6 +76,23 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await expect(itemName).toHaveAttribute('placeholder', 'เช่น A4 Mavuika');
   await expect(editor.getByText('(ถ้ามีรายการเดียว เว้นว่างเพื่อใช้ชื่อสินค้าหลัก)', { exact: true })).toBeVisible();
   await editor.screenshot({ path: 'output/playwright/item-name-thai.png' });
+  const addItemButtons = editor.getByRole('button', { name: 'เพิ่มรายการ', exact: true });
+  await expect(addItemButtons).toHaveCount(2);
+  await expect(itemName).toHaveAttribute('aria-describedby', 'product-family-item-name-hint');
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (let count = 2; count <= 4; count++) {
+    await addItemButtons.last().click();
+    await expect(editor.getByLabel('ชื่อรายการสินค้า', { exact: true })).toHaveCount(count);
+  }
+  await expect(editor.getByText('(ถ้ามีรายการเดียว เว้นว่างเพื่อใช้ชื่อสินค้าหลัก)', { exact: true })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await addItemButtons.last().scrollIntoViewIfNeeded();
+  await editor.screenshot({ path: 'output/playwright/item-add-bottom-mobile.png' });
+  for (let count = 4; count >= 2; count--) {
+    await editor.getByRole('button', { name: `ลบ รายการที่ ${count}`, exact: true }).click();
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   await expect(editor.getByLabel('SKU', { exact: true })).toBeHidden();
   await expect(editor.getByText('ข้อมูลหลักของสินค้า', { exact: true })).toBeVisible();
   await expect(editor.getByLabel('ชื่อสินค้า *', { exact: true })).toBeVisible();

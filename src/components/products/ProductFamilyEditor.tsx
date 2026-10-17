@@ -120,7 +120,7 @@ const editorCopy = {
     product: 'Product', editProduct: (name: string) => `Edit ${name}`, createProduct: 'Create product',
     intro: 'Add the items sold under this product. Each item has its own price and stock.', closeEditor: 'Close product editor',
     sharedDetails: 'Shared product details', sharedDetailsHint: 'Shown across every item under this product.',
-    productName: 'Product name *', productNamePlaceholder: 'Traveller acrylic stand', productType: 'Product type', category: 'Category',
+    productName: 'Product name *', productNamePlaceholder: 'Traveller acrylic stand', productType: 'Product type', category: 'Category', categoryPlaceholder: 'e.g. Photoset, Hairclip, Cheki',
     kindSingle: 'Single item', kindPhoto: 'Photo / image set', kindBundle: 'Bundle', kindPreorder: 'Pre-order', kindService: 'Service',
     basePrice: 'Base price *', currency: 'Currency', tags: 'Tags', tagsPlaceholder: 'Genshin, Traveller, Event exclusive',
     description: 'Description', descriptionPlaceholder: 'Size, material, and anything customers should know.', coverImage: 'Cover image', imagePath: 'Image path or URL', uploadCover: 'Upload cover image', removeImage: 'Remove image',
@@ -143,7 +143,7 @@ const editorCopy = {
     product: 'สินค้า', editProduct: (name: string) => `แก้ไข ${name}`, createProduct: 'เพิ่มสินค้า',
     intro: 'เพิ่มรายการที่ขายภายใต้สินค้าหลัก แต่ละรายการกำหนดราคาและสต็อกแยกกันได้', closeEditor: 'ปิดหน้าต่างสินค้า',
     sharedDetails: 'ข้อมูลหลักของสินค้า', sharedDetailsHint: 'ข้อมูลส่วนนี้ใช้ร่วมกันกับทุกรายการภายใต้สินค้าหลัก',
-    productName: 'ชื่อสินค้า *', productNamePlaceholder: 'อะคริลิกสแตนด์ Traveller', productType: 'ประเภทสินค้า', category: 'หมวดหมู่',
+    productName: 'ชื่อสินค้า *', productNamePlaceholder: 'อะคริลิกสแตนด์ Traveller', productType: 'ประเภทสินค้า', category: 'หมวดหมู่', categoryPlaceholder: 'เช่น Photoset, Hairclip, เชกิ',
     kindSingle: 'สินค้าชิ้นเดียว', kindPhoto: 'ชุดรูปภาพ', kindBundle: 'ชุดสินค้า', kindPreorder: 'พรีออเดอร์', kindService: 'บริการ',
     basePrice: 'ราคาหลัก *', currency: 'สกุลเงิน', tags: 'แท็ก', tagsPlaceholder: 'Genshin, Traveller, เฉพาะงาน',
     description: 'รายละเอียด', descriptionPlaceholder: 'ขนาด วัสดุ และข้อมูลที่ลูกค้าควรรู้', coverImage: 'รูปปกสินค้า', imagePath: 'พาธรูปภาพหรือ URL', uploadCover: 'อัปโหลดรูปปก', removeImage: 'ลบรูป',
@@ -178,7 +178,7 @@ export default function ProductFamilyEditor({
   const copy = editorCopy[language];
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Other');
+  const [category, setCategory] = useState('');
   const [tags, setTags] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [basePrice, setBasePrice] = useState('');
@@ -209,7 +209,7 @@ export default function ProductFamilyEditor({
     initialParent.current = parent;
     setName(parent?.name || '');
     setDescription(parent?.description || '');
-    setCategory(parent?.category || 'Other');
+    setCategory(parent?.category || '');
     setTags((parent?.tags || []).join(', '));
     setCurrency(parent?.currency || DEFAULT_CURRENCY);
     setBasePrice(parent == null ? '' : String(parent.base_price));
@@ -416,7 +416,7 @@ export default function ProductFamilyEditor({
                   <div><label className={labelClass}>{copy.productName}</label><input aria-label={copy.productName} value={name} onChange={(event) => setName(event.target.value)} className={inputClass} placeholder={copy.productNamePlaceholder} autoFocus /></div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><label className={labelClass}>{copy.productType}</label><select aria-label={copy.productType} value={kind} onChange={(event) => setKind(event.target.value as ProductKind)} className={inputClass}><option value="single">{copy.kindSingle}</option><option value="photo">{copy.kindPhoto}</option><option value="bundle">{copy.kindBundle}</option><option value="preorder">{copy.kindPreorder}</option><option value="service">{copy.kindService}</option></select></div>
-                    <div><label className={labelClass}>{copy.category}</label><input aria-label={copy.category} value={category} onChange={(event) => setCategory(event.target.value)} className={inputClass} /></div>
+                    <div><label className={labelClass}>{copy.category}</label><input aria-label={copy.category} value={category} onChange={(event) => setCategory(event.target.value)} className={`${inputClass} placeholder:text-gray-400`} placeholder={copy.categoryPlaceholder} /></div>
                   </div>
                   <div><label className={labelClass}>{copy.basePrice}</label><input aria-label={copy.basePrice} type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} className={inputClass} placeholder="120" /></div>
                   <div><label className={labelClass}>{copy.tags}</label><input aria-label={copy.tags} value={tags} onChange={(event) => setTags(event.target.value)} className={inputClass} placeholder={copy.tagsPlaceholder} /></div>

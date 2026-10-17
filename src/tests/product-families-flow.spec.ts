@@ -289,6 +289,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
   const itemName = editor.getByLabel('Item name', { exact: true });
   await expect(itemName).toHaveValue('');
+  await expect(editor.getByLabel('Category', { exact: true })).toHaveValue('');
   await expect(itemName).toHaveAttribute('placeholder', 'e.g. A4 Mavuika');
   if (photoCount === 1) await editor.screenshot({ path: 'output/playwright/item-name-inherit.png' });
   await expect(itemName).not.toHaveAttribute('required');
@@ -300,8 +301,9 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await editor.getByRole('button', { name: 'Do not track stock', exact: true }).click();
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
   await expect(editor).toBeHidden();
-  const parent = await service.from('product_parents').select('id,product_kind,gallery_images').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
+  const parent = await service.from('product_parents').select('id,product_kind,gallery_images,category').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
   expect(parent.data?.product_kind).toBe('photo');
+  expect(parent.data?.category).toBe('Other');
   const savedItem = await service.from('products').select('name').eq('parent_product_id', parent.data!.id).single().throwOnError();
   expect(savedItem.data?.name).toBe(photoName);
 

@@ -71,6 +71,8 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await expect(editor.getByRole('heading', { name: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', exact: true })).toBeVisible();
   const itemName = editor.getByLabel('ชื่อรายการสินค้า', { exact: true });
   await expect(itemName).toHaveValue('');
+  await expect(editor.getByLabel('หมวดหมู่', { exact: true })).toHaveValue('');
+  await expect(editor.getByLabel('หมวดหมู่', { exact: true })).toHaveAttribute('placeholder', 'เช่น Photoset, Hairclip, เชกิ');
   await expect(itemName).toHaveAttribute('placeholder', 'เช่น A4 Mavuika');
   await expect(editor.getByText('(ถ้ามีรายการเดียว เว้นว่างเพื่อใช้ชื่อสินค้าหลัก)', { exact: true })).toBeVisible();
   await editor.screenshot({ path: 'output/playwright/item-name-thai.png' });

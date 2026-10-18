@@ -37,7 +37,7 @@ test.afterAll(async () => {
   must(await service.auth.admin.deleteUser(artistId));
 });
 
-test('cards derive exact media count, bundle contents, preorder timing and service inventory', async ({ page }) => {
+test('cards derive exact media count, bundle contents, legacy formats use channel timing and ordinary inventory', async ({ page }) => {
   await page.goto(`/${slug}/menu`);
   const card = (name: string) => page.locator('article.shop-product').filter({ has: page.getByRole('heading', { name, exact: true }) });
   for (const count of [2, 3, 4]) {
@@ -52,13 +52,13 @@ test('cards derive exact media count, bundle contents, preorder timing and servi
   await expect(detail.getByText('Badge × 1', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(detail).toBeHidden();
-  await expect(card('Upcoming preorder').getByText('Ships in November', { exact: false })).toBeVisible();
-  await expect(card('Upcoming preorder').getByText(/^Closes:/)).toBeVisible();
-  await expect(card('Upcoming preorder').getByText(/^Left/)).toHaveCount(0);
-  await expect(card('Closed preorder').getByRole('button', { name: 'Pre-order closed', exact: true })).toBeDisabled();
-  await expect(card('Cheki session').getByText('Duration 10 min', { exact: true })).toBeVisible();
-  await expect(card('Cheki session').getByText('20 slots per session', { exact: true })).toBeVisible();
-  await card('Cheki session').getByRole('button', { name: 'Select service', exact: true }).click();
+  await expect(card('Upcoming preorder').getByText('Ships in November', { exact: false })).toHaveCount(0);
+  await expect(card('Upcoming preorder').getByText(/^Closes:/)).toHaveCount(0);
+  await expect(card('Upcoming preorder').getByText(/^Left/)).toHaveCount(1);
+  await expect(card('Closed preorder').getByRole('button', { name: 'Add: Closed preorder', exact: true })).toBeEnabled();
+  await expect(card('Cheki session').getByText('Duration 10 min', { exact: true })).toHaveCount(0);
+  await expect(card('Cheki session').getByText('20 slots per session', { exact: true })).toHaveCount(0);
+  await card('Cheki session').getByRole('button', { name: 'Add: Cheki session', exact: true }).click();
   const increase = card('Cheki session').getByRole('button', { name: /Increase/i });
   await increase.click();
   await expect(increase).toBeDisabled(); // Two units are available, independently of service display metadata.

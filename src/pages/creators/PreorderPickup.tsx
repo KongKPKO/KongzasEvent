@@ -34,7 +34,7 @@ interface PickupOrderRow {
   customer_name: string;
   total_price: number;
   currency: string;
-  order_items: Array<{ quantity: number; products: { name: string } | null }>;
+  order_items: Array<{ id: string; components?: Array<{name: string; quantity: number}>; quantity: number; products: { name: string } | null }>;
 }
 
 type PickupFilter = 'awaiting_pickup' | 'picked_up' | 'all';
@@ -105,6 +105,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
             total_price,
             currency,
             order_items (
+              id,
               quantity,
               products (name)
             )
@@ -118,7 +119,11 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       if (orderError) throw orderError;
 
       setEventInfo((eventData || null) as EventInfo | null);
-      setOrders((orderData || []) as unknown as PickupOrderRow[]);
+      const { data: contents, error: contentsError } = await supabase.rpc('event_bundle_contents', { p_event_id: eventId });
+      if (contentsError) throw contentsError;
+      const snapshots = new Map((contents as Array<{order_item_id: string; components: Array<{name: string; quantity: number}>}> || []).map(row => [row.order_item_id, row.components]));
+      const rows = (orderData || []) as unknown as PickupOrderRow[];
+      setOrders(rows.map(order => ({ ...order, order_items: order.order_items.map(item => ({ ...item, components: snapshots.get(item.id) })) })));
     } catch (error) {
       setToast({
         tone: 'error',
@@ -216,7 +221,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
 
   const confirmDetail = (() => {
     if (!confirmAction) return '';
-    if (confirmAction.type === 'pickup') return `${confirmAction.order.pickup_code} · ${confirmAction.order.customer_name}\n${confirmAction.order.order_items.map(item => `${item.products?.name || '—'} ×${item.quantity}`).join('\n')}\n\n${language === 'th' ? 'เทียบรหัสกับลูกค้า และยืนยันหลังส่งมอบสินค้าครบแล้วเท่านั้น' : 'Match the code with the customer. Confirm only after handing over all items.'}`;
+    if (confirmAction.type === 'pickup') return `${confirmAction.order.pickup_code} · ${confirmAction.order.customer_name}\n${confirmAction.order.order_items.map(item => `${item.products?.name || '—'} ×${item.quantity}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}\n\n${language === 'th' ? 'เทียบรหัสกับลูกค้า และยืนยันหลังส่งมอบสินค้าครบแล้วเท่านั้น' : 'Match the code with the customer. Confirm only after handing over all items.'}`;
     if (confirmAction.type === 'cancel') return language === 'th'
       ? `รหัสรับสินค้า ${confirmAction.order.pickup_code}\nสต็อกที่จองไว้จะคืนกลับเข้าสต็อก`
       : `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be released back to inventory.`;
@@ -347,7 +352,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                       {formatPrice(order.total_price, order.currency)}
                     </div>
                     <div className="mt-1 whitespace-pre-line text-sm font-semibold text-gray-600">
-                      {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}`).join('\n')}
+                      {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}
                       <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
 

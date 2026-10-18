@@ -1,16 +1,18 @@
 import './sales-reports.css';
-import EventDateFilter, { matchesEventDate } from '../../components/EventDateFilter';
+import EventDateFilter from '../../components/EventDateFilter';
 import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import EventNavTabs from '../../components/EventNavTabs';
 import AdminHeader from '../../components/AdminHeader';
+import ProductSalesBreakdown from '../../components/reports/ProductSalesBreakdown';
 import { supabase } from '../../supabaseClient';
+import { buildUtf8Csv, downloadUtf8Csv } from '../../lib/productSalesReport';
 import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, PackageCheck, ShoppingBag, Store, Ticket, TrendingUp, Users } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { normalizeEventRecord } from '../../utils/schemaCompat';
-import type { OrderType, PickupStatus } from '../../types/preorder';
+
 
 interface EventInfo {
     event_timezone?: string | null;
@@ -23,43 +25,23 @@ interface EventInfo {
   status: string;
 }
 
-interface OrderItemRow {
-  quantity: number;
-  price_per_unit: number;
-  products: {
-    id: string;
-    name: string;
-    category?: string | null;
-  } | null;
+interface SalesAnalytics {
+  currency: string; currencies: string[]; revenue: number; subtotal: number; discountTotal: number;
+  itemCount: number; completedOrderCount: number; avgOrderValue: number;
+  paymentSummary: {cashOrders:number; cashRevenue:number; transferOrders:number; transferRevenue:number};
+  orderTypeSummary: {preorderOrders:number; preorderRevenue:number; postOrders:number; postRevenue:number; awaitingPickupCount:number; liveQueueOrders:number; liveQueueRevenue:number; walkinOrders:number; walkinRevenue:number};
+  queueSummary: {totalQueues:number; completedQueues:number; expiredQueues:number; missedQueues:number; activeQueues:number; conversionRate:number; avgWaitMinutes:number; avgServiceMinutes:number};
+  topProducts: Array<{name:string; qty:number; revenue:number; category:string}>;
+  categoryBreakdown: Array<{category:string; qty:number; revenue:number}>;
+  hourlySales: Array<{hour:string; orders:number; revenue:number}>;
 }
-
-interface OrderRow {
-  id: string;
-  created_at: string;
-  queue_id?: string | null;
-  total_price: number;
-  subtotal_price?: number | null;
-  discount_total?: number | null;
-  payment_method: 'cash' | 'transfer';
-  status: string;
-  currency?: string;
-  order_type?: OrderType | null;
-  pickup_code?: string | null;
-  customer_name?: string | null;
-  customer_contact?: string | null;
-  pickup_status?: PickupStatus | null;
-  picked_up_at?: string | null;
-  order_items: OrderItemRow[];
-}
-
-interface QueueRow {
-  id: string;
-  status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued';
-  created_at?: string | null;
-  called_at?: string | null;
-  served_at?: string | null;
-  completed_at?: string | null;
-}
+const emptyAnalytics: SalesAnalytics = {
+  currency:'THB',currencies:[],revenue:0,subtotal:0,discountTotal:0,itemCount:0,completedOrderCount:0,avgOrderValue:0,
+  paymentSummary:{cashOrders:0,cashRevenue:0,transferOrders:0,transferRevenue:0},
+  orderTypeSummary:{preorderOrders:0,preorderRevenue:0,postOrders:0,postRevenue:0,awaitingPickupCount:0,liveQueueOrders:0,liveQueueRevenue:0,walkinOrders:0,walkinRevenue:0},
+  queueSummary:{totalQueues:0,completedQueues:0,expiredQueues:0,missedQueues:0,activeQueues:0,conversionRate:0,avgWaitMinutes:0,avgServiceMinutes:0},
+  topProducts:[],categoryBreakdown:[],hourlySales:[],
+};
 
 export default function EventDashboard() {
   const { language } = useI18n();
@@ -72,15 +54,17 @@ export default function EventDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [queues, setQueues] = useState<QueueRow[]>([]);
+  const [analytics, setAnalytics] = useState<SalesAnalytics>(emptyAnalytics);
+  const [currencyFilter, setCurrencyFilter] = useState('');
 
   const [searchParams, setSearchParams] = useSearchParams();
   const from = searchParams.get('from') || '';
   const to = searchParams.get('to') || '';
   const timeZone = eventInfo?.event_timezone || 'Asia/Bangkok';
-  const filteredOrders = useMemo(() => orders.filter(order => matchesEventDate(order.created_at, from, to, timeZone)), [orders, from, to, timeZone]);
   const changeDates = (nextFrom: string, nextTo: string) => {
+    if (nextFrom && nextTo && nextFrom > nextTo) {
+      if (nextFrom !== from) nextTo = nextFrom; else nextFrom = nextTo;
+    }
     const next = new URLSearchParams(searchParams);
     if (nextFrom) next.set('from', nextFrom); else next.delete('from');
     if (nextTo) next.set('to', nextTo); else next.delete('to');
@@ -89,192 +73,22 @@ export default function EventDashboard() {
 
   useEffect(() => {
     if (!eventId) return;
-
-    const fetchDashboard = async () => {
-      setLoading(true);
-        setLoadError(false);
-      try {
-        const [{ data: event, error: eventError }, { data: orderData, error: orderError }, { data: queueData, error: queueError }] = await Promise.all([
-          supabase
-            .from('events')
-            .select('*')
-            .eq('id', eventId)
-            .single(),
-          supabase
-            .from('orders')
-            .select(`
-              id,
-              created_at,
-              queue_id,
-              total_price,
-              subtotal_price,
-              discount_total,
-              payment_method,
-              status,
-              currency,
-              order_type,
-              pickup_code,
-              customer_name,
-              pickup_status,
-              picked_up_at,
-              order_items (
-                quantity,
-                price_per_unit,
-                products (id, name, category)
-              )
-            `)
-            .eq('event_id', eventId)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('queues')
-            .select('id, status, created_at, called_at, served_at, completed_at')
-            .eq('event_id', eventId)
-            .order('created_at', { ascending: true }),
-        ]);
-
-        if (eventError) throw eventError;
-        if (orderError) throw orderError;
-        if (queueError) throw queueError;
-
-        setEventInfo(normalizeEventRecord(event as Record<string, any>) as unknown as EventInfo);
-        setOrders((orderData || []) as unknown as OrderRow[]);
-        setQueues((queueData || []) as QueueRow[]);
-      } catch (error) {
-        console.error('[EventDashboard] fetch failed:', error);
-        setLoadError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchDashboard();
-  }, [eventId]);
-
-  const filteredQueues = useMemo(() => queues.filter(queue => matchesEventDate(queue.created_at, from, to, timeZone)), [queues, from, to, timeZone]);
-
-  const analytics = useMemo(() => {
-    const completedOrders = filteredOrders.filter((order) => order.status === 'completed');
-    const currency = completedOrders[0]?.currency || filteredOrders[0]?.currency || 'THB';
-    const getOrderType = (order: OrderRow): OrderType => order.order_type || (order.queue_id ? 'live_queue' : 'pos_walkin');
-
-    const revenue = completedOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
-    const subtotal = completedOrders.reduce((sum, order) => sum + Number(order.subtotal_price || order.total_price || 0), 0);
-    const discountTotal = completedOrders.reduce((sum, order) => sum + Number(order.discount_total || 0), 0);
-    const itemCount = completedOrders.reduce((sum, order) => sum + order.order_items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
-    const avgOrderValue = completedOrders.length > 0 ? revenue / completedOrders.length : 0;
-
-    const byPayment = {
-      cash: completedOrders.filter((order) => order.payment_method === 'cash'),
-      transfer: completedOrders.filter((order) => order.payment_method === 'transfer'),
-    };
-    const preorderOrders = completedOrders.filter((order) => getOrderType(order) === 'preorder');
-    const liveQueueOrders = completedOrders.filter((order) => getOrderType(order) === 'live_queue');
-    const postOrders = completedOrders.filter(order => getOrderType(order) === 'post_event');
-    const walkinOrders = completedOrders.filter((order) => getOrderType(order) === 'pos_walkin');
-    const awaitingPickupCount = filteredOrders.filter((order) => getOrderType(order) === 'preorder' && order.pickup_status === 'awaiting_pickup').length;
-
-    const productMap = new Map<string, { name: string; qty: number; revenue: number; category: string }>();
-    const categoryMap = new Map<string, { category: string; qty: number; revenue: number }>();
-    const hourMap = new Map<string, { hour: string; orders: number; revenue: number }>();
-
-    completedOrders.forEach((order) => {
-      const hour = new Date(order.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone }) + ':00';
-      const existingHour = hourMap.get(hour) || { hour, orders: 0, revenue: 0 };
-      existingHour.orders += 1;
-      existingHour.revenue += Number(order.total_price || 0);
-      hourMap.set(hour, existingHour);
-
-      order.order_items.forEach((item) => {
-        const productName = item.products?.name || 'Unknown Product';
-        const category = item.products?.category?.trim() || 'Other';
-        const revenueValue = item.quantity * item.price_per_unit;
-        const productKey = item.products?.id || productName;
-
-        const productEntry = productMap.get(productKey) || { name: productName, qty: 0, revenue: 0, category };
-        productEntry.qty += item.quantity;
-        productEntry.revenue += revenueValue;
-        productMap.set(productKey, productEntry);
-
-        const categoryEntry = categoryMap.get(category) || { category, qty: 0, revenue: 0 };
-        categoryEntry.qty += item.quantity;
-        categoryEntry.revenue += revenueValue;
-        categoryMap.set(category, categoryEntry);
-      });
-    });
-
-    const totalQueues = filteredQueues.length;
-    const completedQueues = filteredQueues.filter((queue) => queue.status === 'complete').length;
-    const expiredQueues = filteredQueues.filter((queue) => queue.status === 'expired').length;
-    const missedQueues = filteredQueues.filter((queue) => queue.status === 'missed').length;
-    const activeQueues = filteredQueues.filter((queue) => ['waiting', 'queued', 'calling', 'serving'].includes(queue.status)).length;
-    const conversionRate = totalQueues > 0 ? (completedQueues / totalQueues) * 100 : 0;
-
-    let totalWaitMinutes = 0;
-    let totalWaitCount = 0;
-    let totalServiceMinutes = 0;
-    let totalServiceCount = 0;
-
-    filteredQueues.forEach((queue) => {
-      const start = queue.created_at ? new Date(queue.created_at).getTime() : null;
-      const calledOrServed = queue.served_at || queue.called_at;
-      if (start && calledOrServed) {
-        const waitMinutes = (new Date(calledOrServed).getTime() - start) / 60000;
-        if (waitMinutes >= 0 && waitMinutes < 600) {
-          totalWaitMinutes += waitMinutes;
-          totalWaitCount += 1;
-        }
-      }
-
-      const serviceStart = queue.served_at || queue.called_at;
-      if (queue.completed_at && serviceStart) {
-        const serviceMinutes = (new Date(queue.completed_at).getTime() - new Date(serviceStart).getTime()) / 60000;
-        if (serviceMinutes >= 0 && serviceMinutes < 300) {
-          totalServiceMinutes += serviceMinutes;
-          totalServiceCount += 1;
-        }
-      }
-    });
-
-    return {
-      currency,
-      revenue,
-      subtotal,
-      discountTotal,
-      itemCount,
-      completedOrders,
-      avgOrderValue,
-      paymentSummary: {
-        cashOrders: byPayment.cash.length,
-        cashRevenue: byPayment.cash.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-        transferOrders: byPayment.transfer.length,
-        transferRevenue: byPayment.transfer.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-      },
-      orderTypeSummary: {
-        preorderOrders: preorderOrders.length,
-        postOrders: postOrders.length,
-        postRevenue: postOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-        preorderRevenue: preorderOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-        awaitingPickupCount,
-        liveQueueOrders: liveQueueOrders.length,
-        liveQueueRevenue: liveQueueOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-        walkinOrders: walkinOrders.length,
-        walkinRevenue: walkinOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
-      },
-      queueSummary: {
-        totalQueues,
-        completedQueues,
-        expiredQueues,
-        missedQueues,
-        activeQueues,
-        conversionRate,
-        avgWaitMinutes: totalWaitCount > 0 ? totalWaitMinutes / totalWaitCount : 0,
-        avgServiceMinutes: totalServiceCount > 0 ? totalServiceMinutes / totalServiceCount : 0,
-      },
-      topProducts: Array.from(productMap.values()).sort((a, b) => b.qty - a.qty).slice(0, 8),
-      categoryBreakdown: Array.from(categoryMap.values()).sort((a, b) => b.revenue - a.revenue),
-      hourlySales: Array.from(hourMap.values()).sort((a, b) => a.hour.localeCompare(b.hour)),
-    };
-  }, [filteredOrders, filteredQueues, timeZone]);
+    let active = true;
+    setLoading(true); setLoadError(false);
+    void Promise.all([
+      supabase.from('events').select('*').eq('id',eventId).single(),
+      supabase.rpc('get_event_sales_analytics',{p_event_id:eventId,p_from:from||null,p_to:to||null,p_currency:currencyFilter||null}),
+    ]).then(([eventResult,reportResult])=>{
+      if (!active) return;
+      if (eventResult.error) throw eventResult.error;
+      if (reportResult.error) throw reportResult.error;
+      if (!reportResult.data) throw new Error('sales_analytics_missing');
+      setEventInfo(normalizeEventRecord(eventResult.data as Record<string, unknown>) as unknown as EventInfo);
+      setAnalytics(reportResult.data as SalesAnalytics);
+    }).catch(error=>{if(active){console.error('[EventDashboard] fetch failed:',error);setLoadError(true);}})
+      .finally(()=>{if(active)setLoading(false);});
+    return ()=>{active=false;};
+  }, [eventId,from,to,currencyFilter]);
 
   const recommendations = useMemo(() => {
     const cards: Array<{ title: string; detail: string; tone: 'pink' | 'amber' | 'blue' }> = [];
@@ -322,6 +136,7 @@ export default function EventDashboard() {
 
   if (loadError) return <div role="alert" className="mx-auto max-w-lg p-6 text-center">
     <p>{language === 'th' ? 'โหลดข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not load data. Please try again.'}</p>
+    {from && to && from > to && <button type="button" className="mt-3 min-h-11 rounded-xl border border-gray-200 px-4" onClick={() => changeDates('', '')}>{th ? 'ล้างช่วงวันที่' : 'Clear date range'}</button>}
     <button type="button" className="mt-3 min-h-11 rounded-xl border border-gray-200 px-4" onClick={() => window.location.reload()}>{language === 'th' ? 'ลองอีกครั้ง' : 'Retry'}</button>
   </div>;
 
@@ -344,22 +159,16 @@ export default function EventDashboard() {
       ['From date', from || 'All dates'],
       ['To date', to || 'All dates'],
       ['Timezone', timeZone],
+      ['Currency', analytics.currency],
       ['Net Revenue', String(analytics.revenue)],
       ['Discount Given', String(analytics.discountTotal)],
-      ['Completed Orders', String(analytics.completedOrders.length)],
+      ['Completed Orders', String(analytics.completedOrderCount)],
       ['Items Sold', String(analytics.itemCount)],
       ['Queue Conversion %', String(Math.round(analytics.queueSummary.conversionRate))],
       ['Avg Wait Minutes', String(Math.round(analytics.queueSummary.avgWaitMinutes))],
       ['Avg Service Minutes', String(Math.round(analytics.queueSummary.avgServiceMinutes))],
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${eventInfo.event_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-summary.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadUtf8Csv(buildUtf8Csv(rows), `${eventInfo.event_name.replace(/[^a-z0-9ก-๙]+/gi, '-').toLowerCase()}-summary.csv`);
   };
 
   return (
@@ -400,12 +209,13 @@ export default function EventDashboard() {
           <p className="text-gray-600">{th ? 'ยอดขายนับเฉพาะออเดอร์ที่สำเร็จ หลังส่วนลดตามยอดที่บันทึกไว้' : 'Sales include completed orders only, using saved totals after discounts.'}</p>
           <button type="button" className="report-button" onClick={() => navigate(`/manage-events/${eventId}/history?${searchParams}`)}>{th ? 'ดูรายการขายในช่วงนี้ →' : 'View sales for this period →'}</button>
         </div>
-<EventDateFilter from={from} to={to} timeZone={timeZone} onChange={changeDates} />
+{analytics.currencies.length>1 && <label className="report-panel block text-sm font-bold">{th?'สกุลเงินในรายงาน':'Report currency'}<select aria-label={th?'สกุลเงินในรายงาน':'Report currency'} value={analytics.currency} onChange={event=>setCurrencyFilter(event.target.value)} className="ml-3 min-h-11 rounded-xl border px-3">{analytics.currencies.map(code=><option key={code} value={code}>{code}</option>)}</select><span className="ml-3 text-xs text-gray-500">{th?'แสดงยอดเงินแยกตามสกุลเงิน':'Money totals are shown separately for each currency.'}</span></label>}
+          <EventDateFilter from={from} to={to} timeZone={timeZone} onChange={changeDates} />
         <div className="report-metrics grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <MetricCard icon={<DollarSign size={18} />} title={copy("Net Revenue")} value={formatPrice(analytics.revenue, analytics.currency)} helper={`${analytics.completedOrders.length} ${copy('completed orders')}`} tone="pink" />
+          <MetricCard icon={<DollarSign size={18} />} title={copy("Net Revenue")} value={formatPrice(analytics.revenue, analytics.currency)} helper={`${analytics.completedOrderCount} ${copy('completed orders')}`} tone="pink" />
           <MetricCard icon={<TrendingUp size={18} />} title={copy("Discount Given")} value={formatPrice(analytics.discountTotal, analytics.currency)} helper={`${th ? 'ยอดก่อนส่วนลด' : 'Before discounts'} ${formatPrice(analytics.subtotal, analytics.currency)}`} tone="emerald" />
           <MetricCard icon={<ShoppingBag size={18} />} title={th ? "ชิ้นสินค้า รวมของแถม" : "Units including gifts"} value={String(analytics.itemCount)} helper={`${th ? 'เฉลี่ยต่อออเดอร์' : 'Average order'} ${formatPrice(analytics.avgOrderValue, analytics.currency)}`} tone="blue" />
-          <MetricCard icon={<Ticket size={18} />} title={th ? "ออเดอร์สำเร็จ" : "Completed orders"} value={String(analytics.completedOrders.length)} helper={th ? "ตามช่วงวันที่เลือก" : "In the selected period"} tone="slate" />
+          <MetricCard icon={<Ticket size={18} />} title={th ? "ออเดอร์สำเร็จ" : "Completed orders"} value={String(analytics.completedOrderCount)} helper={th ? "ตามช่วงวันที่เลือก" : "In the selected period"} tone="slate" />
         </div>
 
         <details className="report-panel"><summary className="font-bold cursor-pointer">{th ? 'แยกช่องทางขายและสถิติคิว' : 'Sales channels and queue performance'}</summary><div className="space-y-4 mt-4"><p className="text-sm text-gray-600">{th ? 'คิวสำเร็จ' : 'Completed queues'} {analytics.queueSummary.completedQueues}/{analytics.queueSummary.totalQueues} ({Math.round(analytics.queueSummary.conversionRate)}%)</p>
@@ -511,6 +321,8 @@ export default function EventDashboard() {
             </div>
           </section>
         </div>
+
+        {eventId && <ProductSalesBreakdown eventId={eventId} eventName={eventInfo.event_name} from={from} to={to} currency={analytics.currency} />}
 
       </div>
     </div>

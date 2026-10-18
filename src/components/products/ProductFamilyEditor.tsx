@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ImagePlus, Loader, Plus, Save, Trash2, X } from 'lucide-react';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
-import { uiText, useI18n } from '../../i18n';
+import { useI18n } from '../../i18n';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../utils/currency';
-import type { BundleItem, FamilyVariant, ProductKind, ProductParent } from '../../types/productFamily';
+import type { FamilyVariant, ProductKind, ProductParent } from '../../types/productFamily';
+
+type ProductFormat = Extract<ProductKind, 'single' | 'photo'>;
 
 type FamilyVariantWithGallery = FamilyVariant & { variant_gallery_images?: string[] | null };
 
@@ -78,12 +80,6 @@ const toEditableVariant = (variant: FamilyVariantWithGallery, index: number, sin
 
 const uniqueImages = (images: string[]) => Array.from(new Set(images.map((image) => image.trim()).filter(Boolean)));
 
-const toLocalDateTimeInput = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-};
-
 const inputClass = 'min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-pink-300 focus:ring-2 focus:ring-pink-100';
 const labelClass = 'mb-1.5 block text-[11px] font-black uppercase tracking-wide text-gray-500';
 
@@ -120,15 +116,13 @@ const editorCopy = {
     product: 'Product', editProduct: (name: string) => `Edit ${name}`, createProduct: 'Create product',
     intro: 'Add the items sold under this product. Each item has its own price and stock.', closeEditor: 'Close product editor',
     sharedDetails: 'Shared product details', sharedDetailsHint: 'Shown across every item under this product.',
-    productName: 'Product name *', productNamePlaceholder: 'Traveller acrylic stand', productType: 'Product type', category: 'Category', categoryPlaceholder: 'e.g. Photoset, Hairclip, Cheki',
-    kindSingle: 'Single item', kindPhoto: 'Photo / image set', kindBundle: 'Bundle', kindPreorder: 'Pre-order', kindService: 'Service',
+    productName: 'Product name *', productNamePlaceholder: 'Traveller acrylic stand', productFormat: 'Product format', category: 'Category', categoryPlaceholder: 'e.g. Photoset, Hairclip, Cheki',
+    kindSingle: 'Single item', kindPhoto: 'Photo / image set',
     basePrice: 'Base price *', currency: 'Currency', tags: 'Tags', tagsPlaceholder: 'Genshin, Traveller, Event exclusive',
     description: 'Description', descriptionPlaceholder: 'Size, material, and anything customers should know.', coverImage: 'Cover image', imagePath: 'Image path or URL', uploadCover: 'Upload cover image', removeImage: 'Remove image',
     photoGallery: 'Shared photo gallery', photoGalleryHint: 'Items can inherit these photos or use their own gallery.', addPhotos: 'Add photos', uploadGallery: 'Upload gallery photos', galleryPhoto: (index: number) => `Gallery photo ${index}`,
     itemGallery: 'Item photo gallery', inheritedGallery: 'Using the shared photo gallery', useOwnGallery: 'Use a gallery for this item', useSharedGallery: 'Use shared gallery', emptyGallery: 'This item has an empty gallery.', movePhotoUp: (index: number) => `Move photo ${index} up`, movePhotoDown: (index: number) => `Move photo ${index} down`, removePhoto: (index: number) => `Remove photo ${index}`,
-    includedItems: 'Included items', includedItemsHint: 'The card will show the item count and contents.', item: 'Item', bundleItemName: (index: number) => `Name for bundle item ${index}`, bundleItemQuantity: (index: number) => `Quantity for bundle item ${index}`, removeBundleItem: (index: number) => `Remove bundle item ${index}`,
-    preorderTiming: 'Pre-order timing', ordersClose: 'Orders close', estimatedDelivery: 'Estimated delivery', etaPlaceholder: 'Ships late November',
-    serviceSetup: 'Service setup', service: 'Service', serviceCheki: 'Cheki / photo', serviceSigning: 'Signing', serviceCommission: 'Commission', other: 'Other', minutes: 'Minutes', slotsPerSession: 'Slots per session',
+    legacyFormat: 'This product uses a legacy format. Its existing settings will be preserved unless you choose Single item or Photo / image set.',
     variants: 'Items under this product', inventoryItem: 'Item under this product', variantsHint: 'Add each character, design, or color as an item with its own stock.', addVariant: 'Add item',
     priceOverride: 'Price override', basePlaceholder: (price: number) => `Base ${price}`, applyPrice: 'Apply price', stock: 'Stock', applyStock: 'Apply to new items',
     existingSku: 'Existing item', newSku: 'New item', variantFallback: (index: number) => `variant ${index}`, moveUp: (name: string) => `Move ${name} up`, moveDown: (name: string) => `Move ${name} down`, removeVariant: (name: string) => `Remove ${name}`,
@@ -137,21 +131,19 @@ const editorCopy = {
     advanced: 'Advanced', advancedHint: 'Description, currency, SKU, and image paths',
     cancel: 'Cancel', saveFamily: 'Save family',
     errorProduct: 'Add a product name and a valid base price.', errorVariantName: 'Every item needs a name.', errorDuplicateVariant: 'Item names must be unique inside this product.', errorVariantPrice: (name: string) => `Enter a valid price for ${name}.`, errorVariantStock: (name: string) => `Enter a whole-number stock quantity for ${name}.`,
-    errorService: 'Use a positive whole number for duration and a nonnegative whole number for slots.', errorBundle: 'Each included item needs a whole-number quantity of at least one.', errorGalleryLimit: 'Use up to 50 gallery images.', errorGalleryUpload: 'Gallery upload failed.', errorImageUpload: 'Image upload failed.', errorSave: 'Could not save this product family.',
+    errorGalleryLimit: 'Use up to 50 gallery images.', errorGalleryUpload: 'Gallery upload failed.', errorImageUpload: 'Image upload failed.', errorSave: 'Could not save this product family.',
   },
   th: {
     product: 'สินค้า', editProduct: (name: string) => `แก้ไข ${name}`, createProduct: 'เพิ่มสินค้า',
     intro: 'เพิ่มรายการที่ขายภายใต้สินค้าหลัก แต่ละรายการกำหนดราคาและสต็อกแยกกันได้', closeEditor: 'ปิดหน้าต่างสินค้า',
     sharedDetails: 'ข้อมูลหลักของสินค้า', sharedDetailsHint: 'ข้อมูลส่วนนี้ใช้ร่วมกันกับทุกรายการภายใต้สินค้าหลัก',
-    productName: 'ชื่อสินค้า *', productNamePlaceholder: 'อะคริลิกสแตนด์ Traveller', productType: 'ประเภทสินค้า', category: 'หมวดหมู่', categoryPlaceholder: 'เช่น Photoset, Hairclip, เชกิ',
-    kindSingle: 'สินค้าชิ้นเดียว', kindPhoto: 'ชุดรูปภาพ', kindBundle: 'ชุดสินค้า', kindPreorder: 'พรีออเดอร์', kindService: 'บริการ',
+    productName: 'ชื่อสินค้า *', productNamePlaceholder: 'อะคริลิกสแตนด์ Traveller', productFormat: 'รูปแบบสินค้า', category: 'หมวดหมู่', categoryPlaceholder: 'เช่น Photoset, Hairclip, เชกิ',
+    kindSingle: 'สินค้าชิ้นเดียว', kindPhoto: 'ชุดรูปภาพ',
     basePrice: 'ราคาหลัก *', currency: 'สกุลเงิน', tags: 'แท็ก', tagsPlaceholder: 'Genshin, Traveller, เฉพาะงาน',
     description: 'รายละเอียด', descriptionPlaceholder: 'ขนาด วัสดุ และข้อมูลที่ลูกค้าควรรู้', coverImage: 'รูปปกสินค้า', imagePath: 'พาธรูปภาพหรือ URL', uploadCover: 'อัปโหลดรูปปก', removeImage: 'ลบรูป',
     photoGallery: 'แกลเลอรีรูปภาพร่วม', photoGalleryHint: 'แต่ละรายการเลือกใช้รูปชุดนี้หรือแกลเลอรีของตัวเองได้', addPhotos: 'เพิ่มรูป', uploadGallery: 'อัปโหลดรูปเข้าแกลเลอรี', galleryPhoto: (index: number) => `รูปในแกลเลอรี ${index}`,
     itemGallery: 'แกลเลอรีรูปภาพของรายการ', inheritedGallery: 'กำลังใช้แกลเลอรีรูปภาพร่วม', useOwnGallery: 'ใช้แกลเลอรีเฉพาะรายการนี้', useSharedGallery: 'ใช้แกลเลอรีรูปภาพร่วม', emptyGallery: 'รายการนี้ตั้งค่าแกลเลอรีว่างไว้', movePhotoUp: (index: number) => `เลื่อนรูปที่ ${index} ขึ้น`, movePhotoDown: (index: number) => `เลื่อนรูปที่ ${index} ลง`, removePhoto: (index: number) => `ลบรูปที่ ${index}`,
-    includedItems: 'ของที่รวมในชุด', includedItemsHint: 'การ์ดสินค้าจะแสดงจำนวนและรายการของในชุด', item: 'เพิ่มรายการ', bundleItemName: (index: number) => `ชื่อของชิ้นที่ ${index}`, bundleItemQuantity: (index: number) => `จำนวนของชิ้นที่ ${index}`, removeBundleItem: (index: number) => `ลบของชิ้นที่ ${index}`,
-    preorderTiming: 'กำหนดเวลาพรีออเดอร์', ordersClose: 'ปิดรับออเดอร์', estimatedDelivery: 'กำหนดส่งโดยประมาณ', etaPlaceholder: 'จัดส่งช่วงปลายเดือนพฤศจิกายน',
-    serviceSetup: 'ตั้งค่าบริการ', service: 'ประเภทบริการ', serviceCheki: 'เชกิ / ถ่ายรูป', serviceSigning: 'เซ็นลายเซ็น', serviceCommission: 'คอมมิชชัน', other: 'อื่น ๆ', minutes: 'ระยะเวลา (นาที)', slotsPerSession: 'จำนวนคิวต่อรอบ',
+    legacyFormat: 'สินค้านี้ใช้รูปแบบเดิม ระบบจะเก็บการตั้งค่าเดิมไว้จนกว่าคุณจะเลือกรูปแบบสินค้าชิ้นเดียวหรือชุดรูปภาพ',
     variants: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', inventoryItem: 'ข้อมูลรายการสินค้าภายใต้สินค้าหลัก', variantsHint: 'เพิ่มตัวละคร ลาย หรือสีเป็นแต่ละรายการ โดยมีสต็อกแยกกัน', addVariant: 'เพิ่มรายการ',
     priceOverride: 'ราคาสำหรับรายการ', basePlaceholder: (price: number) => `ราคาหลัก ${price}`, applyPrice: 'ใช้ราคานี้ทั้งหมด', stock: 'สต็อก', applyStock: 'ใช้กับรายการใหม่',
     existingSku: 'รายการเดิม', newSku: 'รายการใหม่', variantFallback: (index: number) => `รายการที่ ${index}`, moveUp: (name: string) => `เลื่อน ${name} ขึ้น`, moveDown: (name: string) => `เลื่อน ${name} ลง`, removeVariant: (name: string) => `ลบ ${name}`,
@@ -160,7 +152,7 @@ const editorCopy = {
     advanced: 'ขั้นสูง', advancedHint: 'รายละเอียด สกุลเงิน SKU และพาธรูปภาพ',
     cancel: 'ยกเลิก', saveFamily: 'บันทึกสินค้า',
     errorProduct: 'กรอกชื่อสินค้าและราคาหลักที่ถูกต้อง', errorVariantName: 'รายการสินค้าทุกแถวต้องมีชื่อ', errorDuplicateVariant: 'ชื่อรายการสินค้าต้องไม่ซ้ำกัน', errorVariantPrice: (name: string) => `กรอกราคาที่ถูกต้องสำหรับ ${name}`, errorVariantStock: (name: string) => `กรอกสต็อกเป็นจำนวนเต็มสำหรับ ${name}`,
-    errorService: 'ระยะเวลาต้องเป็นจำนวนเต็มมากกว่าศูนย์ และจำนวนคิวต้องเป็นจำนวนเต็มตั้งแต่ศูนย์ขึ้นไป', errorBundle: 'ของแต่ละรายการในชุดต้องมีจำนวนเต็มอย่างน้อยหนึ่งชิ้น', errorGalleryLimit: 'เพิ่มรูปในแกลเลอรีได้ไม่เกิน 50 รูป', errorGalleryUpload: 'อัปโหลดรูปในแกลเลอรีไม่สำเร็จ', errorImageUpload: 'อัปโหลดรูปไม่สำเร็จ', errorSave: 'บันทึกสินค้านี้ไม่สำเร็จ',
+    errorGalleryLimit: 'เพิ่มรูปในแกลเลอรีได้ไม่เกิน 50 รูป', errorGalleryUpload: 'อัปโหลดรูปในแกลเลอรีไม่สำเร็จ', errorImageUpload: 'อัปโหลดรูปไม่สำเร็จ', errorSave: 'บันทึกสินค้านี้ไม่สำเร็จ',
   },
 } as const;
 
@@ -182,15 +174,9 @@ export default function ProductFamilyEditor({
   const [tags, setTags] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [basePrice, setBasePrice] = useState('');
-  const [kind, setKind] = useState<ProductKind>('single');
+  const [kind, setKind] = useState<ProductFormat>('single');
   const [imageUrl, setImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
-  const [bundleItems, setBundleItems] = useState<BundleItem[]>([]);
-  const [preorderClosesAt, setPreorderClosesAt] = useState('');
-  const [preorderEta, setPreorderEta] = useState('');
-  const [serviceKind, setServiceKind] = useState('cheki');
-  const [serviceDuration, setServiceDuration] = useState('');
-  const [serviceSlots, setServiceSlots] = useState('');
   const [variants, setVariants] = useState<EditableVariant[]>([newVariant()]);
   const [bulkPrice, setBulkPrice] = useState('');
   const [bulkStock, setBulkStock] = useState('');
@@ -213,15 +199,9 @@ export default function ProductFamilyEditor({
     setTags((parent?.tags || []).join(', '));
     setCurrency(parent?.currency || DEFAULT_CURRENCY);
     setBasePrice(parent == null ? '' : String(parent.base_price));
-    setKind(parent?.product_kind || 'single');
+    setKind(parent?.product_kind === 'photo' ? 'photo' : 'single');
     setImageUrl(parent?.image_url || '');
     setGalleryImages(uniqueImages(parent?.gallery_images || []));
-    setBundleItems(parent?.bundle_items?.length ? parent.bundle_items : [{ name: '', quantity: 1 }]);
-    setPreorderClosesAt(parent?.preorder_closes_at ? toLocalDateTimeInput(parent.preorder_closes_at) : '');
-    setPreorderEta(parent?.preorder_eta || '');
-    setServiceKind(parent?.service_kind || 'cheki');
-    setServiceDuration(parent?.service_duration_minutes == null ? '' : String(parent.service_duration_minutes));
-    setServiceSlots(parent?.service_slots == null ? '' : String(parent.service_slots));
     setVariants(initialVariants.length ? initialVariants.map((variant, index) => toEditableVariant(variant, index, initialVariants.length === 1)) : [newVariant()]);
     setBulkPrice('');
     setBulkStock('');
@@ -333,17 +313,6 @@ export default function ProductFamilyEditor({
       }
     }
 
-    if (kind === 'service' && ((serviceDuration !== '' && (!Number.isInteger(Number(serviceDuration)) || Number(serviceDuration) <= 0)) || (serviceSlots !== '' && (!Number.isInteger(Number(serviceSlots)) || Number(serviceSlots) < 0)))) {
-      setError(copy.errorService);
-      return;
-    }
-    if (kind === 'bundle' && bundleItems.some((item) => item.name.trim() && (!Number.isInteger(item.quantity) || item.quantity < 1))) {
-      setError(copy.errorBundle);
-      return;
-    }
-    const cleanBundleItems = bundleItems
-      .map((item) => ({ name: item.name.trim(), quantity: item.quantity }))
-      .filter((item) => item.name);
     const cleanGallery = uniqueImages(galleryImages);
     if (cleanGallery.length > 50) { setError(copy.errorGalleryLimit); return; }
     if (variants.some((variant) => variant.galleryImages != null && uniqueImages(variant.galleryImages).length > 50)) {
@@ -367,12 +336,12 @@ export default function ProductFamilyEditor({
         base_price: parsedBasePrice,
         product_kind: kind,
         gallery_images: kind === 'photo' ? cleanGallery : [],
-        bundle_items: kind === 'bundle' ? cleanBundleItems : [],
-        preorder_closes_at: kind === 'preorder' && preorderClosesAt ? new Date(preorderClosesAt).toISOString() : null,
-        preorder_eta: kind === 'preorder' ? preorderEta.trim() || null : null,
-        service_duration_minutes: kind === 'service' && serviceDuration !== '' ? Number(serviceDuration) : null,
-        service_slots: kind === 'service' && serviceSlots !== '' ? Number(serviceSlots) : null,
-        service_kind: kind === 'service' ? serviceKind.trim() || null : null,
+        bundle_items: [],
+        preorder_closes_at: parent?.preorder_closes_at ?? null,
+        preorder_eta: parent?.preorder_eta ?? null,
+        service_duration_minutes: parent?.service_duration_minutes ?? null,
+        service_slots: parent?.service_slots ?? null,
+        service_kind: parent?.service_kind ?? null,
         },
         variants: variants.map((variant, index) => ({
         ...(variant.id ? { id: variant.id } : {}),
@@ -417,7 +386,7 @@ export default function ProductFamilyEditor({
                 <div className="space-y-3">
                   <div><label className={labelClass}>{copy.productName}</label><input aria-label={copy.productName} value={name} onChange={(event) => setName(event.target.value)} className={inputClass} placeholder={copy.productNamePlaceholder} autoFocus /></div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><label className={labelClass}>{copy.productType}</label><select aria-label={copy.productType} value={kind} onChange={(event) => setKind(event.target.value as ProductKind)} className={inputClass}><option value="single">{copy.kindSingle}</option><option value="photo">{copy.kindPhoto}</option><option value="bundle">{copy.kindBundle}</option><option value="preorder">{copy.kindPreorder}</option><option value="service">{copy.kindService}</option></select></div>
+                    <div><label className={labelClass}>{copy.productFormat}</label><select aria-label={copy.productFormat} value={kind} onChange={(event) => setKind(event.target.value as ProductFormat)} className={inputClass}><option value="single">{copy.kindSingle}</option><option value="photo">{copy.kindPhoto}</option></select></div>
                     <div><label className={labelClass}>{copy.category}</label><input aria-label={copy.category} value={category} onChange={(event) => setCategory(event.target.value)} className={`${inputClass} placeholder:text-gray-400`} placeholder={copy.categoryPlaceholder} /></div>
                   </div>
                   <div><label className={labelClass}>{copy.basePrice}</label><input aria-label={copy.basePrice} type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} className={inputClass} placeholder="120" /></div>
@@ -446,11 +415,8 @@ export default function ProductFamilyEditor({
                 <details className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><summary className="cursor-pointer text-xs font-black text-gray-700">{copy.advanced}</summary><textarea aria-label={copy.photoGallery} value={galleryImages.join('\n')} onChange={(event) => setGalleryImages(event.target.value.split('\n'))} className={`${inputClass} mt-3 min-h-28 py-3 font-mono text-xs`} placeholder={'public/photo-1.webp\npublic/photo-2.webp'} /></details>
               </section>}
 
-              {kind === 'bundle' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><div><h3 className="text-sm font-black text-gray-900">{copy.includedItems}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.includedItemsHint}</p></div><button type="button" onClick={() => setBundleItems((items) => [...items, { name: '', quantity: 1 }])} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700"><Plus size={14} /> {copy.item}</button></div><div className="mt-3 space-y-2">{bundleItems.map((item, index) => <div key={index} className="grid grid-cols-[1fr_76px_44px] gap-2"><input aria-label={copy.bundleItemName(index + 1)} value={item.name} onChange={(event) => setBundleItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, name: event.target.value } : current))} className={inputClass} placeholder={uiText(language, 'Postcard')} /><input type="number" min="1" value={item.quantity} onChange={(event) => setBundleItems((items) => items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: Number(event.target.value) } : current))} className={inputClass} aria-label={copy.bundleItemQuantity(index + 1)} /><button type="button" onClick={() => setBundleItems((items) => items.filter((_, itemIndex) => itemIndex !== index))} className="inline-flex h-11 items-center justify-center rounded-xl text-red-500 hover:bg-red-50" aria-label={copy.removeBundleItem(index + 1)}><Trash2 size={16} /></button></div>)}</div></section>}
 
-              {kind === 'preorder' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h3 className="text-sm font-black text-gray-900">{copy.preorderTiming}</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><label className={labelClass}>{copy.ordersClose}</label><input aria-label={copy.ordersClose} type="datetime-local" value={preorderClosesAt} onChange={(event) => setPreorderClosesAt(event.target.value)} className={inputClass} /></div><div><label className={labelClass}>{copy.estimatedDelivery}</label><input aria-label={copy.estimatedDelivery} value={preorderEta} onChange={(event) => setPreorderEta(event.target.value)} className={inputClass} placeholder={copy.etaPlaceholder} /></div></div></section>}
 
-              {kind === 'service' && <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h3 className="text-sm font-black text-gray-900">{copy.serviceSetup}</h3><div className="mt-3 grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>{copy.service}</label><select aria-label={copy.service} value={serviceKind} onChange={(event) => setServiceKind(event.target.value)} className={inputClass}><option value="cheki">{copy.serviceCheki}</option><option value="signing">{copy.serviceSigning}</option><option value="commission">{copy.serviceCommission}</option><option value="other">{copy.other}</option></select></div><div><label className={labelClass}>{copy.minutes}</label><input aria-label={copy.minutes} type="number" min="1" value={serviceDuration} onChange={(event) => setServiceDuration(event.target.value)} className={inputClass} placeholder="5" /></div><div><label className={labelClass}>{copy.slotsPerSession}</label><input aria-label={copy.slotsPerSession} type="number" min="0" value={serviceSlots} onChange={(event) => setServiceSlots(event.target.value)} className={inputClass} placeholder="20" /></div></div></section>}
             </div>
 
             <section className="self-start rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">

@@ -1,3 +1,4 @@
+import BundleEditor from '../../components/products/BundleEditor';
 import { fetchInventoryOverview, type InventoryOverview } from '../../lib/inventory';
 import { InventoryBreakdown } from '../../components/products/InventoryBreakdown';
 import { SupplyPolicyEditor, type SupplySettings } from '../../components/products/SupplyPolicyEditor';
@@ -44,6 +45,7 @@ import {
 
 interface Product {
   product_kind?: ProductParent['product_kind'];
+  bundle_items?: ProductParent['bundle_items'];
   gallery_images?: string[] | null;
   variant_gallery_images?: string[] | null;
   id: string;
@@ -375,6 +377,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [campaignOptions, setCampaignOptions] = useState<OnlineCampaignSummary[]>([]);
    const [familyEditorParentId, setFamilyEditorParentId] = useState<string | 'new' | null>(null);
    const [familyEditorSaving, setFamilyEditorSaving] = useState(false);
+   const [bundleEditor, setBundleEditor] = useState<ProductParent | 'new' | null>(null);
 
    // Edit Modal State
    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -567,7 +570,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
-   const renderCatalogStockFlow = (product: Product, compact = false) => <div className="space-y-2">
+   const renderCatalogStockFlow = (product: Product, compact = false) => product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{product.bundle_items?.some(item => item.product_id) ? (language === 'th' ? `พร้อมจัดชุด ${inventory[product.id]?.bundle_available ?? 'ไม่จำกัด'} · ใช้ของร่วมกับการขายแยก` : `${inventory[product.id]?.bundle_available ?? 'Unlimited'} bundles · shared component stock`) : (language === 'th' ? 'ชุดเดิม: แก้ไขเพื่อเลือกสินค้าส่วนประกอบ' : 'Legacy bundle: edit to select components')}</div> : <div className="space-y-2">
       {renderCatalogStockNumbers(product, compact)}
       {inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
    </div>;
@@ -627,9 +630,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    };
 
    const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => <div className="space-y-2">
-      {renderEventCatalogStockNumbers(product, draft, stockLimit, compact)}
+      {product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{(() => {
+         const limits = (product.bundle_items || []).map(item => {
+            const component = item.product_id ? eventCatalogDraft[item.product_id] : undefined;
+            if (!component?.is_enabled) return 0;
+            return component.is_unlimited ? Infinity : Math.floor(Math.max(0, Number(component.stock_total || 0) - (component.stock_reserved || 0) - (component.stock_sold || 0)) / item.quantity);
+         });
+         const quantity = limits.length ? Math.min(...limits) : 0;
+         return language === 'th' ? `พร้อมขาย ${Number.isFinite(quantity) ? quantity : 'ไม่จำกัด'} ชุด · ใช้สต็อกส่วนประกอบในอีเวนต์ร่วมกับขายแยก` : `${Number.isFinite(quantity) ? quantity : 'Unlimited'} bundles · shared event component stock`;
+      })()}</div> : renderEventCatalogStockNumbers(product, draft, stockLimit, compact)}
       {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
-      {inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+      {product.product_kind !== 'bundle' && inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
    </div>;
 
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
@@ -1410,7 +1421,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const openFamilyEditor = (family?: CatalogProductFamily<Product>) => {
       setCatalogActionMenuKey(null);
-      setFamilyEditorParentId(family?.parent.id || 'new');
+      if (family?.parent.product_kind === 'bundle') setBundleEditor(family.parent);
+      else setFamilyEditorParentId(family?.parent.id || 'new');
    };
 
    const openFamilyEditorForProduct = (product: Product) => {
@@ -2184,6 +2196,26 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                onError={(message) => showToast({ tone: 'error', title: uiText(language, 'Image export failed'), detail: message })}
             />
          )}
+         <BundleEditor open={bundleEditor !== null} parent={bundleEditor === 'new' ? null : bundleEditor} products={products}
+            available={Object.fromEntries(products.map(product => [product.id, product.is_unlimited ? null : getProductStockSummary(product).available]))}
+            saving={familyEditorSaving} onClose={() => setBundleEditor(null)} onUpload={uploadFamilyImage}
+            onSave={async (parent, components) => {
+               setFamilyEditorSaving(true);
+               try {
+                  const { error } = await supabase.rpc('save_product_bundle', { p_parent: { ...parent, artist_id: artistId }, p_components: components });
+                  if (error) {
+                     const messages: Record<string, string> = language === 'th' ? {
+                        legacy_bundle_in_use_create_new: 'ชุดเดิมมีประวัติหรือจัดสรรแล้ว กรุณาสร้างชุดใหม่เพื่อเชื่อมสินค้า โดยเก็บประวัติชุดเดิมไว้',
+                        legacy_bundle_requires_single_item: 'ชุดเดิมมีหลายรายการ กรุณาสร้างชุดใหม่แยกแต่ละชุด',
+                        product_family_changed_reload: 'ข้อมูลเปลี่ยนระหว่างแก้ไข กรุณาปิดแล้วเปิดใหม่',
+                        invalid_bundle_component: 'ส่วนประกอบต้องเป็นสินค้าของร้านเดียวกัน ใช้สกุลเงินเดียวกัน และไม่ใช่ชุดสินค้า',
+                     } : {};
+                     throw new Error(messages[error.message] || error.message);
+                  }
+                  setBundleEditor(null); await fetchProducts();
+                  showToast({ tone: 'success', title: language === 'th' ? 'บันทึกชุดสินค้าแล้ว' : 'Bundle saved' });
+               } finally { setFamilyEditorSaving(false); }
+            }} />
          <ProductFamilyEditor
             open={familyEditorParentId !== null}
             artistId={artistId}
@@ -2416,7 +2448,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                      {activeWorkspaceTab === 'catalog' && (
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                           <button type="button" onClick={() => setBundleEditor('new')} className="workspace-action inline-flex items-center justify-center gap-2 border border-pink-200 bg-white px-3 py-2 text-sm font-black text-pink-700"><Plus size={16} />{language === 'th' ? 'สร้างชุดสินค้า' : 'Create bundle'}</button>
                            <button
                               type="button"
                               onClick={() => openFamilyEditor()}
@@ -2987,7 +3020,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            <p className="text-xs text-gray-500">
                               {language === 'th' ? 'คอลัมน์หลัก:' : 'Main columns:'} <span className="font-semibold">product_key, name, base_price, product_kind, variant_name, price_override, stock, is_unlimited</span>
                            </p>
-                           <p className="mt-1 text-[11px] text-gray-400">{language === 'th' ? 'เว้น price_override เพื่อใช้ราคาหลัก รองรับรูป ชุดสินค้า พรีออเดอร์ และบริการตามไฟล์ตัวอย่าง สินค้าที่มีชื่อ/หมวดหมู่/สกุลเงินเดิมจะถูกข้ามทั้งกลุ่ม โดยไม่แก้สต็อกเดิม' : 'Leave price_override blank to inherit base price. The sample includes galleries, bundles, preorders and services. Existing name/category/currency matches are skipped as whole products without changing stock.'}</p>
+                           <p className="mt-1 text-[11px] text-gray-400">{language === 'th' ? 'เว้น price_override เพื่อใช้ราคาหลัก รองรับสินค้าทั่วไปและชุดรูปภาพ สร้างชุดสินค้าด้วยปุ่มสร้างชุดสินค้าในแคตตาล็อก สินค้าที่มีชื่อ/หมวดหมู่/สกุลเงินเดิมจะถูกข้ามทั้งกลุ่ม โดยไม่แก้สต็อกเดิม' : 'Leave price_override blank to inherit base price. The sample includes ordinary products and photo sets. Use Create bundle in the catalog to link existing products. Existing name/category/currency matches are skipped as whole products without changing stock.'}</p>
                            <p className="mt-1 text-[11px] text-gray-500">{language === 'th' ? 'พาธรูปในไฟล์ตัวอย่างต้องเปลี่ยนเป็นรูปของคุณเอง ข้อมูลหลักต้องตรงกันทุกแถวของ product_key เดียวกัน ถ้าข้อมูลผิดจะไม่บันทึกทั้งไฟล์' : 'Replace sample image paths with your own images. Shared fields must agree for each product_key. Invalid data prevents the whole file from being saved.'}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -3355,7 +3388,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      aria-label={`Event price for ${product.name}`}
 	                                                   />
 	                                                </label>
-	                                                <label className="min-w-0">
+	                                                {product.product_kind !== 'bundle' && <label className="min-w-0">
 	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{eventText("Event stock")}</span>
 	                                                   <input
 	                                                      type="number"
@@ -3371,11 +3404,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      placeholder={draft.is_unlimited ? eventText("Unlimited") : 'Qty'}
 	                                                      aria-label={`Event stock for ${product.name}`}
 	                                                   />
-	                                                </label>
+	                                                </label>}
 	                                             </div>
 
 	                                             <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-	                                                <label className="inline-flex min-h-9 items-center gap-2 rounded-full bg-gray-50 px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-100">
+	                                                {product.product_kind !== 'bundle' && <label className="inline-flex min-h-9 items-center gap-2 rounded-full bg-gray-50 px-3 text-[11px] font-black text-gray-700 ring-1 ring-gray-100">
 	                                                   <input
 	                                                      type="checkbox"
 	                                                      checked={draft.is_unlimited}
@@ -3383,7 +3416,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                      disabled={!product.is_unlimited || hasAllocatedEventStock}
 	                                                      className="h-3.5 w-3.5 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-40"
 	                                                   />
-	                                                   {eventText("Unlimited")}</label>
+	                                                   {eventText("Unlimited")}</label>}
 	                                                {draft.id && !draft.is_unlimited ? (
 	                                                   <>
 	                                                      <button
@@ -3458,7 +3491,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                 </div>
                                              </div>
 
-                                             <div className="space-y-2">
+                                             {product.product_kind !== 'bundle' && <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
                                                    <span>{eventText("Sell")}</span>
                                                    <input
@@ -3478,7 +3511,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                    placeholder={String(product.price)}
                                                    aria-label={uiText(language, 'Event price for {name}').replace('{name}', product.name)}
                                                 />
-                                             </div>
+                                             </div>}
 
                                              <div className={stockOverLimit ? 'rounded-lg bg-red-50 p-2' : 'rounded-lg bg-gray-50 p-2'}>
                                                 {renderEventCatalogStockFlow(product, draft, stockLimit, true)}

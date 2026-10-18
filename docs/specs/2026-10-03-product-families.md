@@ -16,7 +16,7 @@ One family row with variant count, price and stock summary. Products with multip
 
 ## Customer presentation
 
-Data selects the card layout. Single goods use one image; photo sets show actual images up to four, then +N and total picture count. Details show every gallery image. Bundles list contents and quantities. Preorders show close date/ETA; the database rejects new order items after the configured close. Services display type/duration/slots with the existing ordering flow. Service metadata does not introduce a second independent stock pool or a new queue policy.
+Data selects the card layout. Single goods use one image; photo sets show actual images up to four, then +N and total picture count. Details show every gallery image. Bundles list contents and quantities. Creation offers single goods and photo sets. Preorder timing and made-to-order supply belong to channel settings, not product formats. Legacy preorder/service metadata remains archived; it no longer blocks checkout or adds service controls.
 
 ## Event appearance
 
@@ -33,16 +33,11 @@ Optional event/date appearance with character, series, image, day/time/note, boo
 | `product_key` | คีย์สำหรับรวมแถวภายในไฟล์ ต้องไม่ว่าง และต้องไม่ซ้ำข้ามสินค้าหลัก |
 | `name` | ชื่อสินค้าหลัก ต้องเหมือนกันทุกแถวในกลุ่ม |
 | `base_price` | ราคาหลัก เลขศูนย์ใช้ได้ |
-| `product_kind` | `single`, `photo`, `bundle`, `preorder` หรือ `service` |
+| `product_kind` | `single` หรือ `photo`; สร้างชุดสินค้าแยกด้วยปุ่มสร้างชุดสินค้า |
 | `category`, `tags`, `description`, `currency` | ข้อมูลส่วนกลาง โดย `currency` ใช้รหัสเช่น `THB` และ `tags` คั่นด้วยจุลภาค เครื่องหมายท่อ หรือเซมิโคลอน |
 | `cover_image` | พาธรูปปกสินค้าหลัก |
 | `variant_gallery_images` | JSON array ของรูปเฉพาะรายการ เว้นว่างเพื่อใช้รูปส่วนกลาง; `[]` ล้างรูปเฉพาะรายการ ไม่เปลี่ยนรายการอื่น |
 | `gallery_images` | JSON array ของพาธรูป เช่น `["/images/a.jpg","/images/b.jpg"]` |
-| `bundle_items` | JSON array เช่น `[{"name":"Postcard","quantity":3}]` ใช้กับ `bundle` |
-| `preorder_closes_at` | วันปิดรับแบบ ISO 8601 ที่ระบุ timezone ชัดเจน เช่น `2027-12-01T23:59:00+07:00` |
-| `preorder_eta` | ข้อความกำหนดส่งที่ลูกค้าอ่านเข้าใจ เช่น `Ships in December 2027` |
-| `service_kind` | ประเภทบริการ เช่น `cheki`, `photo`, `signing` หรือ `commission` |
-| `service_duration_minutes`, `service_slots` | ระยะเวลาเป็นนาทีและจำนวนที่รองรับต่อรอบ ต้องเป็นจำนวนเต็มบวก |
 | `variant_name` | ชื่อตัวเลือก เช่น `Aether` หรือ `Lumine`; สินค้าตัวเลือกเดียวใช้ `Default` ได้ |
 | `sku` | รหัส SKU ของตัวเลือก หากเว้นว่างระบบจะสร้างให้ |
 | `price_override` | ราคาของตัวเลือก เว้นว่างเพื่อใช้ `base_price`; ค่า `0` คือราคาศูนย์จริง ไม่ใช่ช่องว่าง |
@@ -51,7 +46,7 @@ Optional event/date appearance with character, series, image, day/time/note, boo
 | `variant_sort_order` | ลำดับตัวเลือก เป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป |
 | `image_url` | พาธรูปเฉพาะตัวเลือก เว้นว่างเพื่อใช้รูปปก |
 
-[ไฟล์ตัวอย่าง CSV](/samples/catalog-import-sample.csv) มีตัวอย่างสินค้าหลายตัวเลือกที่สืบทอดราคาและมีราคา override, ราคา override เป็นศูนย์, photo set 5 รูป, bundle, preorder และ service รวมทั้งสต็อกแบบจำกัดและไม่จำกัด พาธ `/samples/replace-me/...` เป็น placeholder เท่านั้น ต้องอัปโหลดรูปและเปลี่ยนเป็นพาธจริงก่อนนำเข้า ไฟล์บันทึกเป็น UTF-8 พร้อม BOM เพื่อให้ภาษาไทยเปิดใน Excel ได้ถูกต้อง
+[ไฟล์ตัวอย่าง CSV](/samples/catalog-import-sample.csv) มีตัวอย่างสินค้าหลายตัวเลือกที่สืบทอดราคาและมีราคา override, ราคา override เป็นศูนย์, photo set 5 รูป รวมทั้งสต็อกแบบจำกัดและไม่จำกัด พาธ `/samples/replace-me/...` เป็น placeholder เท่านั้น ต้องอัปโหลดรูปและเปลี่ยนเป็นพาธจริงก่อนนำเข้า ไฟล์บันทึกเป็น UTF-8 พร้อม BOM เพื่อให้ภาษาไทยเปิดใน Excel ได้ถูกต้อง
 
 การนำเข้าเป็นแบบสร้างใหม่เท่านั้น หากพบสินค้าหลักเดิมที่มีชื่อ หมวดหมู่ และสกุลเงินตรงกัน ระบบจะข้ามทั้งกลุ่ม ไม่เพิ่มตัวเลือก ไม่เขียนทับข้อมูลเดิม และไม่เปลี่ยนสต็อกเดิม ระบบยังอ่านหัวคอลัมน์เดิม `name`, `price`, `variant_group` และ `product_line` เพื่อรองรับไฟล์เก่า แต่ควรใช้รูปแบบใหม่สำหรับงานใหม่
 
@@ -92,3 +87,15 @@ Integrated from `1c09ffe` on `origin/codex/dev-release-20260922`. `npm run verif
 The approved remote target is Supabase DEV `kdjqitvtxmcrnnpuxuyl` and Firebase `event-queue-app` / `nireqapp` / preview channel `dev`. Only the three new append-only migrations are pending; no remote seed is applied.
 
 Four Android mobile browser flows also passed on the integrated candidate: family management/Cosplan, CSV import, product presentation types and customer storefront.
+
+## Linked component bundles (2026-10-17)
+
+Create bundle is a separate catalog action. A bundle owns its name, cover, price and category and selects existing exact child UUIDs plus units per bundle. Nested bundles are rejected; repeated selections combine into one component quantity with an editor warning. There is no variant editor or independent bundle stock pool.
+
+Ready bundles = minimum floor(component available / units per bundle). Catalog preview uses unallocated stock; Event and Campaign sales use that channel’s enabled component allocations. Components may remain hidden from individual sale. Purchased and gift bundles snapshot composition and hold/consume/release the same component counters atomically. Changing today’s recipe never rewrites an order snapshot. Missing or archived components make future ready-stock bundles unavailable.
+
+Production policies remain per channel/phase. Production bundle demand expands to component units; payment alone leaves existing ready stock intact. Receipts and explicit earmark transfers share a chronological queue with ordinary production orders. All tracked components must be covered before handover. Cancellation releases unconsumed earmarks; refunds never automatically restock delivered components.
+
+Legacy descriptive bundles are never mapped by names. An unused, single-item legacy bundle can be explicitly configured. A legacy bundle with orders or channel assignments must be replaced with a newly linked bundle so history is preserved. Unconfigured bundles reject new checkout.
+
+Regression anchors: `supabase/tests/component_bundles_test.sql`, `production_inventory_test.sql`, `src/tests/product-families-flow.spec.ts`.

@@ -63,7 +63,6 @@ select artist,'Imported Blue',60,'Imported keychain','Blue' from family_ids;
 select is((select count(distinct parent_product_id)::integer from public.products where variant_group_name='Imported keychain'),1,'CSV/template grouped inserts share a real parent');
 select is((select price from public.products where name='Imported Blue'),60::numeric,'imported child override preserves its existing price');
 select lives_ok($$select public.save_product_family((select id from saved_family),pg_temp.family_payload()||'{"product_kind":"preorder","preorder_closes_at":"2000-01-01T00:00:00Z"}',pg_temp.variant_payload())$$,'can display historical closed preorder');
-select throws_ok($$insert into public.order_items(order_id,product_id,quantity,price_per_unit) select gen_random_uuid(),id,1,price from public.products where sku='FAM-L'$$,
-  'product_preorder_closed','database blocks a stale client after product preorder closes');
+select is((select count(*)::integer from pg_trigger where tgname='check_product_preorder_close'),0,'legacy product kind no longer adds a hidden preorder deadline');
 select * from finish();
 rollback;

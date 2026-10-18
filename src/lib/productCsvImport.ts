@@ -4,7 +4,7 @@ import { CURRENCIES } from '../utils/currency';
 
 export type ProductCsvIssue = { row: number; field: string; code: 'required' | 'number' | 'integer' | 'boolean' | 'choice' | 'json' | 'date' | 'shared' | 'duplicate' | 'limit' };
 export type ProductCsvResult = { families: ProductFamilySaveInput[]; issues: ProductCsvIssue[] };
-const kinds: ProductKind[] = ['single', 'photo', 'bundle', 'preorder', 'service'];
+const kinds: ProductKind[] = ['single', 'photo'];
 const cell = (row: Record<string, string>, ...keys: string[]) => keys.map((key) => String(row[key] ?? '').trim()).find(Boolean) || '';
 const number = (value: string) => Number(value.replace(/,/g, ''));
 const bool = (value: string): boolean | null => ['true', '1', 'yes', 'y'].includes(value.toLowerCase()) ? true : ['false', '0', 'no', 'n'].includes(value.toLowerCase()) ? false : null;

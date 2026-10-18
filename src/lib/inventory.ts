@@ -2,6 +2,7 @@ import { supabase } from '../supabaseClient';
 
 export interface InventoryOverview {
   product_id: string;
+  bundle_available?: number | null;
   tracking: boolean;
   tracking_locked: boolean;
   open_live_orders: number;

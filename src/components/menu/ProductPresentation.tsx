@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, X, CalendarClock, Clock3, ImageOff, Images, Package, Sparkles, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ImageOff, Images, Package } from 'lucide-react';
 import type { PresentableProduct } from '../../types/productPresentation';
-import { getBundleItemCount, getProductImages, getProductPresentationKind, isProductPreorderClosed } from '../../utils/productPresentation';
+import { getBundleItemCount, getProductImages, getProductPresentationKind } from '../../utils/productPresentation';
 import { uiText, useI18n } from '../../i18n';
 
 type Labels = {
@@ -20,16 +20,6 @@ type Labels = {
 const labelsByLanguage: Record<'en' | 'th', Labels> = {
   en: { photos: 'pics', bundleItems: 'items', preorder: 'Pre-order', preorderClosed: 'Pre-order closed', closes: 'Closes', eta: 'ETA', duration: 'Duration', slots: 'slots per session', service: 'Service', minutes: 'min' },
   th: { photos: 'รูป', bundleItems: 'ชิ้น', preorder: 'พรีออเดอร์', preorderClosed: 'ปิดรับพรีออเดอร์', closes: 'ปิดรับ', eta: 'พร้อมรับ/จัดส่ง', duration: 'ระยะเวลา', slots: 'คิวต่อรอบ', service: 'บริการ', minutes: 'นาที' },
-};
-
-const formatDate = (value: string, language: 'en' | 'th', includeTime = true) => {
-  if (!/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value)) return value;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
-    dateStyle: 'medium',
-    ...(includeTime ? { timeStyle: 'short' as const } : {}),
-  }).format(date);
 };
 
 function ImageFallback({ name }: { name: string }) {
@@ -185,26 +175,6 @@ function ProductKindSummary({
             {product.bundle_items.map((item, index) => <li key={`${item.name}-${index}`}>{item.name} × {item.quantity}</li>)}
           </ul>
         ) : null}
-      </div>
-    );
-  }
-  if (kind === 'preorder') {
-    return (
-      <div className="space-y-1 text-[11px] font-bold text-amber-800">
-        <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1"><CalendarClock size={13} />{isProductPreorderClosed(product) ? labels.preorderClosed : labels.preorder}</div>
-        {product.preorder_closes_at && <div>{labels.closes}: {formatDate(product.preorder_closes_at, language)}</div>}
-        {product.preorder_eta && <div>{labels.eta}: {formatDate(product.preorder_eta, language, false)}</div>}
-      </div>
-    );
-  }
-  if (kind === 'service') {
-    return (
-      <div className="space-y-1 text-[11px] font-bold text-violet-800">
-        <div className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1"><Sparkles size={13} />{product.service_kind || labels.service}</div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-gray-600">
-          {product.service_duration_minutes ? <span className="inline-flex items-center gap-1"><Clock3 size={12} />{labels.duration} {product.service_duration_minutes} {labels.minutes}</span> : null}
-          {product.service_slots !== null && product.service_slots !== undefined ? <span className="inline-flex items-center gap-1"><Users size={12} />{product.service_slots} {labels.slots}</span> : null}
-        </div>
       </div>
     );
   }

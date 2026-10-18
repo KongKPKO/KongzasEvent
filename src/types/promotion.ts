@@ -157,6 +157,7 @@ export interface PromotionQuote {
 }
 
 export interface PromotionQuoteInput {
+  orderId?: string | null;
   eventId?: string | null;
   eventPhase?: PromotionEventPhase | null;
   campaignId?: string | null;

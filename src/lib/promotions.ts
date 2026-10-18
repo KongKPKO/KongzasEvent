@@ -41,7 +41,10 @@ export const requiresPromotionReview = (error: unknown) => [
 ].includes(toPromotionError(error).code);
 
 export const quotePromotions = async (input: PromotionQuoteInput): Promise<PromotionQuote> => {
-  const { data, error } = await supabase.rpc('quote_sale_promotions', {
+  const { data, error } = input.orderId ? await supabase.rpc('quote_pos_order', {
+    p_event_id: input.eventId, p_order_id: input.orderId, p_items: input.items,
+    p_reward_choices: input.rewardChoices || [], p_promotion_choices: input.promotionChoices || [],
+  }) : await supabase.rpc('quote_sale_promotions', {
     p_event_id: input.eventId || null,
     p_event_phase: input.eventPhase || null,
     p_campaign_id: input.campaignId || null,

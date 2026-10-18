@@ -101,16 +101,10 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await editor.getByRole('button', { name: 'เพิ่มสินค้า', exact: true }).click();
   await expect(editor.getByRole('alert')).toHaveText('กรอกชื่อสินค้าและราคาหลักที่ถูกต้อง');
 
-  const productType = editor.getByLabel('ประเภทสินค้า', { exact: true });
+  const productType = editor.getByLabel('รูปแบบสินค้า', { exact: true });
   await productType.selectOption('photo');
   await expect(editor.getByRole('heading', { name: 'แกลเลอรีรูปภาพร่วม', exact: true })).toBeVisible();
-  await productType.selectOption('bundle');
-  await expect(editor.getByRole('heading', { name: 'ของที่รวมในชุด', exact: true })).toBeVisible();
-  await productType.selectOption('preorder');
-  await expect(editor.getByRole('heading', { name: 'กำหนดเวลาพรีออเดอร์', exact: true })).toBeVisible();
-  await productType.selectOption('service');
-  await expect(editor.getByRole('heading', { name: 'ตั้งค่าบริการ', exact: true })).toBeVisible();
-  await expect(editor.getByLabel('ระยะเวลา (นาที)', { exact: true })).toBeVisible();
+  await expect(productType.locator('option')).toHaveCount(2);
   await editor.getByRole('button', { name: 'ปิดหน้าต่างสินค้า', exact: true }).click();
   await expect(editor).toBeHidden();
 
@@ -131,18 +125,13 @@ test('localizes the family editor and imports current and legacy CSV atomically'
     transformHeader: (header) => header.replace(/^\uFEFF/, '').trim(),
   });
   expect(sample.errors).toEqual([]);
-  expect(sample.data).toHaveLength(7);
+  expect(sample.data).toHaveLength(4);
+  for (const retiredColumn of ['bundle_items', 'preorder_closes_at', 'preorder_eta', 'service_kind', 'service_duration_minutes', 'service_slots']) expect(sample.meta.fields).not.toContain(retiredColumn);
   expect(sample.meta.fields).toEqual(expect.arrayContaining([
     'product_key',
     'base_price',
     'product_kind',
     'gallery_images',
-    'bundle_items',
-    'preorder_closes_at',
-    'preorder_eta',
-    'service_kind',
-    'service_duration_minutes',
-    'service_slots',
     'variant_name',
     'price_override',
     'variant_sort_order',
@@ -156,49 +145,27 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   await uploadCsv(csvFile(download.suggestedFilename(), sampleCsv));
   const result = page.getByTestId('csv-import-result');
   await expect(result).toHaveAttribute('role', 'status');
-  await expect(result).toContainText('นำเข้า 6 สินค้า / 7 รายการสต็อก');
+  await expect(result).toContainText('นำเข้า 3 สินค้า / 4 รายการสต็อก');
 
   const parents = await service
     .from('product_parents')
     .select('*')
     .eq('artist_id', artistId);
   must(parents);
-  expect(parents.data).toHaveLength(6);
+  expect(parents.data).toHaveLength(3);
   const byName = new Map((parents.data || []).map((parent) => [parent.name, parent]));
   const traveler = byName.get('Traveler Acrylic Stand');
   const photo = byName.get('Cosplay Photo Set');
-  const bundle = byName.get('Fan Meeting Bundle');
-  const preorder = byName.get('December Acrylic Preorder');
-  const serviceParent = byName.get('Cheki Session');
   expect(traveler).toBeTruthy();
   expect(photo).toMatchObject({ product_kind: 'photo' });
   expect(photo?.gallery_images).toHaveLength(5);
-  expect(bundle).toMatchObject({
-    product_kind: 'bundle',
-    bundle_items: [
-      { name: 'Postcard', quantity: 3 },
-      { name: 'Badge', quantity: 1 },
-    ],
-  });
-  expect(preorder).toMatchObject({
-    product_kind: 'preorder',
-    preorder_eta: 'Ships in December 2027',
-  });
-  expect(preorder?.preorder_closes_at).toContain('2027-12-01T16:59:00');
-  expect(serviceParent).toMatchObject({
-    product_kind: 'service',
-    service_kind: 'cheki',
-    service_duration_minutes: 10,
-    service_slots: 12,
-  });
-
   const importedVariants = await service
     .from('products')
     .select('id,parent_product_id,variant_name,sku,price,price_override,stock_total,is_unlimited')
     .eq('artist_id', artistId)
     .order('sku');
   must(importedVariants);
-  expect(importedVariants.data).toHaveLength(7);
+  expect(importedVariants.data).toHaveLength(4);
   const travelerVariants = (importedVariants.data || [])
     .filter((variant) => variant.parent_product_id === traveler?.id)
     .sort((left, right) => String(left.variant_name).localeCompare(String(right.variant_name)));
@@ -221,7 +188,7 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   }));
   await uploadCsv(csvFile(download.suggestedFilename(), sampleCsv));
   await expect(result).toContainText('นำเข้า 0 สินค้า / 0 รายการสต็อก');
-  await expect(result.locator('li')).toHaveCount(7);
+  await expect(result.locator('li')).toHaveCount(4);
   await expect(result).toContainText('ข้ามสินค้าที่มีอยู่แล้ว: Traveler Acrylic Stand');
   await expect(result).toContainText('ข้อมูลและสต็อกเดิมไม่เปลี่ยน');
   const inventoryAfterRepeat = await service

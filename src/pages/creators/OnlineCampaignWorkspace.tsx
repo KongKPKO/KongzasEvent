@@ -641,7 +641,7 @@ export default function OnlineCampaignWorkspace() {
         onConfirm={() => { if (fulfillmentTarget) void actOnOrder(fulfillmentTarget.order, fulfillmentTarget.action); }}
       >
         {fulfillmentTarget && <div className="mt-3 max-h-[55vh] space-y-3 overflow-y-auto text-sm">
-          <ul className="rounded-xl bg-pink-50 p-3 text-gray-900">{fulfillmentTarget.order.items.map((item, index) => <li key={index} className="py-1">{item.name} {item.sku && <span className="text-gray-500">({item.sku})</span>} <strong>×{item.quantity}</strong></li>)}</ul>
+          <ul className="rounded-xl bg-pink-50 p-3 text-gray-900">{fulfillmentTarget.order.items.map((item, index) => <li key={index} className="py-1">{item.name} {item.sku && <span className="text-gray-500">({item.sku})</span>} <strong>×{item.quantity}</strong>{item.components?.map(component => <div key={component.product_id} className="pl-4 text-xs text-gray-600">{component.name} ×{component.quantity}</div>)}</li>)}</ul>
           <p className="whitespace-pre-line break-words">{fulfillmentTarget.order.customer_phone}<br />{fulfillmentTarget.action === 'ship' ? fulfillmentTarget.order.shipping_address : fulfillmentTarget.order.pickup_point?.name}</p>
           {fulfillmentTarget.action === 'ship' ? <>
             <label className="block">{language === 'th' ? 'ขนส่ง (ไม่บังคับ)' : 'Carrier (optional)'}<input disabled={orderBusy} value={carrier} onChange={event => setCarrier(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border p-3" /></label>
@@ -832,7 +832,9 @@ export default function OnlineCampaignWorkspace() {
                             </div>
                           </td>
                           <td className="px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
-                          {product.is_unlimited ? (
+                          {product.product_kind === 'bundle' ? (
+                            <td colSpan={3} className="px-2 py-2 text-center text-xs font-bold text-pink-800">{language === 'th' ? 'ใช้สต็อกส่วนประกอบในแคมเปญร่วมกับขายแยก' : 'Shares component stock in this campaign'}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${language === 'th' ? 'ชุดพร้อมขาย' : 'bundles available'}`}</div>}</td>
+                          ) : product.is_unlimited ? (
                             <td colSpan={3} className="px-2 py-2 text-center text-xs font-black text-gray-600">{t('catalogUnlimited')}</td>
                           ) : (
                             <>

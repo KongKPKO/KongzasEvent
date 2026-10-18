@@ -135,6 +135,7 @@ export interface PublicOrderReceipt {
 }
 
 export interface PublicPreorderItem {
+  components?: Array<{ product_id: string; name: string; quantity: number }>;
   product_id: string;
   name: string;
   quantity: number;

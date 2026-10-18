@@ -39,11 +39,9 @@ test('sample CSV imports metadata for every current product type', () => {
   expect(parsed.errors).toEqual([]);
   const result = parseProductCsv(parsed.data,artist);
   expect(result.issues).toEqual([]);
-  expect(result.families).toHaveLength(6);
-  expect(result.families.reduce((sum,f) => sum+f.variants.length,0)).toBe(7);
+  expect(result.families).toHaveLength(3);
+  expect(result.families.reduce((sum,f) => sum+f.variants.length,0)).toBe(4);
   expect(result.families.find((f) => f.parent.product_kind==='photo')?.parent.gallery_images).toHaveLength(5);
-  expect(result.families.find((f) => f.parent.product_kind==='bundle')?.parent.bundle_items?.length).toBeGreaterThan(0);
-  expect(result.families.find((f) => f.parent.product_kind==='preorder')?.parent.preorder_closes_at).toMatch(/Z$/);
 });
 test('CSV validation explains fields and rows in Thai', () => {
   expect(parseProductCsv(Array.from({length:2001}, () => row()), artist).issues[0].code).toBe('limit');
@@ -58,4 +56,8 @@ test('CSV keeps separate item galleries and validates the whole file before savi
   expect(result.issues).toEqual([]);
   expect(result.families[0].variants.map(item => item.variant_gallery_images)).toEqual([['a.jpg', 'b.jpg'], ['c.jpg']]);
   expect(parseProductCsv([row({ product_kind: 'photo', variant_gallery_images: '[123]' })], artist).families).toEqual([]);
+});
+
+test('CSV directs bundles and retired formats away from ordinary imports', () => {
+  for (const kind of ['bundle','preorder','service']) expect(parseProductCsv([row({product_kind:kind})],artist).issues.length).toBeGreaterThan(0);
 });

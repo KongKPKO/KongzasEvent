@@ -1,7 +1,13 @@
 export type ProductKind = 'single' | 'photo' | 'bundle' | 'preorder' | 'service';
 
 export interface BundleItem {
+  product_id?: string | null;
   name: string;
+  quantity: number;
+}
+
+export interface ProductBundleComponent {
+  product_id: string;
   quantity: number;
 }
 

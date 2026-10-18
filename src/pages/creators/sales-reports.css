@@ -35,3 +35,18 @@
 .sales-reports button:disabled { opacity: .5; cursor: not-allowed; }
 .sales-reports summary { min-height: 44px; }
 .sales-reports .text-gray-400 { color: var(--color-promotion-secondary); }
+
+.product-sales-table-wrap { overflow-x: auto; border: 1px solid var(--color-catalog-rule); border-radius: .875rem; }
+.product-sales-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: .875rem; }
+.product-sales-table th { padding: .75rem 1rem; background: var(--color-catalog-muted); color: var(--color-promotion-secondary); font-size: .75rem; font-weight: 800; text-align: left; white-space: nowrap; }
+.product-sales-table td { padding: .875rem 1rem; border-top: 1px solid var(--color-catalog-rule); vertical-align: middle; }
+.product-sales-table .numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.product-sales-parent-row { background: var(--color-catalog-paper); }
+.product-sales-parent-row:hover { background: color-mix(in srgb, var(--color-catalog-muted) 60%, white); }
+.product-sales-variant-row { background: color-mix(in srgb, var(--color-promotion-soft) 45%, white); }
+.product-sales-variant-row td { padding-top: .7rem; padding-bottom: .7rem; }
+.product-sales-breakdown .report-icon { transition: background-color .15s ease; }
+.product-sales-breakdown .report-icon svg { transition: transform .15s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .product-sales-breakdown .report-icon, .product-sales-breakdown .report-icon svg { transition: none; }
+}

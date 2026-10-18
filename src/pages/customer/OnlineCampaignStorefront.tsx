@@ -18,7 +18,7 @@ import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { ProductGallery, ProductMedia, ProductPresentationSummary } from '../../components/menu/ProductPresentation';
-import { buildProductPresentationEntries, getProductImages, getProductPresentationKind, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
+import { buildProductPresentationEntries, getProductImages, getProductPriceRange, inheritProductPresentation, isProductPreorderClosed } from '../../utils/productPresentation';
 
 type CampaignDisplayProduct = CampaignProduct & PresentableProduct;
 const ALL_CATEGORIES = '__nireq_all_categories__';
@@ -217,8 +217,7 @@ export default function OnlineCampaignStorefront() {
         ? orderLimit
         : Math.min(available, orderLimit);
     const limitReached = quantityLimit !== null && quantity >= quantityLimit;
-    const kind = getProductPresentationKind(product);
-    const showStock = kind !== 'preorder' && kind !== 'service';
+    const showStock = true;
 
     return (
       <article key={product.product_id} className="shop-product" aria-label={product.name}>

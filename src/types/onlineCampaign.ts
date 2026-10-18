@@ -103,6 +103,7 @@ export interface PublicOnlineCampaign extends OnlineCampaignSummary {
 }
 
 export interface CampaignOrderItem {
+  components?: Array<{ product_id: string; name: string; quantity: number }>;
   product_id?: string;
   name: string;
   sku?: string | null;

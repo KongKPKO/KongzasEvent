@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import PromotionChoicePicker from '../promotions/PromotionChoicePicker';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff } from 'lucide-react';
+import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff, ReceiptText } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
@@ -16,6 +16,7 @@ import { uiText, useI18n } from '../../i18n';
 import type { ProductPresentationFields, ProductVariantFields } from '../../types/productPresentation';
 import { ProductMedia } from '../menu/ProductPresentation';
 import { buildProductPresentationEntries, getProductImages, getProductPriceRange } from '../../utils/productPresentation';
+import PosSalesHistory from './PosSalesHistory';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
 // "status unknown."  Each individual fetch already has a 15 s per-request
@@ -178,6 +179,7 @@ export default function POSPanel({
     const [promotionChoices, setPromotionChoices] = useState<PromotionChoice[]>([]);
     const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isSalesHistoryOpen, setIsSalesHistoryOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [orderLoading, setOrderLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
@@ -193,6 +195,7 @@ export default function POSPanel({
     const [paymentUnknownEventId, setPaymentUnknownEventId] = useState<string | null>(null);
 
     const selectedQueueIdRef = useRef<string | null>(null);
+    const catalogRequestRef = useRef(0);
     const productsRef = useRef<Product[]>([]);
     const cartRef = useRef<CartItem[]>([]);
     const paymentInFlightRef = useRef(false);
@@ -220,6 +223,7 @@ export default function POSPanel({
     const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
     const paymentDialogRef = useRef<HTMLDivElement>(null);
     const cartDialogRef = useRef<HTMLDivElement>(null);
+    const closeSalesHistory = useCallback(() => setIsSalesHistoryOpen(false), []);
     useEffect(() => {
         const dialog = isPaymentModalOpen ? paymentDialogRef.current : isMobileCartOpen ? cartDialogRef.current : null;
         if (!dialog) return;
@@ -260,14 +264,16 @@ export default function POSPanel({
     }, [pinnedProductIds]);
 
     const fetchProducts = useCallback(async () => {
+        const request = ++catalogRequestRef.current;
         if (!canUsePos || !activeEvent?.id) {
             setProducts([]);
             return;
         }
 
-        const { data, error } = await supabase.rpc('list_event_products_for_phase', { p_phase: 'live',
-            p_event_id: activeEvent.id,
-        });
+        const { data, error } = currentOrderId
+            ? await supabase.rpc('get_pos_catalog_for_order', { p_event_id: activeEvent.id, p_order_id: currentOrderId })
+            : await supabase.rpc('list_event_products_for_phase', { p_phase: 'live', p_event_id: activeEvent.id });
+        if (request !== catalogRequestRef.current) return;
 
         if (error) {
             console.error('[POS] Error fetching event catalog:', error);
@@ -276,7 +282,7 @@ export default function POSPanel({
         }
 
         if (data) setProducts((data as Product[]).map((product) => normalizeProductRecord(product)));
-    }, [activeEvent?.id, canUsePos]);
+    }, [activeEvent?.id, canUsePos, currentOrderId]);
 
     const fetchPromotions = useCallback(async () => {
         if (!canUsePos) {
@@ -630,10 +636,12 @@ export default function POSPanel({
         if (!activeEvent?.id || cart.length === 0) { setPromotionQuote(null); return; }
         let active = true;
         setPromotionQuoteLoading(true);
+        setPromotionQuote(null);
         const timer = window.setTimeout(() => {
             void quotePromotions({
                 eventId: activeEvent.id,
                 eventPhase: 'live',
+                orderId: currentOrderId,
                 items: cart.map((item) => ({ product_id: item.product.id, quantity: item.quantity })),
                 rewardChoices,
                 promotionChoices,
@@ -642,7 +650,7 @@ export default function POSPanel({
               .finally(() => { if (active) setPromotionQuoteLoading(false); });
         }, 100);
         return () => { active = false; window.clearTimeout(timer); };
-    }, [activeEvent?.id, cart, promotionChoices, rewardChoices]);
+    }, [activeEvent?.id, cart, currentOrderId, promotionChoices, rewardChoices]);
     const promoInsights = pricing.insights;
     const highlightedCounts = useMemo(() => ({
         promo: products.filter((product) => getPromotionBadgesForProduct(product, promotions).length > 0).length,
@@ -1390,6 +1398,15 @@ export default function POSPanel({
                                 </div>
                             </div>
                             <div className="hidden md:flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={!activeEvent}
+                                    onClick={() => setIsSalesHistoryOpen(true)}
+                                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700 transition-colors hover:border-pink-200 hover:bg-pink-50 hover:text-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <ReceiptText size={17} aria-hidden="true" />
+                                    {language === 'th' ? 'ประวัติการขาย' : 'Sales history'}
+                                </button>
                                 {hasActiveProductFilters && (
                                     <button
                                         onClick={clearProductFilters}
@@ -1409,6 +1426,15 @@ export default function POSPanel({
                                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 text-sm"
                                 aria-label={uiText(language, 'Search products')}
                             />
+                            <button
+                                type="button"
+                                disabled={!activeEvent}
+                                onClick={() => setIsSalesHistoryOpen(true)}
+                                className="md:hidden flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-700 disabled:opacity-50"
+                                aria-label={language === 'th' ? 'ประวัติการขาย' : 'Sales history'}
+                            >
+                                <ReceiptText size={18} aria-hidden="true" />
+                            </button>
                             <button type="button" className="md:hidden shrink-0 rounded-lg border border-pink-200 px-3 text-xs font-bold text-pink-700" aria-expanded={mobileFiltersOpen} onClick={() => setMobileFiltersOpen(open => !open)}>{language === 'th' ? 'ตัวกรอง' : 'Filters'}{hasActiveProductFilters ? ' •' : ''}</button>
                             <select
                                 value={sortBy}
@@ -1629,6 +1655,16 @@ export default function POSPanel({
                         </button>
                     </div>
                 </div>
+            )}
+
+            {activeEvent && (
+                <PosSalesHistory
+                    open={isSalesHistoryOpen}
+                    eventId={activeEvent.id}
+                    eventName={activeEvent.event_name}
+                    eventTimeZone={activeEvent.event_timezone}
+                    onClose={closeSalesHistory}
+                />
             )}
         </div>
     );

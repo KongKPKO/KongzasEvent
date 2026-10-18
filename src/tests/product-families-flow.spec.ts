@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
@@ -39,6 +42,7 @@ test.afterAll(async () => {
   must(await service.from('event_products').delete().eq('event_id', eventId));
   must(await service.from('queues').delete().eq('event_id', eventId));
   must(await service.from('events').delete().eq('id', eventId));
+  must(await service.from('products').delete().eq('artist_id', artistId).eq('product_kind', 'bundle'));
   must(await service.from('products').delete().eq('artist_id', artistId));
   must(await service.from('product_parents').delete().eq('artist_id', artistId));
   must(await service.from('artists').delete().eq('id', artistId));
@@ -127,7 +131,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await expect(editor).toBeVisible();
   await editor.getByLabel('Product name *', { exact: true }).fill(name);
   await editor.getByLabel('Base price *', { exact: true }).fill('120');
-  await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
+  await editor.getByLabel('Product format', { exact: true }).selectOption('photo');
   // Stable local images exercise actual media layout without remote assets.
   const origin = new URL(page.url()).origin;
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
@@ -295,7 +299,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await expect(itemName).not.toHaveAttribute('required');
   await expect(editor.getByText('(For one item, leave blank to use the product name)', { exact: true })).toBeVisible();
 
-  await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
+  await editor.getByLabel('Product format', { exact: true }).selectOption('photo');
   await editor.locator('details').filter({ has: page.getByLabel('Shared photo gallery', { exact: true }) }).locator('summary').first().click();
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill(gallery);
   await editor.getByRole('button', { name: 'Do not track stock', exact: true }).click();
@@ -317,7 +321,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await expect.poll(() => card.locator('img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
   await card.getByRole('button', { name: `Edit ${photoName}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: `Edit ${photoName}`, exact: true });
-  await expect(edit.getByLabel('Product type', { exact: true })).toHaveValue('photo');
+  await expect(edit.getByLabel('Product format', { exact: true })).toHaveValue('photo');
   await expect(edit.getByLabel('Item name', { exact: true })).toHaveValue('');
   await expect(edit.getByLabel('Shared photo gallery', { exact: true })).toHaveValue(gallery);
   await edit.getByRole('button', { name: 'Save family', exact: true }).click();
@@ -341,7 +345,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await editor.getByLabel('Category', { exact: true }).fill('Photoset');
   await editor.getByLabel('Tags', { exact: true }).fill('Genshin Impact');
   await editor.getByLabel('Base price *', { exact: true }).fill('150');
-  await editor.getByLabel('Product type', { exact: true }).selectOption('photo');
+  await editor.getByLabel('Product format', { exact: true }).selectOption('photo');
   await editor.getByLabel('Item name', { exact: true }).fill('Ronova');
   await editor.getByRole('button', { name: 'Add item', exact: true }).last().click();
   await editor.getByLabel('Item name', { exact: true }).nth(1).fill('Raiden');
@@ -445,4 +449,99 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.screenshot({ path: '../customer-checkout-photoset-local.png' });
   await checkout.getByRole('button', { name: 'Close', exact: true }).click();
 
+});
+
+
+test('creates a component bundle separately with quantities and no item stock editor', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'en'));
+  const login = new LoginPage(page);
+  await login.goto(); await login.login(email, password);
+  await expect(page).toHaveURL(/manage-events/, { timeout: 20000 });
+  await page.goto('/manage-products');
+  await page.getByRole('button', { name: 'Create bundle', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create bundle', exact: true });
+  await expect(dialog.getByText('Items under this product', { exact: true })).toHaveCount(0);
+  await dialog.getByLabel('Bundle name', { exact: true }).fill('Shared bundle test');
+  await dialog.getByLabel('Bundle price', { exact: true }).fill('250');
+  await dialog.getByLabel('Search products to add').fill('Design 1');
+  await dialog.getByRole('button', { name: 'Design 1', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Design 1', exact: true }).click();
+  await expect(dialog.getByLabel('Quantity per bundle Design 1', { exact: true })).toHaveValue('2');
+  await expect(dialog.getByText('This item uses 2 units per bundle.', { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await dialog.getByRole('button', { name: 'Save bundle', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const parent = await service.from('product_parents').select('id,bundle_items').eq('artist_id', artistId).eq('name','Shared bundle test').single().throwOnError();
+  expect(parent.data!.bundle_items).toHaveLength(1);
+  expect(parent.data!.bundle_items[0]).toMatchObject({quantity:2,name:'Design 1'});
+  const item = await service.from('products').select('is_unlimited,stock_total').eq('parent_product_id',parent.data!.id).single().throwOnError();
+  expect(item.data).toMatchObject({is_unlimited:true,stock_total:null});
+});
+
+// Competing cart checkouts must share a bundle's component allocation.
+test('bundle and individual checkouts cannot both acquire the last component', async () => {
+  const { createClient } = await import('@supabase/supabase-js');
+  const env = resolveSupabaseTestEnv();
+  const owner = createClient(env.url, env.anonKey, { auth: { persistSession: false } });
+  must(await owner.auth.signInWithPassword({ email, password }));
+  const componentId = randomUUID(), campaignId = randomUUID(), secondCampaignId = randomUUID();
+  let parentId = '', bundleId = '';
+  const created: string[] = [];
+  try {
+    must(await service.from('products').insert({ id: componentId, artist_id: artistId, name: 'Race component', price: 100, stock_total: 1, is_unlimited: false, status: 'enable' }));
+    const saved = await owner.rpc('save_product_bundle', { p_parent: { artist_id: artistId, name: 'Race bundle', base_price: 100, currency: 'THB' }, p_components: [{ product_id: componentId, quantity: 1 }] });
+    must(saved); parentId = saved.data;
+    const item = await service.from('products').select('id').eq('parent_product_id', parentId).single();
+    must(item); bundleId = item.data!.id;
+    must(await service.from('online_campaigns').insert({ id: campaignId, artist_id: artistId, name: 'Bundle race', slug: `bundle-race-${runId}`, opens_at: new Date(Date.now() - 3600000).toISOString(), closes_at: new Date(Date.now() + 86400000).toISOString(), publication_status: 'published', shipping_enabled: true }));
+    must(await service.from('campaign_payment_methods').insert({ campaign_id: campaignId, artist_id: artistId, method_type: 'promptpay', promptpay_id: '0000000000' }));
+    must(await service.from('online_campaign_products').insert([
+      { campaign_id: campaignId, artist_id: artistId, product_id: componentId, stock_total: 1, is_unlimited: false, is_enabled: true },
+      { campaign_id: campaignId, artist_id: artistId, product_id: bundleId, stock_total: null, is_unlimited: true, is_enabled: true },
+    ]));
+    for (let round = 0; round < 3; round++) {
+      const outcomes = await Promise.all([componentId, bundleId].map(product_id => owner.rpc('create_online_campaign_order', { p_campaign_id: campaignId, p_items: [{ product_id, quantity: 1 }], p_fulfillment_method: 'shipping', p_pickup_point_id: null, p_customer_name: 'Race buyer', p_customer_email: 'bundle-race@example.local', p_customer_phone: '0800000000', p_shipping_address: 'Local fixture address', p_customer_note: '', p_client_request_id: randomUUID() })));
+      const successes = outcomes.filter(outcome => !outcome.error);
+      expect(successes, outcomes.map(outcome => outcome.error?.message || 'created').join(', ')).toHaveLength(1);
+      const id = successes[0].data[0].order_id; created.push(id);
+      const stock = await service.from('online_campaign_products').select('stock_reserved,stock_sold').eq('campaign_id', campaignId).eq('product_id', componentId).single();
+      must(stock); expect(stock.data).toMatchObject({ stock_reserved: 1, stock_sold: 0 });
+      const projectId = readFileSync(resolve(process.env.SUPABASE_WORKDIR || '.', 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
+      if (!projectId || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('Invalid disposable fixture identity');
+      execFileSync('docker', ['exec', `supabase_db_${projectId}`, 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', `update public.order_payments set stock_hold_expires_at=now()-interval '1 second' where order_id='${id}'; select private.expire_online_campaign_hold('${id}'); select private.expire_online_campaign_hold('${id}');`], { stdio: 'ignore' });
+      const released = await service.from('online_campaign_products').select('stock_reserved').eq('campaign_id', campaignId).eq('product_id', componentId).single();
+      must(released); expect(released.data!.stock_reserved).toBe(0);
+    }
+    // Different channels do not serialize on the same campaign row. Their cart
+    // locks must still agree when one sells a component plus its bundle.
+    must(await service.from('products').update({ stock_total: 3 }).eq('id', componentId));
+    must(await service.from('online_campaign_products').update({ stock_total: 2 }).eq('campaign_id', campaignId).eq('product_id', componentId));
+    must(await service.from('online_campaigns').insert({ id: secondCampaignId, artist_id: artistId, name: 'Second bundle channel', slug: `second-bundle-race-${runId}`, opens_at: new Date(Date.now() - 3600000).toISOString(), closes_at: new Date(Date.now() + 86400000).toISOString(), publication_status: 'published', shipping_enabled: true }));
+    must(await service.from('campaign_payment_methods').insert({ campaign_id: secondCampaignId, artist_id: artistId, method_type: 'promptpay', promptpay_id: '0000000000' }));
+    must(await service.from('online_campaign_products').insert([
+      { campaign_id: secondCampaignId, artist_id: artistId, product_id: componentId, stock_total: 1, is_unlimited: false, is_enabled: true },
+      { campaign_id: secondCampaignId, artist_id: artistId, product_id: bundleId, stock_total: null, is_unlimited: true, is_enabled: true },
+    ]));
+    const crossChannel = await Promise.all([
+      { campaign: campaignId, items: [{ product_id: componentId, quantity: 1 }, { product_id: bundleId, quantity: 1 }] },
+      { campaign: secondCampaignId, items: [{ product_id: bundleId, quantity: 1 }] },
+    ].map(cart => owner.rpc('create_online_campaign_order', { p_campaign_id: cart.campaign, p_items: cart.items, p_fulfillment_method: 'shipping', p_pickup_point_id: null, p_customer_name: 'Parallel buyer', p_customer_email: 'parallel@example.local', p_customer_phone: '0800000000', p_shipping_address: 'Local fixture address', p_customer_note: '', p_client_request_id: randomUUID() })));
+    for (const outcome of crossChannel) { must(outcome); created.push(outcome.data[0].order_id); }
+    const held = await service.from('online_campaign_products').select('stock_reserved').in('campaign_id', [campaignId, secondCampaignId]).eq('product_id', componentId);
+    must(held); expect(held.data!.reduce((sum, row) => sum + row.stock_reserved, 0)).toBe(3);
+  } finally {
+    if (created.length) {
+      must(await service.from('order_payments').update({ payment_status: 'payment_expired' }).in('order_id', created));
+      must(await service.from('order_items').delete().in('order_id', created));
+      must(await service.from('order_payments').delete().in('order_id', created));
+      must(await service.from('orders').delete().in('id', created));
+    }
+    must(await service.from('online_campaign_products').delete().in('campaign_id', [campaignId, secondCampaignId]));
+    must(await service.from('online_campaigns').delete().in('id', [campaignId, secondCampaignId]));
+    if (bundleId) must(await service.from('products').delete().eq('id', bundleId));
+    if (parentId) must(await service.from('product_parents').delete().eq('id', parentId));
+    must(await service.from('products').delete().eq('id', componentId));
+    await owner.auth.signOut();
+  }
 });

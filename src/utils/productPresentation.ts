@@ -23,6 +23,7 @@ export function getBundleItemCount(items: ProductBundleItem[] | null | undefined
 }
 
 export function getProductPresentationKind(product: PresentableProduct) {
+  if (product.product_kind === 'preorder' || product.product_kind === 'service') return 'single' as const;
   if (product.product_kind) return product.product_kind;
   if ((product.variant_gallery_images || []).length > 0 || (product.gallery_images || []).length > 0) return 'photo' as const;
   return 'single' as const;
@@ -103,6 +104,5 @@ export function inheritProductPresentation<T extends PresentableProduct>(product
   } as T;
 }
 
-export const isProductPreorderClosed = (product: PresentableProduct, now = Date.now()) =>
-  getProductPresentationKind(product) === 'preorder' && Boolean(product.preorder_closes_at)
-  && new Date(product.preorder_closes_at || '').getTime() <= now;
+// Ordering windows are owned by the Event/Campaign, including legacy products.
+export const isProductPreorderClosed = (_product: PresentableProduct, _now = Date.now()) => false;

@@ -1,6 +1,7 @@
 /* Hallmark · macrostructure: Workbench · tone: practical · anchor hue: NireQ pink
  * Philosophy 4 · Hierarchy 4 · Execution 4 · Specificity 4 · Restraint 5 · Variety 3
  * Existing NireQ tokens, typography and event navigation preserved. */
+@import '../../../tokens.css';
 .sales-reports { color: var(--color-catalog-ink); }
 .sales-reports :is(button, input, select) { min-height: 44px; }
 .sales-reports :is(button, input, select, summary):focus-visible { outline: 2px solid var(--color-catalog-accent); outline-offset: 3px; }

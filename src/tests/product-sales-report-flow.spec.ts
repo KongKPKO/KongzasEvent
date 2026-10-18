@@ -68,6 +68,18 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await page.route('**/rest/v1/orders?**', route => route.abort());
   await page.goto(`/manage-events/${eventId}/dashboard?from=2026-10-17&to=2026-10-17`);
 
+  const metrics = page.locator('.report-metrics').first().locator(':scope > div');
+  await expect(metrics).toHaveCount(4);
+  const metricAppearance = () => metrics.first().evaluate(element => {
+    const css = getComputedStyle(element);
+    return { padding: css.paddingLeft, background: css.backgroundColor, border: css.borderTopColor, accent: css.borderTopWidth };
+  });
+  await expect.poll(metricAppearance).toEqual({ padding: '16px', background: 'rgb(255, 255, 255)', border: 'rgb(190, 24, 93)', accent: '3px' });
+  const queuePanel = page.locator('details.report-panel').first();
+  await queuePanel.locator('summary').click();
+  await expect.poll(() => queuePanel.evaluate(element => ({ padding: getComputedStyle(element).paddingLeft, background: getComputedStyle(element).backgroundColor }))).toEqual({ padding: '24px', background: 'rgb(255, 255, 255)' });
+  await expect(page.locator('.report-metrics').nth(1).locator(':scope > div').first()).toHaveCSS('padding-left', '16px');
+  await page.screenshot({ path: testInfo.outputPath('sales-summary-desktop.png'), fullPage: true });
   const report = page.locator('.product-sales-breakdown');
   await expect(report.getByRole('heading', { name: 'Product sales breakdown' })).toBeVisible();
   await expect(report.getByText('1 product found')).toBeVisible();
@@ -116,6 +128,8 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await page.screenshot({ path: testInfo.outputPath('product-sales-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(report.locator('article')).toBeVisible();
+  await expect(metrics.first()).toHaveCSS('padding-left', '16px');
+  await expect(queuePanel).toHaveCSS('padding-left', '16px');
   await report.locator('article').getByRole('button', { name: 'View all 6 images of Original set' }).click();
   await expect(gallery).toBeVisible();
   expect(await gallery.evaluate(element => element.getBoundingClientRect().width)).toBeLessThanOrEqual(390);
@@ -128,4 +142,11 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await page.reload();
   await expect(report.getByRole('status').filter({ hasText: 'Additional product images could not load' })).toBeVisible();
   await expect(report.locator('article')).toContainText('270');
+  await page.unroute('**/rest/v1/orders?**');
+  await page.goto(`/manage-events/${eventId}/history`);
+  const totals = page.getByRole('region', { name: 'Filtered totals' });
+  await expect(totals).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(totals).toHaveCSS('padding-left', '16px');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(totals).toHaveCSS('padding-left', '24px');
 });

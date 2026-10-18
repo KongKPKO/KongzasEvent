@@ -1,8 +1,12 @@
+import { supabase } from '../supabaseClient';
+import { getProductImages } from '../utils/productPresentation';
+
 export type ProductSalesSort = 'name' | 'quantity' | 'gross' | 'discount' | 'net';
 export type ProductSalesDirection = 'asc' | 'desc';
 
 export interface ProductSalesVariant {
   product_id: string;
+  images?: string[];
   name: string;
   variant_name: string;
   sku: string;
@@ -18,6 +22,7 @@ export interface ProductSalesRow {
   name: string;
   category: string;
   image_url: string | null;
+  images?: string[];
   currency: string;
   quantity: number;
   gross: number;
@@ -82,6 +87,24 @@ export function normalizeProductSalesReport(value: unknown): ProductSalesReportR
     timezone: String(source.timezone || 'Asia/Bangkok'),
     refund_allocation_available: false,
   };
+}
+
+// Fetch only media for this report page; CSV export needs no catalog images.
+export async function loadProductSalesImages(rows: ProductSalesRow[]): Promise<ProductSalesRow[]> {
+  const ids = [...new Set(rows.flatMap(row => row.variants.map(variant => variant.product_id)).filter(Boolean))];
+  const media = new Map<string, string[]>();
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const { data, error } = await supabase.from('products')
+      .select('id, name, price, image_url, product_kind, gallery_images, variant_gallery_images')
+      .in('id', ids.slice(offset, offset + 100));
+    if (error) throw error;
+    for (const product of data || []) media.set(product.id, getProductImages(product));
+  }
+  return rows.map(row => {
+    const variants = row.variants.map(variant => ({ ...variant, images: media.get(variant.product_id) || [] }));
+    const images = [...new Set(variants.flatMap(variant => variant.images))];
+    return { ...row, variants, images: images.length || variants.some(variant => media.has(variant.product_id)) ? images : row.image_url ? [row.image_url] : [] };
+  });
 }
 
 const csvCell = (value: string | number) => {

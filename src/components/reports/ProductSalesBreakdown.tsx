@@ -1,15 +1,17 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Download, PackageSearch, Search } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Download, PackageSearch, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import {
   buildProductSalesCsv,
   downloadUtf8Csv,
+  loadProductSalesImages,
   normalizeProductSalesReport,
   type ProductSalesDirection,
   type ProductSalesReportResult,
   type ProductSalesRow,
   type ProductSalesSort,
 } from '../../lib/productSalesReport';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { supabase } from '../../supabaseClient';
 import { formatPrice } from '../../utils/currency';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -74,6 +76,8 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [gallery, setGallery] = useState<{ name: string; images: string[] } | null>(null);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -87,10 +91,20 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
     let active = true;
     setLoading(true);
     setError(false);
+    setImageError(false);
+    setGallery(null);
     void requestReport({ eventId, from, to, search, category, sort, direction, page, pageSize: PAGE_SIZE, currency })
-      .then((next) => {
+      .then(async (next) => {
         if (!active) return;
         setResult(next);
+        try {
+          const rows = await loadProductSalesImages(next.rows);
+          if (active) setResult({ ...next, rows });
+        } catch (imageLoadError) {
+          console.error('[ProductSalesBreakdown] images failed:', imageLoadError);
+          if (active) setImageError(true);
+        }
+        if (!active) return;
         if (category && !next.categories.includes(category)) setCategory('');
         if (next.total_count > 0 && page > Math.ceil(next.total_count / PAGE_SIZE)) setPage(1);
       })
@@ -169,7 +183,7 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
         {th ? 'ค้นหาชื่อสินค้า หรือ SKU' : 'Search product or SKU'}
         <span className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} aria-hidden="true" />
-          <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="pl-10" placeholder={th ? 'เช่น 2-Shot หรือ SKU-001' : 'e.g. 2-Shot or SKU-001'} />
+          <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="report-search-input" placeholder={th ? 'เช่น 2-Shot หรือ SKU-001' : 'e.g. 2-Shot or SKU-001'} />
         </span>
       </label>
       <label className="flex-1 basis-48">
@@ -196,6 +210,8 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
       {visibleRange && <span>{th ? 'แสดง' : 'Showing'} {visibleRange}</span>}
     </div>
 
+    {imageError && <p role="status" className="mt-3 text-sm text-amber-800">{th ? 'โหลดรูปสินค้าเพิ่มเติมไม่สำเร็จ ลองโหลดหน้านี้ใหม่ได้ โดยยอดขายยังแสดงตามเดิม' : 'Additional product images could not load. Reload to retry; sales figures are still available.'}</p>}
+    {gallery && <ReportGallery name={gallery.name} images={gallery.images} th={th} onClose={() => setGallery(null)} />}
     {error ? <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">{th ? 'โหลดรายงานรายสินค้าไม่สำเร็จ กรุณาลองใหม่' : 'Could not load the product sales report. Please retry.'}</div>
       : !loading && result.rows.length === 0 ? <div className="mt-4 grid min-h-40 place-items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
         <div><PackageSearch className="mx-auto mb-2 text-gray-400" aria-hidden="true" /><p className="font-bold text-gray-700">{th ? 'ไม่พบยอดขายสินค้าตามตัวกรองนี้' : 'No product sales match these filters'}</p><p className="mt-1 text-sm text-gray-500">{th ? 'ลองเปลี่ยนคำค้น หมวดหมู่ หรือช่วงวันที่' : 'Try a different search, category or date range.'}</p></div>
@@ -211,10 +227,10 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
               <th scope="col" className="numeric">{th ? 'คืนเงิน*' : 'Refund*'}</th>
               <th scope="col" className="numeric">{th ? 'ยอดสุทธิ' : 'Net'}</th>
             </tr></thead>
-            <tbody>{result.rows.map((row) => <DesktopRows key={row.family_id} row={row} expanded={expanded.has(row.family_id)} onToggle={() => toggleExpanded(row.family_id)} th={th} categoryLabel={categoryLabel} />)}</tbody>
+            <tbody>{result.rows.map((row) => <DesktopRows key={row.family_id} row={row} expanded={expanded.has(row.family_id)} onToggle={() => toggleExpanded(row.family_id)} th={th} categoryLabel={categoryLabel} onGallery={setGallery} />)}</tbody>
           </table>
         </div>
-        <div className="mt-4 space-y-3 md:hidden">{result.rows.map((row) => <MobileRow key={row.family_id} row={row} expanded={expanded.has(row.family_id)} onToggle={() => toggleExpanded(row.family_id)} th={th} categoryLabel={categoryLabel} />)}</div>
+        <div className="mt-4 space-y-3 md:hidden">{result.rows.map((row) => <MobileRow key={row.family_id} row={row} expanded={expanded.has(row.family_id)} onToggle={() => toggleExpanded(row.family_id)} th={th} categoryLabel={categoryLabel} onGallery={setGallery} />)}</div>
       </>}
 
     {totalPages > 1 && <nav className="mt-5 flex items-center justify-between gap-3" aria-label={th ? 'หน้ารายงานยอดขายรายสินค้า' : 'Product sales report pages'}>
@@ -231,34 +247,65 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
   </section>;
 }
 
-function ProductIdentity({ row, compact = false }: { row: ProductSalesRow; compact?: boolean }) {
+type OpenGallery = (gallery: { name: string; images: string[] }) => void;
+
+function ReportImage({ src, name = '' }: { src: string; name?: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? <span className="grid h-full w-full place-items-center bg-gray-50 text-gray-400"><PackageSearch size={18} aria-hidden="true" /></span>
+    : <img src={getMenuImageUrl(src)} alt={name} loading="lazy" decoding="async" onError={() => setFailed(true)} className="h-full w-full object-contain" />;
+}
+
+function ImagePreview({ images, name, th, onGallery }: { images: string[]; name: string; th: boolean; onGallery: OpenGallery }) {
+  if (!images.length) return <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gray-50 text-gray-300"><PackageSearch size={18} aria-hidden="true" /></span>;
+  return <button type="button" className="report-image-preview" onClick={() => onGallery({ name, images })} aria-label={th ? `ดูรูปของ ${name} ทั้งหมด ${images.length} รูป` : `View all ${images.length} images of ${name}`}>
+    <span className={`grid h-full w-full gap-px ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} ${images.length > 2 ? 'grid-rows-2' : ''}`}>
+      {images.slice(0, 4).map(image => <span key={image} className="min-h-0 overflow-hidden"><ReportImage src={image} /></span>)}
+    </span>
+    {images.length > 4 && <span className="absolute bottom-0 right-0 rounded-tl bg-gray-900 px-1 text-[10px] font-bold text-white">+{images.length - 4}</span>}
+  </button>;
+}
+
+function ReportGallery({ images, name, th, onClose }: { images: string[]; name: string; th: boolean; onClose: () => void }) {
+  const [selected, setSelected] = useState(0);
+  const dialog = useDialogFocus<HTMLDialogElement>(true, () => dismiss());
+  const dismiss = () => { dialog.current?.close(); onClose(); };
+  useEffect(() => { dialog.current?.showModal(); }, [dialog]);
+  const move = (delta: number) => setSelected(current => (current + delta + images.length) % images.length);
+  return <dialog ref={dialog} className="report-image-dialog" aria-label={th ? `รูปสินค้า ${name}` : `Product images: ${name}`} onCancel={event => { event.preventDefault(); dismiss(); }} onClick={event => { if (event.target === event.currentTarget) dismiss(); }} onKeyDown={event => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); move(event.key === 'ArrowRight' ? 1 : -1); }
+  }}>
+    <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4"><h3 className="min-w-0 break-words font-bold">{name}</h3><button type="button" className="report-icon shrink-0" onClick={dismiss} aria-label={th ? 'ปิดรูปสินค้า' : 'Close product images'}><X size={20} /></button></div>
+    <div className="report-image-stage"><ReportImage key={images[selected]} src={images[selected]} name={`${name} ${selected + 1}`} /></div>
+    <div className="flex items-center justify-between gap-3 p-4"><button type="button" className="report-icon" disabled={images.length < 2} onClick={() => move(-1)} aria-label={th ? 'รูปก่อนหน้า' : 'Previous image'}><ChevronLeft size={20} /></button><span aria-live="polite">{selected + 1} / {images.length}</span><button type="button" className="report-icon" disabled={images.length < 2} onClick={() => move(1)} aria-label={th ? 'รูปถัดไป' : 'Next image'}><ChevronRight size={20} /></button></div>
+  </dialog>;
+}
+
+function ProductIdentity({ row, th, onGallery }: { row: ProductSalesRow; th: boolean; onGallery: OpenGallery }) {
   return <div className="flex min-w-0 items-center gap-3">
-    <div className={`${compact ? 'h-10 w-10' : 'h-12 w-12'} shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50`}>
-      {row.image_url ? <img src={getMenuImageUrl(row.image_url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-gray-300"><PackageSearch size={18} aria-hidden="true" /></div>}
-    </div>
+    <ImagePreview images={row.images || (row.image_url ? [row.image_url] : [])} name={row.name} th={th} onGallery={onGallery} />
     <div className="min-w-0"><div className="break-words font-black text-gray-900">{row.name}</div>{row.has_variants && <div className="mt-0.5 text-xs text-gray-500">{row.variants.length} SKU</div>}</div>
   </div>;
 }
 
-function DesktopRows({ row, expanded, onToggle, th, categoryLabel }: { row: ProductSalesRow; expanded: boolean; onToggle: () => void; th: boolean; categoryLabel: (value: string) => string }) {
+function DesktopRows({ row, expanded, onToggle, th, categoryLabel, onGallery }: { row: ProductSalesRow; expanded: boolean; onToggle: () => void; th: boolean; categoryLabel: (value: string) => string; onGallery: OpenGallery }) {
   const detailId = `product-sales-${row.family_id}`;
   return <>
     <tr className="product-sales-parent-row">
-      <td><div className="flex items-center gap-2">{row.has_variants ? <button type="button" className="report-icon shrink-0" aria-expanded={expanded} aria-controls={detailId} onClick={onToggle} aria-label={expanded ? (th ? `ซ่อนตัวเลือกของ ${row.name}` : `Collapse ${row.name} variants`) : (th ? `ดูตัวเลือกของ ${row.name}` : `Expand ${row.name} variants`)}><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button> : <span className="w-11 shrink-0" />}<ProductIdentity row={row} /></div></td>
+      <td><div className="flex items-center gap-2">{row.has_variants ? <button type="button" className="report-icon shrink-0" aria-expanded={expanded} aria-controls={detailId} onClick={onToggle} aria-label={expanded ? (th ? `ซ่อนตัวเลือกของ ${row.name}` : `Collapse ${row.name} variants`) : (th ? `ดูตัวเลือกของ ${row.name}` : `Expand ${row.name} variants`)}><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button> : <span className="w-11 shrink-0" />}<ProductIdentity row={row} th={th} onGallery={onGallery} /></div></td>
       <td>{categoryLabel(row.category)}</td><td className="numeric font-bold">{row.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(row.gross, row.currency)}</td><td className="numeric">{formatPrice(row.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-black">{formatPrice(row.net, row.currency)}</td>
     </tr>
     {expanded && row.has_variants && row.variants.map((variant, index) => <tr id={index === 0 ? detailId : undefined} key={variant.product_id} className="product-sales-variant-row">
-      <td><div className="pl-14"><div className="font-bold text-gray-800">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</div><div className="mt-0.5 text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div></td>
+      <td><div className="flex items-center gap-3 pl-14"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><div className="font-bold text-gray-800">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</div><div className="mt-0.5 text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div></div></td>
       <td>{categoryLabel(row.category)}</td><td className="numeric">{variant.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(variant.gross, row.currency)}</td><td className="numeric">{formatPrice(variant.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-bold">{formatPrice(variant.net, row.currency)}</td>
     </tr>)}
   </>;
 }
 
-function MobileRow({ row, expanded, onToggle, th, categoryLabel }: { row: ProductSalesRow; expanded: boolean; onToggle: () => void; th: boolean; categoryLabel: (value: string) => string }) {
+function MobileRow({ row, expanded, onToggle, th, categoryLabel, onGallery }: { row: ProductSalesRow; expanded: boolean; onToggle: () => void; th: boolean; categoryLabel: (value: string) => string; onGallery: OpenGallery }) {
   return <article className="rounded-xl border border-gray-200 bg-white p-4">
-    <div className="flex items-start justify-between gap-3"><ProductIdentity row={row} compact /><div className="shrink-0 text-right"><div className="text-xs text-gray-500">{th ? 'ยอดสุทธิ' : 'Net'}</div><div className="font-black text-gray-900">{formatPrice(row.net, row.currency)}</div></div></div>
+    <div className="flex items-start justify-between gap-3"><ProductIdentity row={row} th={th} onGallery={onGallery} /><div className="shrink-0 text-right"><div className="text-xs text-gray-500">{th ? 'ยอดสุทธิ' : 'Net'}</div><div className="font-black text-gray-900">{formatPrice(row.net, row.currency)}</div></div></div>
     <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><span className="block text-xs text-gray-500">{th ? 'หมวดหมู่' : 'Category'}</span><strong>{categoryLabel(row.category)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'จำนวนขาย' : 'Units sold'}</span><strong>{row.quantity.toLocaleString()}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ยอดรวม' : 'Gross'}</span><strong>{formatPrice(row.gross, row.currency)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ส่วนลด' : 'Discount'}</span><strong>{formatPrice(row.discount, row.currency)}</strong></div></div>
     {row.has_variants && <button type="button" className="report-button mt-3 w-full justify-between" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? (th ? 'ซ่อนตัวเลือก' : 'Hide variants') : (th ? 'ดูตัวเลือก' : 'View variants')}</span><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button>}
-    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div><strong>{formatPrice(variant.net, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดรวม' : 'gross'} {formatPrice(variant.gross, row.currency)} · {th ? 'ส่วนลด' : 'discount'} {formatPrice(variant.discount, row.currency)}</div></div>)}</div>}
+    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-3"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div></div><strong>{formatPrice(variant.net, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดรวม' : 'gross'} {formatPrice(variant.gross, row.currency)} · {th ? 'ส่วนลด' : 'discount'} {formatPrice(variant.discount, row.currency)}</div></div>)}</div>}
   </article>;
 }

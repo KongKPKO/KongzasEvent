@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useQueueOperations } from '../../hooks/useQueueOperations';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Button } from '../ui';
 import { canUsePos } from '../../types/access';
@@ -20,6 +21,7 @@ interface QueueItem {
     called_at?: string;
     last_updated_at: string;
     created_at?: string;
+    arrived_at?: string | null;
     served_at?: string;
     completed_at?: string;
 }
@@ -76,7 +78,6 @@ export default function QueuePanel({
     const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
-    const callNextInFlightRef = useRef(false);
     const boothToggleInFlightRef = useRef(false);
     const broadcastInFlightRef = useRef(false);
     const ticketActionInFlightRef = useRef<Set<string>>(new Set());
@@ -182,59 +183,20 @@ export default function QueuePanel({
 
 
 
-    // --- STATUS UPDATE (triggers parent refetch via onRefreshQueues) ---
-    const updateStatus = useCallback(async (id: string, newStatus: string) => {
+    const operations = useQueueOperations(activeEvent?.id, (id, updates) => onStatusUpdated?.(id, updates));
+    useEffect(() => { if (operations.error) setToast({ tone: 'error', title: operations.error }); }, [operations.error]);
+    const updateStatus = async (id: string, newStatus: 'waiting' | 'serving' | 'arrive') => {
         const ticket = queues.find(row => row.id === id);
-        if (!ticket) return false;
-        const updates: Record<string, unknown> = { status: newStatus, last_updated_at: new Date().toISOString() };
-        if (newStatus === 'calling') updates.called_at = new Date().toISOString();
-        if (newStatus === 'serving') updates.served_at = new Date().toISOString();
-        if (newStatus === 'complete') updates.completed_at = new Date().toISOString();
-        if (newStatus === 'waiting' || newStatus === 'queued') {
-            updates.called_at = null;
-            updates.served_at = null;
-            updates.completed_at = null;
-        }
+        return ticket ? operations.action(ticket, newStatus) : null;
+    };
 
-        const { data, error } = await supabase
-            .from('queues')
-            .update(updates)
-            .eq('id', id).eq('status', ticket.status).eq('last_updated_at', ticket.last_updated_at)
-            .select('id,status,last_updated_at,called_at,served_at,completed_at').maybeSingle();
-
-        if (error || !data) {
-            setToast({ tone: 'warning', title: 'คิวเปลี่ยนแล้วหรือเชื่อมต่อไม่ได้ / Queue changed or connection unavailable', detail: 'รีเฟรชแล้วตรวจคิวอีกครั้ง / Refresh and review the queue again.' });
-            return false;
-        }
-        // The database trigger owns the revision used by the next optimistic update.
-        onStatusUpdated?.(id, data);
-        return true;
-    }, [onStatusUpdated, queues]);
-
-    const handleCallNext = useCallback(() => {
-        if (callNextInFlightRef.current) return;
-        const waitingList = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
-        const next = waitingList[0];
-        if (!next) return;
-        callNextInFlightRef.current = true;
-        updateStatus(next.id, 'calling').finally(() => {
-            callNextInFlightRef.current = false;
-        });
-    }, [queues, updateStatus]);
-
-    const handleConfirmArrival = useCallback((ticket: QueueItem) => {
-        if (ticketActionInFlightRef.current.has(ticket.id)) return;
-        ticketActionInFlightRef.current.add(ticket.id);
-        updateStatus(ticket.id, 'serving').then(updated => {
-            if (updated) onSelectQueue({ id: ticket.id, queue_number: String(ticket.queue_number) });
-        }).finally(() => {
-            ticketActionInFlightRef.current.delete(ticket.id);
-        });
-    }, [updateStatus, onSelectQueue]);
+    const handleCallNext = () => { void operations.callBatch(1); };
+    const handleConfirmArrival = (ticket: QueueItem) => { void operations.action(ticket, 'arrive'); };
 
     // --- DERIVED STATE from prop ---
     const waitingTickets = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
-    const readyTickets = queues.filter(q => q.status === 'calling');
+    const readyTickets = queues.filter(q => q.status === 'calling' && !q.arrived_at);
+    const arrivedTickets = queues.filter(q => q.status === 'calling' && q.arrived_at);
     const servingTickets = queues.filter(q => q.status === 'serving');
     const expiredTickets = queues.filter(q => q.status === 'missed' || q.status === 'expired');
 
@@ -353,7 +315,7 @@ export default function QueuePanel({
             <div className="p-3 border-b border-gray-100 bg-white shrink-0">
                 <Button
                     onClick={handleCallNext}
-                    disabled={!nextTicket}
+                    disabled={(!nextTicket && operations.retryBatchCount === null) || operations.pending}
                     className={`w-full py-3 text-base rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${
                         !nextTicket
                             ? '!bg-gray-200 !bg-none !text-gray-400 !shadow-none cursor-not-allowed hover:!bg-gray-200 hover:!shadow-none hover:!translate-y-0'
@@ -384,6 +346,7 @@ export default function QueuePanel({
                                         <div className="text-4xl font-black text-gray-900 leading-none">#{ticket.queue_number}</div>
                                         <div className="text-xs text-gray-500 mb-1.5">{formatElapsedTime(ticket.called_at || ticket.last_updated_at)} {uiText(language, 'ago')}</div>
                                         <Button
+                                            disabled={operations.pending}
                                             onClick={() => handleConfirmArrival(ticket)}
                                             className="w-full bg-pink-500 hover:bg-pink-600 text-white border-none shadow-sm min-h-11 text-sm font-bold tracking-wide rounded"
                                         >
@@ -399,6 +362,8 @@ export default function QueuePanel({
                         )}
                     </div>
                 </div>
+
+                {arrivedTickets.length > 0 && <section className="rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold">{text('Arrived', 'มาถึงแล้ว')} ({arrivedTickets.length})</h3><div className="mt-2 space-y-2">{arrivedTickets.map(ticket => <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"><strong>#{ticket.queue_number}</strong><button type="button" disabled={operations.pending} className="min-h-11 rounded-lg bg-pink-700 px-3 font-bold text-white" onClick={() => void operations.action(ticket, 'serving').then(updated => { if (updated && canUsePos(actorContext.role)) onSelectQueue({ id: ticket.id, queue_number: String(ticket.queue_number) }); })}>{text('Start serving', 'เริ่มให้บริการ')}</button></div>)}</div></section>}
 
                 {servingTickets.length > 0 && <section className="rounded-xl border border-pink-200 bg-pink-50 p-4">
                     <h3 className="font-bold text-pink-800">{text('Serving', 'กำลังให้บริการ')} ({servingTickets.length})</h3>

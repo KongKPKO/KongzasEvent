@@ -1,9 +1,12 @@
+import PromotionQuoteNotices, { promotionGiftLabel } from '../promotions/PromotionQuoteNotices';
+import PosQueueDrawer from './PosQueueDrawer';
+import type { QueueTicket } from '../../hooks/useQueueOperations';
 import { recordPreparedPayment, saveOffline, type OfflineEntry } from '../../lib/offlineOperations';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import PromotionChoicePicker from '../promotions/PromotionChoicePicker';
 import { supabase } from '../../supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, CheckCircle, Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff, ReceiptText } from 'lucide-react';
+import { Grid2x2, Rows3, Pin, Flame, Clock3, PackageX, Sparkles, AlertTriangle, ImageOff, ReceiptText } from 'lucide-react';
 import { formatPrice } from '../../utils/currency';
 import { Toast } from '../ui/Feedback';
 import type { ActorContext } from '../../types/access';
@@ -145,6 +148,8 @@ type ViewPreference = 'auto' | ViewMode;
 interface POSPanelProps {
     activeEvent: ActiveEvent | null;
     servingQueues: QueueItem[];
+    queues: QueueTicket[];
+    onQueueUpdated: (id: string, changes: Partial<QueueTicket>) => void;
     selectedQueueId: string | null;
     selectedQueueNumber: string | null;
     actorContext: ActorContext;
@@ -159,6 +164,8 @@ interface POSPanelProps {
 export default function POSPanel({
     activeEvent,
     servingQueues,
+    queues,
+    onQueueUpdated,
     selectedQueueId,
     selectedQueueNumber,
     actorContext,
@@ -180,10 +187,20 @@ export default function POSPanel({
     const [acceptExhaustedRewards, setAcceptExhaustedRewards] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isSalesHistoryOpen, setIsSalesHistoryOpen] = useState(false);
+    const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
+    const [loadedContextKey, setLoadedContextKey] = useState<string | null>(null);
+    const saleContextKey = `${activeEvent?.id || ''}:${selectedQueueId || 'walkin'}`;
+    const draftContextRef = useRef<string | null>(null);
+    const draftCarts = useRef(new Map<string, { cart: CartItem[]; orderId: string | null; dirty: boolean; rewardChoices: PromotionChoice[]; promotionChoices: PromotionChoice[] }>());
+    const currentOrderIdRef = useRef<string | null>(null);
+    const dirtyContexts = useRef(new Set<string>());
+    const choicesRef = useRef({ rewardChoices, promotionChoices });
+    choicesRef.current = { rewardChoices, promotionChoices };
     const [loading, setLoading] = useState(false);
     const [orderLoading, setOrderLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+    currentOrderIdRef.current = currentOrderId;
     // Track the latest fetch to ignore stale results from superseded requests.
     const fetchVersionRef = useRef(0);
 
@@ -251,7 +268,8 @@ export default function POSPanel({
 
     useEffect(() => {
         cartRef.current = cart;
-    }, [cart]);
+        if (loadedContextKey === saleContextKey) draftCarts.current.set(saleContextKey, { cart, orderId: currentOrderId, dirty: dirtyContexts.current.has(saleContextKey), rewardChoices, promotionChoices });
+    }, [cart, currentOrderId, loadedContextKey, saleContextKey, rewardChoices, promotionChoices]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -324,6 +342,18 @@ export default function POSPanel({
     const fetchCurrentOrder = useCallback(async () => {
         if (!canUsePos || !activeEvent) return;
 
+        const contextKey = `${activeEvent.id}:${selectedQueueIdRef.current || 'walkin'}`;
+        if (draftContextRef.current !== contextKey) {
+            if (draftContextRef.current) draftCarts.current.set(draftContextRef.current, { cart: cartRef.current, orderId: currentOrderIdRef.current, dirty: dirtyContexts.current.has(draftContextRef.current), ...choicesRef.current });
+            draftContextRef.current = contextKey;
+            const cached = draftCarts.current.get(contextKey);
+            setRewardChoices(cached?.rewardChoices || []);
+            setPromotionChoices(cached?.promotionChoices || []);
+            setAcceptExhaustedRewards(false);
+            setCart([]);
+            setCurrentOrderId(null);
+            setLoadedContextKey(null);
+        }
         const version = ++fetchVersionRef.current;
         setOrderLoading(true);
         setLoading(true);
@@ -332,7 +362,7 @@ export default function POSPanel({
         try {
             let query = supabase
                 .from('orders')
-                .select('id, status, queue_id, event_id, order_items(product_id, quantity, notes)')
+                .select('id, status, queue_id, event_id, order_items(product_id, quantity, notes, line_type)')
                 .in('status', ['draft', 'confirmed'])
                 .eq('event_id', activeEvent.id);
 
@@ -359,14 +389,18 @@ export default function POSPanel({
 
             if (!order) {
                 setCurrentOrderId(null);
-                setCart([]);
+                const cached = draftCarts.current.get(contextKey);
+                setCart(cached?.dirty && !cached.orderId ? cached.cart : []);
                 return;
             }
 
             setCurrentOrderId(order.id);
 
-            const currentProducts = productsRef.current;
-            const items = Array.isArray((order as any).order_items) ? (order as any).order_items : [];
+            const { data: orderCatalog, error: catalogError } = await supabase.rpc('get_pos_catalog_for_order', { p_event_id: activeEvent.id, p_order_id: order.id });
+            if (version !== fetchVersionRef.current) return;
+            if (catalogError) throw catalogError;
+            const currentProducts = ((orderCatalog || []) as Product[]).map(product => normalizeProductRecord(product));
+            const items = Array.isArray(order.order_items) ? order.order_items.filter(item => item.line_type !== 'promotion_reward') : [];
 
             const newCart: CartItem[] = items
                 .map((item: { product_id: string; quantity: number; notes?: string }) => {
@@ -374,7 +408,8 @@ export default function POSPanel({
                     return prod ? { product: prod, quantity: item.quantity, notes: item.notes } : null;
                 })
                 .filter(Boolean) as CartItem[];
-            setCart(newCart);
+            const cached = draftCarts.current.get(contextKey);
+            setCart(cached?.dirty && cached.orderId === order.id ? cached.cart : newCart);
 
         } catch (err) {
             console.error('[POS] Critical fetch order error:', err);
@@ -386,6 +421,7 @@ export default function POSPanel({
             if (version === fetchVersionRef.current) {
                 setOrderLoading(false);
                 setLoading(false);
+                setLoadedContextKey(contextKey);
             }
         }
     }, [activeEvent?.id, canUsePos]);
@@ -406,6 +442,8 @@ export default function POSPanel({
                     if (payload.eventType === 'UPDATE') {
                         const nextStatus = (payload.new as { status?: string }).status;
                         if (nextStatus === 'cancelled' || nextStatus === 'completed') {
+                            draftCarts.current.delete(`${activeEvent?.id}:${selectedQueueId}`);
+                            dirtyContexts.current.delete(`${activeEvent?.id}:${selectedQueueId}`);
                             setCart([]);
                             setCurrentOrderId(null);
                             return;
@@ -591,6 +629,8 @@ export default function POSPanel({
     };
 
     const addToCart = (product: Product) => {
+        if (loadedContextKey !== saleContextKey) return;
+        dirtyContexts.current.add(saleContextKey);
         if (!canUsePos || loading || orderLoading || fetchError) return;
 
         setRecentProductIds((prev) => [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 12));
@@ -611,14 +651,16 @@ export default function POSPanel({
     };
 
     const decreaseQuantity = (productId: string) => {
-        if (loading || orderLoading || fetchError) return;
+        if (loading || orderLoading || fetchError || loadedContextKey !== saleContextKey) return;
+        dirtyContexts.current.add(saleContextKey);
         setCart((prev) => prev
             .map((item) => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
             .filter((item) => item.quantity > 0));
     };
 
     const removeFromCart = (productId: string) => {
-        if (loading || orderLoading || fetchError) return;
+        if (loading || orderLoading || fetchError || loadedContextKey !== saleContextKey) return;
+        dirtyContexts.current.add(saleContextKey);
         setCart((prev) => prev.filter((item) => item.product.id !== productId));
     };
 
@@ -628,7 +670,7 @@ export default function POSPanel({
     const displayedSubtotal = promotionQuote?.subtotal ?? pricing.subtotal;
     const displayedDiscount = promotionQuote?.discount_total ?? pricing.discountTotal;
     const displayedTotal = promotionQuote?.total ?? pricing.total;
-    const canChargeOrder = cart.length > 0 && !loading && !orderLoading && !fetchError && !!activeEvent && overdraftProductIds.size === 0 && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards);
+    const canChargeOrder = (!selectedQueueId || queues.some(queue => queue.id === selectedQueueId && queue.status === 'serving')) && loadedContextKey === saleContextKey && cart.length > 0 && !loading && !orderLoading && !fetchError && !!activeEvent && overdraftProductIds.size === 0 && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards);
 
     useEffect(() => { setAcceptExhaustedRewards(false); }, [cart]);
 
@@ -709,6 +751,7 @@ export default function POSPanel({
             setToast({ tone: 'warning', title: uiText(language, 'No active event'), detail: uiText(language, 'Select or activate an event first.') });
             return;
         }
+        if (loadedContextKey !== saleContextKey) return;
         if (cart.length === 0) {
             setToast({ tone: 'warning', title: uiText(language, 'Cart is empty'), detail: uiText(language, 'Select products before charging.') });
             return;
@@ -809,6 +852,8 @@ export default function POSPanel({
             // Also clear any prior "unknown" warning — we now know it succeeded.
             if (durablePayment) await saveOffline('operations', { ...durablePayment, status: 'applied' }).catch(() => { throw new PaymentTimeoutError(); });
             clearPaymentAttemptId(paymentAttemptStorageKey);
+            draftCarts.current.delete(saleContextKey);
+            dirtyContexts.current.delete(saleContextKey);
             setCart([]);
             setCurrentOrderId(null);
             setPaymentUnknownEventId(null);
@@ -934,7 +979,7 @@ export default function POSPanel({
                             {promotion.discount_amount > 0 && <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discount_amount, cart[0]?.product.currency)}</div>}
                         </div>
                     ))}
-                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
+                    {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2 text-[11px] font-bold text-emerald-800">{promotionGiftLabel(promotionQuote, reward, language)}</div>)}
                 </div>
             </div>
         );
@@ -985,6 +1030,7 @@ export default function POSPanel({
                 )}
                 {renderPromoHelper()}
                 {renderAppliedPromotions()}
+                <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cart[0]?.product.currency} />
                 {renderPromotionChoices()}
 
                 {cart.map((item) => {
@@ -1287,72 +1333,29 @@ export default function POSPanel({
 
     };
 
+    const selectSaleQueue = (queue: { id: string; queue_number: string }) => {
+        if (!paymentInFlightRef.current) onSelectQueue(queue);
+    };
+    const selectWalkin = () => { if (!paymentInFlightRef.current) onClearQueue(); };
+    const activeQueue = queues.find(queue => queue.id === selectedQueueId);
+    const activeQueueLabel = activeQueue?.status === 'serving' ? (language === 'th' ? 'กำลังให้บริการ' : 'Serving')
+        : activeQueue?.status === 'calling' ? (activeQueue.arrived_at ? (language === 'th' ? 'มาถึงแล้ว' : 'Arrived') : (language === 'th' ? 'เรียกแล้ว' : 'Called'))
+        : language === 'th' ? 'ตรวจสถานะคิว' : 'Review queue status';
     return (
         <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
-            <div className="pos-customer-selector bg-white border-b border-gray-200 shrink-0 shadow-sm">
-                <label className="md:hidden flex items-center gap-2 px-3 py-1 text-xs font-bold">
-                    <span>{uiText(language, 'Select Customer')}</span>
-                    <select aria-label={uiText(language, 'Select Customer')} value={selectedQueueId || ''} className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-sm" onChange={event => {
-                        const queue = servingQueues.find(item => item.id === event.target.value);
-                        if (queue) onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) });
-                        else if (!event.target.value) onClearQueue();
-                    }}>
-                        <option value="">{uiText(language, 'Walk-in')}</option>
-                        {selectedQueueId && !servingQueues.some(queue => queue.id === selectedQueueId) && <option value={selectedQueueId}>{uiText(language, 'Queue #{number}').replace('{number}', String(selectedQueueNumber))}</option>}
-                        {servingQueues.map(queue => <option key={queue.id} value={queue.id}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</option>)}
-                    </select>
-                </label>
-                <div className="hidden md:block px-4 py-2">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">{uiText(language, 'Select Customer')}</div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <button
-                            onClick={onClearQueue}
-                            className={`flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition-all ${
-                                !selectedQueueId
-                                    ? 'border-pink-600 bg-pink-600 text-white shadow-md shadow-pink-200'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
-                        >
-                            <User size={16} />
-                            <span>{uiText(language, 'Walk-in')}</span>
-                        </button>
+            {canUsePos && activeEvent && <div role="group" className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-1 md:flex-wrap md:py-2" aria-label={language === 'th' ? 'คิวที่กำลังขาย' : 'Active sale queue'}>
+                <div className="min-w-0 flex-1 md:contents"><strong className={`${selectedQueueId ? 'block' : 'hidden'} mr-auto text-sm md:block`}>{selectedQueueId ? `${language === 'th' ? 'คิว' : 'Queue'} #${selectedQueueNumber} — ${activeQueueLabel}` : uiText(language, 'Walk-in')}</strong>
 
-                        <div className="min-w-0">
-                            {servingQueues.length > 0 ? (
-                                <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                                    {servingQueues.map((queue) => {
-                                        const isSelected = selectedQueueId === queue.id;
-                                        return (
-                                            <button
-                                                key={queue.id}
-                                                onClick={() => onSelectQueue({ id: queue.id, queue_number: String(queue.queue_number) })}
-                                                className={`flex min-h-10 min-w-full items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold whitespace-nowrap transition-all shrink-0 ${
-                                                    isSelected
-                                                        ? 'border-pink-600 bg-pink-600 text-white shadow-md shadow-pink-200'
-                                                        : 'border-green-200 bg-white text-green-700 hover:bg-green-50'
-                                                }`}
-                                            >
-                                                <CheckCircle size={14} className={isSelected ? 'text-white' : 'text-green-500'} />
-                                                <span>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <button
-                                    disabled
-                                    className="flex min-h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-400"
-                                >
-                                    {uiText(language, 'From Queue')}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <select className="min-h-11 w-full min-w-0 rounded-xl border px-2 text-sm md:hidden" aria-label={uiText(language, 'Select Customer')} value={selectedQueueId || ''} disabled={paymentInFlightRef.current} onChange={event => { const queue = servingQueues.find(item => item.id === event.target.value); if (queue) selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) }); else if (!event.target.value) selectWalkin(); }}><option value="">{uiText(language, 'Walk-in')}</option>{servingQueues.map(queue => <option key={queue.id} value={queue.id}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</option>)}</select>
 
-            </div>
-
+                <div className="flex gap-2 md:contents"><span className="text-xs text-gray-600">{language === 'th' ? 'เรียกแล้ว' : 'Called'} {queues.filter(queue => queue.status === 'calling' && !queue.arrived_at).length}</span>
+                <span className="text-xs text-green-700">{language === 'th' ? 'มาถึงแล้ว' : 'Arrived'} {queues.filter(queue => queue.status === 'calling' && queue.arrived_at).length}</span></div></div>
+                <button type="button" onClick={selectWalkin} disabled={paymentInFlightRef.current} className={`hidden md:inline-flex items-center min-h-11 rounded-xl border px-3 text-sm font-bold ${!selectedQueueId ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200'}`}>{uiText(language, 'Walk-in')}</button>
+                <div className="hidden max-w-64 gap-2 overflow-x-auto md:flex">{servingQueues.map(queue => <button key={queue.id} type="button" disabled={paymentInFlightRef.current} onClick={() => selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) })} className={`min-h-11 shrink-0 rounded-xl border px-3 text-sm font-bold ${selectedQueueId === queue.id ? 'border-pink-600 bg-pink-600 text-white' : 'border-green-200 text-green-700'}`}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</button>)}</div>
+                <button type="button" className="min-h-11 shrink-0 rounded-xl border border-pink-200 bg-pink-50 px-3 text-sm font-bold text-pink-800" onClick={() => setIsQueueDrawerOpen(true)}>{language === 'th' ? 'จัดการคิว' : 'Manage queues'}</button>
+            </div>}
+            {isQueueDrawerOpen && activeEvent && canUsePos && <PosQueueDrawer eventId={activeEvent.id} queues={queues} selectedQueueId={selectedQueueId} onUpdated={onQueueUpdated} onSelect={queue => selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) })} disabled={paymentInFlightRef.current} onClose={() => setIsQueueDrawerOpen(false)} />}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
                 <div className="festival-cart hidden md:flex w-full h-auto max-h-[36dvh] md:max-h-none md:h-full md:w-[320px] bg-white border-t md:border-t-0 md:border-b-0 md:border-l border-pink-100 flex-col shrink-0 order-2 md:order-2">
                     <div className="px-3 py-3 border-b border-gray-100 bg-gradient-to-r from-white to-pink-50/40 shrink-0">

@@ -1,8 +1,14 @@
 import { supabase } from '../supabaseClient';
-import type { PromotionDefinition, PromotionQuote, PromotionQuoteInput, SavePromotionDefinitionInput } from '../types/promotion';
+import type { PromotionDefinition, PromotionPreviewInput, PromotionPreviewResult, PromotionQuote, PromotionQuoteInput, SavePromotionDefinitionInput } from '../types/promotion';
 
 const promotionErrorCodes = [
   'promotion_changed',
+  'promotion_reward_not_in_channel',
+  'promotion_gift_limit_below_committed',
+  'promotion_reward_required',
+  'promotion_discount_invalid',
+  'promotion_product_invalid',
+  'promotion_reward_product_invalid',
   'promotion_choice_required',
   'promotion_reward_unavailable',
   'promotion_rewards_exhausted',
@@ -77,18 +83,20 @@ export const getPromotionAssignmentConflicts = async (assignmentId: string) => {
 };
 
 export const listPromotionDefinitions = async (artistId: string): Promise<PromotionDefinition[]> => {
-  const [definitionsResult, assignmentsResult, tiersResult, rewardsResult] = await Promise.all([
-    supabase.from('artist_promotions').select('id,artist_id,name,promotion_type,target_type,match_category,match_tag,match_product_ids,buy_quantity,reward_value,reward_quantity,reward_selection_mode,tier_grant_mode,lifecycle_status,revision').eq('artist_id', artistId).order('created_at', { ascending: false }),
+  const [definitionsResult, assignmentsResult, tiersResult, rewardsResult, giftUsageResult] = await Promise.all([
+    supabase.from('artist_promotions').select('id,artist_id,name,promotion_type,target_type,match_category,match_tag,match_product_ids,buy_quantity,reward_value,reward_quantity,reward_selection_mode,tier_grant_mode,lifecycle_status,revision,v1_config').eq('artist_id', artistId).order('created_at', { ascending: false }),
     supabase.from('promotion_assignments').select('*').eq('artist_id', artistId),
     supabase.from('promotion_tiers').select('*'),
     supabase.from('promotion_reward_products').select('*'),
+    supabase.rpc('promotion_gift_usage', { p_artist_id: artistId }),
   ]);
-  const error = definitionsResult.error || assignmentsResult.error || tiersResult.error || rewardsResult.error;
+  const error = definitionsResult.error || assignmentsResult.error || tiersResult.error || rewardsResult.error || giftUsageResult.error;
   if (error) throw toPromotionError(error);
 
   const assignments = assignmentsResult.data || [];
   const tiers = tiersResult.data || [];
   const rewards = rewardsResult.data || [];
+  const giftUsage = (giftUsageResult.data || []) as Array<{ promotion_id: string; redeemed_quantity: number; held_quantity: number; remaining_quantity: number | null }>;
   return (definitionsResult.data || []).map((definition) => ({
     ...definition,
     buy_quantity: definition.buy_quantity === null ? null : Number(definition.buy_quantity),
@@ -102,7 +110,21 @@ export const listPromotionDefinitions = async (artistId: string): Promise<Promot
       reward_product_ids: rewards.filter((reward) => reward.promotion_tier_id === tier.id).map((reward) => reward.product_id),
     })),
     reward_product_ids: rewards.filter((reward) => reward.promotion_id === definition.id && !reward.promotion_tier_id).map((reward) => reward.product_id),
+    v1_config: definition.v1_config,
+    gift_usage: giftUsage.find((usage) => usage.promotion_id === definition.id) || null,
   })) as PromotionDefinition[];
+};
+
+export const previewPromotionDefinition = async (input: PromotionPreviewInput): Promise<PromotionPreviewResult> => {
+  const { data, error } = await supabase.rpc('preview_promotion_definition', {
+    p_definition: input.definition,
+    p_event_id: input.eventId || null,
+    p_event_phase: input.eventPhase || null,
+    p_campaign_id: input.campaignId || null,
+    p_items: input.items,
+  });
+  if (error) throw toPromotionError(error);
+  return data as PromotionPreviewResult;
 };
 
 export const savePromotionDefinition = async (definition: SavePromotionDefinitionInput) => {

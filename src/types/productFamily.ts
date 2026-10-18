@@ -22,6 +22,7 @@ export interface ProductParent {
   currency: string;
   base_price: number;
   product_kind: ProductKind;
+  auto_bundle_enabled?: boolean;
   gallery_images?: string[] | null;
   bundle_items?: BundleItem[] | null;
   preorder_closes_at?: string | null;

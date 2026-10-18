@@ -61,7 +61,7 @@ test('customer can search 30 items with fixed actions and preview images on desk
     const search = detail.getByRole('searchbox', { name: 'Search items' });
     await expect(search).toBeVisible();
     const list = detail.locator('.shop-item-options');
-    expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    await expect.poll(() => list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
     const purchase = detail.locator('.shop-detail-purchase');
     const initial = await purchase.boundingBox();
     await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
@@ -74,6 +74,10 @@ test('customer can search 30 items with fixed actions and preview images on desk
     await search.fill('Design 30');
     await expect(list.getByRole('button')).toHaveCount(1);
     await list.getByRole('button', { name: 'Design 30', exact: true }).click();
+    await expect(search).toHaveValue('Design 30');
+    const stockRefresh = page.waitForResponse(response => response.url().includes('/rpc/list_event_products') && response.ok());
+    must(await service.from('event_products').update({ price_override: viewport.width === 1280 ? 91 : 92 }).eq('event_id', eventId).eq('product_id', result.data![0].id));
+    await stockRefresh;
     await expect(search).toHaveValue('Design 30');
     await expect(detail.getByRole('heading', { name: 'Design 30', exact: true })).toBeVisible();
     await search.fill('missing design');
@@ -94,7 +98,7 @@ test('mobile POS gives products most of the viewport and keeps tools and cart av
   await new LoginPage(page).login(email, password);
   await expect(page).toHaveURL(/manage-events/, { timeout: 20_000 });
   await page.goto(`/manage-pos-queues?eventId=${eventId}`);
-  await page.getByTestId('pos-tab').click();
+  await expect(page.getByRole('group', { name: 'Active sale queue' })).toBeVisible();
   const region = page.getByRole('region', { name: /^Product (?:list|grid)$/ });
   await expect(region.locator('[data-pos-family]')).toBeVisible();
   const bounds = await region.boundingBox();

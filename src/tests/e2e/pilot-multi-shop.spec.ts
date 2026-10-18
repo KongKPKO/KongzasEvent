@@ -266,6 +266,8 @@ test.describe('four-shop concurrent service pilot', () => {
         const arrived = session.adminPage.getByRole('button', { name: 'ARRIVED', exact: true });
         await expect(arrived).toBeVisible({ timeout: 30_000 });
         await arrived.click();
+        await expect.poll(async () => dataOrThrow(await db.from('queues').select('arrived_at').eq('id', session.ticketId!).single(), 'read arrival metadata').arrived_at).not.toBeNull();
+        await session.adminPage.getByRole('button', { name: 'Start serving', exact: true }).click();
         await expect.poll(async () => dataOrThrow(await db
           .from('queues')
           .select('status')

@@ -72,5 +72,38 @@ try{
       assert.equal(must(await db.from('online_campaign_products').select('stock_reserved').eq('campaign_id',campaign).single()).stock_reserved,0);
       console.log(`Race ${round+1}: one success, two units held, idempotent expiry PASS`);
     }
+    // V1 cap is global across separate channel allocations; stale quotes must
+    // fail safely, then a fresh retry keeps the discount without inventing gifts.
+    await cleanup();
+    const paid=randomUUID(),gift=randomUUID(),v1=randomUUID(),channels=[randomUUID(),randomUUID()];
+    must(await db.from('products').insert([{id:paid,name:'V1 paid',price:100},{id:gift,name:'V1 gift',price:50}].map(p=>({...p,artist_id:artist,stock_total:40,is_unlimited:false,status:'enable'}))));
+    for(const channel of channels){
+      must(await db.from('online_campaigns').insert({id:channel,artist_id:artist,name:'V1 quota race',slug:`v1-race-${channel}`,opens_at:new Date(Date.now()-3600000).toISOString(),closes_at:new Date(Date.now()+86400000).toISOString(),publication_status:'published',shipping_enabled:true}));
+      must(await db.from('online_campaign_products').insert([paid,gift].map(product_id=>({campaign_id:channel,artist_id:artist,product_id,stock_total:10,is_unlimited:false,is_enabled:true}))));
+      must(await db.from('campaign_payment_methods').insert({campaign_id:channel,artist_id:artist,method_type:'promptpay',display_name:'Fixture payment'}));
+    }
+    must(await db.from('artist_promotions').insert({id:v1,artist_id:artist,name:'V1 shared cap',target_type:'all',rule_type:'free_items',promotion_type:'condition_reward',lifecycle_status:'ready',v1_config:{version:1,condition:{kind:'quantity',quantity:1},discount:{kind:'fixed',value:20},gift:{product_id:gift,quantity:1,limit:1}}}));
+    must(await db.from('promotion_reward_products').insert({promotion_id:v1,product_id:gift}));
+    must(await db.from('promotion_assignments').insert(channels.map(campaign_id=>({artist_id:artist,promotion_id:v1,campaign_id,combination_policy:'combine'}))));
+    const quote=async channel=>must(await anon.rpc('quote_sale_promotions',{p_event_id:null,p_event_phase:null,p_campaign_id:channel,p_items:[{product_id:paid,quantity:1}],p_reward_choices:[],p_promotion_choices:[]}));
+    const requests=channels.map(channel=>({p_campaign_id:channel,p_items:[{product_id:paid,quantity:1}],p_fulfillment_method:'shipping',p_pickup_point_id:null,p_customer_name:'Local quota fixture',p_customer_email:'fixture@example.test',p_customer_phone:'0800000000',p_shipping_address:'Local fixture address',p_client_request_id:randomUUID(),p_reward_choices:[],p_promotion_choices:[]}));
+    const quotes=await Promise.all(channels.map(quote));
+    const outcomes=await Promise.all(requests.map((r,i)=>anon.rpc('create_online_campaign_order',{...r,p_expected_pricing_hash:quotes[i].pricing_hash})));
+    assert.equal(outcomes.filter(r=>!r.error).length,1,'only one pre-quoted order may redeem the last global gift');
+    const winner=outcomes.findIndex(r=>!r.error),loser=1-winner;
+    assert.match(outcomes[loser].error.message,/promotion_changed/);
+    const revised=await quote(channels[loser]);
+    assert.equal(revised.discount_total,20);assert.equal(revised.reward_lines.length,0);assert.equal(revised.total,80);
+    const retried=must(await anon.rpc('create_online_campaign_order',{...requests[loser],p_expected_pricing_hash:revised.pricing_hash}))[0];
+    assert.equal(Number(retried.total_price),80,'gift exhaustion never disables discount or sale');
+    const first=outcomes[winner].data[0];
+    const repeated=must(await anon.rpc('create_online_campaign_order',{...requests[winner],p_expected_pricing_hash:quotes[winner].pricing_hash}))[0];
+    assert.equal(repeated.order_id,first.order_id);
+    const giftLines=must(await db.from('order_items').select('quantity').in('order_id',[first.order_id,retried.order_id]).eq('line_type','promotion_reward'));
+    assert.equal(giftLines.reduce((n,line)=>n+line.quantity,0),1,'simultaneous channels plus retries use one gift right');
+    execFileSync('docker',['exec',`supabase_db_${projectId}`,'psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',`update public.order_payments set stock_hold_expires_at=now()-interval '1 second' where order_id='${first.order_id}'; select private.expire_online_campaign_hold('${first.order_id}'); select private.expire_online_campaign_hold('${first.order_id}');`],{stdio:'ignore'});
+    assert.equal((await quote(channels[winner])).reward_lines.length,1,'unpaid expiry restores global right');
+    console.log('V1 global quota: simultaneous channels, stale review, discount-only retry, idempotent order and expiry PASS');
+
   }
 }finally{if(command!=='setup') await cleanup();}

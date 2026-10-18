@@ -1,3 +1,4 @@
+import PromotionQuoteNotices, { promotionGiftLabel } from '../../components/promotions/PromotionQuoteNotices';
 import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
 import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
@@ -450,8 +451,9 @@ const MenuView = () => {
   // --- 2. Fetch Data ---
   useEffect(() => {
     let active = true;
-    const initData = async () => {
-        setLoading(true);
+    const initData = async (refresh = false) => {
+        // Live stock updates must not unmount the customer’s open item picker.
+        if (!refresh) setLoading(true);
         setProductsLoaded(false);
         setCatalogError(false);
         
@@ -514,11 +516,11 @@ const MenuView = () => {
        const productChannel = supabase
          .channel(`menu-realtime-${displayArtist.id}`)
          .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `artist_id=eq.${displayArtist.id}` }, () => {
-               void initData();
+               void initData(true);
             }
          )
          .on('postgres_changes', { event: '*', schema: 'public', table: 'event_products', filter: `event_id=eq.${selectedEvent?.id || '00000000-0000-0000-0000-000000000000'}` }, () => {
-               void initData();
+               void initData(true);
             }
          )
          .subscribe();
@@ -1162,7 +1164,8 @@ const MenuView = () => {
               {displayedDiscount > 0 && <div><span>{uiText(language, 'Discount')}</span><strong>−{formatPrice(displayedDiscount, cartCurrency)}</strong></div>}
               <div><span>{t('menuTotal')} · {totalItems} {t('menuItems')}</span><strong>{formatPrice(displayedTotal, cartCurrency)}</strong></div>
             </div>
-            {isAdvanceOrderFlow && promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</p>)}
+            {isAdvanceOrderFlow && promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{promotionGiftLabel(promotionQuote, reward, language)}</p>)}
+            <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />
             <p className="checkout-hold-note">{isAdvanceOrderFlow ? (language === 'th' ? 'หลังยืนยัน ระบบจะจองสต็อกให้ 15 นาทีเพื่อชำระเงิน' : 'After confirmation, stock is held for 15 minutes while you pay.') : orderGuidance}</p>
             <button type="button" disabled={submitting} className="shop-add" onClick={submitConfirmedOrder}>{submitting ? t('commonWorking') : isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}</button>
           </aside>
@@ -1463,11 +1466,12 @@ const MenuView = () => {
                                     <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2"><Sparkles size={12} /> {t('menuAppliedPromotions')}</div>
                                     <div className="space-y-1.5">
                                       {promotionQuote.applied_promotions.map((promotion) => <div key={promotion.id} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px]"><div className="flex justify-between gap-2"><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <strong className="text-emerald-700">- {formatPrice(promotion.discount_amount, cartCurrency)}</strong>}</div></div>)}
-                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
+                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{promotionGiftLabel(promotionQuote, reward, language)}</div>)}
                                     </div>
                                 </div>
                             )}
 
+            {isAdvanceOrderFlow && <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />}
             {isAdvanceOrderFlow && requiredPromotionChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
               <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
                 setAcceptExhaustedRewards(false);

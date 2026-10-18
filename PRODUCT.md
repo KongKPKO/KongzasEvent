@@ -67,7 +67,11 @@ These are agreed business rules, not a claim that every deployment has passed ev
 ### Promotions
 
 - Promotions are reusable shop-level definitions with separate channel/time assignments. They apply automatically when eligible; there is no discount-code workflow.
-- Supported rules: every X eligible items discounts Y money; every X eligible items earns Y gifts; net-spend gift tiers. Repeated groups earn repeated benefits.
+- New promotions combine one condition (quantity, net spend, exact SKU or exact SKU recipe) with a fixed/percentage discount, one fixed gift SKU, or both. Quantity/recipe groups repeat; spend benefits apply once per order. Quantity percentages apply to the highest-priced complete qualifying groups; recipe percentages apply only to recipe units, rounded to two decimals. Existing quantity rules, spend tiers and mixed customer-choice gifts remain supported.
+- Net-spend conditions run after selected quantity/recipe discounts, then prior spend discounts in deterministic priority/creation/assignment order; a reward cannot qualify itself. Shipping and free gifts never qualify. Existing combination/explicit conflict confirmation rules remain.
+- Fixed V1 gifts share actual channel stock with purchases. The optional global limit counts gift units across every assignment of the reusable promotion. Unpaid holds reserve rights during the existing payment window, expiry/unpaid cancellation releases them, and payment permanently redeems them. Refund alone never restores rights. Gift shortage/limit exhaustion does not block the independent discount or the sale; explain any reduced gift quantity. Existing mixed/partial-choice confirmation rules are unchanged.
+- Real bundles may opt into automatic matching of loose exact components at their own channel price, provided supply policies agree and the bundle does not cost more. Choose greatest per-set saving first, UUID ties, never reuse units. Orders/reports record the resulting real bundle SKU and existing immutable component snapshot; downstream promotions see the bundle.
+- Merchant draft previews use the checkout calculation engine with no order, stock, quota or activation writes; results are invalidated when the draft/cart changes.
 - Eligibility supports explicit products or category/tag rules. Product lines are variant groups, not a substitute for category/tag matching.
 - Spend-tier qualification uses eligible merchandise after discounts, excluding shipping and free gift lines. Merchant chooses highest tier only or cumulative tiers, with clear customer-facing terms.
 - Overlapping assignments require explicit merchant combination rules and conflict confirmation. Do not silently choose stacking behavior for the merchant.
@@ -75,6 +79,8 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - Gift choices may mix SKUs within entitlement and stock limits. Earn2 with A1+B1 permits A1+B1, not A2.
 - Insufficient total gift stock requires explicit acceptance of the reduced quantity. If every gift is exhausted, explain that all gifts are gone, show the revised total without that gift promotion, and require confirmation.
 - Gift availability is rechecked at checkout. A changed offer requires renewed selection/acceptance. Purchased and gift stock changes succeed or roll back together; gift lines remain zero-priced and cannot generate more eligibility.
+
+- POS has an in-place queue drawer with shared queue actions and atomic idempotent batch calls (1/3/5/10). Arrival is metadata separate from serving; an arrived ticket is protected from call expiry. Staff explicitly choose the sale context; incoming updates never auto-select a queue, and per-context unpaid cart edits survive switching during the session. Queue staff gain no POS/money access.
 
 ### Sources and regression anchors
 

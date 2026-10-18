@@ -33,6 +33,7 @@ export interface QueueItem {
     last_updated_at: string;
     called_at?: string;
     created_at?: string;
+    arrived_at?: string | null;
     served_at?: string;
     completed_at?: string;
 }
@@ -234,13 +235,17 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
         const { data, error } = await supabase
             .from('queues')
-            .select('id, artist_id, event_id, queue_service_date, queue_number, status, called_at, last_updated_at, created_at, served_at, completed_at')
+            .select('id, artist_id, event_id, queue_service_date, queue_number, status, called_at, arrived_at, last_updated_at, created_at, served_at, completed_at')
             .eq('artist_id', actorContext.artist_id)
             .eq('event_id', eventId)
             .eq('queue_service_date', serviceDate)
             .order('queue_number', { ascending: true });
 
-        if (!error && data) {
+        if (error) {
+            console.error('[ManageCombined] Queue fetch failed:', error);
+            setToast({ tone: 'error', title: 'โหลดคิวไม่สำเร็จ กรุณาลองใหม่ / Could not load queues. Please retry.' });
+        }
+        if (!error && data && activeEventIdRef.current === eventId && activeServiceDateRef.current === serviceDate) {
             setQueues(data);
         }
     }, [actorContext.artist_id]);
@@ -271,7 +276,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             .eq('artist_id', actorContext.artist_id)
             .eq('event_id', eventId)
             .eq('queue_service_date', serviceDate)
-            .eq('status', 'calling');
+            .eq('status', 'calling').is('arrived_at', null);
 
         if (error || !data || data.length === 0) return;
 
@@ -490,6 +495,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
                     <button ref={mobileBoothToolsToggle} type="button" className="pos-booth-tools-toggle md:hidden" aria-label={text('Booth tools', 'เครื่องมือบูธ')} aria-expanded={mobileBoothToolsOpen} aria-controls="pos-booth-tools" onClick={() => setMobileBoothToolsOpen(open => !open)}>⋯</button>
                     <div id="pos-booth-tools" className={`pos-booth-tools ${mobileBoothToolsOpen ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 lg:justify-end`} onKeyDown={event => { if (event.key === 'Escape') { setMobileBoothToolsOpen(false); mobileBoothToolsToggle.current?.focus(); } }}>
+                        {activeTab === 'pos' && <button type="button" onClick={() => setActiveTab('queue')} className="md:hidden workspace-action">{text('Full queue dashboard', 'จัดการคิวแบบเต็ม')}</button>}
                         {activeEvent && <Link to={`/manage-events/${activeEvent.id}/workspace`} className="md:hidden workspace-action">{text('Event workspace', 'กลับหน้างาน')}</Link>}
                         {activeEvent && hasPosPermission && <Link to={`/offline?eventId=${activeEvent.id}`} className="workspace-action inline-flex items-center border border-pink-200 px-3 text-sm font-semibold text-pink-800">{text("Offline workspace", "เตรียมใช้งานออฟไลน์")}</Link>}
                         <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
@@ -533,6 +539,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 </div>
             </div>
 
+            {activeTab === 'queue' ? (
             <div className="sticky top-0 z-20 flex p-2 bg-white border-b border-gray-200 gap-2 shrink-0" data-testid="pos-switcher">
                 <button
                     aria-pressed={activeTab === 'queue'} onClick={() => setActiveTab('queue')}
@@ -546,18 +553,15 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 </button>
                 {hasPosPermission && (
                     <button
-                        aria-pressed={activeTab === 'pos'} onClick={() => setActiveTab('pos')}
-                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                            activeTab === 'pos'
-                                ? 'bg-pink-50 text-pink-600 border border-pink-200'
-                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                        }`}
+                        aria-pressed={false} onClick={() => setActiveTab('pos')}
+                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors bg-white text-gray-600 border border-gray-200 hover:bg-gray-50`}
                         data-testid="pos-tab"
                     >
                         {text("POS / Order", "ขายสินค้า")}
                     </button>
                 )}
             </div>
+            ) : <div className="hidden md:flex shrink-0 justify-end border-b border-gray-100 bg-white px-3 py-1" data-testid="pos-switcher"><button type="button" onClick={() => setActiveTab('queue')} className="min-h-11 px-3 text-sm font-semibold text-gray-600">{text('Full queue dashboard', 'จัดการคิวแบบเต็ม')}</button></div>}
 
             <div className="flex flex-1 overflow-hidden relative">
                 {availableEvents.length === 0 && !eventLoading && (
@@ -633,6 +637,8 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                     <PosPanel
                         activeEvent={activeEvent}
                         servingQueues={servingQueues}
+                        queues={filteredQueues}
+                        onQueueUpdated={(id, updates) => setQueues(previous => previous.map(queue => queue.id === id ? { ...queue, ...updates } : queue))}
                         selectedQueueId={selectedQueueId}
                         selectedQueueNumber={selectedQueueNumber}
                         actorContext={actorContext}

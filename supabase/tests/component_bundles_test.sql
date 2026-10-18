@@ -111,7 +111,7 @@ select is((select stock_sold from public.event_products where product_id=(select
 insert into auth.users(id,email) select artist,'bundle-shop@example.local' from ids;
 create temp table live_queue as select gen_random_uuid() id;
 insert into public.queues(id,event_id,artist_id,queue_number,queue_service_date,status,called_at,served_at)
-select q.id,i.event,i.artist,99,current_date,'serving',now(),now() from live_queue q,ids i;
+select q.id,i.event,i.artist,99,(now() at time zone 'Asia/Bangkok')::date,'serving',now(),now() from live_queue q,ids i;
 create temp table queue_order as select public.create_customer_order_with_stock((select id from live_queue),jsonb_build_array(jsonb_build_object('product_id',(select id from bundle),'quantity',1)),gen_random_uuid()) id;
 -- Leave no free component beyond the units held by this queue.
 update public.event_products set stock_total=stock_sold+stock_reserved where product_id in((select a from ids),(select b from ids));

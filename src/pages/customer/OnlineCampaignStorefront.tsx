@@ -1,3 +1,4 @@
+import PromotionQuoteNotices, { promotionGiftLabel } from '../../components/promotions/PromotionQuoteNotices';
 import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
 import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import { useEffect, useMemo, useState } from 'react';
@@ -396,9 +397,10 @@ export default function OnlineCampaignStorefront() {
                     {promotion.discount_amount > 0 && <strong>-{formatPrice(promotion.discount_amount, campaign.currency)}</strong>}
                   </div>
                 ))}
-                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{uiText(language, 'Free gift')}: {reward.name} × {reward.quantity}</div>)}
+                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{promotionGiftLabel(quote, reward, language)}</div>)}
               </div>
             ) : null}
+            <PromotionQuoteNotices quote={quote} language={language} currency={campaign.currency} />
             {unresolvedChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
               <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
                 setAcceptExhaustedRewards(false);

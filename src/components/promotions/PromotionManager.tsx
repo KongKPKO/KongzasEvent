@@ -6,6 +6,7 @@ import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import { archivePromotionDefinition, listPromotionDefinitions, PromotionSaveConflict, savePromotionDefinition } from '../../lib/promotions';
 import { promotionLocalDateTime } from '../../lib/promotionDateTime';
 import type { PromotionCombinationPolicy, PromotionDefinition, PromotionEventPhase, PromotionRewardSelectionMode, PromotionTierGrantMode, PromotionType, SavePromotionDefinitionInput } from '../../types/promotion';
+import PromotionV1Editor, { promotionV1RuleText } from './PromotionV1Editor';
 
 interface ProductLite {
   id: string;
@@ -16,6 +17,8 @@ interface ProductLite {
   tags?: string[];
   variant_group_name?: string | null;
   variant_name?: string | null;
+  sku?: string | null;
+  status?: 'enable' | 'disable' | 'soldout';
 }
 
 interface EventLite {
@@ -93,7 +96,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
   const [message, setMessage] = useState('');
 
   const [name, setName] = useState('');
-  const [promotionType, setPromotionType] = useState<FormPromotionType>('quantity_discount');
+  const [promotionType, setPromotionType] = useState<FormPromotionType>('condition_reward');
   const [targetType, setTargetType] = useState<FormTarget>('all');
   const [category, setCategory] = useState('');
   const [tag, setTag] = useState('');
@@ -136,7 +139,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
 
 
   const reset = () => {
-    setEditingId(null); setName(''); setPromotionType('quantity_discount'); setTargetType('all'); setCategory(''); setTag(''); setProductLine(''); setTargetProductIds([]); setBuyQuantity('3'); setRewardValue('50'); setRewardQuantity('1'); setRewardSelectionMode('fixed'); setRewardProductIds([]); setTierGrantMode('highest_only'); setTiers([newTier()]); setAssignmentKeys([]); setStartsAt(''); setEndsAt(''); setCombinationPolicy('exclusive'); setMessage('');
+    setEditingId(null); setName(''); setPromotionType('condition_reward'); setTargetType('all'); setCategory(''); setTag(''); setProductLine(''); setTargetProductIds([]); setBuyQuantity('3'); setRewardValue('50'); setRewardQuantity('1'); setRewardSelectionMode('fixed'); setRewardProductIds([]); setTierGrantMode('highest_only'); setTiers([newTier()]); setAssignmentKeys([]); setStartsAt(''); setEndsAt(''); setCombinationPolicy('exclusive'); setMessage('');
   };
 
   const edit = (definition: PromotionDefinition) => {
@@ -238,6 +241,29 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
   const editingArchived = definitions.find((definition) => definition.id === editingId)?.lifecycle_status === 'archived';
   const visibleDefinitions = definitions.filter((definition) => (showArchived || definition.lifecycle_status !== 'archived') && (definition.name || '').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
+  if (editorOpen && promotionType === 'condition_reward') {
+    return <PromotionV1Editor
+      artistId={artistId}
+      products={products}
+      events={eventOptions}
+      campaigns={campaigns}
+      existing={editingId ? definitions.find((definition) => definition.id === editingId) || null : null}
+      lockedEventId={lockedEventId}
+      lockedEventName={lockedEventName}
+      categorySuggestions={categorySuggestions}
+      tagSuggestions={tagSuggestions}
+      th={th}
+      onClose={closeEditor}
+      onSaved={async () => {
+        reset();
+        setEditorOpen(false);
+        await refresh();
+        setMessage(th ? 'บันทึกโปรโมชันแล้ว จะใช้ตามช่องทางและช่วงเวลาที่กำหนด' : 'Promotion saved. It will apply in the assigned channels and schedule.');
+        requestAnimationFrame(() => listRef.current?.focus());
+      }}
+    />;
+  }
+
   return <section className="promotion-workspace" aria-label={th ? 'จัดการโปรโมชัน' : 'Promotion workspace'}>
     {!editorOpen && <>
       <div className="promotion-toolbar">
@@ -253,7 +279,8 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
             <button type="button" className="promotion-button" disabled={!!archivingId || definition.promotion_type === 'legacy_free_eligible_items'} aria-label={uiText(language, 'Edit promotion')} onClick={() => edit(definition)}><Edit2 size={16} />{th ? 'แก้ไข' : 'Edit'}</button>
             {definition.lifecycle_status !== 'archived' && <button type="button" className="promotion-button" disabled={!!archivingId} aria-label={uiText(language, 'Archive promotion')} onClick={() => void archive(definition.id)}>{archivingId === definition.id ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}{th ? 'เก็บเข้าคลัง' : 'Archive'}</button>}
           </div></div>
-          <p className="promotion-saved-rule">{definition.promotion_type === 'quantity_discount' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น ลด ฿${definition.reward_value}` : `Every ${definition.buy_quantity} items, save ฿${definition.reward_value}`) : definition.promotion_type === 'quantity_gift' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น รับของแถม ${definition.reward_quantity} ชิ้น` : `Every ${definition.buy_quantity} items, get ${definition.reward_quantity} gifts`) : definition.promotion_type === 'spend_tier_gift' ? definition.tiers.map((tier) => th ? `ครบ ฿${tier.threshold_amount} รับ ${tier.reward_quantity} ชิ้น` : `Spend ฿${tier.threshold_amount}, get ${tier.reward_quantity} gifts`).join(' · ') : (th ? 'โปรโมชันรูปแบบเก่า แก้ไขไม่ได้ กรุณาสร้างโปรใหม่แทน' : 'Legacy offer. Create a new promotion to change its terms.')}</p>
+          <p className="promotion-saved-rule">{definition.promotion_type === 'condition_reward' && definition.v1_config ? promotionV1RuleText(definition.v1_config, products, th) : definition.promotion_type === 'quantity_discount' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น ลด ฿${definition.reward_value}` : `Every ${definition.buy_quantity} items, save ฿${definition.reward_value}`) : definition.promotion_type === 'quantity_gift' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น รับของแถม ${definition.reward_quantity} ชิ้น` : `Every ${definition.buy_quantity} items, get ${definition.reward_quantity} gifts`) : definition.promotion_type === 'spend_tier_gift' ? definition.tiers.map((tier) => th ? `ครบ ฿${tier.threshold_amount} รับ ${tier.reward_quantity} ชิ้น` : `Spend ฿${tier.threshold_amount}, get ${tier.reward_quantity} gifts`).join(' · ') : (th ? 'โปรโมชันรูปแบบเก่า แก้ไขไม่ได้ กรุณาสร้างโปรใหม่แทน' : 'Legacy offer. Create a new promotion to change its terms.')}</p>
+          {definition.promotion_type === 'condition_reward' && definition.v1_config?.gift?.limit !== null && definition.v1_config?.gift && definition.gift_usage && <p className="promotion-gift-usage">{definition.gift_usage.remaining_quantity === 0 ? (th ? 'ของแถมครบจำนวนแล้ว' : 'Gift quota reached') : (th ? `ใช้สิทธิ์แล้ว ${definition.gift_usage.redeemed_quantity}/${definition.v1_config.gift.limit} · รอชำระ ${definition.gift_usage.held_quantity} · คงเหลือ ${definition.gift_usage.remaining_quantity} สิทธิ์` : `${definition.gift_usage.redeemed_quantity}/${definition.v1_config.gift.limit} redeemed · ${definition.gift_usage.held_quantity} held · ${definition.gift_usage.remaining_quantity} remaining`)}</p>}
           {definition.lifecycle_status === 'ready' && <p className="promotion-help">{Array.from(new Set(definition.assignments.map(assignmentStatus))).join(' · ')}</p>}
           <details className="promotion-details"><summary>{th ? 'เงื่อนไขและช่วงใช้งาน' : 'Terms and schedule'} ({definition.assignments.length})</summary>
             <p className="promotion-help">{definition.target_type === 'all' ? (th ? 'สินค้าทั้งหมดในช่องทางที่เลือก' : 'All products in assigned channels') : definition.target_type === 'product' ? productNames(definition.match_product_ids || []) : [definition.match_category && `${th ? 'หมวดหมู่' : 'Category'}: ${definition.match_category}`, definition.match_tag && `${th ? 'แท็ก' : 'Tag'}: ${definition.match_tag}`].filter(Boolean).join(' + ')}</p>

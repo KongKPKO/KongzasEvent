@@ -57,15 +57,14 @@ test('offline receipts survive reload and a lost sync response without duplicate
     const raceTicket=await fixture.service.from('queues').insert({event_id:eventId,artist_id:fixture.userId,queue_number:322,queue_service_date:serviceDate,status:'waiting'}).select('id').single();
     if(raceTicket.error) throw raceTicket.error;
     await page.goto(`/live/queue?eventId=${eventId}`);
-    await page.route('**/rest/v1/queues?**',async route=>{
-      if(route.request().method()==='PATCH') {
-        const changed=await fixture.service.from('queues').update({status:'complete'}).eq('id',raceTicket.data.id);
-        if(changed.error) throw changed.error;
-      }
+    await page.route('**/rest/v1/rpc/call_queue_batch',async route=>{
+      const changed=await fixture.service.from('queues').update({status:'complete'}).eq('id',raceTicket.data.id);
+      if(changed.error) throw changed.error;
       await route.continue();
-    });
+    }, { times: 1 });
+    const racedCall = page.waitForResponse(response => response.url().includes('/rpc/call_queue_batch'));
     await page.getByRole('button',{name:/Call Next/i}).first().click();
-    await expect(page.getByText(/Queue changed or connection unavailable/)).toBeVisible();
+    expect(await (await racedCall).json()).toEqual([]);
     expect((await fixture.service.from('queues').select('status').eq('id',raceTicket.data.id).single()).data?.status).toBe('complete');
     await page.goto(`/live/pos?eventId=${eventId}`);
     await expect(page.getByTestId('booth-toggle')).toHaveText('Close Booth');

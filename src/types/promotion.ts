@@ -2,6 +2,7 @@ export type PromotionType =
   | 'quantity_discount'
   | 'quantity_gift'
   | 'spend_tier_gift'
+  | 'condition_reward'
   | 'legacy_free_eligible_items';
 
 export type PromotionTargetType = 'all' | 'product' | 'category' | 'tag' | 'category_tag';
@@ -10,6 +11,25 @@ export type PromotionRewardSelectionMode = 'fixed' | 'customer_choice';
 export type PromotionTierGrantMode = 'highest_only' | 'cumulative';
 export type PromotionCombinationPolicy = 'combine' | 'exclusive';
 export type PromotionEventPhase = 'preorder' | 'live' | 'postorder';
+
+export type PromotionV1Condition =
+  | { kind: 'quantity'; quantity: number }
+  | { kind: 'spend'; amount: number }
+  | { kind: 'product'; items: Array<{ product_id: string; quantity: number }> }
+  | { kind: 'recipe'; items: Array<{ product_id: string; quantity: number }> };
+
+export interface PromotionV1Config {
+  version: 1;
+  condition: PromotionV1Condition;
+  discount: { kind: 'fixed' | 'percentage'; value: number } | null;
+  gift: { product_id: string; quantity: number; limit: number | null } | null;
+}
+
+export interface PromotionGiftUsage {
+  redeemed_quantity: number;
+  held_quantity: number;
+  remaining_quantity: number | null;
+}
 
 export interface PromotionAssignment {
   id: string;
@@ -60,6 +80,8 @@ export interface PromotionDefinition {
   assignments: PromotionAssignment[];
   tiers: Array<PromotionTier & { reward_product_ids: string[] }>;
   reward_product_ids: string[];
+  v1_config: PromotionV1Config | null;
+  gift_usage: PromotionGiftUsage | null;
 }
 
 export interface SavePromotionDefinitionInput {
@@ -87,6 +109,7 @@ export interface SavePromotionDefinitionInput {
     reward_product_ids: string[];
   }>;
   reward_product_ids?: string[];
+  v1_config?: PromotionV1Config | null;
 }
 
 export interface PromotionChoice {
@@ -154,6 +177,16 @@ export interface PromotionQuote {
   applied_promotions: AppliedPromotionQuote[];
   reward_lines: PromotionRewardLine[];
   required_choices: PromotionRequiredChoice[];
+  normalized_items?: Array<{ product_id: string; quantity: number }>;
+  auto_sets?: Array<{
+    bundle_product_id: string;
+    bundle_name: string;
+    quantity: number;
+    unit_savings: number;
+    total_savings: number;
+    components: Array<{ product_id: string; quantity: number }>;
+  }>;
+  diagnostics?: PromotionDiagnostic[];
 }
 
 export interface PromotionQuoteInput {
@@ -164,6 +197,29 @@ export interface PromotionQuoteInput {
   items: Array<{ product_id: string; quantity: number }>;
   rewardChoices?: PromotionChoice[];
   promotionChoices?: PromotionChoice[];
+}
+
+export interface PromotionDiagnostic {
+  promotion_id: string;
+  code: string;
+  earned_quantity: number;
+  available_quantity?: number;
+  remaining_quantity?: number | null;
+  missing_quantity?: number;
+  missing_amount?: number;
+  missing_items?: Array<{ product_id: string; quantity: number }>;
+}
+
+export interface PromotionPreviewResult extends PromotionQuote {
+  diagnostics: PromotionDiagnostic[];
+}
+
+export interface PromotionPreviewInput {
+  definition: SavePromotionDefinitionInput;
+  eventId?: string | null;
+  eventPhase?: PromotionEventPhase | null;
+  campaignId?: string | null;
+  items: Array<{ product_id: string; quantity: number }>;
 }
 
 export interface PromotionSummary {

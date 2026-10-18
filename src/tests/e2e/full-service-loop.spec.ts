@@ -148,12 +148,16 @@ test.describe('full queue and POS service loop', () => {
       await expect(arrived).toBeVisible({ timeout: 20_000 });
       await arrived.click();
       await expect.poll(async () => {
+        const result = await service.from('queues').select('arrived_at').eq('id', ticketId).single();
+        return Boolean(dataOrThrow(result, 'read arrived queue ticket').arrived_at);
+      }).toBe(true);
+      await adminPage.getByRole('button', { name: 'Start serving', exact: true }).click();
+      await expect.poll(async () => {
         const result = await service.from('queues').select('status').eq('id', ticketId).single();
         return dataOrThrow(result, 'read serving queue ticket').status;
       }).toBe('serving');
 
       await adminPage.setViewportSize({ width: 390, height: 700 });
-      await adminPage.getByTestId('pos-tab').click();
       const mobileCustomer = adminPage.getByRole('combobox', { name: 'Select Customer', exact: true });
       await expect(mobileCustomer.locator(`option[value="${ticketId}"]`)).toHaveCount(1);
       await mobileCustomer.selectOption(ticketId);

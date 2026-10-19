@@ -59,8 +59,9 @@ After explicit release approval:
 4. Confirm restore/PITR access and the person responsible for initiating restore.
 5. Confirm Auth leaked-password protection is enabled.
 6. Confirm database SSL enforcement is enabled and direct database network access is limited to required sources.
-7. Set Edge Function secrets without printing values: `RESEND_API_KEY`, `PREORDER_EMAIL_FROM`, `PUBLIC_SITE_URL`.
-8. Set Firebase build variables: Production Supabase URL, publishable/anon key, `VITE_RELEASE_SHA`, and `VITE_LOGROCKET_APP_ID`. Keep `VITE_LOGROCKET_CAPTURE_EMAIL=false` unless separately approved.
+7. Set Edge Function secrets without printing values: `RESEND_API_KEY`, `PREORDER_EMAIL_FROM`, `APPLICATION_EMAIL_FROM`, `PUBLIC_SITE_URL`.
+8. Confirm `${PUBLIC_SITE_URL}/invitations` is in the Supabase Auth redirect allowlist so generated staff invitation links return to the invitation review page.
+9. Set Firebase build variables: Production Supabase URL, publishable/anon key, `VITE_RELEASE_SHA`, and `VITE_LOGROCKET_APP_ID`. Keep `VITE_LOGROCKET_CAPTURE_EMAIL=false` unless separately approved.
 
 ## 4. Deployment order
 

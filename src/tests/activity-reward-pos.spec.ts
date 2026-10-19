@@ -121,7 +121,7 @@ test.afterAll(async () => {
   must(await service.auth.admin.deleteUser(artistId));
 });
 
-test('cash POS keeps earned activity instructions visible and history reads the immutable snapshot', async ({ page }, testInfo) => {
+test('cash POS auto-dismisses earned activity notice and history keeps the immutable snapshot', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
   const login = new LoginPage(page);
@@ -174,8 +174,7 @@ test('cash POS keeps earned activity instructions visible and history reads the 
   await expect(page.getByRole('region', { name: 'Shopping cart' })).toContainText('Cart is empty');
 
   await page.screenshot({ path: testInfo.outputPath('activity-pos-earned.png') });
-  await earned.getByRole('button', { name: 'Dismiss activity reward details' }).click();
-  await expect(earned).toHaveCount(0);
+  await expect(earned).toHaveCount(0, { timeout: 10_000 });
   await page.getByRole('button', { name: 'Sales history', exact: true }).click();
   const history = page.getByRole('dialog', { name: 'Sales history', exact: true });
   const orderNumber = `#${orderId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;

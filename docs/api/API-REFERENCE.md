@@ -124,8 +124,10 @@ Stock, payment, role, and final order-state mutations should use their RPC rathe
 - **Endpoint:** `/functions/v1/notify-team-invitation`
 - **Body:** `invitation_id` UUID
 - **Auth:** Bearer session required; caller must be allowed to manage the invitation's creator.
-- **Purpose:** Send a team invitation email after the invitation row exists.
+- **Purpose:** Send a team invitation email after the invitation row exists. The function reads the inviter, role, and assigned event names from saved database rows and generates the staff sign-in link server-side; request data and user metadata do not grant access.
+- **Configuration:** Hosted environments require `PUBLIC_SITE_URL` (or `APPLICATION_SITE_URL`), `RESEND_API_KEY`, a verified `APPLICATION_EMAIL_FROM`, and `${PUBLIC_SITE_URL}/invitations` in the Supabase Auth redirect allowlist. The shared Auth magic-link template is unchanged.
 - **Important:** Email failure does not delete or roll back the pending invitation.
+- **Local regression:** With local Edge Functions serving and `APPLICATION_SITE_URL` plus `MAILPIT_API_URL` pointed at the disposable test instance, run `npx playwright test src/tests/team-invitation-email.spec.ts --project=desktop-chromium`. Set `SUPABASE_WORKDIR` when using an isolated local stack. Email rendering is also checked by `node --test supabase/functions/notify-team-invitation/email.test.ts`.
 
 ### `notify-preorder-payment`
 

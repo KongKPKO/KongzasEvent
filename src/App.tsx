@@ -96,7 +96,7 @@ function EventAccessRoute({
 }
 
 function App() {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -269,7 +269,6 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
-        {currentPath !== '/offline' && offlineAuthorization() && <a href="/offline" className="block bg-amber-50 p-3 text-center text-sm font-semibold text-amber-900">{language === 'th' ? 'เปิดพื้นที่ขายที่เตรียมไว้เมื่อเน็ตขาด' : 'Open prepared offline workspace'}</a>}
         <Suspense fallback={<div className="flex justify-center items-center h-screen">{t('loading')}</div>}>
           <Routes>
             <Route path="/offline" element={<OfflineWorkspace />} />

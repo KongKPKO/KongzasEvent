@@ -250,6 +250,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         }
     }, [actorContext.artist_id]);
 
+    // Existing prepared devices still need recovery heartbeats so queue expiry stays accurate.
     useEffect(() => {
         if (!activeEvent?.id) return;
         const heartbeat = async () => {
@@ -497,7 +498,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                     <div id="pos-booth-tools" className={`pos-booth-tools ${mobileBoothToolsOpen ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 lg:justify-end`} onKeyDown={event => { if (event.key === 'Escape') { setMobileBoothToolsOpen(false); mobileBoothToolsToggle.current?.focus(); } }}>
                         {activeTab === 'pos' && <button type="button" onClick={() => setActiveTab('queue')} className="md:hidden workspace-action">{text('Full queue dashboard', 'จัดการคิวแบบเต็ม')}</button>}
                         {activeEvent && <Link to={`/manage-events/${activeEvent.id}/workspace`} className="md:hidden workspace-action">{text('Event workspace', 'กลับหน้างาน')}</Link>}
-                        {activeEvent && hasPosPermission && <Link to={`/offline?eventId=${activeEvent.id}`} className="workspace-action inline-flex items-center border border-pink-200 px-3 text-sm font-semibold text-pink-800">{text("Offline workspace", "เตรียมใช้งานออฟไลน์")}</Link>}
                         <label className="flex min-w-0 flex-1 sm:flex-none items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                             <CalendarDays size={16} className="shrink-0 text-pink-600" aria-hidden="true" />
                             <span className="sr-only">{text("Select POS event", "เลือกอีเวนต์ที่ขาย")}</span>

@@ -205,8 +205,6 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
 
   const getEventName = (eventId: string) => events.find((event) => event.id === eventId)?.event_name || tr('อีเวนต์ที่ไม่พร้อมแสดง', 'Unavailable event');
 
-  const getInvitationRedirectUrl = () => `${window.location.origin}/invitations`;
-
   const toggleInviteEvent = (eventId: string) => {
     setInviteEventIds((current) =>
       current.includes(eventId)
@@ -266,38 +264,23 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
       const invitationId = (data as { result: string; invitation_id?: string }).invitation_id;
 
       if (result === 'invitation_sent' && invitationId) {
-        if (role === 'seller' || role === 'queue_staff') {
-          const { error: magicLinkError } = await withTimeout(
-            supabase.auth.signInWithOtp({
-              email: normalizedEmail,
-              options: {
-                emailRedirectTo: getInvitationRedirectUrl(),
-              },
-            })
+        try {
+          const { error: notifyError } = await withTimeout(
+            invokeNotificationFunction('notify-team-invitation', { invitation_id: invitationId })
           );
-          if (magicLinkError) {
-            setInviteResult('email_failed');
-            setInviteResultMsg(tr('สร้างคำเชิญแล้ว แต่ส่งลิงก์เข้าใช้งานไม่สำเร็จ ตรวจการตั้งค่าอีเมลแล้วกดส่งอีกครั้ง', 'Invitation created, but the magic link email failed to send. Use Resend after checking auth email settings.'));
-          } else {
-            setInviteResult('invitation_sent');
-            setInviteResultMsg(tr('ส่งลิงก์เข้าใช้งานแล้ว ผู้รับเปิดอีเมลและตอบรับเพื่อทำงานในอีเวนต์ที่เลือกได้', 'Magic link sent. Staff can open the email, accept the invite, and work only the selected event access.'));
-          }
-        } else {
-          try {
-            const { error: notifyError } = await withTimeout(
-              invokeNotificationFunction('notify-team-invitation', { invitation_id: invitationId })
-            );
-            if (notifyError) {
-              setInviteResult('email_failed');
-              setInviteResultMsg(tr('สร้างคำเชิญแล้ว แต่ส่งอีเมลไม่สำเร็จ กรุณากดส่งอีกครั้ง', 'Invitation created, but the notification email failed to send.'));
-            } else {
-              setInviteResult('invitation_sent');
-              setInviteResultMsg(tr('ส่งคำเชิญผู้จัดการแล้ว ผู้รับสร้างบัญชีผู้จัดการได้โดยไม่ต้องสร้างร้านค้า', 'Manager invitation sent. They can create a password-based manager account without a shop profile.'));
-            }
-          } catch {
+          if (notifyError) {
             setInviteResult('email_failed');
             setInviteResultMsg(tr('สร้างคำเชิญแล้ว แต่ส่งอีเมลไม่สำเร็จ กรุณากดส่งอีกครั้ง', 'Invitation created, but the notification email failed to send.'));
+          } else if (role === 'manager') {
+            setInviteResult('invitation_sent');
+            setInviteResultMsg(tr('ส่งคำเชิญผู้จัดการแล้ว ผู้รับสร้างบัญชีหรือเข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญได้', 'Manager invitation sent. They can create an account or sign in with the invited email.'));
+          } else {
+            setInviteResult('invitation_sent');
+            setInviteResultMsg(tr('ส่งคำเชิญพร้อมบทบาทและอีเวนต์แล้ว ผู้รับเข้าสู่ระบบและตอบรับคำเชิญได้', 'Invitation email sent with the role and event access. Staff can sign in and accept it.'));
           }
+        } catch {
+          setInviteResult('email_failed');
+          setInviteResultMsg(tr('สร้างคำเชิญแล้ว แต่ส่งอีเมลไม่สำเร็จ กรุณากดส่งอีกครั้ง', 'Invitation created, but the notification email failed to send.'));
         }
         await fetchPendingInvitations();
       } else if (result === 'member_added') {
@@ -344,18 +327,9 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     setResendResultId(null);
     setResendResultOk(null);
     try {
-      const { error } = inv.role === 'seller' || inv.role === 'queue_staff'
-        ? await withTimeout(
-            supabase.auth.signInWithOtp({
-              email: inv.invited_email,
-              options: {
-                emailRedirectTo: getInvitationRedirectUrl(),
-              },
-            })
-          )
-        : await withTimeout(
-            invokeNotificationFunction('notify-team-invitation', { invitation_id: inv.id })
-          );
+      const { error } = await withTimeout(
+        invokeNotificationFunction('notify-team-invitation', { invitation_id: inv.id })
+      );
       setResendResultId(inv.id);
       setResendResultOk(!error);
     } catch {

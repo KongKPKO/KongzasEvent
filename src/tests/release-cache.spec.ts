@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-test('built app gets fresh navigation, keeps device state and reopens offline', async ({ page, context }) => {
+test('built app gets fresh navigation, keeps device state and reopens existing-record recovery offline', async ({ page, context }) => {
   // Serve the real release artifacts; Vite development does not install a worker.
   const root = resolve('dist');
   const shell = readFileSync(resolve(root, 'index.html'), 'utf8');
@@ -57,9 +57,10 @@ test('built app gets fresh navigation, keeps device state and reopens offline', 
     expect(precached.some(url => /heic2any-|webp_enc/.test(url))).toBe(false);
     await context.setOffline(true);
     await page.goto(`${origin}/offline`);
-    await expect(page.getByRole('heading', { name: /Sales and queues during disconnection|ขายและคิวเมื่อเน็ตขาด/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Recover existing offline records|กู้คืนรายการออฟไลน์เดิม/ })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole('heading', { name: /Sales and queues during disconnection|ขายและคิวเมื่อเน็ตขาด/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Recover existing offline records|กู้คืนรายการออฟไลน์เดิม/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Prepare this device|เตรียมเครื่อง/ })).toHaveCount(0);
   } finally {
     await context.setOffline(false);
     await page.goto('about:blank');

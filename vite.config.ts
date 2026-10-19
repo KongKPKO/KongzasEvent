@@ -38,9 +38,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,webp,wasm}'],
-        // Upload conversion and optional replay are not needed to reopen offline sales.
+        // Upload conversion and optional replay are not needed to recover existing offline records.
         globIgnores: ['**/heic2any-*.js', '**/webp_enc*', '**/logrocket-*.js'],
-        // Only the prepared offline workspace uses the precached app shell.
+        // Keep the recovery route available for browsers that already hold pending records.
         navigateFallbackAllowlist: [/^\/offline(?:\?|$)/],
         directoryIndex: '',
         // Don't cache API calls or Firestore

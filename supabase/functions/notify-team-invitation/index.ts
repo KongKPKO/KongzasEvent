@@ -31,6 +31,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { buildInviteHtml, buildInviteText } from "./email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +41,9 @@ const corsHeaders = {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return json({ error: "method not allowed" }, 405);
   }
 
   try {
@@ -65,7 +69,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Server is missing Supabase service configuration" }, 500);
     }
 
-    // Service role client — used only for trusted DB reads
+    // Service role client — trusted invitation reads and Auth link generation only
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Caller client — uses anon key with the caller's JWT as Authorization header,
@@ -79,10 +83,11 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Missing or invalid authorization header" }, 401);
     }
 
-    // Fetch invitation + artist name
+    // Read all email context from the saved invitation. Request payload and
+    // auth metadata never determine the invited role or event access.
     const { data: invitation, error: invError } = await supabase
       .from("artist_member_invitations")
-      .select("id, invited_email, role, status, artist_id, artists(display_name)")
+      .select("id, invited_email, role, status, artist_id, invited_by, artists(display_name)")
       .eq("id", invitation_id)
       .single();
 
@@ -95,25 +100,126 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, skipped: true, reason: "invitation is not pending" });
     }
 
-    // Verify caller is owner of this invitation's artist.
-    // Team/invite management is owner-only; managers can operate events but
-    // cannot resend or manage workspace invitations.
-    const { data: roleCheck } = await callerClient.rpc("has_artist_role", {
+    if (!["manager", "seller", "queue_staff"].includes(invitation.role)) {
+      return json({ error: "Invitation has an invalid role" }, 409);
+    }
+
+    // Match invite_team_member/cancel_team_invitation: owners manage every
+    // invitation; managers may manage seller and queue-staff invitations.
+    const allowedCallerRoles = invitation.role === "manager" ? ["owner"] : ["owner", "manager"];
+    const { data: roleCheck, error: roleError } = await callerClient.rpc("has_artist_role", {
       p_artist_id: invitation.artist_id,
-      p_allowed_roles: ["owner"],
+      p_allowed_roles: allowedCallerRoles,
     });
+    if (roleError) {
+      return json({ error: "Could not verify invitation permission" }, 503);
+    }
     if (!roleCheck) {
       return json({ error: "permission denied" }, 403);
     }
 
     const artistName = (invitation.artists as { display_name?: string } | null)?.display_name || "a booth";
     const roleLabel = getRoleLabel(invitation.role);
+    const { data: eventAssignments, error: eventAssignmentError } = await supabase
+      .from("artist_member_invitation_events")
+      .select("artist_id, event_id, created_at")
+      .eq("invitation_id", invitation_id)
+      .order("created_at", { ascending: true });
 
-    const appUrl = Deno.env.get("APPLICATION_SITE_URL") || Deno.env.get("PUBLIC_SITE_URL") || "http://localhost:5173";
-    const inviteUrl = `${appUrl.replace(/\/$/, "")}/staff-signup?email=${encodeURIComponent(invitation.invited_email)}&workspace=${encodeURIComponent(artistName)}`;
+    if (eventAssignmentError) {
+      return json({ error: "Could not load invitation event access" }, 503);
+    }
+
+    const assignedEvents = eventAssignments ?? [];
+    const requiresEventAccess = invitation.role === "seller" || invitation.role === "queue_staff";
+    if (assignedEvents.some((assignment) => assignment.artist_id !== invitation.artist_id)) {
+      return json({ error: "Invitation event access does not match the workspace" }, 409);
+    }
+    if ((requiresEventAccess && assignedEvents.length === 0) || (!requiresEventAccess && assignedEvents.length > 0)) {
+      return json({ error: "Invitation event access does not match the role" }, 409);
+    }
+
+    const eventIds = [...new Set(assignedEvents.map((assignment) => assignment.event_id))];
+    let eventNames: string[] = [];
+    if (eventIds.length > 0) {
+      const { data: eventRows, error: eventError } = await supabase
+        .from("events")
+        .select("id, event_name")
+        .eq("artist_id", invitation.artist_id)
+        .in("id", eventIds);
+      if (eventError) {
+        return json({ error: "Could not load invitation events" }, 503);
+      }
+      const eventNamesById = new Map((eventRows ?? []).map((event) => [event.id, event.event_name]));
+      if (eventNamesById.size !== eventIds.length) {
+        return json({ error: "Invitation contains unavailable event access" }, 409);
+      }
+      eventNames = eventIds.map((eventId) => eventNamesById.get(eventId) as string);
+    }
+
+    if (!invitation.invited_by) {
+      return json({ error: "Invitation does not have an active inviter" }, 409);
+    }
+    const { data: inviterResult, error: inviterError } = await supabase.auth.admin.getUserById(invitation.invited_by);
+    const inviterEmail = inviterResult.user?.email?.trim();
+    if (inviterError || !inviterEmail) {
+      return json({ error: "Invitation does not have an active inviter" }, 409);
+    }
+
+    // Keep send-time validity aligned with accept_team_invitation so an email
+    // does not offer access that the saved invitation can no longer grant.
+    if (invitation.invited_by !== invitation.artist_id) {
+      const { data: inviterMemberships, error: inviterMembershipError } = await supabase
+        .from("artist_members")
+        .select("member_email, role")
+        .eq("artist_id", invitation.artist_id)
+        .eq("status", "active")
+        .in("role", invitation.role === "manager" ? ["owner"] : ["owner", "manager"]);
+      if (inviterMembershipError) {
+        return json({ error: "Could not verify the inviter" }, 503);
+      }
+      const inviterStillAuthorized = (inviterMemberships ?? []).some(
+        (member) => member.member_email.toLowerCase() === inviterEmail.toLowerCase(),
+      );
+      if (!inviterStillAuthorized) {
+        return json({ error: "Invitation inviter is no longer authorized" }, 409);
+      }
+    }
+
+    const appUrl = getAppUrl(supabaseUrl);
+    if (!appUrl) {
+      return json({ error: "Server is missing application site configuration" }, 500);
+    }
+    const invitationPageUrl = `${appUrl}/invitations`;
+    const loginUrl = `${appUrl}/manage-login?redirect=${encodeURIComponent("/invitations")}`;
+    let accessUrl = loginUrl;
+    let managerSignupUrl: string | undefined;
+    if (requiresEventAccess) {
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: "magiclink",
+        email: invitation.invited_email,
+        options: { redirectTo: invitationPageUrl },
+      });
+      if (linkError || !linkData.properties?.action_link) {
+        return json({ error: "Could not create invitation sign-in link" }, 502);
+      }
+      accessUrl = linkData.properties.action_link;
+    } else {
+      managerSignupUrl = `${appUrl}/staff-signup?email=${encodeURIComponent(invitation.invited_email)}&workspace=${encodeURIComponent(artistName)}`;
+    }
+
     const subject = `You've been invited to join ${artistName} on NireQ`;
-    const html = buildInviteHtml(artistName, roleLabel, inviteUrl);
-    const text = buildInviteText(artistName, roleLabel, inviteUrl);
+    const emailInput = {
+      artistName,
+      inviterEmail,
+      role: invitation.role as "manager" | "seller" | "queue_staff",
+      roleLabel,
+      eventNames,
+      accessUrl,
+      managerSignupUrl,
+    };
+    const html = buildInviteHtml(emailInput);
+    const text = buildInviteText(emailInput);
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
@@ -189,46 +295,10 @@ function getRoleLabel(role: string): string {
   return labels[role] ?? role;
 }
 
-function escapeHtml(str: unknown): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+function getAppUrl(supabaseUrl: string): string | null {
+  const configured = (Deno.env.get("APPLICATION_SITE_URL") || Deno.env.get("PUBLIC_SITE_URL") || "").trim();
+  if (configured) return configured.replace(/\/$/, "");
 
-function buildInviteHtml(artistName: string, roleLabel: string, inviteUrl: string): string {
-  return `
-<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;max-width:520px">
-  <h1 style="font-size:20px;margin:0 0 12px">
-    You've been invited to join ${escapeHtml(artistName)} on NireQ
-  </h1>
-  <p>You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p>
-  <p>
-    To accept this invitation, create a manager account or log in using
-    <strong>this exact email address</strong>. This will not create a shop page.
-  </p>
-  <p>
-    <a href="${escapeHtml(inviteUrl)}" style="display:inline-block;background:#db2777;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">
-      Create manager account
-    </a>
-  </p>
-  <p style="color:#6b7280;font-size:13px">
-    If you did not expect this invitation, you can ignore this email.
-  </p>
-</div>`;
-}
-
-function buildInviteText(artistName: string, roleLabel: string, inviteUrl: string): string {
-  return [
-    `You've been invited to join ${artistName} on NireQ`,
-    "",
-    `Role: ${roleLabel}`,
-    "",
-    "To accept this invitation, create a manager account or log in using this exact email address.",
-    "This will not create a shop page.",
-    inviteUrl,
-    "",
-    "If you did not expect this invitation, you can ignore this email.",
-  ].join("\n");
+  const hostname = new URL(supabaseUrl).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" ? "http://localhost:5173" : null;
 }

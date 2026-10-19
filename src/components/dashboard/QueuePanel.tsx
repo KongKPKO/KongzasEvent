@@ -381,10 +381,10 @@ export default function QueuePanel({
                     </div>
                     <div className="max-h-[min(300px,40dvh)] overflow-y-auto overscroll-contain">
                         {waitingTickets.length > 0 ? (
-                            <ul className="divide-y divide-gray-50">
+                            <ul className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2 p-3">
                                 {waitingTickets.map((t, idx) => (
-                                    <li key={t.id} className="px-3 py-2 hover:bg-gray-50 transition-colors flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
+                                    <li key={t.id} className="min-w-0 rounded-xl border border-pink-100 bg-white p-2 text-center">
+                                        <div className="flex flex-col items-center gap-1">
                                             <div className="w-11 h-11 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center text-xs font-bold">
                                                 #{t.queue_number}
                                             </div>

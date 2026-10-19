@@ -181,6 +181,11 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     const activeSale = sellerPage.locator('[aria-label="Active sale queue"]');
     await expect(activeSale.getByText('Walk-in', { exact: true }).first()).toBeVisible();
     await expect(activeSale.getByRole('button', { name: 'Manage queues', exact: true })).toBeVisible();
+    const summary = activeSale.getByRole('group', { name: 'Queue status summary' });
+    await expect(summary).toContainText('Waiting5');
+    await expect(summary).toContainText('Called0');
+    await expect(summary).toContainText('Arrived0');
+    await expect(sellerPage.getByRole('link', { name: 'Offline workspace', exact: true })).toHaveCount(0);
     const fullQueueButton = activeSale.getByRole('button', { name: 'Full queue dashboard', exact: true });
     await expect(fullQueueButton).toBeVisible();
     const fullQueueBounds = await fullQueueButton.boundingBox();
@@ -204,6 +209,14 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     let drawer = sellerPage.getByRole('dialog', { name: 'Manage queues', exact: true });
     await expect(drawer).toBeVisible();
     await expect(drawer.getByRole('button', { name: 'Call 5', exact: true })).toBeEnabled();
+    const waiting = drawer.getByRole('region', { name: 'Waiting', exact: true });
+    const firstTile = await rowFor(waiting, 1).boundingBox();
+    const secondTile = await rowFor(waiting, 2).boundingBox();
+    expect(firstTile!.y).toBe(secondTile!.y);
+    expect(secondTile!.x).toBeGreaterThan(firstTile!.x);
+    expect(firstTile!.width).toBeLessThan(110);
+    await sellerPage.screenshot({ path: testInfo.outputPath('pos-waiting-queue-tiles.png') });
+
     await drawer.getByRole('button', { name: 'Close queue management', exact: true }).click();
     await expect(drawer).toBeHidden();
     await expect(cart.getByText(productName, { exact: true })).toBeVisible();

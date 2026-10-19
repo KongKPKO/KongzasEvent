@@ -16,6 +16,7 @@ test('manager opens team, invites event staff and removes them without role edit
   if (manager.error) throw manager.error;
   const must = (result: { error: unknown }) => { if (result.error) throw result.error; };
   const staffEmail = `staff-${suffix}@example.com`;
+  const invitedEmail = `invite-${suffix}@example.com`;
   const eventId = randomUUID();
   try {
     must(await service.from('artist_members').insert([
@@ -33,12 +34,29 @@ test('manager opens team, invites event staff and removes them without role edit
     await expect(page.getByText(staffEmail, { exact: true })).toBeVisible();
     const invite = page.locator('form');
     await expect(invite.locator('option[value=manager]')).toHaveCount(0);
-    await invite.locator('input[type=email]').fill(`invite-${suffix}@example.com`);
+    await invite.locator('input[type=email]').fill(invitedEmail);
     await invite.getByText('Scope event', { exact: true }).click();
     // Avoid sending an email; the invitation RPC itself uses the real local database.
-    await page.route('**/auth/v1/otp*', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+    const notificationRequests: Array<{ invitation_id?: string }> = [];
+    let otpRequests = 0;
+    await page.route('**/functions/v1/notify-team-invitation', async route => {
+      notificationRequests.push(route.request().postDataJSON() as { invitation_id?: string });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"delivered":true}' });
+    });
+    await page.route('**/auth/v1/otp*', async route => {
+      otpRequests += 1;
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"unexpected direct OTP request"}' });
+    });
     await invite.getByRole('button', { name: 'Invite', exact: true }).click();
-    await expect(page.getByText('Magic link sent.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Invitation email sent with the role and event access.', { exact: false })).toBeVisible();
+    expect(otpRequests).toBe(0);
+    expect(notificationRequests).toHaveLength(1);
+    expect(notificationRequests[0]?.invitation_id).toMatch(/^[0-9a-f-]{36}$/i);
+    const pendingInvite = page.locator('.divide-y > div').filter({ has: page.getByText(invitedEmail, { exact: true }) });
+    await pendingInvite.getByRole('button', { name: 'Resend', exact: true }).click();
+    await expect(pendingInvite.getByText('Email resent.', { exact: true })).toBeVisible();
+    expect(notificationRequests).toHaveLength(2);
+    expect(notificationRequests[1]?.invitation_id).toBe(notificationRequests[0]?.invitation_id);
     const row = page.locator('.divide-y > div').filter({ has: page.getByText(staffEmail, { exact: true }) });
     await expect(row.locator('select')).toBeDisabled();
     await expect(row.getByLabel('Shipping responsibility — access customer addresses and contacts')).toBeDisabled();
@@ -71,14 +89,16 @@ test('manager opens team, invites event staff and removes them without role edit
       await eventAccess.click();
       await expect(ownerPage.getByRole('alert')).toContainText('Access update did not complete');
       await expect(eventAccess).toBeChecked();
-      await ownerPage.getByRole('button', { name: 'Switch language' }).click();
+      await ownerPage.getByRole('button', { name: 'Language', exact: true }).click();
+      await ownerPage.getByRole('menuitemradio', { name: /ไทย/ }).click();
       for (const width of [320, 375, 414, 768, 1280]) {
         await ownerPage.setViewportSize({ width, height: 900 });
         expect(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       }
       await ownerPage.screenshot({ path: '/tmp/nireq-team-ui.png', fullPage: true });
       await ownerPage.goto('/invitations');
-      await ownerPage.getByRole('button', { name: 'Switch language' }).click();
+      await ownerPage.getByRole('button', { name: 'Language', exact: true }).click();
+      await ownerPage.getByRole('menuitemradio', { name: /ไทย/ }).click();
       await expect(ownerPage.getByRole('heading', { name: 'คำเชิญของฉัน' })).toBeVisible();
       await expect(ownerPage.getByText('ไม่มีคำเชิญที่รอตอบรับ', { exact: false })).toBeVisible();
 

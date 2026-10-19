@@ -218,6 +218,12 @@ export default function POSPanel({
 
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     const [activityRewardSuccess, setActivityRewardSuccess] = useState<{ orderId: string | null; pricingBreakdown: unknown[] } | null>(null);
+    useEffect(() => {
+        if (!activityRewardSuccess) return;
+        const timer = window.setTimeout(() => setActivityRewardSuccess(null), 6_000);
+        return () => window.clearTimeout(timer);
+    }, [activityRewardSuccess]);
+
     // Non-null when the payment sequence timed out or the network aborted mid-flight
     // and we cannot confirm whether the DB committed.  Stores the event ID so the
     // order history link can point to the right event.  Cleared on confirmed success
@@ -1366,7 +1372,7 @@ export default function POSPanel({
         <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
             {activityRewardSuccess && (
-                <div className="fixed right-3 top-3 z-[80] w-[calc(100%-1.5rem)] max-w-md drop-shadow-xl sm:right-5 sm:top-5">
+                <div role="status" aria-live="polite" className="fixed right-3 top-3 z-[80] w-[calc(100%-1.5rem)] max-w-md drop-shadow-xl sm:right-5 sm:top-5">
                     <ActivityRewardsCard
                         pricingBreakdown={activityRewardSuccess.pricingBreakdown}
                         state="earned"
@@ -1376,14 +1382,20 @@ export default function POSPanel({
                     />
                 </div>
             )}
-            {canUsePos && activeEvent && <div role="group" className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-1 md:flex-wrap md:py-2" aria-label={language === 'th' ? 'คิวที่กำลังขาย' : 'Active sale queue'}>
+            {canUsePos && activeEvent && <div role="group" className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-3 py-1 md:py-2" aria-label={language === 'th' ? 'คิวที่กำลังขาย' : 'Active sale queue'}>
                 <div className="min-w-0 flex-1 md:contents"><strong className={`${selectedQueueId ? 'block' : 'hidden'} text-sm md:block`}>{selectedQueueId ? `${language === 'th' ? 'คิว' : 'Queue'} #${selectedQueueNumber} — ${activeQueueLabel}` : uiText(language, 'Walk-in')}</strong>
                 <button type="button" onClick={onOpenQueueDashboard} disabled={paymentInFlightRef.current} className="hidden min-h-11 shrink-0 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700 hover:bg-gray-50 md:mr-auto md:inline-flex">{language === 'th' ? 'จัดการคิวแบบเต็ม' : 'Full queue dashboard'}</button>
 
                 <select className="min-h-11 w-full min-w-0 rounded-xl border px-2 text-sm md:hidden" aria-label={uiText(language, 'Select Customer')} value={selectedQueueId || ''} disabled={paymentInFlightRef.current} onChange={event => { const queue = servingQueues.find(item => item.id === event.target.value); if (queue) selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) }); else if (!event.target.value) selectWalkin(); }}><option value="">{uiText(language, 'Walk-in')}</option>{servingQueues.map(queue => <option key={queue.id} value={queue.id}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</option>)}</select>
 
-                <div className="flex gap-2 md:contents"><span className="text-xs text-gray-600">{language === 'th' ? 'เรียกแล้ว' : 'Called'} {queues.filter(queue => queue.status === 'calling' && !queue.arrived_at).length}</span>
-                <span className="text-xs text-green-700">{language === 'th' ? 'มาถึงแล้ว' : 'Arrived'} {queues.filter(queue => queue.status === 'calling' && queue.arrived_at).length}</span></div></div>
+                </div>
+                <div role="group" aria-label={language === 'th' ? 'สรุปสถานะคิว' : 'Queue status summary'} className="order-last grid w-full grid-cols-3 gap-2 md:order-none md:w-auto">
+                    {[
+                        { label: language === 'th' ? 'รอเรียก' : 'Waiting', count: queues.filter(queue => queue.status === 'waiting' || queue.status === 'queued').length, tone: 'border-slate-200 bg-slate-50 text-slate-800' },
+                        { label: language === 'th' ? 'เรียกแล้ว' : 'Called', count: queues.filter(queue => queue.status === 'calling' && !queue.arrived_at).length, tone: 'border-amber-200 bg-amber-50 text-amber-900' },
+                        { label: language === 'th' ? 'มาถึงแล้ว' : 'Arrived', count: queues.filter(queue => queue.status === 'calling' && queue.arrived_at).length, tone: 'border-green-200 bg-green-50 text-green-800' },
+                    ].map(({ label, count, tone }) => <div key={label} className={`flex min-h-7 items-center justify-center gap-2 rounded-xl border px-2 md:min-h-11 md:px-3 md:py-1 ${tone}`}><span className="text-xs font-bold">{label}</span><strong className="text-base tabular-nums md:text-lg">{count}</strong></div>)}
+                </div>
                 <button type="button" onClick={selectWalkin} disabled={paymentInFlightRef.current} className={`hidden md:inline-flex items-center min-h-11 rounded-xl border px-3 text-sm font-bold ${!selectedQueueId ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200'}`}>{uiText(language, 'Walk-in')}</button>
                 <div className="hidden max-w-64 gap-2 overflow-x-auto md:flex">{servingQueues.map(queue => <button key={queue.id} type="button" disabled={paymentInFlightRef.current} onClick={() => selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) })} className={`min-h-11 shrink-0 rounded-xl border px-3 text-sm font-bold ${selectedQueueId === queue.id ? 'border-pink-600 bg-pink-600 text-white' : 'border-green-200 text-green-700'}`}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</button>)}</div>
                 <button type="button" className="min-h-11 shrink-0 rounded-xl border border-pink-200 bg-pink-50 px-3 text-sm font-bold text-pink-800" onClick={() => setIsQueueDrawerOpen(true)}>{language === 'th' ? 'จัดการคิว' : 'Manage queues'}</button>

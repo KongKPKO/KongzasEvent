@@ -17,7 +17,7 @@ export function resolveQueueAvailability(input: {
   broadcastMessage?: string | null;
 }): QueueAvailability {
   const now = input.now ?? Date.now();
-  if (input.eventStatus === 'Ended' || (input.eventEndsAt && Date.parse(input.eventEndsAt) < now)) return { state: 'event-ended', acceptsTickets: false, pauseReason: null };
+  if (input.eventStatus === 'Ended' || (input.eventEndsAt && Date.parse(input.eventEndsAt) <= now)) return { state: 'event-ended', acceptsTickets: false, pauseReason: null };
   if (!input.hasActiveEvent || (input.eventStatus && input.eventStatus !== 'Confirmed') || (input.eventStartsAt && Date.parse(input.eventStartsAt) > now)) return { state: 'event-unavailable', acceptsTickets: false, pauseReason: null };
   if (!input.isBoothOpen) return { state: 'booth-closed', acceptsTickets: false, pauseReason: null };
   if (!input.isQueueOpen) {

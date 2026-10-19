@@ -14,6 +14,7 @@ test('queue intake follows the event window even when post-order booth flags sta
   const now = Date.parse('2026-10-19T12:00:00+07:00');
   const base = { hasActiveEvent: true, isBoothOpen: true, isQueueOpen: true, eventStatus: 'Confirmed', eventStartsAt: '2026-10-18T10:00:00+07:00', eventEndsAt: '2026-10-18T18:00:00+07:00', now };
   expect(resolveQueueAvailability(base)).toEqual({ state: 'event-ended', acceptsTickets: false, pauseReason: null });
+  expect(resolveQueueAvailability({ ...base, eventEndsAt: new Date(now).toISOString() }).acceptsTickets).toBe(false);
   expect(resolveQueueAvailability({ ...base, eventStatus: 'Ended', eventEndsAt: '2026-10-20T18:00:00+07:00' }).acceptsTickets).toBe(false);
   expect(resolveQueueAvailability({ ...base, eventStartsAt: '2026-10-20T10:00:00+07:00', eventEndsAt: '2026-10-20T18:00:00+07:00' }).acceptsTickets).toBe(false);
   expect(resolveQueueAvailability({ ...base, eventEndsAt: '2026-10-19T18:00:00+07:00' }).acceptsTickets).toBe(true);

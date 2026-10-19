@@ -94,6 +94,22 @@ const QueueView = () => {
         return () => { active = false; window.clearInterval(timer); };
     }, [activeEvent?.id]);
 
+    useEffect(() => {
+        const syncClock = () => setQueueNow(Date.now());
+        syncClock();
+        const remaining = Date.parse(activeEvent?.end_date || '') - Date.now();
+        const deadline = Number.isFinite(remaining) && remaining >= 0 && remaining < 2_147_483_647
+            ? window.setTimeout(syncClock, remaining + 1)
+            : undefined;
+        window.addEventListener('focus', syncClock);
+        document.addEventListener('visibilitychange', syncClock);
+        return () => {
+            window.clearTimeout(deadline);
+            window.removeEventListener('focus', syncClock);
+            document.removeEventListener('visibilitychange', syncClock);
+        };
+    }, [activeEvent?.id, activeEvent?.end_date, activeEvent?.status]);
+
     const activeServiceDate = activeEvent
         ? formatDateInTimeZone(new Date(), activeEvent.event_timezone || 'Asia/Bangkok')
         : null;
@@ -383,7 +399,8 @@ const QueueView = () => {
         // Safety Check: Ensure Event hasn't ended
         const now = new Date();
         const end = new Date(activeEvent.end_date);
-        if (now > end) {
+        if (now >= end) {
+            setQueueNow(now.getTime());
             setToast({ tone: 'warning', title: t('queueEventEnded'), detail: t('queueEventEndedDetail') });
             refresh();
             getTicketInFlightRef.current = false;

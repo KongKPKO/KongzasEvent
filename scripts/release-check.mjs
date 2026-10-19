@@ -279,6 +279,7 @@ if (mode === 'local') {
     'src/tests/promotion-save.spec.ts',
     'src/tests/promotion-mixed-rewards.spec.ts',
     'src/tests/promotion-workspace.spec.ts',
+    'src/tests/promotion-flexible-benefits.spec.ts',
     'src/tests/activity-rewards-display.spec.ts',
     'src/tests/activity-reward-pos.spec.ts',
     'src/tests/event-catalog-setup.spec.ts',

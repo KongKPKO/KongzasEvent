@@ -1658,7 +1658,7 @@ const translations = {
     productDetailVariantGroup: 'กลุ่มตัวเลือก',
     productDetailCategory: 'หมวดหมู่',
     queueLoadingStatus: 'กำลังโหลดสถานะ...',
-    queueEventEnded: 'อีเวนต์จบแล้ว',
+    queueEventEnded: 'อีเวนต์นี้จบลงแล้ว',
     queueEventEndedDetail: 'อีเวนต์นี้จบลงแล้ว.',
     queueCouldNotGetTicket: 'รับบัตรคิวไม่สำเร็จ',
     queueTryAgain: 'กรุณาลองใหม่อีกครั้ง.',

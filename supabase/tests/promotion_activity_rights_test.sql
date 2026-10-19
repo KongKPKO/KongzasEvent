@@ -63,7 +63,7 @@ select is(jsonb_array_length(pg_temp.quote()->'reward_lines'),0,'activity never 
 select is(pg_temp.quote()#>>'{applied_promotions,0,activity_reward,name}','Wheel entry','quote snapshots manual reward name');
 select is(pg_temp.quote()#>>'{applied_promotions,0,activity_reward,instructions}','Give one paper entry for each right.','quote snapshots instructions');
 select is((select count(*) from public.products where artist_id='e1900000-0000-4000-8000-000000000002'),4::bigint,'activity creates no catalog product');
-select throws_ok($$select private.validate_promotion_v1(jsonb_set(pg_temp.activity(),'{condition}','{"kind":"quantity","quantity":2}'),'e1900000-0000-4000-8000-000000000002')$$,'P0001','promotion_activity_invalid','rights require a spend condition');
+select lives_ok($$select private.validate_promotion_v1(jsonb_set(pg_temp.activity(),'{condition}','{"kind":"quantity","quantity":2}'),'e1900000-0000-4000-8000-000000000002')$$,'rights also support quantity conditions');
 select throws_ok($$select private.validate_promotion_v1(jsonb_set(pg_temp.activity(),'{activity,name}','" "'),'e1900000-0000-4000-8000-000000000002')$$,'P0001','promotion_activity_invalid','blank activity name rejected on server');
 select throws_ok($$select private.validate_promotion_v1(pg_temp.activity(0),'e1900000-0000-4000-8000-000000000002')$$,'P0001','promotion_quantity_invalid','zero rights rejected');
 

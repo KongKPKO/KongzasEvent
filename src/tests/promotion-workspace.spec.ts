@@ -138,8 +138,9 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
       activity: { name: 'จับฉลากหน้าเวที', instructions: 'แสดงเลขออเดอร์หลังยืนยันการชำระเงิน', quantity: 2 },
     });
     await form.getByRole('radio', { name: 'ซื้อสินค้าครบชุด', exact: true }).check();
-    await expect(activityToggle).toBeDisabled();
-    await expect(activityToggle).not.toBeChecked();
+    await expect(activityToggle).toBeEnabled();
+    await expect(activityToggle).toBeChecked();
+    await activityToggle.uncheck();
     await form.getByRole('button', { name: 'คำนวณผลทดลอง', exact: true }).click();
     await expect(form.locator('.promotion-preview-result')).toContainText('฿380');
 

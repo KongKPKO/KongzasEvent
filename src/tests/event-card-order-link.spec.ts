@@ -101,6 +101,7 @@ const eventRows = [
 interface StorefrontMockState {
   failPromotionQuote?: boolean;
   postorderBoothOpen?: boolean;
+  liveEndsAt?: string;
   delayGlobalCatalog?: boolean;
   globalCatalogFinished?: boolean;
 }
@@ -154,7 +155,7 @@ const mockCustomerStorefront = async (page: Page, state: StorefrontMockState = {
     if (path.includes('/rest/v1/event_appearances')) return json(route, []);
     if (path.includes('/rest/v1/events')) {
       if (state.delayGlobalCatalog) await new Promise(resolve => setTimeout(resolve, 100));
-      return json(route, eventRows.map(event => event.id === postorderEventId && state.postorderBoothOpen ? { ...event, status: 'Confirmed', is_booth_open: true } : event));
+      return json(route, eventRows.map(event => event.id === postorderEventId && state.postorderBoothOpen ? { ...event, status: 'Confirmed', is_booth_open: true, ...(state.liveEndsAt ? { start_date: new Date(now - 60000).toISOString(), end_date: state.liveEndsAt } : {}) } : event));
     }
     if (path.includes('/rest/v1/products') && state.delayGlobalCatalog) {
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -268,4 +269,19 @@ test('an ended event cannot show queue intake while its post-order store remains
   await page.getByRole('link', { name: 'Merchandise', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Postorder-only product' })).toBeVisible();
   await expect(page.getByText('Post-event store', { exact: true })).toBeVisible();
+});
+
+
+test('an open queue removes ticket intake as soon as the event ends without a reload', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.addInitScript(({ artistId, postorderEventId }) => {
+    localStorage.setItem('nireq-language', 'en');
+    localStorage.setItem(`customerSelectedEventId:${artistId}`, postorderEventId);
+  }, { artistId, postorderEventId });
+  await mockCustomerStorefront(page, { postorderBoothOpen: true, liveEndsAt: new Date(now + 10000).toISOString() });
+  await page.goto(`/${artistSlug}/queue`);
+  await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toBeVisible();
+  await page.clock.runFor(10001);
+  await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Event ended', exact: true }).first()).toBeVisible();
 });

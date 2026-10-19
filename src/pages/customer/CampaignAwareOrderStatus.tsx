@@ -15,6 +15,8 @@ import type { CampaignOrder } from '../../types/onlineCampaign';
 import { formatPrice } from '../../utils/currency';
 import { getSellerLabels } from '../../utils/sellerType';
 import OrderStatus from './OrderStatus';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
   const { slug, code } = useParams<{ slug: string; code: string }>();
@@ -132,6 +134,14 @@ function CampaignOrderView({ order: initialOrder }: { order: CampaignOrder }) {
             </div>
           )}
         </section>
+
+        <ActivityRewardsCard
+          pricingBreakdown={order.pricing_breakdown}
+          state={activityRewardStateForOrder(order.status, order.payment_status)}
+          language={language}
+          orderReference={order.order_code}
+          className="order-status"
+        />
 
         <div className="order-actions">
         {order.payment_status === 'awaiting_payment' && !expired && (

@@ -22,6 +22,8 @@ import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
 import type { PaymentStatus, PreorderPaymentReviewRow, PreorderProductionSummaryRow } from '../../types/preorder';
 import { formatPrice } from '../../utils/currency';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 interface PreorderDashboardProps {
   actorContext: ActorContext;
@@ -612,6 +614,13 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                         {copy("Reason:")}{order.review_note}
                       </div>
                     )}
+                    <ActivityRewardsCard
+                      pricingBreakdown={order.pricing_breakdown}
+                      state={activityRewardStateForOrder(undefined, order.payment_status)}
+                      language={language}
+                      orderReference={order.pickup_code}
+                      className="mt-3 max-w-xl"
+                    />
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="mr-2 text-right">

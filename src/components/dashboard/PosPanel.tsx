@@ -20,6 +20,8 @@ import type { ProductPresentationFields, ProductVariantFields } from '../../type
 import { ProductMedia } from '../menu/ProductPresentation';
 import { buildProductPresentationEntries, getProductImages, getProductPriceRange } from '../../utils/productPresentation';
 import PosSalesHistory from './PosSalesHistory';
+import ActivityRewardsCard from '../promotions/ActivityRewardsCard';
+import { getActivityRewards } from '../../utils/activityRewards';
 
 // Maximum ms the full payment RPC sequence may take before the UI declares
 // "status unknown."  Each individual fetch already has a 15 s per-request
@@ -33,6 +35,14 @@ interface PricingSnapshot {
     total: number;
     appliedPromotions: unknown[];
 }
+
+const rpcOrderId = (value: unknown): string | null => {
+    const candidate = Array.isArray(value) ? value[0] : value;
+    if (typeof candidate === 'string') return candidate;
+    if (!candidate || typeof candidate !== 'object') return null;
+    const row = candidate as Record<string, unknown>;
+    return typeof row.order_id === 'string' ? row.order_id : typeof row.id === 'string' ? row.id : null;
+};
 
 const createPaymentAttemptId = (): string => {
     try {
@@ -207,6 +217,7 @@ export default function POSPanel({
     const fetchVersionRef = useRef(0);
 
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
+    const [activityRewardSuccess, setActivityRewardSuccess] = useState<{ orderId: string | null; pricingBreakdown: unknown[] } | null>(null);
     // Non-null when the payment sequence timed out or the network aborted mid-flight
     // and we cannot confirm whether the DB committed.  Stores the event ID so the
     // order history link can point to the right event.  Cleared on confirmed success
@@ -759,6 +770,7 @@ export default function POSPanel({
             return;
         }
 
+        setActivityRewardSuccess(null);
         paymentInFlightRef.current = true;
         setLoading(true);
 
@@ -790,6 +802,7 @@ export default function POSPanel({
         // it clears all payment-related state; on error it throws so the outer
         // catch can classify and display the right message.
         let durablePayment: OfflineEntry | null = null;
+        let completedOrderId = orderIdAtPaymentStart;
         const runPaymentSequence = async () => {
             durablePayment = await recordPreparedPayment(paymentAttemptId, eventId, {
                 kind: 'sale', order_id: orderIdAtPaymentStart, items: cart.map(item => ({ product_id:item.product.id,quantity:item.quantity,notes:item.notes || '',name:item.product.name,unit_price:item.product.price,currency:item.product.currency })), currency:cart[0]?.product.currency, collected_total: pricingSnapshot.total, method,
@@ -825,7 +838,9 @@ export default function POSPanel({
                 });
                 if (createError) throw createError;
 
-                const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
+                const orderId = rpcOrderId(createdOrderId);
+                if (!orderId) throw new Error('order_response_missing');
+                completedOrderId = orderId;
                 const { error: completeError } = await supabase.rpc('complete_order_with_stock', {
                     p_order_id: orderId,
                     p_payment_method: method,
@@ -837,7 +852,7 @@ export default function POSPanel({
                 });
                 if (completeError) throw completeError;
             } else {
-                const { error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
+                const { data: createdOrderId, error: walkinError } = await supabase.rpc('create_walkin_order_with_stock', {
                     p_event_id: eventId,
                     p_items: payloadItems,
                     p_payment_method: method,
@@ -848,6 +863,7 @@ export default function POSPanel({
                     p_accept_exhausted_rewards: acceptExhaustedRewards,
                 });
                 if (walkinError) throw walkinError;
+                completedOrderId = rpcOrderId(createdOrderId);
             }
 
             // Confirmed success: clear state and notify parent.
@@ -865,6 +881,9 @@ export default function POSPanel({
             }
             onClearQueue();
             await fetchProducts();
+            if (getActivityRewards(pricingSnapshot.appliedPromotions).length > 0) {
+                setActivityRewardSuccess({ orderId: completedOrderId, pricingBreakdown: pricingSnapshot.appliedPromotions });
+            }
             setToast({ tone: 'success', title: uiText(language, 'Payment completed') });
         };
 
@@ -1346,6 +1365,17 @@ export default function POSPanel({
     return (
         <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
+            {activityRewardSuccess && (
+                <div className="fixed right-3 top-3 z-[80] w-[calc(100%-1.5rem)] max-w-md drop-shadow-xl sm:right-5 sm:top-5">
+                    <ActivityRewardsCard
+                        pricingBreakdown={activityRewardSuccess.pricingBreakdown}
+                        state="earned"
+                        language={language}
+                        orderReference={activityRewardSuccess.orderId}
+                        onDismiss={() => setActivityRewardSuccess(null)}
+                    />
+                </div>
+            )}
             {canUsePos && activeEvent && <div role="group" className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-1 md:flex-wrap md:py-2" aria-label={language === 'th' ? 'คิวที่กำลังขาย' : 'Active sale queue'}>
                 <div className="min-w-0 flex-1 md:contents"><strong className={`${selectedQueueId ? 'block' : 'hidden'} text-sm md:block`}>{selectedQueueId ? `${language === 'th' ? 'คิว' : 'Queue'} #${selectedQueueNumber} — ${activeQueueLabel}` : uiText(language, 'Walk-in')}</strong>
                 <button type="button" onClick={onOpenQueueDashboard} disabled={paymentInFlightRef.current} className="hidden min-h-11 shrink-0 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700 hover:bg-gray-50 md:mr-auto md:inline-flex">{language === 'th' ? 'จัดการคิวแบบเต็ม' : 'Full queue dashboard'}</button>

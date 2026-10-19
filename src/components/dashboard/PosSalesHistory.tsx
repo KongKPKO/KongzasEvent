@@ -4,6 +4,8 @@ import { supabase } from '../../supabaseClient';
 import { formatPrice } from '../../utils/currency';
 import { formatDateInTimeZone, parseDateTimeInputInTimeZone } from '../../utils/timezone';
 import { useI18n } from '../../i18n';
+import ActivityRewardsCard from '../promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 const PAGE_SIZE = 20;
 
@@ -448,6 +450,13 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
                       <div><dt className="text-xs text-gray-500">{text('Payment status', 'สถานะการชำระ')}</dt><dd className="mt-1 font-bold">{paymentStatusLabel(detail.payment_status)}</dd></div>
                     </dl>
                   </div>
+
+                  <ActivityRewardsCard
+                    pricingBreakdown={detail.pricing_breakdown}
+                    state={activityRewardStateForOrder(detail.status, detail.payment_status)}
+                    language={language}
+                    orderReference={detail.order_number}
+                  />
 
                   <div className="rounded-2xl border border-gray-200 bg-white p-5">
                     <h4 className="font-black text-gray-900">{text('Items', 'รายการสินค้า')}</h4>

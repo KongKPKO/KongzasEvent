@@ -2,6 +2,7 @@ import type { PaymentBankAccount } from '../utils/paymentBanks';
 import type { PromotionChoice } from './promotion';
 import type { ProductPresentationFields, ProductVariantFields } from './productPresentation';
 import type { SellerType } from '../utils/sellerType';
+import type { PromotionPricingBreakdown } from './activityReward';
 
 export type CampaignPublicationStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type CampaignState = CampaignPublicationStatus | 'scheduled' | 'open' | 'sold_out' | 'closed';
@@ -153,7 +154,7 @@ export interface CampaignOrder {
   picked_up_at?: string | null;
   refunded_at?: string | null;
   items: CampaignOrderItem[];
-  pricing_breakdown?: Array<{ promotion_name?: string; discount_amount?: number }>;
+  pricing_breakdown?: PromotionPricingBreakdown[];
 }
 
 export interface CampaignWorkspace {

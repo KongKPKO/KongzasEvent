@@ -9,8 +9,10 @@ import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import { cancelPreorder, expirePreordersForEvent, getPreorderErrorMessage, markPreorderPickedUp } from '../../lib/preorders';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
-import type { PickupStatus } from '../../types/preorder';
+import type { PaymentStatus, PickupStatus } from '../../types/preorder';
 import { formatPrice } from '../../utils/currency';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 interface PreorderPickupProps {
   actorContext: ActorContext;
@@ -30,10 +32,12 @@ interface PickupOrderRow {
   created_at: string;
   status: string;
   pickup_status: PickupStatus;
+  order_payments: { payment_status: PaymentStatus } | Array<{ payment_status: PaymentStatus }> | null;
   pickup_code: string;
   customer_name: string;
   total_price: number;
   currency: string;
+  pricing_breakdown: unknown[];
   order_items: Array<{ id: string; components?: Array<{name: string; quantity: number}>; quantity: number; products: { name: string } | null }>;
 }
 
@@ -100,10 +104,12 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
             created_at,
             status,
             pickup_status,
+            order_payments (payment_status),
             pickup_code,
             customer_name,
             total_price,
             currency,
+            pricing_breakdown,
             order_items (
               id,
               quantity,
@@ -355,6 +361,13 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                       {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}
                       <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
+                    <ActivityRewardsCard
+                      pricingBreakdown={order.pricing_breakdown}
+                      state={activityRewardStateForOrder(order.status, Array.isArray(order.order_payments) ? order.order_payments[0]?.payment_status : order.order_payments?.payment_status)}
+                      language={language}
+                      orderReference={order.pickup_code}
+                      className="mt-3"
+                    />
 
                   </div>
                   <div className="flex justify-end md:min-w-[220px]">

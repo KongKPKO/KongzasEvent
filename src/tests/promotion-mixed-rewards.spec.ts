@@ -15,7 +15,12 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
     const resolved = choices.length > 0;
     return route.fulfill({ json: {
       merchandise_total: 100, discount_total: 0, pricing_hash: 'quote',
-      applied_promotions: [], reward_lines: [],
+      applied_promotions: [{
+        id: 'promo', assignment_id: 'assignment', revision: 1, name: 'Prize draw',
+        rule_text: 'Spend 100', bundle_count: 1, discount_amount: 0,
+        reached_tier_ids: [], rewards: [],
+        activity_reward: { name: 'Prize draw', instructions: 'Show the confirmed order at the booth.', quantity: 2 },
+      }], reward_lines: [],
       required_choices: resolved ? [] : [{ kind: 'reward', promotion_id: 'promo',
         earned_quantity: 2, available_quantity: available, exhausted: available === 0,
         options: available === 0 ? [] : [
@@ -32,6 +37,8 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
   await page.goto('/test/campaign/gifts');
   await page.locator('article').getByRole('button').last().click();
   await page.getByRole('button', { name: /Checkout|ชำระเงิน/ }).click();
+  await expect(page.getByTestId('activity-rewards')).toContainText(/Activity rewards after payment confirmation|สิทธิ์กิจกรรมหลังยืนยันการชำระเงิน/);
+  await expect(page.getByTestId('activity-rewards')).toContainText(/rewards are provisional.*confirms payment|สิทธิ์ที่รอยืนยัน.*ร้านยืนยันการชำระเงิน/);
   const confirm = page.getByRole('button', { name: /Confirm selected gifts|ยืนยันของแถมที่เลือก/ });
   await expect(confirm).toBeDisabled();
   await page.getByRole('button', { name: /Increase Gift A|เพิ่ม Gift A/ }).click();

@@ -82,6 +82,13 @@ These are agreed business rules, not a claim that every deployment has passed ev
 
 - POS has an in-place queue drawer with shared queue actions and atomic idempotent batch calls (1/3/5/10). Arrival is metadata separate from serving; an arrived ticket is protected from call expiry. Staff explicitly choose the sale context; incoming updates never auto-select a queue, and per-context unpaid cart edits survive switching during the session. Queue staff gain no POS/money access.
 
+### Event catalog setup and activity rewards
+
+- New Event setup may start empty, select catalog products in bulk, or reuse the enabled product list from another Event in the same shop. Reuse does not copy allocations, sold counts, holds, production settings, or prices; finite items start with zero allocated stock until the merchant explicitly allocates them. Existing channel stock is never moved implicitly.
+- Activity participation rewards are non-inventory promotion benefits with a name, manual instructions, and quantity. They do not create catalog products, gift commitments, customer-name fields, or automated drawings.
+- For a spend condition, activity rights repeat for each complete threshold in qualifying merchandise after discounts, per order only; no cross-order remainder or shipping/free-gift eligibility. Two orders of 700 and 800 with a 500 threshold earn 1 + 1 rights.
+- The server stores activity reward name, instructions, and count in the order pricing snapshot. They are provisional until payment confirmation; cancelled/refunded orders do not have active rights. Staff distribute entries and reconcile external manual activity records themselves; the app does not claim to track redemption.
+
 ### Sources and regression anchors
 
 - [Campaign and catalog flow](docs/superpowers/specs/2026-09-02-online-campaign-and-catalog-flow-design.md)

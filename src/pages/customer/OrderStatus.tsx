@@ -17,6 +17,8 @@ import {
 } from '../../lib/preorders';
 import type { PublicPreorderDetail } from '../../types/preorder';
 import { getSellerLabels } from '../../utils/sellerType';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 type Feedback = { tone: 'success' | 'warning' | 'error'; title: string; detail?: string };
 
@@ -427,6 +429,14 @@ const OrderStatus: React.FC = () => {
                 )}
               </section>
             )}
+
+            <ActivityRewardsCard
+              pricingBreakdown={detail.pricing_breakdown}
+              state={activityRewardStateForOrder(detail.status, detail.payment_status)}
+              language={language}
+              orderReference={detail.pickup_code}
+              className="order-status"
+            />
 
             {/* Pickup code */}
             {!terminal && (

@@ -107,6 +107,7 @@ interface EventOption {
   end_date: string;
   status: string;
   currency_override?: string | null;
+  catalog_initialized_at?: string | null;
 }
 
 interface EventProductRecord extends SupplySettings {
@@ -334,6 +335,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [eventCatalogTag, setEventCatalogTag] = useState('All');
    const [eventCatalogView, setEventCatalogView] = useState<'all' | 'selling' | 'hidden' | 'overrides'>('all');
    const [eventCatalogDisplayMode, setEventCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
+   const [eventCatalogBulkStock, setEventCatalogBulkStock] = useState('0');
    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
    const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
    const catalogRequest = useRef(0);
@@ -858,7 +860,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const buildDefaultCatalogDraft = (
       catalogRows: EventProductRecord[] = [],
-      stockLimitByProduct: Record<string, number> = eventCatalogStockLimitByProduct
+      stockLimitByProduct: Record<string, number> = eventCatalogStockLimitByProduct,
+      initialized = false
    ) => {
       const rowByProductId = new Map(catalogRows.map((row) => [row.product_id, row]));
       const nextDraft: EventCatalogDraft = {};
@@ -872,10 +875,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                : '';
          nextDraft[product.id] = {
             id: row?.id,
-            is_enabled: row?.is_enabled ?? getEffectiveStatus(product) === 'enable',
+            is_enabled: row?.is_enabled ?? (!initialized && getEffectiveStatus(product) === 'enable'),
             price_override: row?.price_override != null ? String(row.price_override) : '',
             is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
-            stock_total: row?.stock_total != null ? String(row.stock_total) : defaultStockTotal,
+            stock_total: row?.stock_total != null ? String(row.stock_total) : initialized ? '0' : defaultStockTotal,
             stock_reserved: row?.stock_reserved || 0,
             stock_sold: row?.stock_sold || 0,
          };
@@ -916,7 +919,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const fetchEventOptions = async (artistIdValue: string) => {
       const { data, error } = await supabase
          .from('events')
-         .select('id, event_name, start_date, end_date, status, currency_override')
+         .select('id, event_name, start_date, end_date, status, currency_override, catalog_initialized_at')
          .eq('artist_id', artistIdValue)
          .in('status', ['Confirmed', 'confirmed'])
          .order('start_date', { ascending: true });
@@ -955,12 +958,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          const catalogRows = (data || []) as EventProductRecord[];
          const nextStockLimits = await fetchEventCatalogStockLimits(eventId, catalogRows);
          if (request !== eventCatalogRequest.current) return;
-         const nextDraft = buildDefaultCatalogDraft(catalogRows, nextStockLimits);
+         const selectedEvent = eventOptions.find((event) => event.id === eventId);
+         const nextDraft = buildDefaultCatalogDraft(catalogRows, nextStockLimits, Boolean(selectedEvent?.catalog_initialized_at));
          setEventCatalogDraft(nextDraft);
          setEventCatalogSavedDraft(nextDraft);
          setSupplyPolicies(Object.fromEntries((data || []).map((row: EventProductRecord) => [row.product_id, row])));
          setEventCatalogStockLimitByProduct(nextStockLimits);
-         const selectedEvent = eventOptions.find((event) => event.id === eventId);
          const nextEventCurrency = selectedEvent?.currency_override || '';
          setEventCurrencyDraft(nextEventCurrency);
          setEventCurrencySaved(nextEventCurrency);
@@ -1003,6 +1006,23 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                ...fallback,
                ...(prev[product.id] || {}),
                ...updates,
+            };
+         }
+         return next;
+      });
+   };
+
+   const allocateFilteredEventCatalogStock = (useAvailable = false) => {
+      const requested = Math.max(0, Math.trunc(Number(eventCatalogBulkStock) || 0));
+      setEventCatalogDraft((prev) => {
+         const next = { ...prev };
+         for (const product of filteredEventCatalogProducts) {
+            const current = { ...buildEventCatalogFallback(product), ...(prev[product.id] || {}) };
+            if (!current.is_enabled || current.is_unlimited || product.is_unlimited) continue;
+            const limit = getEventCatalogStockLimit(product);
+            next[product.id] = {
+               ...current,
+               stock_total: String(Math.max((current.stock_reserved || 0) + (current.stock_sold || 0), Math.min(useAvailable ? limit : requested, Number.isFinite(limit) ? limit : requested))),
             };
          }
          return next;
@@ -3284,6 +3304,27 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               className="workspace-action min-h-9 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-black text-gray-700 hover:bg-gray-100"
                            >
                               {eventText("Reset visible prices")}</button>
+                           <label className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white pl-3 text-xs font-black text-gray-700">
+                              {language === 'th' ? 'จำนวนจัดสรรรวมต่อรายการ' : 'Total allocation per item'}
+                              <input
+                                 type="number"
+                                 min="0"
+                                 step="1"
+                                 value={eventCatalogBulkStock}
+                                 onChange={(event) => setEventCatalogBulkStock(event.target.value)}
+                                 className="h-9 w-20 rounded-r-lg border-l border-gray-200 px-2 text-center"
+                                 aria-label={language === 'th' ? 'จำนวนสต็อกสำหรับรายการที่แสดง' : 'Stock quantity for visible products'}
+                              />
+                           </label>
+                           <button
+                              type="button"
+                              onClick={() => allocateFilteredEventCatalogStock()}
+                              className="workspace-action min-h-9 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-black text-white hover:bg-gray-800"
+                           >
+                              {language === 'th' ? 'จัดสรรให้ที่เปิดขาย' : 'Allocate selling visible'}
+                           </button>
+                           <button type="button" onClick={() => allocateFilteredEventCatalogStock(true)} className="workspace-action min-h-11 rounded-lg border border-gray-200 bg-white px-3 text-xs font-black text-gray-700">{language === 'th' ? 'ใช้สต็อกที่พร้อมจัดสรรทั้งหมด' : 'Use all available stock'}</button>
+                           <p className="w-full text-xs text-gray-500">{language === 'th' ? 'แก้เฉพาะสินค้าที่เปิดขายและแสดงตามตัวกรอง ตรวจยอดในตารางแล้วกดบันทึก ไม่ย้ายสต็อกจากงานอื่น และไม่ลดต่ำกว่ายอดขายกับยอดจอง' : 'Changes only enabled items in the current filter. Review the table and save. Stock is never moved from other events or reduced below sold and reserved units.'}</p>
                         </div>
                      </div>
 

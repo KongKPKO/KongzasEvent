@@ -10,6 +10,8 @@ import { supabase } from '../../supabaseClient';
 import { ArrowLeft } from 'lucide-react';
 import { formatPrice } from '../../utils/currency'; // ✅ NEW
 import type { OrderType, PickupStatus } from '../../types/preorder';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 interface OrderItem {
     quantity: number;
@@ -35,6 +37,8 @@ interface Order {
     customer_name: string | null;
     pickup_status: PickupStatus | null;
     picked_up_at: string | null;
+    pricing_breakdown: unknown[];
+    order_payments: { payment_status: string } | Array<{ payment_status: string }> | null;
 }
 
 interface EventInfo {
@@ -117,6 +121,7 @@ export default function EventHistory() {
                     subtotal_price,
                     discount_total,
                     pricing_breakdown,
+                    order_payments (payment_status),
                     queues (queue_number),
                     order_items (
                         quantity,
@@ -210,6 +215,16 @@ export default function EventHistory() {
                 </summary>
                 <div className="report-order-body"><p className="text-sm mb-3">{th ? 'ช่องทาง: ' : 'Channel: '}{copy(order.order_type === 'preorder' ? 'Pre-order' : order.order_type === 'post_event' ? 'Post-order' : order.queue_id ? 'Live Queue' : 'Walk-in')}</p>
                   {order.pickup_status && order.pickup_status !== 'not_required' && <p className="text-sm mb-3">{th ? 'การรับสินค้า: ' : 'Fulfillment: '}{({ awaiting_pickup: th ? 'รอรับสินค้า' : 'Awaiting pickup', picked_up: th ? 'รับสินค้าแล้ว' : 'Picked up', cancelled: th ? 'ยกเลิก' : 'Cancelled', expired: th ? 'หมดอายุ' : 'Expired', awaiting_shipment: th ? 'รอจัดส่ง' : 'Awaiting shipment', shipped: th ? 'จัดส่งแล้ว' : 'Shipped' })[order.pickup_status]}{order.picked_up_at && ` · ${new Date(order.picked_up_at).toLocaleString(th ? 'th-TH' : 'en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' })}`}</p>}
+                  <ActivityRewardsCard
+                    pricingBreakdown={order.pricing_breakdown}
+                    state={activityRewardStateForOrder(
+                      order.status,
+                      Array.isArray(order.order_payments) ? order.order_payments[0]?.payment_status : order.order_payments?.payment_status,
+                    )}
+                    language={language}
+                    orderReference={order.pickup_code || order.id}
+                    className="mb-3"
+                  />
                   {order.order_items.length === 0 && <p className="text-sm text-gray-600">{th ? 'ไม่มีรายละเอียดสินค้าในรายการนี้' : 'No item details for this order.'}</p>}
                   {order.order_items.map((item, index) => <div key={index} className="flex justify-between gap-4 py-2 text-sm"><span>{item.quantity} × {item.products?.name || (th ? 'สินค้าเดิมถูกลบแล้ว' : 'Product removed')}</span><span className="shrink-0">{formatPrice(item.quantity * item.price_per_unit, order.currency)}</span></div>)}
                   <p className="text-xs text-gray-600 mt-3">{th ? 'ราคาสินค้าแต่ละรายการก่อนส่วนลด ยอดชำระจริงแสดงด้านบน' : 'Line prices are before discounts. The paid total appears above.'}</p>

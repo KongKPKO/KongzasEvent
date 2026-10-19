@@ -1,6 +1,7 @@
 import type { PaymentBankAccount } from '../utils/paymentBanks';
 import type { PromotionChoice } from './promotion';
 import type { SellerType } from '../utils/sellerType';
+import type { PromotionPricingBreakdown } from './activityReward';
 
 export type EventSellingMode = 'preorder' | 'live' | 'post_event' | 'closed';
 
@@ -165,7 +166,7 @@ export interface PublicPreorderDetail {
   total_price: number;
   subtotal_price?: number;
   discount_total?: number;
-  pricing_breakdown?: Array<{ promotion_name?: string; discount_amount?: number }>;
+  pricing_breakdown?: PromotionPricingBreakdown[];
   currency: string;
   pickup_instructions: string;
   payment_status: PaymentStatus;
@@ -226,5 +227,6 @@ export interface PreorderPaymentReviewRow {
   rejected_at: string | null;
   expired_at: string | null;
   review_note: string | null;
+  pricing_breakdown?: PromotionPricingBreakdown[];
   items: PreorderPaymentReviewItem[];
 }

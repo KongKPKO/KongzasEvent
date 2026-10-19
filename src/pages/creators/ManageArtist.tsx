@@ -21,6 +21,12 @@ import {
   getEventTimeZoneOptions,
   parseDateTimeInputInTimeZone,
 } from '../../utils/timezone';
+import EventCatalogInitializer from '../../components/events/EventCatalogInitializer';
+import {
+  buildEventCatalogInitializationItems,
+  emptyEventCatalogSetupDraft,
+  type EventCatalogSetupProduct,
+} from '../../lib/eventCatalogSetup';
 
 interface Artist {
   seller_type?: SellerType;
@@ -195,6 +201,9 @@ const ManageArtist = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEvent, setCurrentEvent] = useState<Partial<Event>>({});
   const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [catalogSetup, setCatalogSetup] = useState(emptyEventCatalogSetupDraft);
+  const [catalogSetupReady, setCatalogSetupReady] = useState(false);
+  const [catalogSetupProducts, setCatalogSetupProducts] = useState<EventCatalogSetupProduct[]>([]);
   const timeZoneOptions = useMemo(
     () => getEventTimeZoneOptions(currentEvent.event_timezone || browserTimeZone),
     [currentEvent.event_timezone, browserTimeZone]
@@ -427,6 +436,7 @@ const ManageArtist = () => {
       setIsEditingEvent(true);
     } else {
       setCurrentEvent({
+        id: crypto.randomUUID(),
         event_name: '',
         event_timezone: browserTimeZone,
         location: '',
@@ -439,6 +449,8 @@ const ManageArtist = () => {
         status: 'Confirmed'
       });
       setIsEditingEvent(false);
+      setCatalogSetup(emptyEventCatalogSetupDraft());
+      setCatalogSetupProducts([]);
     }
     setIsModalOpen(true);
   };
@@ -528,6 +540,11 @@ const ManageArtist = () => {
       alert(uiText(language, 'Please fill in required fields (Name, Start Date)'));
       return;
     }
+    if (!isEditingEvent && !catalogSetupReady) return;
+    if (!isEditingEvent && catalogSetup.mode === 'reuse' && !catalogSetup.sourceEventId) {
+      alert(language === 'th' ? 'เลือกงานต้นทางสำหรับรายการสินค้าเดิม' : 'Choose the source event to reuse its product list.');
+      return;
+    }
 
     try {
       setIsSaving(true);
@@ -564,17 +581,15 @@ const ManageArtist = () => {
         booth_number: currentEvent.booth_detail || null
       };
 
-      // Remove id if it's undefined (new event) to let DB generate it
-      if (!isEditingEvent) delete eventPayload.id;
-
-      const { data, error } = await supabase
-        .from('events')
-        .upsert(eventPayload)
-        .select()
-        .single();
-
+      const { data, error } = isEditingEvent
+        ? await supabase.from('events').upsert(eventPayload).select().single()
+        : await supabase.rpc('create_event_with_catalog', {
+          p_event: eventPayload,
+          p_mode: catalogSetup.mode,
+          p_source_event_id: catalogSetup.mode === 'reuse' ? catalogSetup.sourceEventId || null : null,
+          p_items: buildEventCatalogInitializationItems(catalogSetupProducts, catalogSetup),
+        });
       if (error) throw error;
-
       if (data) {
         const normalizedData = {
           ...data,
@@ -600,7 +615,12 @@ const ManageArtist = () => {
       }
     } catch (error) {
       console.error("Error saving event:", error);
-      alert(uiText(language, 'Failed to save event.'));
+      const code = error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
+      alert(code === 'event_stock_exceeds_catalog_stock'
+        ? (language === 'th' ? 'สต็อกที่พร้อมจัดสรรเปลี่ยนไป กรุณาลดจำนวนแล้วลองบันทึกอีกครั้ง ข้อมูลที่กรอกยังอยู่' : 'Available stock has changed. Reduce the allocation and try again. Your form has been kept.')
+        : code === 'event_setup_request_conflict'
+          ? (language === 'th' ? 'งานนี้ถูกสร้างแล้ว กรุณาปิดหน้าต่างและรีเฟรชรายการอีเวนต์ก่อนแก้ไข' : 'This event was already created. Close the form and refresh the event list before editing it.')
+          : uiText(language, 'Failed to save event.'));
     } finally {
       setIsSaving(false);
     }
@@ -1224,11 +1244,12 @@ const ManageArtist = () => {
                      <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Transit Info')}</label>
                      <textarea name="transit_info" rows={3} value={currentEvent.transit_info || ''} onChange={handleFunctionChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-pink-500 resize-none" placeholder={uiText(language, 'BTS Bangna...')} />
                   </div>
+                  {!isEditingEvent && artist && <EventCatalogInitializer artistId={artist.id} events={events} language={language} value={catalogSetup} onChange={setCatalogSetup} onProductsChange={setCatalogSetupProducts} onReadyChange={setCatalogSetupReady} />}
                </div>
 
                <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
                   <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-gray-700">{uiText(language, 'Cancel')}</Button>
-                  <Button onClick={handleEventSave} className="bg-pink-600 hover:bg-pink-700 text-white font-bold px-6 shadow-md shadow-pink-200">
+                  <Button onClick={handleEventSave} disabled={isSaving || (!isEditingEvent && !catalogSetupReady)} className="bg-pink-600 hover:bg-pink-700 text-white font-bold px-6 shadow-md shadow-pink-200">
                      {uiText(language, isSaving ? 'Saving...' : 'Save Event')}
                   </Button>
                </div>

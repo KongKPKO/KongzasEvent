@@ -1,3 +1,5 @@
+import type { ActivityReward } from './activityReward';
+
 export type PromotionType =
   | 'quantity_discount'
   | 'quantity_gift'
@@ -23,6 +25,7 @@ export interface PromotionV1Config {
   condition: PromotionV1Condition;
   discount: { kind: 'fixed' | 'percentage'; value: number } | null;
   gift: { product_id: string; quantity: number; limit: number | null } | null;
+  activity?: ActivityReward | null;
 }
 
 export interface PromotionGiftUsage {
@@ -136,6 +139,7 @@ export interface AppliedPromotionQuote {
     sku: string | null;
     quantity: number;
   }>;
+  activity_reward?: ActivityReward | null;
 }
 
 export interface PromotionRewardLine {

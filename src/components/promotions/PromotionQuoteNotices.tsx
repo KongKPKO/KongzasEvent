@@ -1,5 +1,6 @@
 import type { PromotionQuote, PromotionRewardLine } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
+import ActivityRewardsCard from './ActivityRewardsCard';
 
 export const promotionGiftLabel = (quote: PromotionQuote | null, reward: PromotionRewardLine, language: string) => [
   `${language === 'th' ? 'ของแถม' : 'Free gift'}: ${reward.name} × ${reward.quantity}`,
@@ -15,7 +16,8 @@ export default function PromotionQuoteNotices({ quote, language, currency }: {
 }) {
   const giftNotices = quote?.diagnostics?.filter(item => item.code === 'gift_limit_reached' || item.code === 'gift_stock_insufficient') || [];
   const sets = quote?.auto_sets || [];
-  if (!giftNotices.length && !sets.length) return null;
+  const activityNotices = quote?.applied_promotions.filter(item => item.activity_reward && item.activity_reward.quantity > 0) || [];
+  if (!giftNotices.length && !sets.length && !activityNotices.length) return null;
   return <div className="my-3 space-y-2 text-xs" aria-live="polite">
     {sets.map(set => <div key={set.bundle_product_id} className="rounded-xl border border-pink-200 bg-pink-50 p-3 text-pink-900">
       <strong>{language === 'th' ? 'รวมเป็นชุดอัตโนมัติ' : 'Automatically grouped as a set'}: {set.bundle_name} × {set.quantity}</strong>
@@ -35,5 +37,6 @@ export default function PromotionQuoteNotices({ quote, language, currency }: {
           : (language === 'th' ? 'สั่งซื้อต่อได้ตามยอดที่แสดง' : 'You can continue at the displayed total.')}</p>
       </div>;
     })}
+    <ActivityRewardsCard pricingBreakdown={activityNotices} state="provisional" language={language === 'th' ? 'th' : 'en'} />
   </div>;
 }

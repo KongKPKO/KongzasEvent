@@ -36,6 +36,8 @@ import {
   normalizePaymentBankAccounts,
   type PaymentBankAccount,
 } from '../../utils/paymentBanks';
+import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
+import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
 type Tab = 'overview' | 'products' | 'orders' | 'settings';
 type ProductMembership = 'all' | 'included' | 'not_added';
@@ -931,6 +933,13 @@ export default function OnlineCampaignWorkspace() {
                     </div>
                     <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{t(({ awaiting_payment: 'campaignOrderAwaitingPayment', payment_submitted: 'campaignOrderReview', payment_submitted_late: 'campaignOrderLateReview', payment_confirmed: 'campaignOrderConfirmed', payment_expired: 'campaignOrderExpired', payment_rejected: 'orderStatusRejectedTitle', payment_cancelled: 'orderStatusCancelledTitle', refund_pending: 'campaignOrderRefundPending', refunded: 'campaignOrderRefunded' } as const)[order.payment_status])}</div><div className="text-xs font-bold text-gray-500">{order.fulfillment_status !== 'not_required' && t(({ awaiting_shipment: 'campaignAwaitingShipment', shipped: 'orderStatusShippedTitle', awaiting_pickup: 'campaignAwaitingPickup', picked_up: 'orderStatusPickedUpTitle', cancelled: 'orderStatusCancelledTitle', expired: 'campaignOrderExpired' } as const)[order.fulfillment_status])}</div></div>
                   </div>
+                  <ActivityRewardsCard
+                    pricingBreakdown={order.pricing_breakdown}
+                    state={activityRewardStateForOrder(order.status, order.payment_status)}
+                    language={language}
+                    orderReference={order.order_code}
+                    className="mt-3"
+                  />
                   {order.shipping_address && <p className="mt-2 whitespace-pre-line break-words text-sm text-gray-600">{order.shipping_address}</p>}
                   {order.pickup_point && <p className="mt-2 text-sm text-gray-600">{order.pickup_point.name}{order.pickup_point.address && <> · {order.pickup_point.address}</>}</p>}
                   {order.tracking_number && <p className="mt-2 break-words text-sm font-bold">{order.shipping_carrier} · {order.tracking_number}</p>}

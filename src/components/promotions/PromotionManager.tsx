@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, Edit2, Gift, Loader2, Plus, Search, Sparkles, ArrowLeft, Check, CalendarDays } from 'lucide-react';
 import './promotion-workspace.css';
+import { formatPrice } from '../../utils/currency';
 import { uiText, useI18n } from '../../i18n';
 import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import { archivePromotionDefinition, listPromotionDefinitions, PromotionSaveConflict, savePromotionDefinition } from '../../lib/promotions';
@@ -61,7 +62,7 @@ function ProductPicker({ products, selected, onChange, label }: { products: Prod
     <div className="mt-2 max-h-44 space-y-1 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
       {filtered.map((product) => {
         const checked = selected.includes(product.id);
-        return <label key={product.id} className={`flex cursor-pointer items-center gap-2 rounded-lg min-h-11 px-3 py-2 text-sm font-bold ${checked ? 'bg-pink-50 text-pink-700' : 'bg-white text-gray-700'}`}><input type="checkbox" checked={checked} onChange={() => onChange(checked ? selected.filter((id) => id !== product.id) : [...selected, product.id])} /><span className="min-w-0 flex-1 truncate">{product.name}</span></label>;
+        return <label key={product.id} className={`flex cursor-pointer items-center gap-2 rounded-lg min-h-11 px-3 py-2 text-sm font-bold ${checked ? 'bg-pink-50 text-pink-700' : 'bg-white text-gray-700'}`}><input type="checkbox" checked={checked} onChange={() => onChange(checked ? selected.filter((id) => id !== product.id) : [...selected, product.id])} /><span className="min-w-0 flex-1 truncate">{product.name}</span>{typeof product.price === 'number' && <span className="shrink-0">{formatPrice(product.price, product.currency)}</span>}</label>;
       })}
     </div>
     {!filtered.length && <p className="promotion-help">{th ? (products.length ? 'ไม่พบสินค้า ลองค้นหาด้วยชื่ออื่น' : 'ยังไม่มีสินค้า เพิ่มสินค้าในคลังร้านก่อน') : (products.length ? 'No matching products. Try another name.' : 'Add products to your store catalog first.')}</p>}

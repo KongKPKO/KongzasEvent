@@ -532,7 +532,7 @@ test.describe('online campaign', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Create product', exact: true }).click();
     const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
     await expect(handoff).toBeVisible({ timeout: 15_000 });
-    await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);
+    await handoff.getByRole('checkbox', { name: 'Cheki Online E2E', exact: true }).check();
     await handoff.getByRole('button', { name: /^Add to sale$|^เพิ่มไปยังช่องทางขาย$/ }).click();
 
     await expect.poll(async () => {
@@ -626,9 +626,8 @@ test.describe('online campaign', () => {
       await productCard.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).click();
 
       const handoff = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
-      await handoff.getByLabel(/Choose where to sell|เลือกช่องทางขาย/).selectOption(campaignId);
-      await expect(handoff.getByLabel(/Allocated stock|สต็อกที่จัดสรร/)).toHaveValue('0');
-      await expect(handoff.getByText(/All stock is assigned|สต็อกทั้งหมดถูกจัด/)).toBeVisible();
+      await handoff.getByRole('checkbox', { name: 'Cheki Online E2E', exact: true }).check();
+      await expect(handoff).toContainText(/New tracked allocations start at 0|ช่องทางใหม่ของสินค้าที่นับสต็อกเริ่มที่ 0/);
       await handoff.getByRole('button', { name: /^Add to sale$|^เพิ่มไปยังช่องทางขาย$/ }).click();
 
       await expect.poll(async () => {

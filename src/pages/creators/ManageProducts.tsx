@@ -22,7 +22,7 @@ import { fetchActorContext } from '../../utils/access';
 import type { ActorContext } from '../../types/access';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { uiText, useI18n } from '../../i18n';
-import { listMyOnlineCampaigns, saveCampaignProducts } from '../../lib/onlineCampaigns';
+import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import type { OnlineCampaignSummary } from '../../types/onlineCampaign';
 import PromotionManager from '../../components/promotions/PromotionManager';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
@@ -44,6 +44,7 @@ import {
 } from '../../lib/stockAdjustments';
 
 interface Product {
+  artist_id: string;
   product_kind?: ProductParent['product_kind'];
   bundle_items?: ProductParent['bundle_items'];
   gallery_images?: string[] | null;
@@ -371,10 +372,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [templateVariantDrafts, setTemplateVariantDrafts] = useState<Record<string, string>>({});
    const [templateVariantSavingId, setTemplateVariantSavingId] = useState('');
    const [addToSaleProduct, setAddToSaleProduct] = useState<Product | null>(null);
-   const [addToSaleType, setAddToSaleType] = useState<'event' | 'campaign'>('campaign');
-   const [addToSaleId, setAddToSaleId] = useState('');
-   const [addToSaleStock, setAddToSaleStock] = useState('');
-   const [addToSalePrice, setAddToSalePrice] = useState('');
+   const [saleEventOptions, setSaleEventOptions] = useState<EventOption[]>([]);
+   const [saleEventIds, setSaleEventIds] = useState<string[]>([]);
+   const [saleCampaignIds, setSaleCampaignIds] = useState<string[]>([]);
+   const [saleChannelsLoading, setSaleChannelsLoading] = useState(false);
+   const [saleChannelsError, setSaleChannelsError] = useState('');
+   const saleChannelsRequest = useRef(0);
    const [addToSaleSaving, setAddToSaleSaving] = useState(false);
    const [campaignOptions, setCampaignOptions] = useState<OnlineCampaignSummary[]>([]);
    const [familyEditorParentId, setFamilyEditorParentId] = useState<string | 'new' | null>(null);
@@ -1507,67 +1510,52 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    };
 
    const openAddToSale = async (product: Product) => {
+      const request = ++saleChannelsRequest.current;
       setAddToSaleProduct(product);
-      setAddToSaleType('campaign');
-      setAddToSaleStock(product.is_unlimited ? '' : String(getProductStockSummary(product).available));
-      setAddToSalePrice('');
+      setSaleChannelsLoading(true);
+      setSaleChannelsError('');
+      setSaleEventIds([]);
+      setSaleCampaignIds([]);
       try {
-         const campaigns = (await listMyOnlineCampaigns()).filter((item) => item.publication_status !== 'archived');
-         setCampaignOptions(campaigns);
-         setAddToSaleId(campaigns[0]?.id || eventOptions[0]?.id || '');
-         if (campaigns.length === 0 && eventOptions.length > 0) setAddToSaleType('event');
+         const [campaigns, events, eventMemberships, campaignMemberships] = await Promise.all([
+            listMyOnlineCampaigns(),
+            supabase.from('events').select('id,event_name,start_date,end_date,status').eq('artist_id', product.artist_id).order('start_date'),
+            supabase.from('event_products').select('event_id,is_enabled').eq('product_id', product.id),
+            supabase.from('online_campaign_products').select('campaign_id,is_enabled').eq('product_id', product.id),
+         ]);
+         if (events.error) throw events.error;
+         if (eventMemberships.error) throw eventMemberships.error;
+         if (campaignMemberships.error) throw campaignMemberships.error;
+         if (request !== saleChannelsRequest.current) return;
+         setCampaignOptions(campaigns.filter(item => item.publication_status !== 'archived'));
+         setSaleEventOptions(events.data || []);
+         setSaleEventIds((eventMemberships.data || []).filter(item => item.is_enabled).map(item => item.event_id));
+         setSaleCampaignIds((campaignMemberships.data || []).filter(item => item.is_enabled).map(item => item.campaign_id));
       } catch (error) {
-         console.error('[ManageProducts] campaigns failed to load:', error);
-         setCampaignOptions([]);
-         setAddToSaleType('event');
-         setAddToSaleId(eventOptions[0]?.id || '');
+         console.error('[ManageProducts] sales channels failed to load:', error);
+         if (request === saleChannelsRequest.current) setSaleChannelsError(language === 'th' ? 'โหลดช่องทางขายไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not load sales channels. Please try again.');
+      } finally {
+         if (request === saleChannelsRequest.current) setSaleChannelsLoading(false);
       }
    };
 
    const handleAddToSale = async (event: React.FormEvent) => {
       event.preventDefault();
-      if (!addToSaleProduct || !addToSaleId) return;
-      const isUnlimitedProduct = Boolean(addToSaleProduct.is_unlimited);
-      const stockTotal = isUnlimitedProduct ? null : Number(addToSaleStock);
-      if (!isUnlimitedProduct && (!Number.isInteger(stockTotal) || Number(stockTotal) < 0)) {
-         showToast({ tone: 'warning', title: t('catalogInvalidAllocation') });
-         return;
-      }
-
-      const item = {
-         product_id: addToSaleProduct.id,
-         is_enabled: true,
-         is_unlimited: isUnlimitedProduct,
-         stock_total: stockTotal,
-         price_override: addToSalePrice === '' ? null : Number(addToSalePrice),
-      };
-
+      if (!addToSaleProduct || addToSaleSaving || saleChannelsLoading || saleChannelsError) return;
       setAddToSaleSaving(true);
       try {
-         if (addToSaleType === 'campaign') {
-            await saveCampaignProducts(addToSaleId, [item]);
-         } else {
-            const { error } = await supabase.rpc('save_event_catalog', {
-               p_event_id: addToSaleId,
-               p_items: [item],
-               p_currency_override: null,
-               p_update_event_currency: false,
-            });
-            if (error) throw error;
-         }
+         const { error } = await supabase.rpc('save_product_sales_channels', {
+            p_product_id: addToSaleProduct.id,
+            p_event_ids: saleEventIds,
+            p_campaign_ids: saleCampaignIds.filter(id => campaignOptions.some(item => item.id === id)),
+         });
+         if (error) throw error;
          setAddToSaleProduct(null);
-         showToast({
-            tone: 'success',
-            title: t('catalogAddedToSale'),
-            detail: stockTotal === 0 ? t('catalogAddedWithZeroStock') : addToSaleProduct.name,
-         });
-      } catch (error: any) {
-         console.error('[ManageProducts] add to sale failed:', error);
-         showToast({
-            tone: 'error',
-            title: t('catalogAddToSaleFailed'),
-            detail: error?.message === 'campaign_stock_exceeds_catalog_stock' ? t('campaignStockExceeded') : error?.message,
-         });
+         await fetchProducts();
+         showToast({ tone: 'success', title: language === 'th' ? 'บันทึกช่องทางขายแล้ว' : 'Sales channels saved', detail: addToSaleProduct.name });
+      } catch (error) {
+         console.error('[ManageProducts] sales channels failed to save:', error);
+         setSaleChannelsError(language === 'th' ? 'บันทึกช่องทางขายไม่สำเร็จ กรุณาโหลดใหม่แล้วลองอีกครั้ง สต็อกอาจถูกจัดสรรไปแล้ว' : 'Could not save sales channels. Reload and try again; stock may already be allocated.');
       } finally {
          setAddToSaleSaving(false);
       }
@@ -2400,22 +2388,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <form onSubmit={handleAddToSale} className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
                   <div className="flex items-start justify-between gap-3">
                      <div><h2 className="text-lg font-black text-gray-900">{t('catalogAddToSale')}</h2><p className="mt-1 text-sm font-semibold text-gray-500">{addToSaleProduct.name} · {addToSaleProduct.sku}</p></div>
-                     <button type="button" onClick={() => setAddToSaleProduct(null)} className="icon-touch text-gray-400" aria-label={t('campaignClose')}><X size={20} /></button>
+                     <button type="button" disabled={addToSaleSaving} onClick={() => { saleChannelsRequest.current += 1; setAddToSaleProduct(null); }} className="icon-touch text-gray-400" aria-label={t('campaignClose')}><X size={20} /></button>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                     <button type="button" onClick={() => { setAddToSaleType('campaign'); setAddToSaleId(campaignOptions[0]?.id || ''); }} className={`min-h-11 rounded-xl border text-sm font-black ${addToSaleType === 'campaign' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600'}`}>{t('catalogOnlineCampaign')}</button>
-                     <button type="button" onClick={() => { setAddToSaleType('event'); setAddToSaleId(eventOptions[0]?.id || ''); }} className={`min-h-11 rounded-xl border text-sm font-black ${addToSaleType === 'event' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600'}`}>{t('catalogPhysicalEvent')}</button>
-                  </div>
-                  <label className="mt-4 block"><span className="text-xs font-black text-gray-600">{t('catalogChooseSale')}</span><select required value={addToSaleId} onChange={(e) => setAddToSaleId(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3">
-                     <option value="">{t('catalogChooseSalePlaceholder')}</option>
-                     {(addToSaleType === 'campaign' ? campaignOptions : eventOptions).map((item) => <option key={item.id} value={item.id}>{'name' in item ? item.name : item.event_name}</option>)}
-                  </select></label>
-                  {!addToSaleProduct.is_unlimited && <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignAllocatedStock')}</span><input required type="number" min="0" max={getProductStockSummary(addToSaleProduct).available} step="1" value={addToSaleStock} onChange={(e) => setAddToSaleStock(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>}
-                  {!addToSaleProduct.is_unlimited && getProductStockSummary(addToSaleProduct).available === 0 && (
-                     <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-800">{t('campaignNoUnallocatedStock')}</p>
-                  )}
-                  <label className="mt-3 block"><span className="text-xs font-black text-gray-600">{t('campaignPriceOverride')}</span><input type="number" min="0" step="0.01" value={addToSalePrice} onChange={(e) => setAddToSalePrice(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" placeholder={formatPrice(addToSaleProduct.price, addToSaleProduct.currency)} /></label>
-                  <button disabled={addToSaleSaving || !addToSaleId} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
+                  <p className="mt-3 text-sm text-gray-600">{language === 'th' ? 'เลือกได้หลายช่องทาง ช่องที่เลือกจะเปิดแสดงสินค้า ช่องที่ไม่เลือกจะซ่อนสินค้า ช่องทางใหม่ของสินค้าที่นับสต็อกเริ่มที่ 0 ให้จัดสรรในช่องทางนั้นภายหลัง สต็อกและราคาเดิมจะคงไว้' : 'Select multiple channels. Checked channels show this product; unchecked channels hide it. New tracked allocations start at 0; allocate stock in each channel later. Existing stock and prices are preserved.'}</p>
+                  {saleChannelsLoading && <p role="status" className="mt-4">{language === 'th' ? 'กำลังโหลดช่องทางขาย…' : 'Loading sales channels…'}</p>}
+                  {saleChannelsError && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{saleChannelsError}</p><button type="button" className="mt-2 min-h-11 font-bold underline" onClick={() => void openAddToSale(addToSaleProduct)} disabled={addToSaleSaving}>{language === 'th' ? 'โหลดใหม่' : 'Reload'}</button></div>}
+                  <fieldset disabled={addToSaleSaving || saleChannelsLoading || Boolean(saleChannelsError)} className="mt-4 space-y-4 disabled:opacity-50">
+                     <fieldset><legend className="text-sm font-black">{t('catalogPhysicalEvent')}</legend>{saleEventOptions.map(item => <label key={item.id} className="mt-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-bold"><input type="checkbox" checked={saleEventIds.includes(item.id)} onChange={e => setSaleEventIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.event_name}</label>)}{!saleChannelsLoading && !saleEventOptions.length && <p className="mt-2 text-sm text-gray-500">{language === 'th' ? 'ยังไม่มีอีเวนต์' : 'No events yet'}</p>}</fieldset>
+                     <fieldset><legend className="text-sm font-black">{t('catalogOnlineCampaign')}</legend>{campaignOptions.map(item => <label key={item.id} className="mt-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-bold"><input type="checkbox" checked={saleCampaignIds.includes(item.id)} onChange={e => setSaleCampaignIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.name}</label>)}{!saleChannelsLoading && !campaignOptions.length && <p className="mt-2 text-sm text-gray-500">{language === 'th' ? 'ยังไม่มีแคมเปญ' : 'No campaigns yet'}</p>}</fieldset>
+                  </fieldset>
+                  <button disabled={addToSaleSaving || saleChannelsLoading || Boolean(saleChannelsError)} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
                </form>
             </div>
          )}

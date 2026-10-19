@@ -282,6 +282,7 @@ if (mode === 'local') {
     'src/tests/activity-rewards-display.spec.ts',
     'src/tests/activity-reward-pos.spec.ts',
     'src/tests/event-catalog-setup.spec.ts',
+    'src/tests/catalog-sales-channels.spec.ts',
     'src/tests/security-rls-regression.spec.ts',
     'src/tests/e2e/full-service-loop.spec.ts',
     'src/tests/e2e/pilot-auth.spec.ts',

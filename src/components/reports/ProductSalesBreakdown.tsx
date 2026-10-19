@@ -171,7 +171,7 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
       <div>
         <h2 id="product-sales-heading" className="text-lg font-black text-gray-900">{th ? 'ยอดขายรายสินค้า' : 'Product sales breakdown'}</h2>
-        <p className="mt-1 text-sm text-gray-600">{th ? 'รวมจากออเดอร์ที่สำเร็จ และใช้ชื่อ SKU กับราคาที่บันทึกตอนขาย' : 'Completed orders, using the name, SKU and unit price saved at the time of sale.'}</p>
+        <p className="mt-1 text-sm text-gray-600">{th ? 'รวมจากออเดอร์ที่สำเร็จ และใช้ชื่อสินค้าและราคาที่บันทึกตอนขาย' : 'Completed orders, using the name, product code and unit price saved at the time of sale.'}</p>
       </div>
       <button type="button" className="report-button shrink-0 gap-2" disabled={exporting || loading || result.total_count === 0} onClick={() => void exportCsv()}>
         <Download size={16} aria-hidden="true" />{exporting ? (th ? 'กำลังส่งออก…' : 'Exporting…') : (th ? 'ส่งออก CSV รายสินค้า' : 'Export product CSV')}
@@ -180,10 +180,10 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
 
     <div className="report-filters mt-5">
       <label className="flex-1 basis-64">
-        {th ? 'ค้นหาชื่อสินค้า หรือ SKU' : 'Search product or SKU'}
+        {th ? 'ค้นหาชื่อสินค้า' : 'Search products'}
         <span className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} aria-hidden="true" />
-          <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="report-search-input" placeholder={th ? 'เช่น 2-Shot หรือ SKU-001' : 'e.g. 2-Shot or SKU-001'} />
+          <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="report-search-input" placeholder={th ? 'เช่น 2-Shot' : 'e.g. 2-Shot'} />
         </span>
       </label>
       <label className="flex-1 basis-48">
@@ -283,7 +283,7 @@ function ReportGallery({ images, name, th, onClose }: { images: string[]; name: 
 function ProductIdentity({ row, th, onGallery }: { row: ProductSalesRow; th: boolean; onGallery: OpenGallery }) {
   return <div className="flex min-w-0 items-center gap-3">
     <ImagePreview images={row.images || (row.image_url ? [row.image_url] : [])} name={row.name} th={th} onGallery={onGallery} />
-    <div className="min-w-0"><div className="break-words font-black text-gray-900">{row.name}</div>{row.has_variants && <div className="mt-0.5 text-xs text-gray-500">{row.variants.length} SKU</div>}</div>
+    <div className="min-w-0"><div className="break-words font-black text-gray-900">{row.name}</div>{row.has_variants && <div className="mt-0.5 text-xs text-gray-500">{row.variants.length} {th ? 'รายการสินค้า' : 'products'}</div>}</div>
   </div>;
 }
 
@@ -295,7 +295,7 @@ function DesktopRows({ row, expanded, onToggle, th, categoryLabel, onGallery }: 
       <td>{categoryLabel(row.category)}</td><td className="numeric font-bold">{row.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(row.gross, row.currency)}</td><td className="numeric">{formatPrice(row.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-black">{formatPrice(row.net, row.currency)}</td>
     </tr>
     {expanded && row.has_variants && row.variants.map((variant, index) => <tr id={index === 0 ? detailId : undefined} key={variant.product_id} className="product-sales-variant-row">
-      <td><div className="flex items-center gap-3 pl-14"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><div className="font-bold text-gray-800">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</div><div className="mt-0.5 text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div></div></td>
+      <td><div className="flex items-center gap-3 pl-14"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><div className="font-bold text-gray-800">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</div><div className="mt-0.5 text-xs text-gray-500">{variant.sku || (th ? 'ไม่มีรหัสสินค้า' : 'No product code')}</div></div></div></td>
       <td>{categoryLabel(row.category)}</td><td className="numeric">{variant.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(variant.gross, row.currency)}</td><td className="numeric">{formatPrice(variant.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-bold">{formatPrice(variant.net, row.currency)}</td>
     </tr>)}
   </>;
@@ -306,6 +306,6 @@ function MobileRow({ row, expanded, onToggle, th, categoryLabel, onGallery }: { 
     <div className="flex items-start justify-between gap-3"><ProductIdentity row={row} th={th} onGallery={onGallery} /><div className="shrink-0 text-right"><div className="text-xs text-gray-500">{th ? 'ยอดสุทธิ' : 'Net'}</div><div className="font-black text-gray-900">{formatPrice(row.net, row.currency)}</div></div></div>
     <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><span className="block text-xs text-gray-500">{th ? 'หมวดหมู่' : 'Category'}</span><strong>{categoryLabel(row.category)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'จำนวนขาย' : 'Units sold'}</span><strong>{row.quantity.toLocaleString()}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ยอดรวม' : 'Gross'}</span><strong>{formatPrice(row.gross, row.currency)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ส่วนลด' : 'Discount'}</span><strong>{formatPrice(row.discount, row.currency)}</strong></div></div>
     {row.has_variants && <button type="button" className="report-button mt-3 w-full justify-between" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? (th ? 'ซ่อนตัวเลือก' : 'Hide variants') : (th ? 'ดูตัวเลือก' : 'View variants')}</span><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button>}
-    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-3"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มี SKU' : 'No SKU')}</div></div></div><strong>{formatPrice(variant.net, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดรวม' : 'gross'} {formatPrice(variant.gross, row.currency)} · {th ? 'ส่วนลด' : 'discount'} {formatPrice(variant.discount, row.currency)}</div></div>)}</div>}
+    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-3"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มีรหัสสินค้า' : 'No product code')}</div></div></div><strong>{formatPrice(variant.net, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดรวม' : 'gross'} {formatPrice(variant.gross, row.currency)} · {th ? 'ส่วนลด' : 'discount'} {formatPrice(variant.discount, row.currency)}</div></div>)}</div>}
   </article>;
 }

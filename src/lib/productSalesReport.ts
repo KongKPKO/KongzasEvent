@@ -115,8 +115,8 @@ const csvCell = (value: string | number) => {
 export function buildProductSalesCsv(rows: ProductSalesRow[], language: 'th' | 'en'): string {
   const th = language === 'th';
   const headers = th
-    ? ['สินค้า', 'ตัวเลือก', 'SKU', 'หมวดหมู่', 'จำนวนขาย', 'ยอดขายรวม', 'ส่วนลดที่จัดสรร', 'ยอดคืนเงิน', 'ยอดขายสุทธิ', 'สกุลเงิน']
-    : ['Product', 'Variant', 'SKU', 'Category', 'Units sold', 'Gross sales', 'Allocated discount', 'Refund', 'Net sales', 'Currency'];
+    ? ['สินค้า', 'ตัวเลือก', 'รหัสสินค้า', 'หมวดหมู่', 'จำนวนขาย', 'ยอดขายรวม', 'ส่วนลดที่จัดสรร', 'ยอดคืนเงิน', 'ยอดขายสุทธิ', 'สกุลเงิน']
+    : ['Product', 'Variant', 'Product code', 'Category', 'Units sold', 'Gross sales', 'Allocated discount', 'Refund', 'Net sales', 'Currency'];
   const body = rows.flatMap((row) => row.variants.map((variant) => [
     row.name,
     row.has_variants && variant.variant_name !== 'Default' ? variant.variant_name : '',

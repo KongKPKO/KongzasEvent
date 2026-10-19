@@ -210,7 +210,7 @@ test.describe('online campaign', () => {
       await login(page);
       await page.goto(`/manage-online-sales/${campaignId}`);
       await page.getByRole('button', { name: /Products|สินค้า/ }).click();
-      await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
+      await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill('E2E Cheki');
       const campaignRow = page.getByRole('row').filter({ hasText: 'E2E Cheki' });
       const limitInput = campaignRow.getByLabel(/Maximum per order|จำกัดสูงสุด\/ออเดอร์/);
       await limitInput.fill('2');
@@ -510,7 +510,7 @@ test.describe('online campaign', () => {
     await expect(page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ })).toBeVisible();
     await page.getByRole('button', { name: /Products|สินค้า/ }).click();
     await expect(page.getByLabel(/Product category|หมวดหมู่สินค้า/)).toContainText('Cheki');
-    await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('E2E Cheki');
+    await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill('E2E Cheki');
     await expect(page.getByRole('row').filter({ hasText: 'E2E Cheki' })).toContainText('Cheki');
     const campaignTable = page.getByRole('table');
     const tableViewportWidth = await campaignTable.evaluate((table) => table.parentElement?.clientWidth || 0);
@@ -560,7 +560,7 @@ test.describe('online campaign', () => {
       for (let pass = 0; pass < 2; pass++) {
         if (pass) await page.reload();
         await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
-        await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill('Campaign photo');
+        await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill('Campaign photo');
         const inherited = page.getByRole('row').filter({ hasText: 'Campaign photo inherited' });
         await expect(inherited.locator('img')).toHaveCount(3);
         await expect(inherited.locator('img').first()).toHaveAttribute('src', gallery[0]);
@@ -638,7 +638,7 @@ test.describe('online campaign', () => {
 
       await page.goto(`/manage-online-sales/${campaignId}`);
       await page.getByRole('button', { name: /Products|สินค้า/ }).click();
-      await page.getByPlaceholder(/Search product name or SKU|ค้นหาชื่อสินค้า หรือ SKU/).fill(productName);
+      await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill(productName);
       const campaignRow = page.getByRole('row').filter({ hasText: productName });
       await expect(campaignRow).toBeVisible();
       await expect(campaignRow.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();

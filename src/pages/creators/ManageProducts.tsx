@@ -1845,7 +1845,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             } catch (error) {
                setCsvFailed(true);
                const message = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : '';
-               setCsvMessages([isDuplicateSkuError({ message, code: typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '' }) ? t('catalogDuplicateSkuDetail') : (thai ? 'ยืนยันผลการนำเข้าไม่สำเร็จ กรุณาโหลดรายการสินค้าใหม่ ตรวจข้อมูลหรือ SKU แล้วลองอีกครั้ง' : 'Could not confirm the import. Reload the catalog, check the data or SKU and retry.')]);
+               setCsvMessages([isDuplicateSkuError({ message, code: typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '' }) ? t('catalogDuplicateSkuDetail') : (thai ? 'ยืนยันผลการนำเข้าไม่สำเร็จ กรุณาโหลดรายการสินค้าใหม่ ตรวจข้อมูลหรือรหัสสินค้าแล้วลองอีกครั้ง' : 'Could not confirm the import. Reload the catalog, check the data or product code and retry.')]);
             } finally {
                setUploading(false);
             }
@@ -2616,7 +2616,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </select>
                      </div>
                      <div className="space-y-1">
-                        <label htmlFor="add-product-sku" className="block text-xs font-bold uppercase tracking-wider text-gray-500">SKU</label>
+                        <label htmlFor="add-product-sku" className="block text-xs font-bold uppercase tracking-wider text-gray-500">{language === 'th' ? 'รหัสสินค้า' : 'Product code'}</label>
                         <input id="add-product-sku" value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700" />
                      </div>
                   </div>
@@ -3919,7 +3919,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                         </div>
 
                         <div>
-                           <label htmlFor="edit-product-sku" className="mb-2 block text-sm font-medium text-gray-700">SKU</label>
+                           <label htmlFor="edit-product-sku" className="mb-2 block text-sm font-medium text-gray-700">{language === 'th' ? 'รหัสสินค้า' : 'Product code'}</label>
                            <input id="edit-product-sku" value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder={t('catalogSkuGenerated')} className="w-full rounded-lg border border-gray-200 px-4 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-pink-500" />
                         </div>
 

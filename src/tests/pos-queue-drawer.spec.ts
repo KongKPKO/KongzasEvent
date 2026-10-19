@@ -181,6 +181,17 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     const activeSale = sellerPage.locator('[aria-label="Active sale queue"]');
     await expect(activeSale.getByText('Walk-in', { exact: true }).first()).toBeVisible();
     await expect(activeSale.getByRole('button', { name: 'Manage queues', exact: true })).toBeVisible();
+    const fullQueueButton = activeSale.getByRole('button', { name: 'Full queue dashboard', exact: true });
+    await expect(fullQueueButton).toBeVisible();
+    const fullQueueBounds = await fullQueueButton.boundingBox();
+    const drawerButtonBounds = await activeSale.getByRole('button', { name: 'Manage queues', exact: true }).boundingBox();
+    expect(fullQueueBounds!.y).toBe(drawerButtonBounds!.y);
+    expect(fullQueueBounds!.height).toBeGreaterThanOrEqual(44);
+    await sellerPage.screenshot({ path: testInfo.outputPath('pos-queue-actions-row.png') });
+    await fullQueueButton.click();
+    await expect(sellerPage.getByRole('button', { name: 'Queue Control', exact: true })).toBeVisible();
+    await sellerPage.getByTestId('pos-tab').click();
+
 
     const productRegion = sellerPage.getByRole('region', { name: /Product list|Product grid/ });
     const productButton = productRegion.getByRole('button').filter({ hasText: productName }).first();

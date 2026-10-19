@@ -3,7 +3,7 @@ import { formatPrice } from '../../utils/currency';
 
 export const promotionGiftLabel = (quote: PromotionQuote | null, reward: PromotionRewardLine, language: string) => [
   `${language === 'th' ? 'ของแถม' : 'Free gift'}: ${reward.name} × ${reward.quantity}`,
-  reward.sku ? `SKU ${reward.sku}` : '',
+  reward.sku ? `${language === 'th' ? 'รหัสสินค้า' : 'Product code'} ${reward.sku}` : '',
   quote?.applied_promotions.find(item => item.id === reward.promotion_id)?.name || '',
 ].filter(Boolean).join(' · ');
 

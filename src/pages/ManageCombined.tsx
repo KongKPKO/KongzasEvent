@@ -561,7 +561,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                     </button>
                 )}
             </div>
-            ) : <div className="hidden md:flex shrink-0 justify-end border-b border-gray-100 bg-white px-3 py-1" data-testid="pos-switcher"><button type="button" onClick={() => setActiveTab('queue')} className="min-h-11 px-3 text-sm font-semibold text-gray-600">{text('Full queue dashboard', 'จัดการคิวแบบเต็ม')}</button></div>}
+            ) : null}
 
             <div className="flex flex-1 overflow-hidden relative">
                 {availableEvents.length === 0 && !eventLoading && (
@@ -638,6 +638,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         activeEvent={activeEvent}
                         servingQueues={servingQueues}
                         queues={filteredQueues}
+                        onOpenQueueDashboard={() => setActiveTab('queue')}
                         onQueueUpdated={(id, updates) => setQueues(previous => previous.map(queue => queue.id === id ? { ...queue, ...updates } : queue))}
                         selectedQueueId={selectedQueueId}
                         selectedQueueNumber={selectedQueueNumber}

@@ -166,13 +166,15 @@ test.describe('catalog workspace', () => {
     await page.goto('/manage-products');
     await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/ }).click();
     await page.getByLabel(/Product name|ชื่อสินค้า/).fill('Different product name');
-    await page.getByLabel(/Price & currency|ราคาและสกุลเงิน/).fill('100');
-    await page.getByText(/Advanced details|ข้อมูลเพิ่มเติม/).click();
-    await page.locator('#add-product-sku').fill('cat-dup-001');
-    await page.getByRole('button', { name: /^Add product$|^เพิ่มสินค้า$/ }).last().click();
+    const editor = page.getByRole('dialog', { name: /Create product|เพิ่มสินค้า/ });
+    await editor.getByLabel(/Base price|ราคาหลัก/).fill('100');
+    await editor.locator('details').last().locator('summary').click();
+    const productCode = editor.getByLabel(/Product code|รหัสสินค้า/, { exact: true });
+    await productCode.fill('cat-dup-001');
+    await editor.getByRole('button', { name: /^Create product$|^เพิ่มสินค้า$/ }).click();
 
-    await expect(page.getByText(/SKU already exists|SKU นี้มีสินค้าใช้อยู่แล้ว/)).toBeVisible();
-    await expect(page.locator('#add-product-sku')).toHaveValue('CAT-DUP-001');
+    await expect(editor.getByRole('alert')).toHaveText(/Use a different product code|ใช้รหัสสินค้าอื่น/);
+    await expect(productCode).toHaveValue('cat-dup-001');
   });
 
   test('shows explicit focused-table stock columns and complete product data', async ({ page }, testInfo) => {

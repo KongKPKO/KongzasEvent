@@ -149,6 +149,7 @@ interface POSPanelProps {
     activeEvent: ActiveEvent | null;
     servingQueues: QueueItem[];
     queues: QueueTicket[];
+    onOpenQueueDashboard: () => void;
     onQueueUpdated: (id: string, changes: Partial<QueueTicket>) => void;
     selectedQueueId: string | null;
     selectedQueueNumber: string | null;
@@ -166,6 +167,7 @@ export default function POSPanel({
     servingQueues,
     queues,
     onQueueUpdated,
+    onOpenQueueDashboard,
     selectedQueueId,
     selectedQueueNumber,
     actorContext,
@@ -1345,7 +1347,8 @@ export default function POSPanel({
         <div className="festival-pos flex flex-col h-full overflow-hidden">
             <Toast message={toast} onClose={() => setToast(null)} />
             {canUsePos && activeEvent && <div role="group" className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-1 md:flex-wrap md:py-2" aria-label={language === 'th' ? 'คิวที่กำลังขาย' : 'Active sale queue'}>
-                <div className="min-w-0 flex-1 md:contents"><strong className={`${selectedQueueId ? 'block' : 'hidden'} mr-auto text-sm md:block`}>{selectedQueueId ? `${language === 'th' ? 'คิว' : 'Queue'} #${selectedQueueNumber} — ${activeQueueLabel}` : uiText(language, 'Walk-in')}</strong>
+                <div className="min-w-0 flex-1 md:contents"><strong className={`${selectedQueueId ? 'block' : 'hidden'} text-sm md:block`}>{selectedQueueId ? `${language === 'th' ? 'คิว' : 'Queue'} #${selectedQueueNumber} — ${activeQueueLabel}` : uiText(language, 'Walk-in')}</strong>
+                <button type="button" onClick={onOpenQueueDashboard} disabled={paymentInFlightRef.current} className="hidden min-h-11 shrink-0 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700 hover:bg-gray-50 md:mr-auto md:inline-flex">{language === 'th' ? 'จัดการคิวแบบเต็ม' : 'Full queue dashboard'}</button>
 
                 <select className="min-h-11 w-full min-w-0 rounded-xl border px-2 text-sm md:hidden" aria-label={uiText(language, 'Select Customer')} value={selectedQueueId || ''} disabled={paymentInFlightRef.current} onChange={event => { const queue = servingQueues.find(item => item.id === event.target.value); if (queue) selectSaleQueue({ id: queue.id, queue_number: String(queue.queue_number) }); else if (!event.target.value) selectWalkin(); }}><option value="">{uiText(language, 'Walk-in')}</option>{servingQueues.map(queue => <option key={queue.id} value={queue.id}>{uiText(language, 'Queue #{number}').replace('{number}', String(queue.queue_number))}</option>)}</select>
 
@@ -1363,7 +1366,7 @@ export default function POSPanel({
                             <div>
                                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Cart Summary')}</div>
                                 <div className="mt-1 text-sm font-bold text-gray-800">
-                                    {itemCountLabel(cartItemCount)} · {cart.length} SKU
+                                    {itemCountLabel(cartItemCount)} · {cart.length} {language === 'th' ? 'รายการสินค้า' : 'products'}
                                 </div>
                             </div>
                             {displayedDiscount > 0 && (
@@ -1603,7 +1606,7 @@ export default function POSPanel({
                                 <div>
                                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">{uiText(language, 'Cart Summary')}</div>
                                     <div className="mt-1 text-sm font-bold text-gray-800">
-                                        {itemCountLabel(cartItemCount)} · {cart.length} SKU
+                                        {itemCountLabel(cartItemCount)} · {cart.length} {language === 'th' ? 'รายการสินค้า' : 'products'}
                                     </div>
                                     <div className="mt-1 text-xs text-gray-500">
                                         {selectedQueueId ? uiText(language, 'Editing Queue #{number}').replace('{number}', String(selectedQueueNumber)) : uiText(language, 'Walk-in checkout')}

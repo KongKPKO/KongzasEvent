@@ -176,9 +176,9 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await expect(preview.getByText('Lumine', { exact: true })).toBeVisible();
   await expect(preview.getByText('Aether', { exact: true })).toBeVisible();
   expect(await family.evaluate((element) => element.getBoundingClientRect().height)).toBe(cardHeight);
-  await preview.getByLabel('Search variants or SKU', { exact: true }).fill('Aether');
+  await preview.getByLabel('Search products', { exact: true }).fill('Aether');
   await expect(preview.getByTestId('product-options-list').locator('article')).toHaveCount(1);
-  await preview.getByLabel('Search variants or SKU', { exact: true }).fill('not-a-design');
+  await preview.getByLabel('Search products', { exact: true }).fill('not-a-design');
   await expect(preview.getByText('No matching variants', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(preview).toBeHidden();
@@ -192,7 +192,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   const manyPreview = page.getByRole('dialog', { name: 'Many designs', exact: true });
   await expect(manyPreview.getByTestId('product-options-list').locator('article')).toHaveCount(30);
   expect(await manyPreview.getByTestId('product-options-list').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-  await manyPreview.getByLabel('Search variants or SKU', { exact: true }).fill('Design 30');
+  await manyPreview.getByLabel('Search products', { exact: true }).fill('Design 30');
   await expect(manyPreview.getByTestId('product-options-list').locator('article')).toHaveCount(1);
   await manyPreview.getByRole('button', { name: /Adjust stock/ }).click();
   await expect(manyPreview).toBeHidden();
@@ -201,7 +201,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   await stockDialog.getByRole('button', { name: /Cancel|ยกเลิก/ }).click();
   await expect(stockDialog).toBeHidden();
   await manyCard.getByRole('button', { name: 'Product options · 30 variants', exact: true }).click();
-  await manyPreview.getByLabel('Search variants or SKU', { exact: true }).fill('Design 30');
+  await manyPreview.getByLabel('Search products', { exact: true }).fill('Design 30');
   await manyPreview.getByRole('button', { name: 'More actions for Design 30', exact: true }).click();
   const actionMenu = page.getByRole('menu');
   await expect(actionMenu).toBeVisible();
@@ -343,7 +343,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.goto('/manage-products');
   await page.getByRole('button', { name: /Add Product/i }).click();
   const editor = page.getByRole('dialog', { name: 'Create product', exact: true });
-  await expect(editor.getByLabel('SKU', { exact: true })).toBeHidden();
+  await expect(editor.getByLabel('Product code', { exact: true })).toBeHidden();
   const familyName = `Photoset Genshin ${runId.slice(0, 8)}`;
   await editor.getByLabel('Product name *', { exact: true }).fill(familyName);
   await editor.getByLabel('Category', { exact: true }).fill('Photoset');

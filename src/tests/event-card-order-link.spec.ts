@@ -100,6 +100,7 @@ const eventRows = [
 
 interface StorefrontMockState {
   failPromotionQuote?: boolean;
+  postorderBoothOpen?: boolean;
   delayGlobalCatalog?: boolean;
   globalCatalogFinished?: boolean;
 }
@@ -153,7 +154,7 @@ const mockCustomerStorefront = async (page: Page, state: StorefrontMockState = {
     if (path.includes('/rest/v1/event_appearances')) return json(route, []);
     if (path.includes('/rest/v1/events')) {
       if (state.delayGlobalCatalog) await new Promise(resolve => setTimeout(resolve, 100));
-      return json(route, eventRows);
+      return json(route, eventRows.map(event => event.id === postorderEventId && state.postorderBoothOpen ? { ...event, status: 'Confirmed', is_booth_open: true } : event));
     }
     if (path.includes('/rest/v1/products') && state.delayGlobalCatalog) {
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -251,4 +252,20 @@ test('a late global catalog response cannot erase the selected event products', 
   await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
   await expect.poll(() => state.globalCatalogFinished).toBe(true);
   await expect(page.getByRole('article', { name: 'Preorder-only product' })).toBeVisible();
+});
+
+
+test('an ended event cannot show queue intake while its post-order store remains open', async ({ page }, testInfo) => {
+  await page.addInitScript(({ artistId, postorderEventId }) => {
+    localStorage.setItem('nireq-language', 'en');
+    localStorage.setItem(`customerSelectedEventId:${artistId}`, postorderEventId);
+  }, { artistId, postorderEventId });
+  await mockCustomerStorefront(page, { postorderBoothOpen: true });
+  await page.goto(`/${artistSlug}/queue`);
+  await expect(page.getByRole('heading', { name: 'Event ended', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('ended-event-queue.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Merchandise', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Postorder-only product' })).toBeVisible();
+  await expect(page.getByText('Post-event store', { exact: true })).toBeVisible();
 });

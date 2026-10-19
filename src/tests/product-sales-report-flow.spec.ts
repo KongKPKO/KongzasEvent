@@ -89,7 +89,7 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await expect(parentRow.locator('td').nth(3)).toContainText('300');
   await expect(parentRow.locator('td').nth(4)).toContainText('30');
   await expect(parentRow.locator('td').nth(6)).toContainText('270');
-  const search = report.getByRole('searchbox', { name: 'Search product or SKU' });
+  const search = report.getByRole('searchbox', { name: 'Search products' });
   expect(await search.evaluate(input => parseFloat(getComputedStyle(input).paddingLeft))).toBeGreaterThanOrEqual(40);
   const galleryTrigger = parentRow.getByRole('button', { name: 'View all 6 images of Original set' });
   await expect(galleryTrigger.locator('img')).toHaveCount(4);
@@ -112,7 +112,7 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await expect(report.locator('.product-sales-variant-row').first().getByRole('button', { name: 'View all 5 images of Option A' })).toBeVisible();
   await expect(report.locator('.product-sales-variant-row').last().getByRole('button', { name: 'View all 1 images of Option B' })).toBeVisible();
 
-  await report.getByRole('searchbox', { name: 'Search product or SKU' }).fill('OLD-B');
+  await report.getByRole('searchbox', { name: 'Search products' }).fill('OLD-B');
   await expect(report.getByText('1 product found')).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
   await report.getByRole('button', { name: 'Export product CSV' }).click();
@@ -121,7 +121,7 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await download.saveAs(csvPath);
   const csv = await readFile(csvPath, 'utf8');
   expect(csv.charCodeAt(0)).toBe(0xFEFF);
-  expect(csv).toContain('"Product","Variant","SKU"');
+  expect(csv).toContain('"Product","Variant","Product code"');
   expect(csv).toContain('"Original set","Option B","OLD-B"');
   expect(csv).toContain('"20","","180","THB"');
 

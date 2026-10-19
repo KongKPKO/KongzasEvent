@@ -45,7 +45,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
 
     await form.getByLabel('ชื่อโปรโมชัน', { exact: true }).fill('ซื้อครบชุด Mavuika รับส่วนลดและของแถม');
     await form.getByRole('radio', { name: 'ซื้อสินค้าครบชุด', exact: true }).check();
-    const conditionSearch = form.getByLabel('ค้นหาสินค้า / SKU').first();
+    const conditionSearch = form.getByLabel('ค้นหาสินค้า').first();
     await conditionSearch.fill('MAV-A3');
     await form.getByRole('button', { name: /Mavuika A3.*MAV-A3/ }).click();
     await conditionSearch.fill('MAV-A4');
@@ -56,8 +56,8 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
 
     await form.getByRole('checkbox', { name: /^ส่วนลด/ }).check();
     await form.getByLabel('จำนวนเงิน (บาท)').fill('20');
-    await form.getByRole('checkbox', { name: /^ของแถมจาก SKU เดิม/ }).check();
-    const giftSearch = form.getByLabel('ค้นหา SKU ของแถม');
+    await form.getByRole('checkbox', { name: /^ของแถมจากสินค้าที่มีอยู่/ }).check();
+    const giftSearch = form.getByLabel('ค้นหาสินค้าของแถม');
     await giftSearch.fill('GIFT-HAIR');
     await form.getByRole('button', { name: /Hairclip Tamon.*GIFT-HAIR/ }).click();
     await form.getByLabel('จำกัดจำนวนสิทธิ์ทั้งหมด').fill('20');
@@ -73,7 +73,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
       previewDefinition = (JSON.parse(route.request().postData() || '{}') as { p_definition?: Record<string, unknown> }).p_definition;
       await route.continue();
     });
-    const previewSearch = form.getByLabel('ค้นหาสินค้า / SKU').last();
+    const previewSearch = form.getByLabel('ค้นหาสินค้า').last();
     await previewSearch.fill('MAV-A3');
     await form.getByRole('button', { name: /Mavuika A3.*MAV-A3/ }).last().click();
     await previewSearch.fill('MAV-A4');
@@ -104,6 +104,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: `../promotion-v1-${width}-local.png`, fullPage: true });
     }
+    await expect(form).not.toContainText(/\bSKU\b/);
     const accessibility = await new AxeBuilder({ page }).include('.promotion-workspace').withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(accessibility.violations).toEqual([]);
     await form.getByRole('button', { name: 'บันทึกและเปิดใช้', exact: true }).click();

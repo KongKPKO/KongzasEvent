@@ -22,7 +22,7 @@ const rows: ProductSalesRow[] = [{
 test('product sales CSV uses UTF-8 BOM, Thai headings and one row per variant', () => {
   const csv = buildProductSalesCsv(rows, 'th');
   expect(csv.charCodeAt(0)).toBe(0xFEFF);
-  expect(csv).toContain('"สินค้า","ตัวเลือก","SKU"');
+  expect(csv).toContain('"สินค้า","ตัวเลือก","รหัสสินค้า"');
   expect(csv).toContain('"พวงกุญแจ, ""คู่""","แดง","KEY-RED"');
   expect(csv.split('\r\n')).toHaveLength(3);
   expect(csv).toContain('"30","","270","THB"');

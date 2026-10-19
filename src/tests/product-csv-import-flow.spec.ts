@@ -93,7 +93,7 @@ test('localizes the family editor and imports current and legacy CSV atomically'
   }
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await expect(editor.getByLabel('SKU', { exact: true })).toBeHidden();
+  await expect(editor.getByLabel('Product code', { exact: true })).toBeHidden();
   await expect(editor.getByText('ข้อมูลหลักของสินค้า', { exact: true })).toBeVisible();
   await expect(editor.getByLabel('ชื่อสินค้า *', { exact: true })).toBeVisible();
   await expect(editor.getByLabel('ราคาหลัก *', { exact: true })).toBeVisible();

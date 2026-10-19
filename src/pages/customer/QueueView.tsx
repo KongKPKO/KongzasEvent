@@ -85,10 +85,11 @@ const QueueView = () => {
 
     const activeEvent = selectedEvent;
     const [updatesDelayed, setUpdatesDelayed] = useState(false);
+    const [queueNow, setQueueNow] = useState(Date.now);
     useEffect(() => {
         if (!activeEvent?.id) { setUpdatesDelayed(false); return; }
         let active = true;
-        const check = async () => { const result = await supabase.rpc('queue_updates_delayed', { p_event_id: activeEvent.id }); if (active) setUpdatesDelayed(Boolean(result.error) || result.data === true); };
+        const check = async () => { if (active) setQueueNow(Date.now()); const result = await supabase.rpc('queue_updates_delayed', { p_event_id: activeEvent.id }); if (active) setUpdatesDelayed(Boolean(result.error) || result.data === true); };
         void check(); const timer = window.setInterval(() => void check(), 20000);
         return () => { active = false; window.clearInterval(timer); };
     }, [activeEvent?.id]);
@@ -627,6 +628,10 @@ const QueueView = () => {
     const isQueueOpen = displayArtist?.is_queue_open ?? true; // Default to true if undefined
     const queueAvailability = resolveQueueAvailability({
         hasActiveEvent: Boolean(activeEvent),
+        eventStatus: activeEvent?.status,
+        eventStartsAt: activeEvent?.start_date,
+        eventEndsAt: activeEvent?.end_date,
+        now: queueNow,
         isBoothOpen: Boolean(isBoothOpen),
         isQueueOpen,
         broadcastMessage: displayArtist?.broadcast_message,
@@ -634,6 +639,9 @@ const QueueView = () => {
     const isQueueUnavailable = !queueAvailability.acceptsTickets;
     const queueActionGuidance = (() => {
         if (!myTicket) {
+            if (queueAvailability.state === 'event-ended') {
+                return { title: t('queueEventEnded'), detail: t('queueEventEndedDetail'), tone: 'slate' };
+            }
             if (queueAvailability.state === 'queue-paused') {
                 return {
                     title: t('queuePausedTitle'),

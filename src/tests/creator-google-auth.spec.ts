@@ -259,17 +259,20 @@ test.describe('Creator Google auth', () => {
   test('verified authenticated user creates one creator workspace without password fields', async ({ page }) => {
     test.skip(!SERVICE_KEY, 'Local Supabase service key is required');
     if (!service) throw new Error('Local Supabase service key is required');
-    const user = await createConfirmedUser();
+    const user = await createConfirmedUser({ full_name: 'Google Prefilled Name' });
     const slug = `google-${randomUUID().slice(0, 8)}`;
 
     try {
       await signInThroughUi(page, user.email, user.password);
-      await page.getByRole('link', { name: 'Apply as a creator with this account' }).click();
+      await page.getByRole('link', { name: 'Apply as a seller with this account' }).click();
 
       await expect(page.getByText(user.email)).toBeVisible();
       await expect(page.locator('#creator-password')).toHaveCount(0);
       await expect(page.locator('#creator-email')).toHaveCount(0);
 
+      await expect(page.locator('#creator-contact-name')).toHaveValue('Google Prefilled Name');
+      await expect(page.locator('#creator-name')).toHaveValue('');
+      await expect(page.locator('#creator-slug')).toHaveValue('');
       await page.locator('#creator-contact-name').fill('Google Creator');
       await page.locator('#creator-name').fill('Google Pilot Booth');
       await page.locator('#creator-slug').fill(slug);
@@ -302,7 +305,7 @@ test.describe('Creator Google auth', () => {
       await page.getByLabel('Confirm password').fill(user.password);
       await page.getByLabel('Contact name').fill('Existing Creator');
       await page.getByLabel('Creator / shop name').fill('Existing Pilot Booth');
-      await page.getByLabel('Desired URL slug').fill(`existing-${randomUUID().slice(0, 8)}`);
+      await page.getByLabel('Your shop link').fill(`existing-${randomUUID().slice(0, 8)}`);
       await page.getByTestId('creator-primary-social').fill('https://instagram.com/existing-pilot');
       await page.getByTestId('creator-application-note').fill('Testing neutral duplicate account recovery guidance.');
       await page.getByTestId('creator-truthful').check();

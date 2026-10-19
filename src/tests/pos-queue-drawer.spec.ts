@@ -319,6 +319,27 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     await expect(drawer).toBeVisible();
     expect(await sellerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await sellerPage.screenshot({ path: testInfo.outputPath('pos-queue-drawer-tablet.png'), fullPage: false });
+
+    must(await service.from('queues').insert([7, 8].map((number, index) => ({
+      id: randomUUID(), artist_id: artistId, event_id: eventId,
+      queue_number: number, status: index === 0 ? 'missed' : 'expired', queue_service_date: serviceDate(),
+    }))), 'seed mobile missed tickets');
+    await queueStaffPage.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+    await queueStaffPage.reload();
+    const lists = queueStaffPage.locator('.festival-queue-lists');
+    await expect(lists.getByText('#8', { exact: true })).toBeAttached();
+    for (const width of [320, 390, 430]) {
+      await queueStaffPage.setViewportSize({ width, height: 700 });
+      const sections = await lists.locator(':scope > *').evaluateAll(elements => elements.map(element => {
+        const box = element.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      }));
+      for (let index = 1; index < sections.length; index += 1) expect(sections[index].top).toBeGreaterThanOrEqual(sections[index - 1].bottom);
+      expect(await queueStaffPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await lists.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await queueStaffPage.screenshot({ path: testInfo.outputPath('queue-mobile-missed-no-overlap.png') });
+
   } finally {
     await sellerContext.close();
     await queueStaffContext.close();

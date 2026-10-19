@@ -1,3 +1,4 @@
+import { getQueueBroadcast } from '../utils/queueBroadcast';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -216,36 +217,25 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     );
   }
 
-  // Priority 2: Broadcast Message
-  if (broadcastMessage) {
-    const msg = broadcastMessage.toLowerCase();
-    
-    let theme = "bg-blue-500 border-blue-400 shadow-blue-500/20 text-white"; 
-    let Icon = Info;
-    let iconColor = "text-white";
-
-    if (msg.includes('พัก') || msg.includes('break')) {
-        theme = "bg-pink-500 border-pink-400 shadow-pink-500/20 text-white";
-        Icon = Coffee;
-    } else if (msg.includes('ด่วน') || msg.includes('urgent') || msg.includes('sorry')) {
-        theme = "bg-orange-500 border-orange-400 shadow-orange-500/20 text-white";
-        Icon = AlertTriangle;
-    } else if (msg.includes('หยุด') || msg.includes('stop') || msg.includes('closed') || msg.includes('pause')) {
-        theme = "bg-gray-200 border-gray-300 shadow-gray-300/20 text-gray-800";
-        Icon = PauseCircle;
-        iconColor = "text-gray-800";
-    }
-
+  // Priority 2: shop announcements remain in the page flow, clear of navigation.
+  const notice = getQueueBroadcast(broadcastMessage, language);
+  if (notice) {
+    const styles = {
+      paused: { tone: 'border-slate-200 bg-slate-50 text-slate-800', icon: PauseCircle },
+      break: { tone: 'border-pink-200 bg-pink-50 text-pink-900', icon: Coffee },
+      urgent: { tone: 'border-amber-200 bg-amber-50 text-amber-950', icon: AlertTriangle },
+      notice: { tone: 'border-sky-200 bg-sky-50 text-sky-900', icon: Info },
+    }[notice.kind];
+    const Icon = styles.icon;
     return (
-      <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none">
-        <div className={`pointer-events-auto w-full max-w-md rounded-b-2xl shadow-xl pb-3 px-4 pt-safe-top flex items-center justify-center gap-3 ring-1 ${theme}`}>
-            <div className="bg-white/20 p-1.5 rounded-full flex-shrink-0">
-              <Icon size={18} className={iconColor} />
-            </div>
-            <div className="font-bold text-sm text-center break-words">
-              {broadcastMessage}
-            </div>
-        </div>
+      <div className="mx-auto w-full max-w-6xl px-3 py-3 lg:px-6">
+        <section role="status" aria-live="polite" aria-atomic="true" data-testid="queue-broadcast" className={`flex items-start gap-3 rounded-2xl border p-4 ${styles.tone}`}>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80"><Icon size={22} aria-hidden="true" /></span>
+          <div className="min-w-0">
+            <h2 className="font-black leading-6">{notice.title}</h2>
+            <p className="mt-1 break-words text-sm leading-relaxed opacity-90">{notice.detail}</p>
+          </div>
+        </section>
       </div>
     );
   }

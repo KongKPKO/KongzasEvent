@@ -1,3 +1,4 @@
+import { selectLanguage } from './helpers/languageMenu';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 const artistId = '10000000-0000-4000-8000-000000000001';
@@ -99,6 +100,8 @@ const eventRows = [
 ];
 
 interface StorefrontMockState {
+  broadcastMessage?: string;
+  queueOpen?: boolean;
   failPromotionQuote?: boolean;
   postorderBoothOpen?: boolean;
   liveEndsAt?: string;
@@ -171,8 +174,8 @@ const mockCustomerStorefront = async (page: Page, state: StorefrontMockState = {
         display_name: 'Event Card Shop',
         bio: 'Event card regression fixture',
         image_url: null,
-        broadcast_message: null,
-        is_queue_open: true,
+        broadcast_message: state.broadcastMessage || null,
+        is_queue_open: state.queueOpen ?? true,
         is_public: true,
         published_at: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
         seller_type: 'creator',
@@ -285,3 +288,33 @@ test('an open queue removes ticket intake as soon as the event ends without a re
   await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Event ended', exact: true }).first()).toBeVisible();
 });
+
+
+for (const [message, thaiTitle, englishTitle] of [
+  ['Queue closed temporarily', 'หยุดรับคิวชั่วคราว', 'Queue temporarily closed'],
+  ['Break time', 'ร้านกำลังพัก', 'The shop is taking a break'],
+  ['Urgent matter, sorry for the inconvenience', 'ล่าช้าจากเหตุเร่งด่วน', 'Service delayed by an urgent matter'],
+]) {
+  test(`customer preset announcement translates and stays clear of navigation: ${message}`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => localStorage.setItem('nireq-language', 'th'));
+    await page.setViewportSize({ width: 320, height: 700 });
+    await mockCustomerStorefront(page, { broadcastMessage: message, queueOpen: message !== 'Queue closed temporarily', postorderBoothOpen: true, liveEndsAt: new Date(Date.now() + 3600000).toISOString() });
+    await page.goto(`/${artistSlug}/queue`);
+    const banner = page.getByTestId('queue-broadcast');
+    await expect(banner.getByRole('heading', { name: thaiTitle, exact: true })).toBeVisible();
+    await expect(banner).not.toContainText(message);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const header = await page.locator('header').first().boundingBox();
+    const bounds = await banner.boundingBox();
+    expect(bounds!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+    await page.screenshot({ path: testInfo.outputPath('customer-queue-announcement-th.png') });
+    await selectLanguage(page, 'en');
+    await expect(banner.getByRole('heading', { name: englishTitle, exact: true })).toBeVisible();
+    if (message === 'Queue closed temporarily') {
+      await expect(page.locator('.queue-guidance')).toContainText(englishTitle);
+      await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('button', { name: 'Get Ticket', exact: true })).toBeEnabled();
+    }
+  });
+}

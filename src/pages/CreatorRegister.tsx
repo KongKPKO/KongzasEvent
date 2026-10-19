@@ -408,7 +408,20 @@ export default function CreatorRegister() {
                 <input id="creator-name" name="creatorName" className="input-surface" value={form.creatorName} onChange={(event) => handleCreatorNameChange(event.target.value)} placeholder={t('registerCreatorNamePlaceholder')} required />
               </Field>
               <Field label={t('registerSlug')} required hint={t('registerSlugHint')}>
-                <input id="creator-slug" name="desiredSlug" className="input-surface" value={form.desiredSlug} onChange={(event) => updateField('desiredSlug', slugify(event.target.value))} placeholder={t('registerSlugPlaceholder')} required />
+                <div className="public-slug-input">
+                  <span className="public-slug-prefix">nireqapp.com/</span>
+                  <input
+                    id="creator-slug"
+                    name="desiredSlug"
+                    value={form.desiredSlug}
+                    onChange={(event) => updateField('desiredSlug', slugify(event.target.value))}
+                    placeholder={t('registerSlugPlaceholder')}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    required
+                  />
+                </div>
               </Field>
               <Field label={t('registerPrimarySocial')} required hint={t('registerPrimarySocialHint')}>
                 <input id="creator-primary-social" name="primarySocialUrl" data-testid="creator-primary-social" className="input-surface" type="url" value={form.primarySocialUrl} onChange={(event) => updateField('primarySocialUrl', event.target.value)} placeholder={t('registerPrimarySocialPlaceholder')} required />

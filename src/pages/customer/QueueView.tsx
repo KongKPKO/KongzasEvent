@@ -1,3 +1,4 @@
+import { getQueueBroadcast } from '../../utils/queueBroadcast';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
@@ -660,9 +661,10 @@ const QueueView = () => {
                 return { title: t('queueEventEnded'), detail: t('queueEventEndedDetail'), tone: 'slate' };
             }
             if (queueAvailability.state === 'queue-paused') {
+                const notice = getQueueBroadcast(queueAvailability.pauseReason, language);
                 return {
-                    title: t('queuePausedTitle'),
-                    detail: queueAvailability.pauseReason || t('queuePausedDetail'),
+                    title: notice?.title || t('queuePausedTitle'),
+                    detail: notice?.detail || t('queuePausedDetail'),
                     tone: 'amber',
                 };
             }

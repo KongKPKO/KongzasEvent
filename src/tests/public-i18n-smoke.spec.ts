@@ -94,7 +94,7 @@ test.describe('Public Nireq smoke', () => {
     await expect(page.getByText(/Mobile Test Artist|Security Test Artist|Performance/i)).toHaveCount(0);
   });
 
-  test('creator application form exposes stable fields and validation', async ({ page }) => {
+  test('creator application form exposes stable fields and validation', async ({ page }, testInfo) => {
     await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
     await page.goto('/creator/register');
 
@@ -106,6 +106,24 @@ test.describe('Public Nireq smoke', () => {
     const submit = page.getByTestId('creator-register-submit');
     await expect(submit).toBeDisabled();
     await expect(submit).toContainText(/Complete required fields|กรอกข้อมูลจำเป็นให้ครบ/);
+    for (const id of ['creator-contact-name', 'creator-name', 'creator-slug', 'creator-primary-social', 'creator-application-note']) await expect(page.locator(`#${id}`)).toHaveValue('');
+    await expect(page.locator('.public-slug-prefix')).toHaveText('nireqapp.com/');
+    await expect(page.locator('#creator-slug')).toHaveAccessibleName(/Your shop link/);
+    await selectLanguage(page, 'th');
+    await expect(page.locator('#creator-slug')).toHaveAttribute('placeholder', 'เช่น mali-art');
+    await expect(page.locator('#creator-slug')).toHaveAccessibleName(/ลิงก์ร้านของคุณ/);
+    const colors = await page.locator('#creator-name').evaluate(element => ({ value: getComputedStyle(element).color, placeholder: getComputedStyle(element, '::placeholder').color }));
+    expect(colors.placeholder).not.toBe(colors.value);
+    await page.locator('#creator-name').fill('Mali Art');
+    await expect(page.locator('#creator-slug')).toHaveValue('mali-art');
+    for (const width of [320, 390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const input = await page.locator('#creator-slug').boundingBox();
+      expect(input!.width).toBeGreaterThan(70);
+      if (width === 320) await page.screenshot({ path: testInfo.outputPath('registration-shop-link-mobile.png'), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+
   });
 });
 

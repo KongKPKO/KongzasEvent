@@ -156,6 +156,7 @@ export default function QueuePanel({
     };
 
     const handleToggleBooth = async () => {
+        if (!canUsePos(actorContext.role)) return;
         if (!activeEvent) {
             setToast({ tone: 'warning', title: uiText(language, 'No active event'), detail: uiText(language, 'Activate an event to open the booth.') });
             return;
@@ -276,7 +277,7 @@ export default function QueuePanel({
                         <span className={`font-bold uppercase tracking-wider ${isBoothActive ? 'text-green-700' : 'text-gray-500'}`}>
                             {isBoothActive ? text('BOOTH OPEN', 'บูธเปิดอยู่') : text('BOOTH CLOSED', 'บูธปิดอยู่')}
                         </span>
-                        <button
+                        {canUsePos(actorContext.role) && <button
                             onClick={handleToggleBooth}
                             className={`relative inline-flex h-11 w-16 items-center rounded-full transition-colors ${isBoothActive ? 'bg-green-500' : 'bg-gray-300'}`}
                             aria-label={isBoothActive ? text('Close booth', 'ปิดบูธ') : text('Open booth', 'เปิดบูธ')}
@@ -284,7 +285,7 @@ export default function QueuePanel({
                             aria-checked={isBoothActive}
                         >
                             <span className={`${isBoothActive ? 'translate-x-8' : 'translate-x-2'} inline-block h-6 w-6 transform rounded-full bg-white transition-transform`} />
-                        </button>
+                        </button>}
                     </div>
                 </div>
 

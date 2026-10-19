@@ -125,6 +125,38 @@ test.describe('Public Nireq smoke', () => {
     }
 
   });
+
+  test('failed creator registration keeps the error beside the submit action on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.route('**/rest/v1/rpc/is_creator_slug_available', route => route.fulfill({ json: true }));
+    await page.route('**/auth/v1/signup**', route => route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'unexpected_failure', msg: 'Registration service unavailable' }),
+    }));
+    await page.goto('/creator/register');
+
+    await page.locator('#creator-email').fill('mobile-error@example.com');
+    await page.locator('#creator-password').fill('Registration123!');
+    await page.locator('#creator-confirm-password').fill('Registration123!');
+    await page.locator('#creator-contact-name').fill('Mobile Seller');
+    await page.locator('#creator-name').fill('Mobile Error Booth');
+    await page.locator('#creator-slug').fill('mobile-error-booth');
+    await page.getByTestId('creator-primary-social').fill('https://instagram.com/mobile-error-booth');
+    await page.getByTestId('creator-application-note').fill('Testing failed registration feedback on mobile.');
+    await page.getByTestId('creator-truthful').check();
+
+    const submit = page.getByTestId('creator-register-submit');
+    await submit.click();
+
+    const error = page.getByTestId('creator-register-error');
+    await expect(error).toContainText('Registration service unavailable');
+    await expect(error).toBeInViewport();
+    await expect(page.locator('[data-testid="creator-register-submit"], [data-testid="creator-register-error"]')).toHaveCount(2);
+    expect(await page.locator('[data-testid="creator-register-submit"], [data-testid="creator-register-error"]').evaluateAll(elements =>
+      elements.map(element => element.getAttribute('data-testid'))
+    )).toEqual(['creator-register-submit', 'creator-register-error']);
+  });
 });
 
 test.describe('Public Nireq fixture smoke', () => {

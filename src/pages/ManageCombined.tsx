@@ -128,7 +128,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [eventLoading]);
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
-        if (!activeEvent?.id || boothToggleLoading) return;
+        if (!hasPosPermission || !activeEvent?.id || boothToggleLoading) return;
         if (!nextOpen && activeEvent.is_booth_open && !window.confirm(uiText(language, 'Close booth for {event}? Customers will see the booth as closed.').replace('{event}', activeEvent.event_name))) {
             return;
         }
@@ -148,7 +148,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         } finally {
             setBoothToggleLoading(false);
         }
-    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading, language]);
+    }, [activeEvent?.id, activeEvent?.event_name, activeEvent?.is_booth_open, boothToggleLoading, hasPosPermission, language]);
 
     const fetchActiveEvents = useCallback(async () => {
         const request = ++eventRequestRef.current;
@@ -518,7 +518,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             </select>
                         </label>
 
-                        <button
+                        {hasPosPermission && <button
                             type="button"
                             disabled={!activeEvent || boothToggleLoading}
                             onClick={() => handleBoothToggle(!activeEvent?.is_booth_open)}
@@ -534,7 +534,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                                 : activeEvent?.is_booth_open
                                     ? text('Close Booth', 'ปิดบูธ')
                                     : text('Open Booth', 'เปิดบูธ')}
-                        </button>
+                        </button>}
                     </div>
                 </div>
             </div>

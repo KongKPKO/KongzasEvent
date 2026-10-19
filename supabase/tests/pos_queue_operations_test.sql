@@ -440,5 +440,32 @@ select throws_ok($$select * from public.create_queue_ticket((select artist from 
 update public.events set status='Ended' where id=(select event from pos_queue_ids);
 select throws_ok($$select * from public.create_queue_ticket((select artist from pos_queue_ids),(select event from pos_queue_ids),'ended-event-fingerprint')$$,'P0001','event_not_active','explicitly ended event rejects new queue tickets');
 
+
+-- Booth control is distinct from ticket/announcement operations.
+select set_pos_queue_jwt(artist, 'pos-queue-owner@example.local') from pos_queue_ids;
+select is(public.set_booth_open_status((select event from pos_queue_ids), false), true, 'owner may close a booth');
+select is(public.set_booth_open_status((select event from pos_queue_ids), true), true, 'owner may reopen a booth');
+select set_pos_queue_jwt(manager, 'pos-queue-manager@example.local') from pos_queue_ids;
+select is(public.set_booth_open_status((select event from pos_queue_ids), false), true, 'manager may close a booth');
+select is(public.set_booth_open_status((select event from pos_queue_ids), true), true, 'manager may reopen a booth');
+select set_pos_queue_jwt(seller, 'pos-queue-seller@example.local') from pos_queue_ids;
+select is(public.set_booth_open_status((select event from pos_queue_ids), false), true, 'assigned seller may close a booth');
+select is(public.set_booth_open_status((select event from pos_queue_ids), true), true, 'assigned seller may reopen a booth');
+select set_pos_queue_jwt(queue_staff, 'pos-queue-staff@example.local') from pos_queue_ids;
+select throws_ok($$select public.set_booth_open_status((select event from pos_queue_ids), false)$$, 'P0001', 'forbidden', 'queue staff cannot close a booth via RPC');
+select throws_ok($$select public.set_booth_open_status((select event from pos_queue_ids), true)$$, 'P0001', 'forbidden', 'queue staff cannot open a booth via RPC');
+grant select on pos_queue_ids to authenticated;
+set local role authenticated;
+select lives_ok($$do $test$ begin
+  update public.events set is_booth_open=false where id=(select event from pos_queue_ids);
+  if found then raise exception 'queue staff changed booth state directly'; end if;
+end $test$;$$, 'queue staff cannot bypass the RPC with a direct event update');
+reset role;
+select is((select is_booth_open from public.events where id=(select event from pos_queue_ids)), true, 'denied queue staff attempts preserve the booth state');
+select set_pos_queue_jwt(unassigned, 'pos-queue-unassigned@example.local') from pos_queue_ids;
+select throws_ok($$select public.set_booth_open_status((select event from pos_queue_ids), false)$$, 'P0001', 'forbidden', 'seller assigned to another event cannot close this booth');
+select set_pos_queue_jwt(foreign_user, 'pos-queue-foreign@example.local') from pos_queue_ids;
+select throws_ok($$select public.set_booth_open_status((select event from pos_queue_ids), true)$$, 'P0001', 'forbidden', 'unrelated users cannot open this booth');
+
 select * from finish();
 rollback;

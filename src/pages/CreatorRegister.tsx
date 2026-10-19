@@ -342,13 +342,6 @@ export default function CreatorRegister() {
               </div>
             </div>
 
-            {errorMsg && (
-              <div role="alert" className="mb-5 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                {errorMsg}
-              </div>
-            )}
-
             {!authLoading && !authUser && (
               <div className="mb-6 space-y-3">
                 <button
@@ -490,6 +483,13 @@ export default function CreatorRegister() {
                   ? t(authUser ? 'registerSubmitAuthenticated' : 'registerSubmit')
                   : t('registerCompleteRequired')}
             </button>
+
+            {errorMsg && (
+              <div data-testid="creator-register-error" role="alert" className="mt-3 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
 
             {!canSubmit && incompleteReasons.length > 0 && (
               <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">

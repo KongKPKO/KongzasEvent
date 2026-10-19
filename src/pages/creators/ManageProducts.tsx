@@ -375,9 +375,16 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [saleEventOptions, setSaleEventOptions] = useState<EventOption[]>([]);
    const [saleEventIds, setSaleEventIds] = useState<string[]>([]);
    const [saleCampaignIds, setSaleCampaignIds] = useState<string[]>([]);
+   const [saleEventsOpen, setSaleEventsOpen] = useState(false);
+   const [saleCampaignsOpen, setSaleCampaignsOpen] = useState(false);
+   const [saleEventFilter, setSaleEventFilter] = useState<'active' | 'ended' | 'all'>('active');
    const [saleChannelsLoading, setSaleChannelsLoading] = useState(false);
    const [saleChannelsError, setSaleChannelsError] = useState('');
    const saleChannelsRequest = useRef(0);
+   const visibleSaleEvents = saleEventOptions.filter(item => {
+      const ended = item.status.toLowerCase() === 'ended' || Date.parse(item.end_date) <= Date.now();
+      return saleEventFilter === 'all' || (saleEventFilter === 'ended' ? ended : !ended && !['cancelled', 'canceled'].includes(item.status.toLowerCase()));
+   });
    const [addToSaleSaving, setAddToSaleSaving] = useState(false);
    const [campaignOptions, setCampaignOptions] = useState<OnlineCampaignSummary[]>([]);
    const [familyEditorParentId, setFamilyEditorParentId] = useState<string | 'new' | null>(null);
@@ -1512,6 +1519,9 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const openAddToSale = async (product: Product) => {
       const request = ++saleChannelsRequest.current;
       setAddToSaleProduct(product);
+      setSaleEventsOpen(false);
+      setSaleCampaignsOpen(false);
+      setSaleEventFilter('active');
       setSaleChannelsLoading(true);
       setSaleChannelsError('');
       setSaleEventIds([]);
@@ -2394,8 +2404,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   {saleChannelsLoading && <p role="status" className="mt-4">{language === 'th' ? 'กำลังโหลดช่องทางขาย…' : 'Loading sales channels…'}</p>}
                   {saleChannelsError && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{saleChannelsError}</p><button type="button" className="mt-2 min-h-11 font-bold underline" onClick={() => void openAddToSale(addToSaleProduct)} disabled={addToSaleSaving}>{language === 'th' ? 'โหลดใหม่' : 'Reload'}</button></div>}
                   <fieldset disabled={addToSaleSaving || saleChannelsLoading || Boolean(saleChannelsError)} className="mt-4 space-y-4 disabled:opacity-50">
-                     <fieldset><legend className="text-sm font-black">{t('catalogPhysicalEvent')}</legend>{saleEventOptions.map(item => <label key={item.id} className="mt-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-bold"><input type="checkbox" checked={saleEventIds.includes(item.id)} onChange={e => setSaleEventIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.event_name}</label>)}{!saleChannelsLoading && !saleEventOptions.length && <p className="mt-2 text-sm text-gray-500">{language === 'th' ? 'ยังไม่มีอีเวนต์' : 'No events yet'}</p>}</fieldset>
-                     <fieldset><legend className="text-sm font-black">{t('catalogOnlineCampaign')}</legend>{campaignOptions.map(item => <label key={item.id} className="mt-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-bold"><input type="checkbox" checked={saleCampaignIds.includes(item.id)} onChange={e => setSaleCampaignIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.name}</label>)}{!saleChannelsLoading && !campaignOptions.length && <p className="mt-2 text-sm text-gray-500">{language === 'th' ? 'ยังไม่มีแคมเปญ' : 'No campaigns yet'}</p>}</fieldset>
+                     <div>
+                        <button type="button" aria-expanded={saleEventsOpen} aria-controls="catalog-event-channel-options" onClick={() => { setSaleEventsOpen(open => !open); setSaleCampaignsOpen(false); }} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 text-left text-sm font-bold"><span>{language === 'th' ? 'เลือกอีเวนต์' : 'Choose events'} · {language === 'th' ? 'เลือกแล้ว' : 'Selected'} {saleEventIds.length}</span><ChevronDown size={18} className={saleEventsOpen ? 'rotate-180' : ''} aria-hidden="true" /></button>
+                        {saleEventsOpen && <div id="catalog-event-channel-options" onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSaleEventsOpen(false); const trigger = e.currentTarget.previousElementSibling; if (trigger instanceof HTMLButtonElement) trigger.focus(); } }} role="region" aria-label={t('catalogPhysicalEvent')} className="mt-2 rounded-xl border border-gray-200 p-3">
+                           <label className="block text-xs font-bold">{language === 'th' ? 'สถานะอีเวนต์' : 'Event status'}<select value={saleEventFilter} onChange={e => setSaleEventFilter(e.target.value as 'active' | 'ended' | 'all')} className="mt-1 min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm"><option value="active">{language === 'th' ? 'กำลังใช้งาน (รวมงานที่กำลังจะมา)' : 'Active (including upcoming)'}</option><option value="ended">{language === 'th' ? 'จบแล้ว' : 'Ended'}</option><option value="all">{language === 'th' ? 'ทั้งหมด' : 'All'}</option></select></label>
+                           <p className="mt-2 text-xs text-gray-500">{language === 'th' ? 'เปลี่ยนตัวกรองได้โดยไม่ล้างช่องทางที่เลือกไว้' : 'Filtering keeps all your channel selections.'}</p>
+                           <div className="mt-2 max-h-52 space-y-1 overflow-y-auto">{visibleSaleEvents.map(item => <label key={item.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-gray-100 p-2 text-sm font-bold"><input type="checkbox" checked={saleEventIds.includes(item.id)} onChange={e => setSaleEventIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.event_name}</label>)}{!visibleSaleEvents.length && <p className="p-2 text-sm text-gray-500">{language === 'th' ? 'ไม่มีอีเวนต์ในสถานะนี้' : 'No events with this status'}</p>}</div>
+                        </div>}
+                     </div>
+                     <div>
+                        <button type="button" aria-expanded={saleCampaignsOpen} aria-controls="catalog-campaign-channel-options" onClick={() => { setSaleCampaignsOpen(open => !open); setSaleEventsOpen(false); }} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 text-left text-sm font-bold"><span>{language === 'th' ? 'เลือกแคมเปญออนไลน์' : 'Choose online campaigns'} · {language === 'th' ? 'เลือกแล้ว' : 'Selected'} {saleCampaignIds.filter(id => campaignOptions.some(item => item.id === id)).length}</span><ChevronDown size={18} className={saleCampaignsOpen ? 'rotate-180' : ''} aria-hidden="true" /></button>
+                        {saleCampaignsOpen && <div id="catalog-campaign-channel-options" onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSaleCampaignsOpen(false); const trigger = e.currentTarget.previousElementSibling; if (trigger instanceof HTMLButtonElement) trigger.focus(); } }} role="region" aria-label={t('catalogOnlineCampaign')} className="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-xl border border-gray-200 p-3">{campaignOptions.map(item => <label key={item.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-gray-100 p-2 text-sm font-bold"><input type="checkbox" checked={saleCampaignIds.includes(item.id)} onChange={e => setSaleCampaignIds(ids => e.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id))} />{item.name}</label>)}{!campaignOptions.length && <p className="p-2 text-sm text-gray-500">{language === 'th' ? 'ยังไม่มีแคมเปญ' : 'No campaigns yet'}</p>}</div>}
+                     </div>
                   </fieldset>
                   <button disabled={addToSaleSaving || saleChannelsLoading || Boolean(saleChannelsError)} className="mt-4 min-h-11 w-full rounded-xl bg-pink-600 text-sm font-black text-white disabled:opacity-50">{addToSaleSaving ? t('campaignCreating') : t('catalogAddToSale')}</button>
                </form>

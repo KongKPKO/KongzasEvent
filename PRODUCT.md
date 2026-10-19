@@ -18,7 +18,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 
 ### Sales channels and fulfillment
 
-- Catalog sales-channel selection supports multiple Event and Online Campaign checkboxes in one atomic save. Selected channels enable the product; unchecked existing memberships hide it. Newly added tracked memberships start at zero; existing allocations, holds, sales, supply policies and prices are preserved. Archived Campaigns are excluded.
+- Catalog sales-channel selection supports multiple Event and Online Campaign checkboxes in compact dropdowns and one atomic save. Event filtering defaults to active/upcoming and also offers ended/all; filtering never changes selections hidden by the filter. Selected channels enable the product; unchecked existing memberships hide it. Newly added tracked memberships start at zero; existing allocations, holds, sales, supply policies and prices are preserved. Archived Campaigns are excluded.
 - Online Campaign is a separate entity from Physical Event. It uses explicitly allocated catalog stock, not an implicit shared pool with an Event.
 - Event Pre-order, live-day sales and Post-order remain distinct phases. Live-day queue/POS must not acquire the online payment timer.
 - Online Campaign supports shipping or pickup. Shipping is a merchant-defined flat fee per order, included in the checkout total. The merchant can configure multiple pickup points with dates/times; the customer chooses at checkout.
@@ -86,7 +86,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 ### Event catalog setup and activity rewards
 
 - New Event setup may start empty, select catalog products in bulk, or reuse the enabled product list from another Event in the same shop. Reuse does not copy allocations, sold counts, holds, production settings, or prices; finite items start with zero allocated stock until the merchant explicitly allocates them. Existing channel stock is never moved implicitly.
-- Activity participation rewards are non-inventory promotion benefits with a name, manual instructions, and quantity. They do not create catalog products, gift commitments, customer-name fields, or automated drawings.
+- Activity participation rewards are non-inventory promotion benefits with a name, optional manual instructions, and quantity. They do not create catalog products, gift commitments, customer-name fields, or automated drawings.
 - Activity rights can accompany every condition. Quantity and recipe conditions earn rights per complete group; specific-product conditions earn independently for each selected product at its configured quantity. Specific-product discounts apply to any selected item without requiring all selected items; recipes continue to require all components.
 - For a spend condition, activity rights repeat for each complete threshold in qualifying merchandise after discounts, per order only; no cross-order remainder or shipping/free-gift eligibility. Two orders of 700 and 800 with a 500 threshold earn 1 + 1 rights.
 - The server stores activity reward name, instructions, and count in the order pricing snapshot. They are provisional until payment confirmation; cancelled/refunded orders do not have active rights. Staff distribute entries and reconcile external manual activity records themselves; the app does not claim to track redemption.

@@ -33,7 +33,7 @@ test('group discounts and activity rights can be previewed with zero allocated s
     await form.getByLabel('เปอร์เซ็นต์', { exact: true }).fill('20');
     await form.getByRole('checkbox', { name: /^สิทธิ์เข้าร่วมกิจกรรม/ }).check();
     await form.getByLabel('ชื่อกิจกรรม').fill('สุ่มของพิเศษ');
-    await form.getByLabel('วิธีใช้สิทธิ์').fill('แสดงเลขออเดอร์ที่บูธ');
+    await expect(form.getByLabel('วิธีใช้สิทธิ์ (ไม่บังคับ)', { exact: true })).toHaveValue('');
     await form.getByRole('checkbox', { name: 'ขายวันงาน', exact: true }).check();
     const preview = form.locator('.promotion-preview');
     await preview.getByLabel('ค้นหาสินค้า', { exact: true }).fill('Group A4');
@@ -44,7 +44,7 @@ test('group discounts and activity rights can be previewed with zero allocated s
     await form.getByRole('button', { name: 'บันทึกและเปิดใช้', exact: true }).click();
     await expect(form).toBeHidden();
     const saved = await service.from('artist_promotions').select('v1_config').eq('artist_id', userId).single();
-    must(saved); expect(saved.data?.v1_config.condition.items).toHaveLength(2); expect(saved.data?.v1_config.activity.name).toBe('สุ่มของพิเศษ');
+    must(saved); expect(saved.data?.v1_config.condition.items).toHaveLength(2); expect(saved.data?.v1_config.activity.name).toBe('สุ่มของพิเศษ'); expect(saved.data?.v1_config.activity.instructions).toBe('');
   } finally {
     await service.from('artist_promotions').delete().eq('artist_id', userId);
     await service.from('event_products').delete().eq('event_id', eventId);

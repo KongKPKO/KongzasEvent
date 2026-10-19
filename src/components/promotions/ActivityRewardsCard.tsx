@@ -27,7 +27,9 @@ export default function ActivityRewardsCard({
     ? {
         icon: <CheckCircle size={20} aria-hidden="true" />,
         title: th ? 'สิทธิ์กิจกรรมที่ได้รับ' : 'Activity rewards earned',
-        detail: th ? 'ทำตามคำแนะนำด้านล่างและให้พนักงานบันทึกการใช้สิทธิ์' : 'Follow the instructions below. Staff record redemption manually.',
+        detail: rewards.some(reward => reward.instructions)
+          ? (th ? 'ทำตามคำแนะนำด้านล่างและให้พนักงานบันทึกการใช้สิทธิ์' : 'Follow the instructions below. Staff record redemption manually.')
+          : (th ? 'ติดต่อร้านเพื่อใช้สิทธิ์ ร้านเป็นผู้บันทึกการใช้สิทธิ์' : 'Contact the shop to use your reward. Staff record redemption manually.'),
         tone: 'border-violet-200 bg-violet-50 text-violet-950',
       }
     : state === 'provisional'

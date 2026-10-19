@@ -113,3 +113,20 @@ test('refunded campaign keeps the snapshot visible but marks rewards inactive', 
   await expect(rewards).toContainText('original saved details are shown for reference');
   await expect(rewards).toContainText('manually review any reward already handed out');
 });
+
+
+test('earned activity with optional blank instructions directs the customer to the shop', async ({ page }) => {
+  await useEnglish(page);
+  const order = { ...preorder('payment_confirmed'), pricing_breakdown: [{ ...activityPricing[0], activity_reward: { ...activityPricing[0].activity_reward, instructions: '' } }] };
+  await page.route('**/rest/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/get_public_online_order_by_code')) return json(route, null);
+    if (path.endsWith('/get_public_preorder_by_code')) return json(route, [order]);
+    return json(route, []);
+  });
+  await page.goto('/activity-shop/order/ACTIVITY01');
+  const rewards = page.getByTestId('activity-rewards');
+  await expect(rewards).toContainText('Mascot photo session');
+  await expect(rewards).toContainText('Contact the shop to use your reward.');
+  await expect(rewards).not.toContainText('Follow the instructions below');
+});

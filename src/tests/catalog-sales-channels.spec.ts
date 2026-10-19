@@ -2,15 +2,17 @@ import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 
-test('catalog checkboxes enable multiple channels at zero stock and preserve existing allocations', async ({ page }) => {
+test('catalog checkboxes enable multiple channels at zero stock and preserve existing allocations', async ({ page }, testInfo) => {
   const run = randomUUID();
   const email = `channels-${run}@nireq.local`, password = 'LocalChannels123!';
   const { service, userId } = await ensureOwnerArtistFixture({ email, password, slug: `channels-${run.slice(0, 8)}`, displayName: 'Channels UI' });
-  const productId = randomUUID(), event1 = randomUUID(), event2 = randomUUID(), campaign = randomUUID();
+  const productId = randomUUID(), event1 = randomUUID(), event2 = randomUUID(), endedEvent = randomUUID(), campaign = randomUUID();
   const must = (result: { error: unknown }) => { if (result.error) throw result.error; };
   try {
     must(await service.from('products').insert({ id: productId, artist_id: userId, name: 'Channel print', price: 100, stock_total: 20, is_unlimited: false, status: 'enable' }));
     must(await service.from('events').insert([event1, event2].map((id, i) => ({ id, artist_id: userId, event_name: `Checkbox event ${i + 1}`, start_date: new Date(Date.now() - 60000).toISOString(), end_date: new Date(Date.now() + 86400000).toISOString(), status: 'Confirmed', catalog_initialized_at: new Date().toISOString() }))));
+    must(await service.from('events').insert({ id: endedEvent, artist_id: userId, event_name: 'Ended checkbox event', start_date: new Date(Date.now() - 172800000).toISOString(), end_date: new Date(Date.now() - 86400000).toISOString(), status: 'Ended', catalog_initialized_at: new Date().toISOString() }));
+    must(await service.from('event_products').insert({ event_id: endedEvent, artist_id: userId, product_id: productId, is_enabled: true, is_unlimited: false, stock_total: 0 }));
     must(await service.from('online_campaigns').insert({ id: campaign, artist_id: userId, name: 'Checkbox campaign', slug: `checkbox-${run.slice(0, 8)}`, opens_at: new Date().toISOString(), closes_at: new Date(Date.now() + 86400000).toISOString() }));
     await page.goto('/manage-login');
     await page.locator('input[type=email]').fill(email);
@@ -21,15 +23,35 @@ test('catalog checkboxes enable multiple channels at zero stock and preserve exi
     const card = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Channel print', exact: true }) });
     await card.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).click();
     const modal = page.locator('form').filter({ has: page.getByRole('heading', { name: /Add to sale|เพิ่มไปยังช่องทางขาย/ }) });
-    for (const name of ['Checkbox event 1', 'Checkbox event 2', 'Checkbox campaign']) await modal.getByRole('checkbox', { name, exact: true }).check();
+    const eventDropdown = modal.getByRole('button', { name: /Choose events|เลือกอีเวนต์/ });
+    await expect(modal.getByRole('checkbox')).toHaveCount(0);
+    await expect(eventDropdown).toContainText('1');
+    await eventDropdown.click();
+    await expect(modal.getByRole('checkbox', { name: 'Ended checkbox event', exact: true })).toHaveCount(0);
+    await modal.getByLabel(/Event status|สถานะอีเวนต์/).selectOption('ended');
+    await expect(modal.getByRole('checkbox', { name: 'Ended checkbox event', exact: true })).toBeChecked();
+    await modal.getByLabel(/Event status|สถานะอีเวนต์/).selectOption('all');
+    await expect(modal.getByRole('checkbox')).toHaveCount(3);
+    await modal.getByLabel(/Event status|สถานะอีเวนต์/).selectOption('active');
+    for (const name of ['Checkbox event 1', 'Checkbox event 2']) await modal.getByRole('checkbox', { name, exact: true }).check();
+    await modal.getByRole('checkbox', { name: 'Checkbox event 2', exact: true }).press('Escape');
+    await expect(eventDropdown).toBeFocused();
+    await expect(eventDropdown).toHaveAttribute('aria-expanded', 'false');
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect.poll(() => modal.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('collapsed-channel-dropdowns-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await modal.getByRole('button', { name: /Choose online campaigns|เลือกแคมเปญออนไลน์/ }).click();
+    await modal.getByRole('checkbox', { name: 'Checkbox campaign', exact: true }).check();
     await modal.getByRole('button', { name: /^Add to sale$|^เพิ่มไปยังช่องทางขาย$/ }).click();
     await expect(modal).toBeHidden();
     const events = await service.from('event_products').select('stock_total,is_enabled').eq('product_id', productId);
-    must(events); expect(events.data).toHaveLength(2); expect(events.data?.every(item => item.is_enabled && item.stock_total === 0)).toBe(true);
+    must(events); expect(events.data).toHaveLength(3); expect(events.data?.every(item => item.is_enabled && item.stock_total === 0)).toBe(true);
     const online = await service.from('online_campaign_products').select('stock_total,is_enabled').eq('product_id', productId).single();
     must(online); expect(online.data).toMatchObject({ stock_total: 0, is_enabled: true });
     must(await service.from('event_products').update({ stock_total: 8, stock_reserved: 1, stock_sold: 2, price_override: 75 }).eq('event_id', event1).eq('product_id', productId));
     await card.getByRole('button', { name: /Choose sales channel|เลือกช่องทางขาย/ }).click();
+    await eventDropdown.click();
     await expect(modal.getByRole('checkbox', { name: 'Checkbox event 1', exact: true })).toBeChecked();
     await modal.getByRole('checkbox', { name: 'Checkbox event 1', exact: true }).uncheck();
     await modal.getByRole('button', { name: /^Add to sale$|^เพิ่มไปยังช่องทางขาย$/ }).click();
@@ -39,7 +61,7 @@ test('catalog checkboxes enable multiple channels at zero stock and preserve exi
   } finally {
     await service.from('event_products').delete().eq('product_id', productId);
     await service.from('online_campaign_products').delete().eq('product_id', productId);
-    await service.from('events').delete().in('id', [event1, event2]);
+    await service.from('events').delete().in('id', [event1, event2, endedEvent]);
     await service.from('online_campaigns').delete().eq('id', campaign);
     await service.from('products').delete().eq('id', productId);
   }

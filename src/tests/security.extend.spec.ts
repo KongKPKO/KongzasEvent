@@ -1,3 +1,4 @@
+import { openAccountMenu } from './helpers/accountMenu';
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
@@ -26,19 +27,8 @@ async function ensureTestUserAndArtist() {
 }
 
 async function clickSignOut(page: import('@playwright/test').Page) {
-  const signOut = page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first();
-  try {
-    await expect(signOut).toBeVisible({ timeout: 20000 });
-    await signOut.click();
-    return;
-  } catch {
-    // Mobile layouts keep sign out inside the workspace menu.
-  }
-
-  const menuButton = page.getByRole('button', { name: /Open workspace menu/i }).first();
-  await expect(menuButton).toBeVisible({ timeout: 20000 });
-  await menuButton.click();
-  await page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first().click();
+  await openAccountMenu(page);
+  await page.getByRole('button', { name: /^(Sign out|ออกจากระบบ)$/ }).first().click();
 }
 
 test.describe('Extended Security Behaviors', () => {

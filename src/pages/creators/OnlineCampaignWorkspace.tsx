@@ -14,7 +14,7 @@ import {
   runCampaignOrderAction,
   saveCampaignProducts,
 } from '../../lib/onlineCampaigns';
-import { createPaymentEvidenceSignedUrl } from '../../lib/preorders';
+import { downloadPaymentEvidencePreview } from '../../lib/preorders';
 import { fetchProductStockSummaries, type ProductStockSummary } from '../../lib/stockAdjustments';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
@@ -60,7 +60,7 @@ export default function OnlineCampaignWorkspace() {
   const [productMembership, setProductMembership] = useState<ProductMembership>('all');
   const [productSort, setProductSort] = useState<'name_asc' | 'name_desc'>('name_asc');
   const [productPage, setProductPage] = useState(1);
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const evidenceRequest = useRef(0);
   const [evidencePreview, setEvidencePreview] = useState<{ order: CampaignOrder; url: string } | null>(null);
   const [evidenceLoadingId, setEvidenceLoadingId] = useState<string | null>(null);
   const [stockSummaries, setStockSummaries] = useState<Record<string, ProductStockSummary>>({});
@@ -77,7 +77,9 @@ export default function OnlineCampaignWorkspace() {
     if (!campaignId) return;
     setLoading(true);
     try {
-      const [context, data] = await Promise.all([fetchActorContext(), getCampaignWorkspace(campaignId)]);
+      const context = await fetchActorContext();
+      if (!context) throw new Error('Workspace access is required.');
+      const data = await getCampaignWorkspace(campaignId, context.artist_id);
       const [summaries, { data: artist }] = await Promise.all([
         context?.role === 'owner' || context?.role === 'manager'
           ? fetchProductStockSummaries(data.campaign.artist_id)
@@ -425,22 +427,33 @@ export default function OnlineCampaignWorkspace() {
     }
   };
 
+  useEffect(() => {
+    setEvidencePreview(null);
+    return () => { evidenceRequest.current += 1; };
+  }, [campaignId]);
+
+  useEffect(() => {
+    const url = evidencePreview?.url;
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [evidencePreview?.url]);
+
   const openEvidence = async (order: CampaignOrder) => {
     if (!order.slip_url) return;
-    const path = order.slip_url;
+    const request = ++evidenceRequest.current;
     setEvidenceLoadingId(order.id);
     try {
-      const url = signedUrls[path] || await createPaymentEvidenceSignedUrl(path);
-      if (!signedUrls[path]) setSignedUrls((current) => ({ ...current, [path]: url }));
-      setEvidencePreview({ order, url });
+      const blob = await downloadPaymentEvidencePreview(order.slip_url);
+      if (request !== evidenceRequest.current) return;
+      setEvidencePreview({ order, url: URL.createObjectURL(blob) });
     } catch (error) {
-      console.error(error);
-      setFeedback(t('campaignEvidenceOpenFailed'));
+      if (request === evidenceRequest.current) {
+        console.error(error);
+        setFeedback(t('campaignEvidenceOpenFailed'));
+      }
     } finally {
-      setEvidenceLoadingId(null);
+      if (request === evidenceRequest.current) setEvidenceLoadingId(null);
     }
   };
-
   if (loading) return <div className="grid min-h-screen place-items-center text-pink-600"><Loader2 className="animate-spin" /></div>;
   if (!workspace) return <div className="grid min-h-screen place-items-center text-gray-500">{t('campaignNotFound')}</div>;
 

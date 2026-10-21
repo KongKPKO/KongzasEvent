@@ -197,25 +197,15 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
 
   const saveMemberAssignments = async (member: TeamMember, nextEventIds: string[]) => {
     setSavingAssignmentsId(member.id);
+    setMemberActionError('');
     try {
-      const { error: deleteError } = await withTimeout(
-        supabase
-          .from('event_member_assignments')
-          .delete()
-          .eq('member_id', member.id)
+      const { data, error } = await withTimeout(
+        supabase.rpc('replace_event_member_assignments', {
+          p_member_id: member.id,
+          p_event_ids: nextEventIds,
+        })
       );
-      if (deleteError) throw deleteError;
-
-      if (nextEventIds.length > 0) {
-        const { error: insertError } = await withTimeout(
-          supabase.from('event_member_assignments').insert(nextEventIds.map((eventId) => ({
-            artist_id: actorContext.artist_id,
-            member_id: member.id,
-            event_id: eventId,
-          })))
-        );
-        if (insertError) throw insertError;
-      }
+      if (error || !data) throw error || new Error('Failed to save event access');
 
       await fetchEventsAndAssignments();
     } catch (error) {

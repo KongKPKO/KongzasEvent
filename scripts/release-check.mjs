@@ -255,6 +255,11 @@ if (mode === 'local') {
     'test', 'db', '--local',
     ...(workdir ? ['--workdir', workdir] : []),
   ], { env: localEnv });
+  const projectId = readFileSync(`${workdir || '.'}/supabase/config.toml`, 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
+  if (!projectId) throw new Error('Local Supabase project_id is required for concurrency tests.');
+  run('bash', ['supabase/tests/team_permission_boundaries_concurrency_test.sh'], {
+    env: { ...localEnv, TEAM_RACE_TEST_DISPOSABLE: '1', TEAM_RACE_TEST_DB_CONTAINER: `supabase_db_${projectId}` },
+  });
   run('node', ['scripts/test-promotion-release.mjs'], { env: localEnv });
   run('npx', ['playwright', 'test',
     'src/tests/setup-readiness.spec.ts',
@@ -268,6 +273,15 @@ if (mode === 'local') {
     'src/tests/e2e/pilot-auth.spec.ts',
     'src/tests/e2e/pilot-preorder.spec.ts',
     'src/tests/auth-user-errors.spec.ts',
+    'src/tests/platform-admin-mfa.spec.ts',
+    'src/tests/phase2-workspace-identity.spec.ts',
+    'src/tests/platform-admin-console.spec.ts',
+    'src/tests/account-management-suspension.spec.ts',
+    'src/tests/feedback-support.spec.ts',
+    'src/tests/team-permissions.spec.ts',
+    'src/tests/notify-creator-application.spec.ts',
+    'src/tests/admin-support.spec.ts',
+    'src/tests/store-suspension.spec.ts',
     'src/tests/localization.spec.ts',
     ...(workdir ? [
       'src/tests/e2e/pilot-login-recovery.spec.ts',

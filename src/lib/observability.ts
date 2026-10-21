@@ -41,6 +41,7 @@ const sanitizeUrl = (rawUrl?: string | null) => {
     SENSITIVE_QUERY_PARAMS.forEach((param) => {
       if (url.searchParams.has(param)) url.searchParams.set(param, '[redacted]');
     });
+    if (url.hash) url.hash = '#[redacted]';
     return url.toString();
   } catch {
     return rawUrl;
@@ -133,8 +134,8 @@ export const identifyObservabilityUser = (session: Session | null, actorContext:
 };
 
 export const clearObservabilityUser = () => {
-  if (!initialized || !logRocket || !identifiedUserId) return;
-  logRocket.startNewSession();
+  pendingIdentity = null;
+  if (initialized && logRocket && identifiedUserId) logRocket.startNewSession();
   identifiedUserId = null;
 };
 

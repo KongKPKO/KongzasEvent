@@ -1,3 +1,4 @@
+import { expectSignedInAccount } from './helpers/accountMenu';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
@@ -96,7 +97,7 @@ test.describe('Accessibility Testing (WCAG 2.1)', () => {
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);
     await page.getByRole('button', { name: /Login/i }).click();
-    await expect(page.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20000 });
+    await expectSignedInAccount(page);
     
     await page.goto(`${BASE_URL}/manage-pos-queues`);
     await page.waitForLoadState('networkidle');

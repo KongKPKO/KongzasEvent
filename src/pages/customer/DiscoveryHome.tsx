@@ -314,6 +314,16 @@ export default function DiscoveryHome() {
             </div>
           )}
         </section>
+        <footer className="border-t border-pink-100 bg-white">
+          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm font-bold text-gray-600 sm:flex-row">
+            <span>© {new Date().getFullYear()} Nireq</span>
+            <nav className="flex flex-wrap items-center justify-center gap-1" aria-label={(language === 'th' ? 'ลิงก์ช่วยเหลือ' : 'Help links')}>
+              <Link to="/help" className="min-h-11 rounded-full px-4 py-3 hover:bg-pink-50 hover:text-pink-700">{(language === 'th' ? 'ช่วยเหลือและแจ้งปัญหา' : 'Help & feedback')}</Link>
+              <Link to="/privacy" className="min-h-11 rounded-full px-4 py-3 hover:bg-pink-50 hover:text-pink-700">{(language === 'th' ? 'ความเป็นส่วนตัว' : 'Privacy')}</Link>
+              <Link to="/terms" className="min-h-11 rounded-full px-4 py-3 hover:bg-pink-50 hover:text-pink-700">{(language === 'th' ? 'ข้อกำหนด' : 'Terms')}</Link>
+            </nav>
+          </div>
+        </footer>
       </main>
     </div>
   );

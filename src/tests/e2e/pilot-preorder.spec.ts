@@ -1,3 +1,4 @@
+import { expectSignedInAccount } from '../helpers/accountMenu';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -154,7 +155,7 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     const login = new LoginPage(adminPage);
     await login.goto();
     await login.login(adminEmail, adminPassword);
-    await expect(adminPage.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20_000 });
+    await expectSignedInAccount(adminPage);
     await adminPage.goto(`/manage-events/${eventId}/preorder-dashboard`);
     await expect(adminPage.getByText(pickupCode, { exact: true })).toBeVisible({ timeout: 20_000 });
     await adminPage.getByRole('button', { name: 'Reject', exact: true }).click();

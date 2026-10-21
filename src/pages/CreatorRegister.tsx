@@ -4,7 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Lock, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { LanguageToggle, useI18n , uiText} from '../i18n';
-import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext, WorkspaceSelectionRequiredError } from '../utils/access';
 import { getAuthRedirectError } from '../utils/authRedirect';
 
 type FormState = {
@@ -86,7 +86,17 @@ export default function CreatorRegister() {
       setAuthLoading(false);
       if (!user) return;
 
-      const actor = await fetchActorContext();
+      let actor;
+      try {
+        actor = await fetchActorContext();
+      } catch (failure) {
+        if (failure instanceof WorkspaceSelectionRequiredError) {
+          if (!active || request !== authRequestRef.current || authUserIdRef.current !== user.id) return;
+          navigate('/manage-workspaces', { replace: true });
+          return;
+        }
+        throw failure;
+      }
       if (!active || request !== authRequestRef.current || authUserIdRef.current !== user.id) return;
       if (actor) {
         navigate('/manage-login', { replace: true });

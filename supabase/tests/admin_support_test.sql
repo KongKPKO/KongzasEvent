@@ -50,7 +50,7 @@ select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-00000000
 select throws_ok($$select public.admin_support('search_stores','Support')$$,'P0001','forbidden','seller denied');
 select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000004","email":"queue_staff@support.test"}',true);
 select throws_ok($$select public.admin_support('search_stores','Support')$$,'P0001','forbidden','queue staff denied');
-select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","email":"support-admin@test.local"}',true);
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","email":"support-admin@test.local","aal":"aal2"}',true);
 select throws_ok($$select public.admin_support('delete','Support')$$,'P0001','invalid_action');
 select throws_ok($$select public.admin_support('search_stores','x')$$,'P0001','invalid_query');
 select throws_ok($$select public.admin_support('search_stores',repeat('x',101))$$,'P0001','invalid_query');
@@ -101,7 +101,7 @@ set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000002","email":"support-owner@test.local"}',true);
 select throws_ok($$select public.admin_order_email_claim('a3000000-0000-4000-8000-000000000001',gen_random_uuid(),'Support reason')$$,'P0001','forbidden','merchant cannot resend as admin');
 select throws_ok($$select public.admin_support_history('a3000000-0000-4000-8000-000000000001','Support reason')$$,'P0001','forbidden','merchant cannot read support history');
-select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","email":"support-admin@test.local"}',true);
+select set_config('request.jwt.claims','{"sub":"a1000000-0000-4000-8000-000000000001","email":"support-admin@test.local","aal":"aal2"}',true);
 select throws_ok($$select public.admin_order_email_claim('a3000000-0000-4000-8000-000000000001',gen_random_uuid(),'x')$$,'P0001','invalid_request','resend reason required');
 select throws_ok($$select public.admin_order_email_claim('a3000000-0000-4000-8000-000000000002',gen_random_uuid(),'Support reason')$$,'P0001','unsupported_order','offline excluded');
 select throws_ok($$select public.admin_order_email_claim('a3000000-0000-4000-8000-000000000003',gen_random_uuid(),'Support reason')$$,'P0001','missing_email_or_code','missing email excluded');

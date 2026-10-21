@@ -1,3 +1,4 @@
+import { resetSyntheticAdminMfa, completeAdminMfa, verifyAdminMfaClient } from './helpers/adminMfa';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -6,6 +7,9 @@ import { createClient } from '@supabase/supabase-js';
 import { execFileSync } from 'node:child_process';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
+
+// MFA setup responses contain a secret; capture only explicit post-verification screenshots.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 const projectId = readFileSync(resolve(process.env.SUPABASE_WORKDIR || '.', 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
 if (!projectId) throw new Error('Local Supabase project_id is required');
@@ -19,6 +23,7 @@ test('admin support reads a foreign store/order without changing commerce data',
   const { userId, service } = await ensureOwnerArtistFixture({email,password,slug:'support-ui',displayName:'Support UI Admin'});
   const store = randomUUID(), event = randomUUID(), order = randomUUID(), product = randomUUID();
   const must = (result: {error: unknown}) => {if(result.error) throw result.error;};
+  await resetSyntheticAdminMfa(service, userId);
   const errors: string[] = [];
   page.on('pageerror',error=>errors.push(error.message));
   try {
@@ -35,6 +40,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     await page.getByRole('textbox',{name:'Password',exact:true}).fill(password);
     await page.getByRole('button',{name:'Login to Dashboard',exact:true}).click();
     await expect(page).toHaveURL(/\/admin\/support$/);
+    const mfaSecret = await completeAdminMfa(page);
     await expect(page.getByRole('heading',{name:'Store support',exact:true})).toBeVisible();
     const query = page.getByLabel('Store name / slug / email',{exact:true});
     await query.fill(store);
@@ -78,12 +84,13 @@ test('admin support reads a foreign store/order without changing commerce data',
     expect((await service.from('admin_order_email_resends').select('id').eq('order_id',order)).data).toHaveLength(0);
     page.once('dialog',dialog=>dialog.accept());
     await history.getByRole('button',{name:'ส่งลิงก์สถานะออเดอร์อีกครั้ง',exact:true}).click();
-    await expect(history.getByRole('status')).toHaveText('ผู้ให้บริการรับคำขอส่งแล้ว');
+    await expect(history.getByRole('status')).toHaveText('ผู้ให้บริการรับคำขอส่งแล้ว', { timeout: 20000 });
     const first=(await service.from('admin_order_email_resends').select('*').eq('order_id',order).single()).data;
     expect(first.status).toBe('accepted');
     expect(first.actor_id).toBe(userId);
     const api=createClient(env.url,env.anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
     await api.auth.signInWithPassword({email,password});
+    await verifyAdminMfaClient(api, mfaSecret);
     const body={order_id:order,request_id:first.id,reason:first.reason};
     const duplicate=await api.functions.invoke('admin-resend-order-link',{body});
     expect(duplicate.data).toMatchObject({duplicate:true,status:'accepted'});
@@ -139,7 +146,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     must(await service.from('platform_admins').delete().eq('admin_email',email));
     expect((await api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})).error).toBeTruthy();
     await page.reload();
-    await expect(page.getByText('เฉพาะผู้ดูแลระบบ',{exact:true})).toBeVisible();
+    await expect(page.getByText('เฉพาะบัญชีผู้ดูแลแพลตฟอร์มเท่านั้น',{exact:true})).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     await service.from('platform_admins').delete().eq('admin_email',email);

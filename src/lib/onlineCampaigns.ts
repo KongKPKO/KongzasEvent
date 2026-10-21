@@ -70,16 +70,21 @@ const throwRpcError = (error: { message?: string; code?: string } | null) => {
   throw new OnlineCampaignError(code || 'campaign_request_failed');
 };
 
-export async function listMyOnlineCampaigns() {
-  const { data, error } = await supabase.rpc('list_my_online_campaigns');
+export async function listMyOnlineCampaigns(artistId?: string) {
+  const { data, error } = artistId
+    ? await supabase.rpc('list_my_online_campaigns', { p_artist_id: artistId })
+    : await supabase.rpc('list_my_online_campaigns');
   throwRpcError(error);
   return (data || []) as OnlineCampaignSummary[];
 }
 
-export async function getCampaignWorkspace(campaignId: string) {
-  const { data, error } = await supabase.rpc('get_online_campaign_workspace', {
-    p_campaign_id: campaignId,
-  });
+export async function getCampaignWorkspace(campaignId: string, artistId?: string) {
+  const { data, error } = artistId
+    ? await supabase.rpc('get_online_campaign_workspace', {
+      p_campaign_id: campaignId,
+      p_artist_id: artistId,
+    })
+    : await supabase.rpc('get_online_campaign_workspace', { p_campaign_id: campaignId });
   throwRpcError(error);
   return data as CampaignWorkspace;
 }

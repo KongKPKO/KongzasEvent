@@ -401,6 +401,14 @@ verify_jwt = false
 [functions.admin-resend-order-link]
 verify_jwt = false
 
+# Public intake allows guests and validates optional user JWTs inside the handler.
+[functions.feedback-submit]
+verify_jwt = false
+
+# Verifies the user token and AAL2 platform-admin authorization in the handler.
+[functions.feedback-admin]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
@@ -419,3 +427,7 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# Reauthorizes the caller and order on every private evidence download.
+[functions.payment-evidence]
+verify_jwt = false

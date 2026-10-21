@@ -1,5 +1,6 @@
 
-import { Instagram, Facebook, Music2, Mail } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Instagram, Facebook, Music2, Mail, HelpCircle } from 'lucide-react';
 import { uiText, useI18n } from '../../i18n';
 
 interface SocialFooterProps {
@@ -28,11 +29,9 @@ const SocialFooter = ({ artist }: SocialFooterProps) => {
     { icon: <Mail size={20} />, url: artist.email ? `mailto:${artist.email}` : '', label: uiText(language, 'Email'), hoverClass: 'hover:bg-[#ea4335]' },
   ].filter(link => link.url);
 
-  if (socialLinks.length === 0) return null;
-
   return (
       <div className="px-8 mt-6">
-        <div className="flex items-center gap-4 mb-4">
+        {socialLinks.length > 0 && <><div className="flex items-center gap-4 mb-4">
            <div className="h-px bg-gray-200 flex-1"></div>
            <span className="text-xs font-bold text-black uppercase tracking-widest">{t('creatorFollowMe')}</span>
            <div className="h-px bg-gray-200 flex-1"></div>
@@ -50,6 +49,13 @@ const SocialFooter = ({ artist }: SocialFooterProps) => {
                  {link.icon}
               </a>
            ))}
+        </div>
+        </>}
+        <div className="flex items-center justify-center border-t border-pink-100 py-4">
+          <Link to="/help" className="inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold text-gray-600 hover:bg-pink-50 hover:text-pink-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-100">
+            <HelpCircle size={18} />
+            {(language === 'th' ? 'ช่วยเหลือและแจ้งปัญหา' : 'Help & feedback')}
+          </Link>
         </div>
       </div>
   );

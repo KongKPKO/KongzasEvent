@@ -16,7 +16,7 @@ set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"b1000000-0000-4000-8000-000000000002","email":"suspension-owner@test.local"}',true);
 select throws_ok($$select public.set_store_suspension('b1000000-0000-4000-8000-000000000002',true,false,'Support reason')$$,'P0001','forbidden','store owner denied');
 select throws_ok($$update private.store_restrictions set suspended=false$$,'42501',null,'private state protected');
-select set_config('request.jwt.claims','{"sub":"b1000000-0000-4000-8000-000000000001","email":"suspension-admin@test.local"}',true);
+select set_config('request.jwt.claims','{"sub":"b1000000-0000-4000-8000-000000000001","email":"suspension-admin@test.local","aal":"aal2"}',true);
 select throws_ok($$select public.set_store_suspension('b1000000-0000-4000-8000-000000000002',true,false,'x')$$,'P0001','invalid_request','reason required');
 select is(public.set_store_suspension('b1000000-0000-4000-8000-000000000002',true,false,'Support reason'),true,'admin suspends');
 select throws_ok($$select public.set_store_suspension('b1000000-0000-4000-8000-000000000002',false,false,'Support reason')$$,'P0001','state_changed','stale state rejected');
@@ -38,7 +38,7 @@ select lives_ok($$update public.queues set artist_id=artist_id,status='serving' 
 select is((select total_price from public.orders where id='b3000000-0000-4000-8000-000000000001'),100::numeric,'price preserved');
 select is((select count(*) from private.store_restriction_audit where artist_id='b1000000-0000-4000-8000-000000000002'),1::bigint,'suspension logged once');
 set local role authenticated;
-select set_config('request.jwt.claims','{"sub":"b1000000-0000-4000-8000-000000000001","email":"suspension-admin@test.local"}',true);
+select set_config('request.jwt.claims','{"sub":"b1000000-0000-4000-8000-000000000001","email":"suspension-admin@test.local","aal":"aal2"}',true);
 select is(public.set_store_suspension('b1000000-0000-4000-8000-000000000002',false,true,'Resolved support case'),false,'admin resumes');
 reset role;
 select lives_ok($$insert into public.orders(event_id,order_type,total_price) values ('b2000000-0000-4000-8000-000000000001','pos_walkin',100)$$,'new order allowed after resume');

@@ -151,7 +151,9 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     const fetchActiveEvents = useCallback(async () => {
         const request = ++eventRequestRef.current;
         try {
-            const { data, error } = await supabase.rpc('list_accessible_pos_events');
+            const { data, error } = await supabase.rpc('list_accessible_pos_events', {
+                p_artist_id: actorContext.artist_id,
+            });
             if (request !== eventRequestRef.current) return;
 
             if (error) {

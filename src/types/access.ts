@@ -7,6 +7,11 @@ export interface ActorContext {
   member_email: string | null;
 }
 
+export interface ActorWorkspace extends ActorContext {
+  artist_name: string;
+  artist_slug: string;
+}
+
 export const OWNER_ONLY_ROLES: ActorRole[] = ['owner'];
 export const MANAGEMENT_ROLES: ActorRole[] = ['owner', 'manager'];
 export const QUEUE_ROLES: ActorRole[] = ['owner', 'manager', 'seller', 'queue_staff'];

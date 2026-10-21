@@ -25,7 +25,9 @@ test('guest submits private screenshot; verified admin reads, annotates and reso
     await page.getByLabel(/^Details/).fill('<script>window.feedbackExecuted=true</script> The queue failed to load.');
     await page.getByLabel('Contact details (optional)').fill(`guest-${suffix}@example.test`);
     await page.locator('input[type=file]').setInputFiles({ name: 'queue.png', mimeType: 'image/png', buffer: png });
+    const submissionRequest = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/functions/v1/feedback-submit'));
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    expect((await submissionRequest).headers().authorization || '').toBe('');
     await expect(page.getByRole('status')).toContainText('Sent successfully');
     const ticket = await service.from('feedback_tickets').select('id,reference,has_attachment').eq('subject', subject).single().throwOnError();
     ticketId = ticket.data!.id;

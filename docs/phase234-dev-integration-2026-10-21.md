@@ -18,6 +18,8 @@ The append-only `20261021102538_phase234_dev_compatibility.sql` preserves latest
 
 Synthetic regressions cover assigned shipping staff suspension, fulfillment by another teammate, denied offline synchronization without a conflict record, manager invitation cancellation, stale inviter rejection and protection of existing manager membership. Fixture identities exist in Auth so checks exercise authorization rather than fail early for nonexistent identities. Invitation concurrency fixtures retain an authorized issuer.
 
+Guest feedback explicitly sends no user Authorization token when there is no session, while retaining the public API key. Signed-in callers retain their user JWT; session errors fail instead of submitting as a guest. This supports DEV’s modern publishable key without treating it as user identity ([Supabase header contract](https://supabase.com/docs/guides/functions/auth-headers)). The browser regression asserts the actual guest request header and successful private attachment intake.
+
 ## Validation and deployment evidence
 
 Disposable local target: `NireqDevPhase234Validation`, API `59521`, DB `59522`, Mailpit `59524`, seed disabled. All 134 migrations are replayed from zero; no historical seed, remote credentials or customer records are copied.
@@ -29,6 +31,10 @@ Browser fixture compatibility uses current WebP evidence, dated team labels, the
 The final combined gate uses `CI=true` and the repository's existing two-retry Playwright policy. Record any flaky/retried cases with the final results; a successful retry is not a claim of a clean first attempt.
 
 Final local combined gate **passed** (`verify-ci-release.log`): lint/hygiene, type/build/PWA, 45 SQL files / 1,198 assertions, team concurrency, five stock races plus global-quota/idempotency checks, 165 desktop scenarios and eight API smoke checks. Desktop result: **164 passed + 1 flaky**, with the existing `campaign-multi-payment.spec.ts` case passing on retry after its five-second DB row-count wait saw one entry instead of two. First-attempt stability is therefore not established for that case. The eight targeted integration scenarios and isolated read-only support case also passed.
+
+The publishable-key follow-up passed all three feedback browser scenarios (`feedback-key-final.log`). An initial combined rerun hit the intentional five-per-hour guest throttle because prior local runs left rate events; that run was stopped and the disposable local database alone was rebuilt from all migrations with seeding disabled (`reset-publishable-final.log`). The final rerun passed on this fresh isolated target (`verify-publishable-clean.log`): 165/165 desktop scenarios in 11.4 minutes with no retries, all 1,198 SQL assertions, concurrency checks, and eight API smoke checks. No runtime rate limit was weakened.
+
+DEV backend deployment completed from pushed merge `0675c94b04fbcc2800e4f9e9fef5f40fb1ea0679`: all seven planned migrations applied and all ten integrated Edge functions are ACTIVE. Readback confirms all 134 migration versions match (`dev-migrations-after.log`, `dev-functions-after.json`). A schema-only pre-deployment backup was saved under the ignored deployment snapshot. Public site URL configuration points to the DEV preview channel; provider email credentials were unchanged.
 
 Targeted mobile validation: **3 passed, 1 intentionally skipped** across Android Chromium and iOS WebKit (`mobile-final.log`); account suspension/evidence/teammate fulfillment passed on both engines. The existing console navigation test retains its documented project skip.
 

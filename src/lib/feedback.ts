@@ -114,8 +114,12 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<Feedba
   form.set('client_request_id', input.requestId);
   if (input.attachment) form.set('attachment', input.attachment, input.attachment.name);
 
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new FeedbackRequestError('invalid_authorization');
   const result = await supabase.functions.invoke<FeedbackSubmission & { ok: boolean; error?: string }>('feedback-submit', {
     body: form,
+    // Publishable API keys identify the app, not an authenticated reporter.
+    headers: session ? undefined : { Authorization: '' },
   });
   if (result.error || !result.data?.ok) throw new FeedbackRequestError(await responseErrorCode(result.error, result.data?.error));
   return {

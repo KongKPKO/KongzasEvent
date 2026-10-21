@@ -187,10 +187,13 @@ export const listPreorderPaymentReview = async (eventId: string, status?: Paymen
   return (data || []) as PreorderPaymentReviewRow[];
 };
 
-export const createPaymentEvidenceSignedUrl = async (path: string) => {
-  const { data, error } = await supabase.storage.from('PaymentEvidence').createSignedUrl(path, 60 * 30);
-  if (error) throw error;
-  return data.signedUrl;
+export const downloadPaymentEvidencePreview = async (path: string): Promise<Blob> => {
+  const result = await supabase.functions.invoke<Blob>('payment-evidence', { body: { path } });
+  if (result.error) throw result.error;
+  if (!(result.data instanceof Blob)) throw new Error('payment_evidence_response_invalid');
+  const type = result.response?.headers.get('X-Evidence-Content-Type') || '';
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(type)) throw new Error('payment_evidence_type_invalid');
+  return new Blob([result.data], { type });
 };
 
 export const markPreorderPickedUp = async (orderId: string) => {

@@ -8,9 +8,10 @@ function LiveQueueRedirect() {
   return <Navigate to={`/live/queue${search}`} replace />;
 }
 import { supabase } from './supabaseClient';
+import PlatformAdminGate from './components/PlatformAdminGate';
 import type { Session } from '@supabase/supabase-js';
-import { completePendingVerifiedCreatorSignup, fetchActorContext } from './utils/access';
-import type { ActorContext, ActorRole } from './types/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext, WorkspaceSelectionRequiredError } from './utils/access';
+import type { ActorContext, ActorRole, ActorWorkspace } from './types/access';
 import {
   MANAGEMENT_ROLES,
   POS_ROLES,
@@ -36,6 +37,8 @@ const ManageProducts = lazy(() => import('./pages/creators/ManageProducts'));
 const HelpPage = lazy(() => import('./pages/HelpPage'));
 const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const OrderProblems = lazy(() => import('./pages/creators/OrderProblems'));
+const PlatformAdminConsole = lazy(() => import('./pages/PlatformAdminConsole'));
+const Feedback = lazy(() => import('./pages/Feedback'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
 const OrderHistory = lazy(() => import('./pages/creators/OrderHistory'));
@@ -54,14 +57,19 @@ const ManageLogin = lazy(() => import('./pages/ManageLogin'));
 import { useI18n, uiText } from './i18n';
 import PendingInvitationBanner, { type PendingInvite } from './components/PendingInvitationBanner';
 const InvitationsPage = lazy(() => import('./pages/InvitationsPage'));
+import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
+import WorkspaceChooser from './components/WorkspaceChooser';
+import { clearOperationalWorkspaceState, signOutLocally } from './utils/workspaceSession';
 
 function EventAccessRoute({
   allowedRoles,
   fallbackPath,
+  selectedArtistId,
   children,
 }: {
   allowedRoles: ActorRole[];
   fallbackPath: string;
+  selectedArtistId: string;
   children: ReactNode;
 }) {
   const { language } = useI18n();
@@ -73,20 +81,21 @@ function EventAccessRoute({
     let active = true;
     setAllowed(null);
 
-    if (!eventId) {
+    if (!eventId || !selectedArtistId) {
       setAllowed(false);
       return () => { active = false; };
     }
 
-    void supabase.rpc('has_event_role', {
+    void supabase.rpc('has_event_role_for_workspace', {
       p_event_id: eventId,
+      p_artist_id: selectedArtistId,
       p_allowed_roles: allowedRoleKey.split(','),
     }).then(({ data, error }) => {
       if (active) setAllowed(!error && data === true);
     });
 
     return () => { active = false; };
-  }, [allowedRoleKey, eventId]);
+  }, [allowedRoleKey, eventId, selectedArtistId]);
 
   if (allowed === null) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{uiText(language, 'Checking event access…')}</div>;
@@ -95,8 +104,15 @@ function EventAccessRoute({
   return allowed ? children : <Navigate to={fallbackPath} replace />;
 }
 
+function isManagementLocation(path: string) {
+  if (path === '/offline' || /^\/(admin|live)(?:\/|$)/.test(path)) return true;
+  // Store slugs may start with "manage-"; their customer pages stay public.
+  if (/^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)(?:\/|$)/.test(path)) return false;
+  return /^\/manage(?:[-/]|$)/.test(path) || ['/invitations', '/creator/register', '/staff-signup'].includes(path);
+}
+
 function App() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,27 +123,66 @@ function App() {
   const contextRequest = useRef(0);
   const sessionIdentity = useRef<string | null>(null);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvite[]>([]);
+  const [workspaceChoices, setWorkspaceChoices] = useState<ActorWorkspace[]>([]);
+  const [workspaceChoiceMessage, setWorkspaceChoiceMessage] = useState('');
+  const [signOutError, setSignOutError] = useState('');
+  const [managementSuspended, setManagementSuspended] = useState(false);
+  const suspensionDetected = useRef(false);
+
+  const clearSuspendedManagement = async () => {
+    localStorage.removeItem('nireq-offline-authorized');
+    suspensionDetected.current = true;
+    setManagementSuspended(true);
+    setActorContext(null);
+    setPendingInvitations([]);
+    setWorkspaceChoices([]);
+    setContextLoadFailed(false);
+    clearObservabilityUser();
+    await clearOperationalWorkspaceState();
+  };
 
   const syncSessionContext = async (nextSession: Session | null) => {
     const request = ++contextRequest.current;
     setSessionLoadFailed(false);
     try {
       const identity = nextSession?.user.id || null;
-      if (identity !== sessionIdentity.current) {
+      const identityChanged = identity !== sessionIdentity.current;
+      if (identityChanged) {
+        if (offlineAuthorization() && offlineAuthorization() !== identity) localStorage.removeItem('nireq-offline-authorized');
         setActorContext(null);
         setPendingInvitations([]);
+        setWorkspaceChoices([]);
       }
       sessionIdentity.current = identity;
       setSession(nextSession);
       setContextLoadFailed(false);
+      setWorkspaceChoiceMessage('');
       setContextSyncing(!!nextSession);
+      if (identityChanged) {
+        clearObservabilityUser();
+        await clearOperationalWorkspaceState();
+        if (request !== contextRequest.current) return;
+      }
 
       if (!nextSession) {
+        suspensionDetected.current = false;
+        setManagementSuspended(false);
         setActorContext(null);
         setPendingInvitations([]);
+        setWorkspaceChoices([]);
+        clearObservabilityUser();
         return;
       }
 
+      const activeAccount = await supabase.rpc('is_account_management_active');
+      if (request !== contextRequest.current) return;
+      if (activeAccount.error) throw activeAccount.error;
+      if (activeAccount.data !== true) {
+        await clearSuspendedManagement();
+        return;
+      }
+      suspensionDetected.current = false;
+      setManagementSuspended(false);
       const signupStatus = await completePendingVerifiedCreatorSignup();
 
       const [ctx, invitations] = await Promise.all([
@@ -143,12 +198,21 @@ function App() {
         setPendingInvitations((invitations.data || []) as PendingInvite[]);
       }
       setActorContext(ctx);
+      setWorkspaceChoices([]);
+      identifyObservabilityUser(nextSession, ctx);
     } catch (error) {
       console.error('[App] Failed to sync session context:', error);
       if (request !== contextRequest.current) return;
       setActorContext(null);
       setPendingInvitations([]);
-      setContextLoadFailed(true);
+      if (error instanceof WorkspaceSelectionRequiredError) {
+        setWorkspaceChoices(error.workspaces);
+        setWorkspaceChoiceMessage(error.message);
+        setContextLoadFailed(false);
+      } else {
+        setWorkspaceChoices([]);
+        setContextLoadFailed(true);
+      }
     } finally {
       if (request === contextRequest.current) {
         setContextSyncing(false);
@@ -198,6 +262,32 @@ function App() {
     };
   }, [sessionLoadAttempt]);
 
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    let checking = false;
+    const check = async () => {
+      const path = window.location.pathname;
+      if (checking || suspensionDetected.current || !isManagementLocation(path)) return;
+      checking = true;
+      try {
+        const result = await supabase.rpc('is_account_management_active');
+        if (!active || result.error || result.data !== false) return;
+        ++contextRequest.current;
+        setContextSyncing(false);
+        setLoading(false);
+        await clearSuspendedManagement();
+      } finally { checking = false; }
+    };
+    const interval = window.setInterval(() => { void check(); }, 5000);
+    window.addEventListener('focus', check);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', check);
+    };
+  }, [session?.user.id, session?.access_token]);
+
   const canUseManagement = canAccessManagementPages(actorContext?.role);
   const canUseQueueWorkspace = canAccessQueuePages(actorContext?.role);
   const canSell = canUsePos(actorContext?.role);
@@ -213,7 +303,32 @@ function App() {
   const isCustomerRoute = typeof window !== 'undefined'
     ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(window.location.pathname)
     : false;
-  const isWorkspaceOptionalPath = ['/', '/help', '/offline', '/discover', '/manage-login', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+  const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/offline', '/help/guide', '/discover', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+
+  const isManagementPath = isManagementLocation(currentPath);
+  if (session && managementSuspended && isManagementPath) {
+    const th = language === 'th';
+    return <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="max-w-md space-y-4 rounded-xl border border-gray-200 bg-white p-6 text-center">
+        <h1 className="text-lg font-bold text-gray-900">{th ? 'บัญชีถูกระงับสิทธิ์จัดการ' : 'Management access suspended'}</h1>
+        <p className="text-sm text-gray-700">{th ? 'คุณยังเข้าหน้าร้านสาธารณะได้ ทีมคนอื่นยังดูแลร้านและออเดอร์เดิมได้ ติดต่อผู้ดูแลหากต้องการตรวจสอบสิทธิ์' : 'You can still visit public storefronts. Other team members can continue managing the store and existing orders. Contact support to review your access.'}</p>
+        {signOutError && <p role="alert" className="text-sm font-bold text-red-700">{signOutError}</p>}
+        {contextLoadFailed && <p role="alert" className="text-sm font-bold text-red-700">{t('workspaceLoadFailed')}</p>}
+        <div className="flex flex-wrap justify-center gap-3">
+          <a href="/help" className="inline-flex min-h-11 items-center rounded-lg border px-4 font-bold">{th ? 'ติดต่อผู้ดูแล' : 'Contact support'}</a>
+          <a href="/" className="inline-flex min-h-11 items-center rounded-lg border px-4 font-bold">{th ? 'ดูหน้าร้าน' : 'Browse stores'}</a>
+          <button disabled={contextSyncing} className="min-h-11 rounded-lg border px-4 font-bold disabled:opacity-50" onClick={() => { void syncSessionContext(session); }}>{contextSyncing ? t('loading') : th ? 'ตรวจสอบสิทธิ์อีกครั้ง' : 'Check access again'}</button>
+          <button className="min-h-11 rounded-lg bg-pink-600 px-4 font-bold text-white" onClick={async () => {
+            setSignOutError('');
+            try {
+              await signOutLocally(session.user.id);
+              window.location.replace('/manage-login');
+            } catch (error) { setSignOutError(error instanceof Error ? error.message : t('workspaceLoadFailed')); }
+          }}>{t('signOut')}</button>
+        </div>
+      </div>
+    </main>;
+  }
 
   if (currentPath !== '/offline' && (loading || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
@@ -246,16 +361,26 @@ function App() {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
   }
 
+  if (session && !actorContext && workspaceChoices.length > 0 && !isWorkspaceOptionalPath && !isCustomerRoute) {
+    return <WorkspaceChooser workspaces={workspaceChoices} message={workspaceChoiceMessage} />;
+  }
+
   if (session && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md text-center">
           <h1 className="text-lg font-bold text-gray-800 mb-2">{t('workspaceNotAssigned')}</h1>
           <p className="text-sm text-gray-600 mb-4">{t('workspaceNotAssignedBody')}</p>
+          {signOutError && <p role="alert" className="mb-4 text-sm font-bold text-red-700">{signOutError}</p>}
           <button
             onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.href = '/manage-login';
+              setSignOutError('');
+              try {
+                await signOutLocally(session.user.id);
+                window.location.replace('/manage-login');
+              } catch (error) {
+                setSignOutError(error instanceof Error ? error.message : t('workspaceLoadFailed'));
+              }
             }}
             className="px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-bold hover:bg-pink-700"
           >
@@ -273,18 +398,30 @@ function App() {
           <Routes>
             <Route path="/offline" element={<OfflineWorkspace />} />
             <Route path="/manage-login" element={<ManageLogin refreshWorkspace={() => syncSessionContext(session)} />} />
+            <Route
+              path="/manage-workspaces"
+              element={session
+                ? workspaceChoices.length > 0
+                  ? <WorkspaceChooser workspaces={workspaceChoices} message={workspaceChoiceMessage} />
+                  : actorContext
+                    ? <Navigate to={getDefaultPath()} replace />
+                    : <Navigate to="/manage-login" replace />
+                : <Navigate to="/manage-login" replace />}
+            />
             <Route path="/creator/register" element={<CreatorRegister />} />
             <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/help" element={<HelpPage />} />
+            <Route path="/help/guide" element={<HelpPage />} />
             <Route path="/privacy" element={<LegalPage kind="privacy" />} />
             <Route path="/terms" element={<LegalPage kind="terms" />} />
             <Route path="/cookies" element={<LegalPage kind="cookies" />} />
             <Route
               path="/admin/applications"
-              element={session ? <AdminApplications /> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}
+              element={session ? <PlatformAdminGate key={session.user.id} userId={session.user.id} accessToken={session.access_token}><AdminApplications /></PlatformAdminGate> : <Navigate to="/manage-login?redirect=/admin/applications" replace />}
             />
-            <Route path="/admin/support" element={session ? <AdminSupport /> : <Navigate to="/manage-login?redirect=/admin/support" replace />} />
+            <Route path="/help" element={<Feedback />} />
+            <Route path="/admin/*" element={session ? <PlatformAdminGate key={session.user.id} userId={session.user.id} accessToken={session.access_token}><PlatformAdminConsole /></PlatformAdminGate> : <Navigate to="/manage-login?redirect=/admin" replace />} />
+            <Route path="/admin/support" element={session ? <PlatformAdminGate key={session.user.id} userId={session.user.id} accessToken={session.access_token}><AdminSupport /></PlatformAdminGate> : <Navigate to="/manage-login?redirect=/admin/support" replace />} />
             <Route
               path="/invitations"
               element={session ? <InvitationsPage /> : <Navigate to="/manage-login?redirect=/invitations" replace />}
@@ -322,7 +459,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/workspace"
               element={session && actorContext && canUseQueueWorkspace ? (
-                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues">
+                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues" selectedArtistId={actorContext.artist_id}>
                   <EventWorkspace actorContext={actorContext} />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-login" replace />}
@@ -330,7 +467,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/history"
               element={session ? (canUseManagement ? (
-                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events" selectedArtistId={actorContext!.artist_id}>
                   <OrderHistory />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -338,7 +475,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/dashboard"
               element={session ? (canUseManagement ? (
-                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events" selectedArtistId={actorContext!.artist_id}>
                   <EventDashboard />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -346,7 +483,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/catalog"
               element={session ? (canUseManagement ? (
-                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events" selectedArtistId={actorContext!.artist_id}>
                   <ManageProducts initialTab="event-catalog" />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -354,7 +491,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/promotion"
               element={session ? (canUseManagement ? (
-                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events" selectedArtistId={actorContext!.artist_id}>
                   <ManageProducts initialTab="promotions" />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -362,7 +499,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/preorder"
               element={session ? (canUseManagement ? (
-                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events">
+                <EventAccessRoute allowedRoles={MANAGEMENT_ROLES} fallbackPath="/manage-events" selectedArtistId={actorContext!.artist_id}>
                   <PreorderSettings />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -370,7 +507,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/preorder-dashboard"
               element={session && actorContext ? (canSell ? (
-                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues">
+                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues" selectedArtistId={actorContext.artist_id}>
                   <PreorderDashboard actorContext={actorContext} scope="preorder" />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -378,7 +515,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/postorder-dashboard"
               element={session && actorContext ? (canSell ? (
-                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues">
+                <EventAccessRoute allowedRoles={POS_ROLES} fallbackPath="/manage-pos-queues" selectedArtistId={actorContext.artist_id}>
                   <PreorderDashboard actorContext={actorContext} scope="post_event" />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
@@ -386,7 +523,7 @@ function App() {
             <Route
               path="/manage-events/:eventId/pickup"
               element={session && actorContext && canUseQueueWorkspace ? (
-                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues">
+                <EventAccessRoute allowedRoles={QUEUE_ROLES} fallbackPath="/manage-pos-queues" selectedArtistId={actorContext.artist_id}>
                   <PreorderPickup actorContext={actorContext} />
                 </EventAccessRoute>
               ) : <Navigate to="/manage-login" replace />}

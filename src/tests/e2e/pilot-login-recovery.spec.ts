@@ -1,3 +1,4 @@
+import { expectSignedInAccount } from '../helpers/accountMenu';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -38,7 +39,7 @@ test.afterAll(async () => {
   if (deletion.error) throw deletion.error;
 });
 
-test('a temporary account-check failure keeps the workspace route and can be retried', async ({ page }) => {
+test('a temporary account-check failure stays on login and can be retried without guessing a workspace', async ({ page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'en'));
   // Only the failing secondary account check is controlled. Password auth and
@@ -50,11 +51,11 @@ test('a temporary account-check failure keeps the workspace route and can be ret
   await login.goto();
   await login.login(email, password);
   await expect(page.getByRole('alert')).toContainText('Could not load your workspace. Please try again.', { timeout: 30_000 });
-  await expect(page).toHaveURL(/\/manage-events$/);
+  await expect(page).toHaveURL(/\/manage-login$/);
   await page.unroute('**/auth/v1/user');
   await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
   await expect(page.getByRole('alert')).toBeHidden({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /Sign out/i }).first()).toBeVisible();
+  await expectSignedInAccount(page);
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
 });
 
@@ -66,18 +67,14 @@ test('workspace access-check failure is retryable rather than a missing-role cla
   await login.goto();
   await login.login(email, password);
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
-  await page.route('**/rest/v1/rpc/get_actor_context', (route) => route.fulfill({
+  await page.route('**/rest/v1/rpc/resolve_actor_workspace', (route) => route.fulfill({
     status: 504, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary access-check failure' }),
-  }));
-  await page.route('**/auth/v1/user', (route) => route.fulfill({
-    status: 504, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary account-check failure' }),
   }));
   await page.reload();
   await expect(page.getByRole('alert')).toContainText('Could not load your workspace. Please try again.', { timeout: 30_000 });
   await expect(page.getByText('Workspace Not Assigned', { exact: true })).toBeHidden();
   await expect(page).toHaveURL(/\/manage-events(?:\/|$)/);
-  await page.unroute('**/rest/v1/rpc/get_actor_context');
-  await page.unroute('**/auth/v1/user');
+  await page.unroute('**/rest/v1/rpc/resolve_actor_workspace');
   await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
 });
@@ -107,7 +104,7 @@ test('live event load failure is not presented as an empty or closed booth', asy
 test('successful password auth can retry a failed workspace check without signing in again', async ({ page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'en'));
-  await page.route('**/rest/v1/rpc/get_actor_context', (route) => route.fulfill({
+  await page.route('**/rest/v1/rpc/resolve_actor_workspace', (route) => route.fulfill({
     status: 504, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary access-check failure' }),
   }));
   await page.route('**/auth/v1/user', (route) => route.fulfill({
@@ -122,7 +119,7 @@ test('successful password auth can retry a failed workspace check without signin
   await login.login(email, password);
   await expect(page.getByRole('alert')).toContainText('Could not load your workspace. Please try again.', { timeout: 30_000 });
   await expect(page).toHaveURL(/\/manage-login$/);
-  await page.unroute('**/rest/v1/rpc/get_actor_context');
+  await page.unroute('**/rest/v1/rpc/resolve_actor_workspace');
   await page.unroute('**/auth/v1/user');
   await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
@@ -142,14 +139,17 @@ test('invitation lookup failure does not block an owner with a verified workspac
 
 test('failed admin destination check shows retry instead of claiming no workspace', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
-  await page.route('**/rest/v1/rpc/is_platform_admin', route => route.fulfill({
+  await page.route('**/rest/v1/rpc/is_platform_admin_account', route => route.fulfill({
     status: 504, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary admin check failure' }),
   }));
   await page.goto('/manage-login?redirect=%2Fadmin%2Fsupport');
   await new LoginPage(page).login(email, password);
-  await expect(page.getByRole('button', { name: 'Retry loading workspace', exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.unroute('**/rest/v1/rpc/is_platform_admin');
-  await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/support$/);
+  await expect(page.getByRole('alert')).toContainText('Could not check access. Try again.');
+  await page.unroute('**/rest/v1/rpc/is_platform_admin_account');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Platform Admin access required.');
+  await page.goto('/manage-events');
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
 });
 
@@ -159,7 +159,7 @@ test('rejected account token clears the local session and returns to login', asy
   await login.goto();
   await login.login(email, password);
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });
-  await page.route('**/rest/v1/rpc/get_actor_context', route => route.fulfill({
+  await page.route('**/rest/v1/rpc/resolve_actor_workspace', route => route.fulfill({
     status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Access check unavailable' }),
   }));
   await page.route('**/auth/v1/user', route => route.fulfill({
@@ -176,19 +176,21 @@ test('rejected account token clears the local session and returns to login', asy
   expect(signedOut).toBe(true);
 });
 
-test('legacy membership read failure is retryable rather than a missing role', async ({ page }) => {
+test('canonical workspace failure is retryable without a client membership fallback', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
-  await page.route('**/rest/v1/rpc/get_actor_context', route => route.fulfill({
+  await page.route('**/rest/v1/rpc/resolve_actor_workspace', route => route.fulfill({
     status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Access check unavailable' }),
   }));
-  await page.route('**/rest/v1/artist_members?*', route => route.fulfill({
+  let legacyReads = 0;
+  await page.route('**/rest/v1/artist_members?*', route => { legacyReads++; return route.fulfill({
     status: 504, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary membership read failure' }),
-  }));
+  }); });
   const login = new LoginPage(page);
   await login.goto();
   await login.login(email, password);
   await expect(page.getByRole('button', { name: 'Retry loading workspace', exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.unroute('**/rest/v1/rpc/get_actor_context');
+  await page.unroute('**/rest/v1/rpc/resolve_actor_workspace');
+  expect(legacyReads).toBe(0);
   await page.unroute('**/rest/v1/artist_members?*');
   await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Login recovery live event', exact: true, level: 1 })).toBeVisible({ timeout: 30_000 });

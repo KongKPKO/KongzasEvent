@@ -219,17 +219,14 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     setSavingAssignmentsId(member.id);
     setMemberActionError('');
     try {
-      const current = getMemberAssignedEventIds(member.id);
-      const added = nextEventIds.filter(id => !current.has(id));
-      const removed = [...current].filter(id => !nextEventIds.includes(id));
-      if (added.length) {
-        const { error } = await withTimeout(supabase.from('event_member_assignments').insert(added.map(eventId => ({ artist_id: actorContext.artist_id, member_id: member.id, event_id: eventId }))));
-        if (error) throw error;
-      }
-      if (removed.length) {
-        const { error } = await withTimeout(supabase.from('event_member_assignments').delete().eq('member_id', member.id).in('event_id', removed));
-        if (error) throw error;
-      }
+      const { data, error } = await withTimeout(
+        supabase.rpc('replace_event_member_assignments', {
+          p_member_id: member.id,
+          p_event_ids: nextEventIds,
+        })
+      );
+      if (error || !data) throw error || new Error('Failed to save event access');
+
       await fetchEventsAndAssignments();
     } catch (error) {
       setMemberActionError(tr('บันทึกสิทธิ์ไม่ครบ กำลังโหลดสิทธิ์จริงล่าสุด กรุณาตรวจอีกครั้ง', 'Access update did not complete. Reloading saved access; review before retrying.'));

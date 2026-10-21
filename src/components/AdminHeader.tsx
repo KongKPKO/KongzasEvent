@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, LogOut, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n , uiText} from '../i18n';
+import AccountMenu from './AccountMenu';
 
 // --- TYPES ---
 interface ActiveEvent {
@@ -46,49 +47,18 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [userEmail, setUserEmail] = useState<string | null>(contextEmail);
     const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
     const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
 
     useEffect(() => {
         const fetchUser = async () => {
-            if (contextEmail) {
-                setUserEmail(contextEmail);
-            } else {
-                const { data: sessionData } = await supabase.auth.getSession();
-                if (sessionData.session?.user?.email) {
-                    setUserEmail(sessionData.session.user.email);
-                }
-
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user?.email) {
-                    setUserEmail(user.email);
-                }
-            }
-
-            const { data: adminAccess, error } = await supabase.rpc('is_platform_admin');
+            const { data: adminAccess, error } = await supabase.rpc('is_platform_admin_account');
             if (!error) {
                 setIsPlatformAdmin(Boolean(adminAccess));
             }
         };
         fetchUser();
     }, [contextEmail]);
-
-    const roleLabelMapping: Record<string, string> = {
-        owner: t('workspaceRoleOwner'),
-        manager: t('workspaceRoleManager'),
-        seller: t('workspaceRoleSeller'),
-        queue_staff: t('workspaceRoleQueueStaff'),
-    };
-
-    const displayRole = actorRole ? (roleLabelMapping[actorRole] || actorRole) : 'Admin';
-    const displayEmail = userEmail || contextEmail || 'Signed in';
-    const firstLetter = displayEmail ? displayEmail.charAt(0).toUpperCase() : 'U';
-
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        window.location.replace('/manage-login');
-    };
 
     return (
         <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 shadow-sm relative">
@@ -157,38 +127,11 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                 )}
 
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
-                {isPlatformAdmin && <Link to="/admin/support" className="min-h-11 inline-flex items-center px-3 text-xs font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
-                <LanguageToggle className="shrink-0" />
+                {isPlatformAdmin && <Link to="/admin" className="min-h-11 inline-flex items-center px-3 text-xs font-bold text-pink-700">{language === 'th' ? 'ศูนย์ผู้ดูแล' : 'Admin console'}</Link>}
+                <LanguageToggle className="workspace-action px-2 py-2" />
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
 
-                {/* Profile Indicator (Desktop) */}
-                <div className="min-h-11 flex items-center gap-2 mr-2 group relative cursor-pointer hover:bg-gray-50 p-1.5 rounded-lg transition-colors">
-                    <div className="w-7 h-7 rounded-sm bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-xs ring-1 ring-pink-200">
-                        {firstLetter}
-                    </div>
-                    <div className="hidden lg:flex flex-col items-start leading-none max-w-[140px]">
-                        <span className="text-[11px] font-semibold text-gray-700 truncate w-full">{displayEmail}</span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                            <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wide">{displayRole}</span>
-                        </div>
-                    </div>
-                    {/* Tooltip for smaller desktop screens */}
-                    <div className="absolute top-10 right-0 lg:hidden bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                        {displayEmail} • {displayRole}
-                    </div>
-                </div>
-
-                <div className="h-5 w-px bg-gray-200 mr-2"></div>
-
-                <button
-                    onClick={handleLogout}
-                    className="workspace-action px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:text-red-700 hover:bg-gray-50 flex items-center gap-1.5 transition-all"
-                    aria-label={t('signOut')}
-                >
-                    <LogOut size={14} aria-hidden="true" />
-                    <span className="hidden sm:inline">{t('signOut')}</span>
-                </button>
+                <AccountMenu actorRole={actorRole} userEmail={contextEmail} />
             </div>
 
             {/* Mobile Menu Button */}
@@ -203,18 +146,6 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
                 <div id="workspace-menu" className="max-h-[calc(100dvh-4rem)] overflow-y-auto absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg xl:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
-                    {/* Profile Information (Mobile) */}
-                    <div className="flex items-center gap-3 px-4 py-2 mb-2 bg-gray-50 rounded-lg">
-                        <div className="w-10 h-10 rounded-md bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-sm ring-1 ring-pink-200">
-                            {firstLetter}
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]">{displayEmail}</span>
-                            <span className="text-xs font-medium text-blue-600 uppercase mt-0.5">{displayRole}</span>
-                        </div>
-                    </div>
-                    <div className="h-px bg-gray-100 my-1"></div>
-
                     {filteredNavItems.map((item) => {
                         const Icon = item.icon;
                         // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
@@ -261,21 +192,14 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                             {t('workspaceNavApplications')}
                         </button>
                     )}
-                    {isPlatformAdmin && <Link to="/admin/support" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือร้าน' : 'Store support'}</Link>}
+                    {isPlatformAdmin && <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ศูนย์ผู้ดูแล' : 'Admin console'}</Link>}
                     <div className="h-px bg-gray-100 my-1"></div>
                     <Link to="/help" onClick={() => setIsMenuOpen(false)} className="block min-h-12 px-4 py-3 text-sm font-bold text-pink-700">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
                     <div className="px-4 py-2">
                         <LanguageToggle />
                     </div>
                     <div className="h-px bg-gray-100 my-1"></div>
-                    <button
-                        onClick={handleLogout}
-                        className="w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3"
-                        aria-label={t('signOut')}
-                    >
-                        <LogOut size={18} />
-                        {t('signOut')}
-                    </button>
+                    <AccountMenu actorRole={actorRole} userEmail={contextEmail} inline />
                 </div>
             )}
         </header>

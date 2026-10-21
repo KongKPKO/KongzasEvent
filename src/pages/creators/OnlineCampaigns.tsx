@@ -32,7 +32,8 @@ export default function OnlineCampaigns() {
   const load = async () => {
     setLoading(true);
     try {
-      const [context, rows] = await Promise.all([fetchActorContext(), listMyOnlineCampaigns()]);
+      const context = await fetchActorContext();
+      const rows = context ? await listMyOnlineCampaigns(context.artist_id) : [];
       setActor(context);
       setCampaigns(rows);
     } catch (loadError) {

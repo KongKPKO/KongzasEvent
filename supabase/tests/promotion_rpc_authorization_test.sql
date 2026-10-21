@@ -1,5 +1,11 @@
 begin;
 select no_plan();
+-- Management checks require a real, existing Auth identity, including for SQL fixtures.
+insert into auth.users(id,email,email_confirmed_at) values
+('d0000000-0000-4000-8000-000000000001','owner@rpc.test',now()),
+('d0000000-0000-4000-8000-000000000098','manager@rpc.test',now()),
+('d0000000-0000-4000-8000-000000000097','seller@rpc.test',now()),
+('d0000000-0000-4000-8000-000000000099','other@rpc.test',now());
 
 insert into public.artists (id, slug, display_name, is_public, is_verified, published_at)
 values ('d0000000-0000-4000-8000-000000000001', 'rpc-auth-rollback', 'RPC auth test', true, true, now());

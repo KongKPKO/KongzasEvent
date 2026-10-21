@@ -1,8 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { resetSyntheticAdminMfa, completeAdminMfa } from './helpers/adminMfa';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
+
+// MFA setup responses contain a secret; capture only explicit post-verification screenshots.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 test('admin can suspend and resume without hiding the public store', async ({ page, browser }) => {
   const env = resolveSupabaseTestEnv();
@@ -11,6 +17,7 @@ test('admin can suspend and resume without hiding the public store', async ({ pa
   const { userId, service }=await ensureOwnerArtistFixture({email,password,slug:'suspension-ui-admin',displayName:'Suspension UI Admin'});
   const id=randomUUID(), slug=`suspension-${id.slice(0,8)}`;
   const must=(result: {error: unknown})=>{if(result.error) throw result.error;};
+  await resetSyntheticAdminMfa(service, userId);
   const errors: string[]=[];
   page.on('pageerror',e=>errors.push(e.message));
   try {
@@ -21,6 +28,7 @@ test('admin can suspend and resume without hiding the public store', async ({ pa
     await page.getByRole('textbox',{name:'Password',exact:true}).fill(password);
     await page.getByRole('button',{name:'Login to Dashboard',exact:true}).click();
     await expect(page).toHaveURL(/\/admin\/support$/);
+    await completeAdminMfa(page);
     await page.getByLabel('Store name / slug / email',{exact:true}).fill(slug);
     await page.getByRole('button',{name:'Search',exact:true}).click();
     await expect(page.getByRole('button',{name:'View details',exact:true})).toBeVisible();
@@ -42,7 +50,7 @@ test('admin can suspend and resume without hiding the public store', async ({ pa
     await page.screenshot({path:`/tmp/store-suspension-${test.info().project.name}.png`,fullPage:true});
     const customer=await browser.newPage();
     await customer.goto(new URL(`/${slug}`,page.url()).href);
-    await expect(customer.getByRole('status')).toContainText('This store is not accepting new orders');
+    await expect(customer.getByRole('status').filter({ hasText: 'This store is not accepting new orders' })).toContainText('This store is not accepting new orders');
     await controls.getByRole('textbox').fill('Support case resolved');
     page.once('dialog',d=>d.accept());
     await controls.getByRole('button',{name:'Resume new orders and queues',exact:true}).click();
@@ -54,7 +62,7 @@ test('admin can suspend and resume without hiding the public store', async ({ pa
     expect(errors).toEqual([]);
   } finally {
     // Only this randomly generated local fixture; audit remains immutable through the API.
-    execFileSync('docker',['exec','supabase_db_EventWebQueue','psql','-U','postgres','-d','postgres','-c',`delete from private.store_restrictions where artist_id='${id}';`],{stdio:'ignore'});
+    execFileSync('docker',['exec',`supabase_db_${readFileSync(resolve(process.env.SUPABASE_WORKDIR || '.', 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1]}`,'psql','-U','postgres','-d','postgres','-c',`delete from private.store_restrictions where artist_id='${id}';`],{stdio:'ignore'});
     await service.from('artists').delete().eq('id',id);
     await service.from('platform_admins').delete().eq('admin_email',email);
   }

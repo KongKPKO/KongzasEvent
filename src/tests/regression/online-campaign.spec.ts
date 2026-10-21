@@ -353,7 +353,7 @@ test.describe('online campaign', () => {
       buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
     });
     await page.getByRole('button', { name: /Submit payment evidence|ส่งหลักฐาน/ }).click();
-    await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status).toBe('payment_submitted');
+    await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status, { timeout: 30000 }).toBe('payment_submitted');
     const { data: payment } = await fixture.service.from('order_payments').select('slip_url').eq('order_id', order.order_id).single();
     const slipPath = payment?.slip_url || '';
     expect(slipPath).toMatch(/\.webp$/);

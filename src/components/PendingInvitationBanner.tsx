@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Bell, Check } from 'lucide-react';
+import { selectActorWorkspace } from '../utils/access';
 
 export interface PendingInvite {
   id: string;
@@ -68,6 +69,7 @@ export default function PendingInvitationBanner({ invitations, onAccepted }: Pro
         p_invitation_id: inv.id,
       });
       if (error) throw error;
+      await selectActorWorkspace(inv.artist_id);
       setAcceptedIds((prev) => [...prev, inv.id]);
       onAccepted();
       const redirectPath = typeof data === 'object' && data && 'redirect_path' in data

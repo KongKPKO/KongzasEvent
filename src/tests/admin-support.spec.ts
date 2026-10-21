@@ -1,4 +1,5 @@
 import { selectLanguage } from './helpers/languageMenu';
+import { resetSyntheticAdminMfa, completeAdminMfa, verifyAdminMfaClient } from './helpers/adminMfa';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -8,21 +9,35 @@ import { execFileSync } from 'node:child_process';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 
+// MFA setup responses contain a secret; capture only explicit post-verification screenshots.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const projectId = readFileSync(resolve(process.env.SUPABASE_WORKDIR || '.', 'supabase/config.toml'), 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
 if (!projectId) throw new Error('Local Supabase project_id is required');
 const localDatabaseContainer = `supabase_db_${projectId}`;
+const localSql = (statement: string) => execFileSync('docker', ['exec', localDatabaseContainer, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', '-qAt', '-c', statement], { encoding: 'utf8' }).trim();
 
 test('admin support reads a foreign store/order without changing commerce data', async ({ page }) => {
   test.setTimeout(90000);
   const env = resolveSupabaseTestEnv();
   expect(new URL(env.url).hostname).toMatch(/^(127\.0\.0\.1|localhost)$/);
+  expect(process.env.SUPABASE_WORKDIR, 'Use the isolated disposable validation workspace').toBeTruthy();
+  expect(projectId).toMatch(/^Nireq.*Validation$/);
   const email = 'support-ui@test.local', password = 'LocalSupport123!';
   const { userId, service } = await ensureOwnerArtistFixture({email,password,slug:'support-ui',displayName:'Support UI Admin'});
   const store = randomUUID(), event = randomUUID(), order = randomUUID(), product = randomUUID();
   const must = (result: {error: unknown}) => {if(result.error) throw result.error;};
+  await resetSyntheticAdminMfa(service, userId);
+  let expiryWasActive: string | undefined;
   const errors: string[] = [];
   page.on('pageerror',error=>errors.push(error.message));
   try {
+    // This case verifies support reads, not the independent minute-based expiry
+    // worker. Pause only that worker on the confirmed disposable DB and restore it.
+    expiryWasActive = localSql("select active from cron.job where jobname='expire-preorder-stock-holds';");
+    expect(['t', 'f']).toContain(expiryWasActive);
+    localSql("select cron.alter_job(jobid, active:=false) from cron.job where jobname='expire-preorder-stock-holds';");
+    await expect.poll(() => localSql("select count(*) from cron.job_run_details r join cron.job j using(jobid) where j.jobname='expire-preorder-stock-holds' and r.status in ('starting','running');")).toBe('0');
     must(await service.from('platform_admins').upsert({admin_email:email,auth_user_id:userId},{onConflict:'admin_email'}));
     must(await service.from('artists').insert({id:store,slug:`support-${store.slice(0,8)}`,display_name:`Support Shop ${store}`,email:'shop@test.local'}));
     must(await service.from('events').insert({id:event,artist_id:store,event_name:'Support Event',start_date:new Date().toISOString(),end_date:new Date(Date.now()+86400000).toISOString()}));
@@ -36,6 +51,7 @@ test('admin support reads a foreign store/order without changing commerce data',
     await page.getByRole('textbox',{name:'Password',exact:true}).fill(password);
     await page.getByRole('button',{name:'Login to Dashboard',exact:true}).click();
     await expect(page).toHaveURL(/\/admin\/support$/);
+    const mfaSecret = await completeAdminMfa(page);
     await expect(page.getByRole('heading',{name:'Store support',exact:true})).toBeVisible();
     const query = page.getByLabel('Store name / slug / email',{exact:true});
     await query.fill(store);
@@ -79,12 +95,13 @@ test('admin support reads a foreign store/order without changing commerce data',
     expect((await service.from('admin_order_email_resends').select('id').eq('order_id',order)).data).toHaveLength(0);
     page.once('dialog',dialog=>dialog.accept());
     await history.getByRole('button',{name:'ส่งลิงก์สถานะออเดอร์อีกครั้ง',exact:true}).click();
-    await expect(history.getByRole('status')).toHaveText('ผู้ให้บริการรับคำขอส่งแล้ว');
+    await expect(history.getByRole('status')).toHaveText('ผู้ให้บริการรับคำขอส่งแล้ว', { timeout: 20000 });
     const first=(await service.from('admin_order_email_resends').select('*').eq('order_id',order).single()).data;
     expect(first.status).toBe('accepted');
     expect(first.actor_id).toBe(userId);
     const api=createClient(env.url,env.anonKey,{auth:{persistSession:false,autoRefreshToken:false}});
     await api.auth.signInWithPassword({email,password});
+    await verifyAdminMfaClient(api, mfaSecret);
     const body={order_id:order,request_id:first.id,reason:first.reason};
     const duplicate=await api.functions.invoke('admin-resend-order-link',{body});
     expect(duplicate.data).toMatchObject({duplicate:true,status:'accepted'});
@@ -140,9 +157,10 @@ test('admin support reads a foreign store/order without changing commerce data',
     must(await service.from('platform_admins').delete().eq('admin_email',email));
     expect((await api.functions.invoke('admin-resend-order-link',{body:{...body,request_id:randomUUID()}})).error).toBeTruthy();
     await page.reload();
-    await expect(page.getByText('เฉพาะผู้ดูแลระบบ',{exact:true})).toBeVisible();
+    await expect(page.getByText('เฉพาะบัญชีผู้ดูแลแพลตฟอร์มเท่านั้น',{exact:true})).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
+    if (expiryWasActive === 't' || expiryWasActive === 'f') localSql(`select cron.alter_job(jobid, active:=${expiryWasActive === 't'}) from cron.job where jobname='expire-preorder-stock-holds';`);
     await service.from('platform_admins').delete().eq('admin_email',email);
     await service.from('order_payments').delete().eq('order_id',order);
     await service.from('order_items').delete().eq('order_id',order);

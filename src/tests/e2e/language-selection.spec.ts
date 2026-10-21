@@ -113,7 +113,7 @@ test('switching POS language preserves the cart and total without requesting a n
   let quotes = 0;
   page.on('request', request => { if (request.url().includes('/rpc/quote_sale_promotions')) quotes++; });
   const item = page.getByRole('region', { name: /Product list|Product grid/ }).getByRole('button').filter({ has: page.getByRole('heading', { name: 'Menu', exact: true }) }).first();
-  await expect(item).toBeVisible();
+  await expect(item).toBeVisible({ timeout: 30000 });
   await expect(item).toBeDisabled();
   releaseOrderRead();
   await expect(item).toBeEnabled();

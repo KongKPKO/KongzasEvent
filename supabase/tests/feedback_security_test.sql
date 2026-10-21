@@ -1,0 +1,38 @@
+begin;
+select no_plan();
+insert into auth.users(id,email) values
+('fb000000-0000-4000-8000-000000000001','feedback-one@example.test'),
+('fb000000-0000-4000-8000-000000000002','feedback-two@example.test');
+set local role service_role;
+select is(public.feedback_intake('fb000000-0000-4000-8000-000000000001','bug','Broken queue','The queue is not working',null,null,null,null,null,'{}','fb100000-0000-4000-8000-000000000001',array[repeat('a',64)],2,3600)->>'created','true','authenticated intake');
+select is(public.feedback_intake('fb000000-0000-4000-8000-000000000001','bug','Broken queue','The queue is not working',null,null,null,null,null,'{}','fb100000-0000-4000-8000-000000000001',array[repeat('a',64)],2,3600)->>'created','false','duplicate returns same ticket');
+select throws_ok($$select public.feedback_intake('fb000000-0000-4000-8000-000000000001','bug','Changed queue','The queue is not working',null,null,null,null,null,'{}','fb100000-0000-4000-8000-000000000001',array[repeat('a',64)],2,3600)$$,'P0001','request_conflict','request identity cannot change content');
+select is(public.feedback_intake(null,'support','Need assistance','Please help with this issue',null,'guest@example.test',null,null,null,'{}','fb100000-0000-4000-8000-000000000002',array[repeat('b',64)],5,3600,repeat('f',64),1)->>'created','true','guest intake');
+select is(public.feedback_intake(null,'support','Need assistance','Please help with this issue',null,'guest@example.test',null,null,null,'{}','fb100000-0000-4000-8000-000000000002',array[repeat('b',64)],5,3600,repeat('f',64),1)->>'created','false','duplicate succeeds even at circuit limit');
+select throws_ok($$select public.feedback_intake(null,'support','Rotated guest','Please help with this issue',null,null,null,null,null,'{}',gen_random_uuid(),array[repeat('c',64)],5,3600,repeat('f',64),1)$$,'P0001','rate_limited','global circuit applies across rotating guest identities');
+select is((select count(*) from public.feedback_tickets where client_request_id in ('fb100000-0000-4000-8000-000000000001','fb100000-0000-4000-8000-000000000002')),2::bigint,'no duplicate or throttled ticket');
+reset role;
+set local role anon;
+select throws_ok($$select reference from public.feedback_tickets$$,'42501',null,'guest cannot enumerate tickets');
+select throws_ok($$select public.feedback_admin_list()$$,'42501',null,'guest cannot use service RPC');
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"fb000000-0000-4000-8000-000000000001","email":"feedback-one@example.test","aal":"aal1"}',true);
+select is((select count(reference) from public.feedback_tickets),1::bigint,'reporter sees own ticket only');
+select throws_ok($$select guest_contact from public.feedback_tickets$$,'42501',null,'private contact column is not exposed');
+select throws_ok($$select * from public.feedback_internal_notes$$,'42501',null,'internal notes cannot be read by reporter');
+select throws_ok($$select * from public.feedback_ticket_metadata$$,'42501',null,'private context cannot be read by reporter');
+select throws_ok($$select public.feedback_admin_detail(gen_random_uuid())$$,'42501',null,'authenticated caller cannot impersonate admin Edge');
+select throws_ok($$update public.feedback_tickets set status='closed'$$,'42501',null,'reporter cannot edit status');
+select set_config('request.jwt.claims','{"sub":"fb000000-0000-4000-8000-000000000002","email":"feedback-two@example.test"}',true);
+select is((select count(reference) from public.feedback_tickets),0::bigint,'other user cannot read ticket');
+reset role;
+set local role service_role;
+select is(public.feedback_admin_action((select id from public.feedback_tickets where user_id='fb000000-0000-4000-8000-000000000001'),'fb000000-0000-4000-8000-000000000002','in_progress','Private operations note','new','fb200000-0000-4000-8000-000000000001')->'ticket'->>'status','in_progress','admin status and note transaction');
+select lives_ok($$select public.feedback_admin_action((select id from public.feedback_tickets where user_id='fb000000-0000-4000-8000-000000000001'),'fb000000-0000-4000-8000-000000000002','in_progress','Private operations note','new','fb200000-0000-4000-8000-000000000001')$$,'same admin request is idempotent');
+select is((select count(*) from public.feedback_internal_notes where ticket_id=(select id from public.feedback_tickets where client_request_id='fb100000-0000-4000-8000-000000000001')),1::bigint,'retry does not duplicate note');
+select throws_ok($$select public.feedback_admin_action((select id from public.feedback_tickets where user_id='fb000000-0000-4000-8000-000000000001'),'fb000000-0000-4000-8000-000000000002','resolved',null,'new',gen_random_uuid())$$,'P0001','status_conflict','stale status change rejected');
+select is((select status from public.feedback_tickets where user_id='fb000000-0000-4000-8000-000000000001'),'in_progress','stale change leaves status intact');
+select is((select public from storage.buckets where id='feedback-screenshots'),false,'screenshot bucket is private');
+reset role;
+select * from finish();
+rollback;

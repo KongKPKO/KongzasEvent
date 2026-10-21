@@ -2,7 +2,7 @@ import { OrderProductionStock, useProductionOrderStock } from '../../components/
 import { uiText, useI18n } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import EvidenceReview from '../../components/EvidenceReview';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, Download, Eye, ReceiptText, RefreshCw, Search, Truck, XCircle } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
@@ -10,7 +10,7 @@ import EventNavTabs from '../../components/EventNavTabs';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 import {
   confirmPreorderPayment,
-  createPaymentEvidenceSignedUrl,
+  downloadPaymentEvidencePreview,
   getPreorderErrorMessage,
   listPreorderPaymentReview,
   listPreorderProductionSummary,
@@ -78,7 +78,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
   const [orders, setOrders] = useState<PreorderPaymentReviewRow[]>([]);
   const productionStock = useProductionOrderStock(eventId, undefined, orders.map(order => [order.order_id, order.pickup_status, order.payment_status].join(':')).join('|'));
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const evidenceRequest = useRef(0);
   const [filter, setFilter] = useState<StatusFilter>('needs_review');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -191,25 +191,30 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
     return rows;
   }, [orders, filter, search]);
 
+  useEffect(() => {
+    setSlipPreview(null);
+    return () => { evidenceRequest.current += 1; };
+  }, [eventId, actorContext.artist_id]);
+
+  useEffect(() => {
+    const url = slipPreview?.url;
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [slipPreview?.url]);
+
   const openSlip = async (order: PreorderPaymentReviewRow) => {
     if (!order.slip_url) return;
-    const cached = signedUrls[order.slip_url];
-    if (cached) {
-      setSlipPreview({ order, url: cached });
-      return;
-    }
+    const request = ++evidenceRequest.current;
     setSlipLoadingId(order.order_id);
     try {
-      const url = await createPaymentEvidenceSignedUrl(order.slip_url);
-      setSignedUrls((prev) => ({ ...prev, [order.slip_url as string]: url }));
-      setSlipPreview({ order, url });
+      const blob = await downloadPaymentEvidencePreview(order.slip_url);
+      if (request !== evidenceRequest.current) return;
+      setSlipPreview({ order, url: URL.createObjectURL(blob) });
     } catch (error) {
-      setToast({ tone: 'error', title: uiText(language, 'Could not open slip'), detail: uiText(language, getPreorderErrorMessage(error)) });
+      if (request === evidenceRequest.current) setToast({ tone: 'error', title: uiText(language, 'Could not open slip'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
-      setSlipLoadingId(null);
+      if (request === evidenceRequest.current) setSlipLoadingId(null);
     }
   };
-
   const exportCsv = () => {
     const rows = [
       ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'].map((heading) => uiText(language, heading)),

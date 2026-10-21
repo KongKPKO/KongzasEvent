@@ -1,6 +1,12 @@
 import { supabase } from '../supabaseClient';
-import type { ActorContext } from '../types/access';
+import type { ActorContext, ActorRole, ActorWorkspace } from '../types/access';
 import { getAuthUserSafe } from './auth';
+import {
+  getSelectedWorkspaceId,
+  getWorkspaceGeneration,
+  finishWorkspaceSwitch,
+  setSelectedWorkspaceId,
+} from './workspaceSession';
 
 const withTimeout = async <T,>(promise: PromiseLike<T>, ms = 12000): Promise<T> => {
   const wrapped = Promise.resolve(promise);
@@ -12,72 +18,61 @@ const withTimeout = async <T,>(promise: PromiseLike<T>, ms = 12000): Promise<T> 
   ]);
 };
 
-const fetchLegacyOwnerContext = async (): Promise<ActorContext | null> => {
-  const user = await getAuthUserSafe();
-  if (!user) return null;
-
-  const userId = user.id;
-  const email = user.email?.toLowerCase() || null;
-  let artistId: string | null = null;
-
-  if (email) {
-    const { data: memberContext, error: memberError } = await withTimeout(
-      supabase
-        .from('artist_members')
-        .select('artist_id, role, member_email')
-        .eq('status', 'active')
-        .ilike('member_email', email)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      8000
-    );
-    if (memberError) throw memberError;
-
-    if (memberContext?.artist_id && memberContext.role) {
-      return {
-        artist_id: memberContext.artist_id,
-        role: memberContext.role as ActorContext['role'],
-        is_owner: memberContext.role === 'owner',
-        member_email: memberContext.member_email || email,
-      };
-    }
+export class WorkspaceSelectionRequiredError extends Error {
+  constructor(public readonly workspaces: ActorWorkspace[], message = 'Choose a workspace to continue.') {
+    super(message);
+    this.name = 'WorkspaceSelectionRequiredError';
   }
+}
 
-  const { data: ownedArtist, error: ownedArtistError } = await withTimeout(
-    supabase
-      .from('artists')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle(),
-    8000
-  );
-  if (ownedArtistError) throw ownedArtistError;
-  artistId = ownedArtist?.id || null;
-
-  if (!artistId && email) {
-    const { data: emailArtist, error: emailArtistError } = await withTimeout(
-      supabase
-        .from('artists')
-        .select('id')
-        .ilike('email', email)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      8000
-    );
-    if (emailArtistError) throw emailArtistError;
-    artistId = emailArtist?.id || null;
+export class WorkspaceRequestStaleError extends Error {
+  constructor() {
+    super('Workspace changed before this request completed.');
+    this.name = 'WorkspaceRequestStaleError';
   }
+}
 
-  if (!artistId) return null;
+const isActorRole = (value: unknown): value is ActorRole =>
+  value === 'owner' || value === 'manager' || value === 'seller' || value === 'queue_staff';
 
+export const listActorWorkspaces = async (): Promise<ActorWorkspace[]> => {
+  const { data, error } = await withTimeout(supabase.rpc('list_actor_workspaces'), 8000);
+  if (error) throw error;
+
+  return ((data || []) as Record<string, unknown>[]).flatMap((row) => {
+    if (typeof row.artist_id !== 'string' || !isActorRole(row.role)) return [];
+    return [{
+      artist_id: row.artist_id,
+      artist_name: typeof row.artist_name === 'string' ? row.artist_name : 'Workspace',
+      artist_slug: typeof row.artist_slug === 'string' ? row.artist_slug : '',
+      role: row.role,
+      is_owner: row.is_owner === true,
+      member_email: typeof row.member_email === 'string' ? row.member_email : null,
+    }];
+  });
+};
+
+export const resolveActorWorkspace = async (artistId: string): Promise<ActorContext> => {
+  const { data, error } = await withTimeout(supabase.rpc('resolve_actor_workspace', {
+    p_artist_id: artistId,
+  }), 8000);
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.artist_id || !isActorRole(row.role)) throw new Error('Workspace access is no longer available.');
   return {
-    artist_id: artistId,
-    role: 'owner',
-    is_owner: true,
-    member_email: email,
+    artist_id: row.artist_id,
+    role: row.role,
+    is_owner: row.is_owner === true,
+    member_email: typeof row.member_email === 'string' ? row.member_email : null,
   };
+};
+
+export const selectActorWorkspace = async (artistId: string): Promise<ActorContext> => {
+  const user = await getAuthUserSafe();
+  if (!user) throw new Error('Sign in again to choose a workspace.');
+  const context = await resolveActorWorkspace(artistId);
+  await finishWorkspaceSwitch(user.id, artistId);
+  return context;
 };
 
 type CreatorSignupCompletionStatus = 'created' | 'exists' | 'not_pending' | 'email_unconfirmed' | 'error';
@@ -106,25 +101,28 @@ export const completePendingVerifiedCreatorSignup = async (): Promise<CreatorSig
 };
 
 export const fetchActorContext = async (): Promise<ActorContext | null> => {
-  let first: ActorContext | undefined;
-  try {
-    const { data, error } = await withTimeout(supabase.rpc('get_actor_context'));
-    if (error) {
-      console.error('[Access] get_actor_context failed:', error);
-    } else {
-      first = Array.isArray(data) ? data[0] : data;
-    }
-  } catch (error) {
-    console.error('[Access] get_actor_context request failed:', error);
+  const requestGeneration = getWorkspaceGeneration();
+  const user = await getAuthUserSafe();
+  if (!user) return null;
+  const workspaces = await listActorWorkspaces();
+  if (requestGeneration !== getWorkspaceGeneration()) throw new WorkspaceRequestStaleError();
+  if (workspaces.length === 0) return null;
+
+  const selectedId = getSelectedWorkspaceId(user.id);
+  if (!selectedId) {
+    if (workspaces.length > 1) throw new WorkspaceSelectionRequiredError(workspaces);
+    const onlyWorkspace = workspaces[0];
+    const context = await resolveActorWorkspace(onlyWorkspace.artist_id);
+    if (requestGeneration !== getWorkspaceGeneration()) throw new WorkspaceRequestStaleError();
+    setSelectedWorkspaceId(user.id, onlyWorkspace.artist_id);
+    return context;
   }
 
-  // Keep the fallback outside the RPC catch: its failure must reach the UI
-  // once instead of triggering a second account check.
-  if (!first?.artist_id || !first?.role) return await fetchLegacyOwnerContext();
-  return {
-    artist_id: first.artist_id,
-    role: first.role,
-    is_owner: !!first.is_owner,
-    member_email: first.member_email || null,
-  };
+  if (!workspaces.some((workspace) => workspace.artist_id === selectedId)) {
+    throw new WorkspaceSelectionRequiredError(workspaces, 'Your previous workspace access changed. Choose another workspace.');
+  }
+
+  const context = await resolveActorWorkspace(selectedId);
+  if (requestGeneration !== getWorkspaceGeneration()) throw new WorkspaceRequestStaleError();
+  return context;
 };

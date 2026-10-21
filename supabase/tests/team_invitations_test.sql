@@ -71,6 +71,13 @@ begin
 end;
 $$ language plpgsql;
 
+-- These invitees have completed Auth signup before presenting a JWT.
+insert into auth.users(id,email,email_confirmed_at)
+select gen_random_uuid(),email,now() from unnest(array[
+ 'manager.invite@nireq.local','expired@nireq.local','attacker@nireq.local','decliner@nireq.local',
+ 'manager.seller@nireq.local'
+]) as fixture(email);
+
 -- Tests -----------------------------------------------------------------------
 
 -- Owner invites an existing auth user as event-limited staff. Existing auth no

@@ -401,6 +401,14 @@ verify_jwt = false
 [functions.admin-resend-order-link]
 verify_jwt = false
 
+# Public intake allows guests and validates optional user JWTs inside the handler.
+[functions.feedback-submit]
+verify_jwt = false
+
+# Verifies the user token and AAL2 platform-admin authorization in the handler.
+[functions.feedback-admin]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
@@ -426,4 +434,8 @@ verify_jwt = false
 static_files = ["./functions/upload-image/webp_dec.wasm"]
 
 [functions.operations-maintenance]
+verify_jwt = false
+
+# Reauthorizes the caller and order on every private evidence download.
+[functions.payment-evidence]
 verify_jwt = false

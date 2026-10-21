@@ -6,36 +6,74 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type NotificationEvent = "submitted" | "auto_approved" | "approved" | "rejected";
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  if (req.method !== "POST") {
+    return json({ error: "method_not_allowed" }, 405);
+  }
 
   try {
-    const { applicationId, event = "submitted" } = await req.json();
-    if (!applicationId) {
-      return json({ error: "applicationId is required" }, 400);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+      return json({ error: "Server is missing Supabase service configuration" }, 500);
     }
 
-    if (!["submitted", "auto_approved", "approved", "rejected"].includes(event)) {
+    const input = await req.json().catch(() => null);
+    const applicationId = input?.applicationId;
+    const requestedEvent = input?.event;
+    if (!isUuid(applicationId)) {
+      return json({ error: "applicationId must be a valid UUID" }, 400);
+    }
+    if (requestedEvent !== undefined && !isNotificationEvent(requestedEvent)) {
       return json({ error: "event must be submitted, auto_approved, approved, or rejected" }, 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceRoleKey) {
-      return json({ error: "Server is missing Supabase service configuration" }, 500);
+    const serviceAuthorized = req.headers.get("apikey") === serviceRoleKey;
+    let callerClient: ReturnType<typeof createClient> | null = null;
+    if (!serviceAuthorized) {
+      const authorization = req.headers.get("Authorization") || "";
+      if (!authorization.startsWith("Bearer ")) {
+        return json({ error: "unauthorized" }, 401);
+      }
+
+      callerClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authorization } },
+      });
+      const { data: caller, error: callerError } = await callerClient.auth.getUser();
+      if (callerError || !caller.user) {
+        return json({ error: "unauthorized" }, 401);
+      }
+
+      // is_platform_admin also enforces the current privileged-session policy (including AAL2).
+      const { data: isAdmin, error: adminError } = await callerClient.rpc("is_platform_admin");
+      if (adminError || !isAdmin) {
+        return json({ error: "forbidden" }, 403);
+      }
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const { data: application, error } = await supabase
       .from("creator_applications")
-      .select("*")
+      .select("id, auth_user_id, email, contact_name, creator_name, desired_slug, primary_social_url, website_url, instagram_url, x_url, facebook_url, tiktok_url, application_note, status, reviewed_at, review_note, created_at, updated_at")
       .eq("id", applicationId)
       .single();
 
     if (error || !application) {
-      return json({ error: error?.message || "Application not found" }, 404);
+      return json({ error: "Application not found" }, 404);
+    }
+
+    const event = eventForStatus(application.status);
+    if (!event) {
+      return json({ error: "Application state cannot be notified" }, 409);
+    }
+    if (requestedEvent !== undefined && requestedEvent !== event) {
+      return json({ error: "Application state does not match the requested event" }, 409);
     }
 
     const adminEmail = Deno.env.get("ADMIN_APPLICATION_EMAIL") || "konglnwzas@gmail.com";
@@ -56,8 +94,6 @@ Deno.serve(async (req: Request) => {
         delivered: false,
         provider: emailMode,
         event,
-        to: message.to,
-        subject: message.subject,
       });
     }
 
@@ -90,6 +126,7 @@ Deno.serve(async (req: Request) => {
       headers: {
         Authorization: `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": deliveryKey(applicationId, event, application),
       },
       body: JSON.stringify({
         from: Deno.env.get("APPLICATION_EMAIL_FROM") || "Nireq <onboarding@resend.dev>",
@@ -111,6 +148,29 @@ Deno.serve(async (req: Request) => {
     return json({ error: message }, 500);
   }
 });
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isNotificationEvent(value: unknown): value is NotificationEvent {
+  return ["submitted", "auto_approved", "approved", "rejected"].includes(String(value));
+}
+
+function eventForStatus(status: unknown): NotificationEvent | null {
+  if (status === "pending") return "submitted";
+  if (status === "auto_approved" || status === "approved" || status === "rejected") return status;
+  return null;
+}
+
+function deliveryKey(
+  applicationId: string,
+  event: NotificationEvent,
+  application: Record<string, unknown>,
+) {
+  const stateChangedAt = event === "submitted" ? application.created_at : application.reviewed_at || application.updated_at;
+  return `creator-application/${applicationId}/${event}/${String(stateChangedAt || "unknown")}`;
+}
 
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -137,7 +197,7 @@ function renderLink(url: unknown) {
   return `<a href="${escapeHtml(value)}">${escapeHtml(value)}</a>`;
 }
 
-function buildEmailMessage(application: Record<string, unknown>, event: string, adminEmail: string) {
+function buildEmailMessage(application: Record<string, unknown>, event: NotificationEvent, adminEmail: string) {
   if (event === "approved") {
     const to = String(application.email ?? "");
     return {

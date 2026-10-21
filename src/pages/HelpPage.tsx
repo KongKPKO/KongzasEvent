@@ -29,6 +29,7 @@ export default function HelpPage() {
       <aside className="self-start rounded-2xl border border-pink-200 bg-white p-6">
         <h2 className="text-xl font-bold">{th ? 'ยังต้องการความช่วยเหลือ?' : 'Still need help?'}</h2>
         <p className="mt-3 text-sm leading-6 text-slate-600">{th ? 'แจ้งหน้าที่พบปัญหา ขั้นตอนก่อนเกิดเหตุ และข้อความผิดพลาด ไม่ต้องส่งรหัสผ่านหรือรหัส OTP' : 'Include the affected page, steps and error message. Do not send passwords or OTP codes.'}</p>
+        <Link className="public-text-link mt-3 block" to="/help">{th ? 'ส่งคำขอช่วยเหลือ' : 'Send a support request'}</Link>
         <a className="public-text-link mt-3 break-all" href="mailto:konglnwzas@gmail.com">konglnwzas@gmail.com</a>
         <nav className="mt-5 flex flex-col border-t border-pink-100 pt-3" aria-label={th ? 'นโยบาย' : 'Policies'}>
           <Link className="public-text-link" to="/privacy">{th ? 'ความเป็นส่วนตัว' : 'Privacy'}</Link><Link className="public-text-link" to="/terms">{th ? 'ข้อกำหนดการใช้งาน' : 'Terms'}</Link><Link className="public-text-link" to="/cookies">{th ? 'คุกกี้และพื้นที่จัดเก็บ' : 'Cookies and storage'}</Link>

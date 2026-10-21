@@ -1,3 +1,4 @@
+import { expectSignedInAccount, openAccountMenu } from '../helpers/accountMenu';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { expect, test, type APIRequestContext } from '@playwright/test';
@@ -77,7 +78,7 @@ test('creator registers, confirms email, resets password and signs in again', as
   await expect(page.getByRole('heading', { name: 'Check your email or sign in' })).toBeVisible();
 
   await page.goto(await emailLink(request, /confirm/i));
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expectSignedInAccount(page);
   const artist = await service.from('artists').select('id, slug, is_public, seller_type').eq('id', userId).single().throwOnError();
   expect(artist.data).toMatchObject({ id: userId, slug, is_public: false, seller_type: 'cosplayer' });
   await page.goto('/manage-events?tab=profile');
@@ -101,6 +102,7 @@ test('creator registers, confirms email, resets password and signs in again', as
   await expect(page.getByRole('status').filter({ hasText: 'Shop profile saved.' })).toBeVisible();
   await page.reload();
   await expect(page.locator('#artist-seller-type')).toHaveValue('shop');
+  await openAccountMenu(page);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/\/manage-login/, { timeout: 15_000 });
   await page.getByRole('button', { name: 'Forgot password?' }).click();
@@ -115,7 +117,7 @@ test('creator registers, confirms email, resets password and signs in again', as
   await page.locator('#login-email').fill(email);
   await page.locator('#login-password').fill(newPassword);
   await page.getByTestId('creator-login-submit').click();
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expectSignedInAccount(page);
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
   expect(pageErrors).toEqual([]);
   await page.screenshot({ path: `/tmp/nireq-beta-auth-${test.info().project.name}.png` });

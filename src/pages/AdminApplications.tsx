@@ -16,6 +16,7 @@ import { supabase } from '../supabaseClient';
 import { ConfirmDialog, Toast } from '../components/ui/Feedback';
 import { LanguageToggle, useI18n, uiText } from '../i18n';
 import { invokeNotificationFunction } from '../utils/edgeFunctions';
+import { signOutLocally } from '../utils/workspaceSession';
 
 type ApplicationStatus = 'pending' | 'auto_approved' | 'approved' | 'rejected';
 
@@ -213,8 +214,13 @@ export default function AdminApplications() {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/manage-login', { replace: true });
+    setActionLoading(true);
+    try {
+      await signOutLocally();
+      navigate('/manage-login', { replace: true });
+    } catch (error) {
+      setToast({ tone: 'error', title: uiText(language, 'Could not sign out'), detail: error instanceof Error ? error.message : String(error) });
+    } finally { setActionLoading(false); }
   };
 
   if (checkingAdmin) {
@@ -251,7 +257,7 @@ export default function AdminApplications() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         <header className="mb-6 flex flex-col gap-4 border-b border-gray-200 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <Link to="/manage-login" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900">
+            <Link to="/admin" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900">
               <ArrowLeft size={16} />
               {t('adminBack')}
             </Link>

@@ -1,7 +1,13 @@
+import type { Session } from '@supabase/supabase-js';
+import type { ActorContext } from '../types/access';
+
 export type ReplayConsent = 'accepted' | 'rejected';
 export const REPLAY_CONSENT_KEY = 'nireq-replay-consent-v1';
 export const REPLAY_CONSENT_EVENT = 'nireq-replay-consent-change';
 
+let replayClient: { identify: (id: string, traits?: Record<string, string>) => void; startNewSession: () => void } | null = null;
+let pendingIdentity: { session: Session; actorContext: ActorContext | null } | null = null;
+let identifiedUserId: string | null = null;
 let loading = false;
 let initialized = false;
 let allowed = false;
@@ -58,6 +64,8 @@ export const initObservability = () => {
     };
     client.init(appId, options);
     initialized = true;
+    replayClient = client;
+    if (pendingIdentity) identifyObservabilityUser(pendingIdentity.session, pendingIdentity.actorContext);
   }).catch(() => {
     console.warn('[Observability] Session replay could not start.');
   }).finally(() => { loading = false; });
@@ -72,3 +80,18 @@ if (typeof window !== 'undefined') {
     else if (allowed) initObservability();
   });
 }
+
+// Identity follows the same explicit consent and sanitization boundary as replay.
+export const identifyObservabilityUser = (session: Session | null, actorContext: ActorContext | null) => {
+  if (!session) return;
+  pendingIdentity = { session, actorContext };
+  if (!initialized || !replayClient || !allowed || getReplayConsent() !== 'accepted') return;
+  replayClient.identify(session.user.id, { workspaceId: actorContext?.artist_id || '', role: actorContext?.role || '' });
+  identifiedUserId = session.user.id;
+};
+
+export const clearObservabilityUser = () => {
+  pendingIdentity = null;
+  if (identifiedUserId && replayClient && initialized) replayClient.startNewSession();
+  identifiedUserId = null;
+};

@@ -1,3 +1,4 @@
+import { expectSignedInAccount } from '../helpers/accountMenu';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -98,7 +99,7 @@ test.describe('full queue and POS service loop', () => {
       const login = new LoginPage(adminPage);
       await login.goto();
       await login.login(adminEmail, adminPassword);
-      await expect(adminPage.getByRole('button', { name: /Sign out|Logout|ออกจากระบบ/i }).first()).toBeVisible({ timeout: 20_000 });
+      await expectSignedInAccount(adminPage);
 
       await adminPage.goto(`/manage-pos-queues?eventId=${eventId}`);
       await expect(adminPage.getByTestId('pos-event-selector')).toHaveValue(eventId, { timeout: 20_000 });

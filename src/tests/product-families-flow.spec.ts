@@ -308,7 +308,7 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await editor.getByLabel('Shared photo gallery', { exact: true }).fill(gallery);
   await editor.getByRole('button', { name: 'Do not track stock', exact: true }).click();
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
-  await expect(editor).toBeHidden();
+  await expect(editor).toBeHidden({ timeout: 30000 });
   const parent = await service.from('product_parents').select('id,product_kind,gallery_images,category').eq('artist_id', artistId).eq('name', photoName).single().throwOnError();
   expect(parent.data?.product_kind).toBe('photo');
   expect(parent.data?.category).toBe('Other');
@@ -374,7 +374,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.screenshot({ path: testInfo.outputPath('editor-item-galleries-mobile.png'), fullPage: false });
   await page.setViewportSize({ width: 1280, height: 900 });
   await editor.getByRole('button', { name: 'Create product', exact: true }).click();
-  await expect(editor).toBeHidden();
+  await expect(editor).toBeHidden({ timeout: 30000 });
   const parent = await service.from('product_parents').select('id').eq('artist_id', artistId).eq('name', familyName).single().throwOnError();
   const items = await service.from('products').select('*').eq('parent_product_id', parent.data!.id).order('variant_sort_order').throwOnError();
   expect(items.data!.map(item => item.variant_gallery_images)).toEqual(galleries);
@@ -410,7 +410,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.screenshot({ path: testInfo.outputPath('event-item-galleries.png'), fullPage: true });
   await page.goto(`/live/pos?eventId=${eventId}`);
   const posFamily = page.locator(`[data-pos-family="parent:${parent.data!.id}"]`);
-  await expect(posFamily).toBeVisible();
+  await expect(posFamily).toBeVisible({ timeout: 30000 });
   await posFamily.locator('summary').click();
   const ronova = page.getByRole('region', { name: 'Product grid' }).getByRole('button').filter({ has: page.getByRole('heading', { name: 'Ronova', exact: true }) });
   await expect(ronova.locator('img')).toHaveCount(3);

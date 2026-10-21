@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import { Card, Button } from '../components/ui';
 import { KeyRound, Mail, AlertCircle, Send } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { completePendingVerifiedCreatorSignup, fetchActorContext } from '../utils/access';
+import { completePendingVerifiedCreatorSignup, fetchActorContext, WorkspaceSelectionRequiredError } from '../utils/access';
 import { canAccessManagementPages, canAccessQueuePages } from '../types/access';
 import type { ActorRole } from '../types/access';
 import PublicShell from '../components/PublicShell';
@@ -53,10 +53,11 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
 
   const routeInFlightRef = useRef(false);
 
-  const getLivePathForRole = useCallback(async (role?: ActorRole | null) => {
+  const getLivePathForRole = useCallback(async (role?: ActorRole | null, artistId?: string | null) => {
     if (role !== 'seller' && role !== 'queue_staff') return '/manage-pos-queues';
 
-    const { data } = await supabase.rpc('list_accessible_pos_events');
+    if (!artistId) return role === 'seller' ? '/live/pos' : '/live/queue';
+    const { data } = await supabase.rpc('list_accessible_pos_events', { p_artist_id: artistId });
     const firstEvent = ((data || []) as AccessibleEvent[])[0];
     const query = firstEvent?.id ? `?eventId=${firstEvent.id}` : '';
 
@@ -72,6 +73,10 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
     setWorkspaceCheckFailed(false);
 
     try {
+      if (redirectTo === '/invitations' || redirectTo === '/admin' || redirectTo?.startsWith('/admin/')) {
+        navigate(redirectTo);
+        return;
+      }
       const signupCompletionStatus = await completePendingVerifiedCreatorSignup();
       const ctx = await fetchActorContext();
       const wantsAdminPage = ['/admin/applications', '/admin/support'].includes(redirectTo || '');
@@ -80,11 +85,11 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
         return;
       }
       if (!wantsAdminPage && canAccessQueuePages(ctx?.role)) {
-        navigate(await getLivePathForRole(ctx?.role));
+        navigate(await getLivePathForRole(ctx?.role, ctx?.artist_id));
         return;
       }
       const [adminResult, invitationResult] = await Promise.all([
-        supabase.rpc('is_platform_admin'),
+        supabase.rpc('is_platform_admin_account'),
         supabase.rpc('list_my_pending_invitations'),
       ]);
       if (adminResult.error) throw adminResult.error;
@@ -97,11 +102,11 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
       } else if (canAccessManagementPages(ctx?.role)) {
         navigate('/manage-events');
       } else if (canAccessQueuePages(ctx?.role)) {
-        navigate(await getLivePathForRole(ctx?.role));
+        navigate(await getLivePathForRole(ctx?.role, ctx?.artist_id));
       } else if ((invites || []).length > 0) {
         navigate('/invitations');
       } else if (isAdmin && options?.allowAdminFallback) {
-        navigate('/admin/applications');
+        navigate('/admin');
       } else if (signupCompletionStatus === 'error') {
         throw new Error('Could not complete creator signup');
       } else if (signupCompletionStatus === 'email_unconfirmed') {
@@ -110,7 +115,11 @@ const ManageLogin = ({ refreshWorkspace }: { refreshWorkspace: () => Promise<voi
         setShowCreatorApply(true);
         setErrorMsg(t('loginNoWorkspace'));
       }
-    } catch {
+    } catch (failure) {
+      if (failure instanceof WorkspaceSelectionRequiredError) {
+        navigate('/manage-workspaces');
+        return;
+      }
       setShowCreatorApply(false);
       setWorkspaceCheckFailed(true);
       setErrorMsg(t('workspaceLoadFailed'));

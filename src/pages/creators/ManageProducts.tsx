@@ -25,6 +25,7 @@ import { uiText, useI18n } from '../../i18n';
 import { listMyOnlineCampaigns } from '../../lib/onlineCampaigns';
 import type { OnlineCampaignSummary } from '../../types/onlineCampaign';
 import PromotionManager from '../../components/promotions/PromotionManager';
+import EventPromotionPicker from '../../components/promotions/EventPromotionPicker';
 import ProductImageCropModal from '../../components/ProductImageCropModal';
 import ProductFamilyEditor, { type ProductFamilySaveInput } from '../../components/products/ProductFamilyEditor';
 import { ProductMedia } from '../../components/menu/ProductPresentation';
@@ -3094,15 +3095,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                </div>
 
                   <div className="border-t border-gray-100 p-4 animate-fade-in">
-                     <PromotionManager
+                     {isEventScopedWorkspace ? <EventPromotionPicker key={`${artistId}:${selectedEventId}`} artistId={artistId} eventId={selectedEventId} eventName={selectedEventName} products={products} /> : <PromotionManager
                         artistId={artistId}
                         products={products}
                         eventOptions={eventOptions}
                         categorySuggestions={allCategorySuggestions}
                         tagSuggestions={allTagSuggestions}
-                        lockedEventId={isEventScopedWorkspace ? selectedEventId : undefined}
-                        lockedEventName={isEventScopedWorkspace ? selectedEventName : undefined}
-                     />
+                     />}
                   </div>
             </section>
             )}

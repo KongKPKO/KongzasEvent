@@ -17,7 +17,7 @@ test('group discounts and activity rights can be previewed with zero allocated s
     await page.locator('input[type=password]').fill(password);
     await page.getByRole('button', { name: /Login/i }).click();
     await expect(page).not.toHaveURL(/manage-login/);
-    await page.goto(`/manage-events/${eventId}/promotion`);
+    await page.goto('/manage-promotions');
     await selectLanguage(page, 'th');
     await page.getByRole('button', { name: 'สร้างโปรโมชัน', exact: true }).click();
     const form = page.locator('#promotion-editor');

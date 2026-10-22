@@ -1,8 +1,11 @@
 import { supabase } from '../supabaseClient';
-import type { PromotionDefinition, PromotionPreviewInput, PromotionPreviewResult, PromotionQuote, PromotionQuoteInput, SavePromotionDefinitionInput } from '../types/promotion';
+import type { PromotionAssignment, PromotionDefinition, PromotionPreviewInput, PromotionPreviewResult, PromotionQuote, PromotionQuoteInput, SavePromotionDefinitionInput } from '../types/promotion';
 
 const promotionErrorCodes = [
   'promotion_changed',
+  'promotion_assignments_invalid',
+  'promotion_not_found',
+  'promotion_not_ready',
   'promotion_reward_not_in_channel',
   'promotion_gift_limit_below_committed',
   'promotion_reward_required',
@@ -83,8 +86,11 @@ export const getPromotionAssignmentConflicts = async (assignmentId: string) => {
 };
 
 export const listPromotionDefinitions = async (artistId: string): Promise<PromotionDefinition[]> => {
-  const [definitionsResult, assignmentsResult, tiersResult, rewardsResult, giftUsageResult] = await Promise.all([
-    supabase.from('artist_promotions').select('id,artist_id,name,promotion_type,target_type,match_category,match_tag,match_product_ids,buy_quantity,reward_value,reward_quantity,reward_selection_mode,tier_grant_mode,lifecycle_status,revision,v1_config').eq('artist_id', artistId).order('created_at', { ascending: false }),
+  // Read revisions first: a concurrent save may make this snapshot stale, but
+  // cannot pair a new revision with older assignments and bypass the save guard.
+  const definitionsResult = await supabase.from('artist_promotions').select('id,artist_id,name,promotion_type,target_type,match_category,match_tag,match_product_ids,buy_quantity,reward_value,reward_quantity,reward_selection_mode,tier_grant_mode,lifecycle_status,revision,v1_config').eq('artist_id', artistId).order('created_at', { ascending: false });
+  if (definitionsResult.error) throw toPromotionError(definitionsResult.error);
+  const [assignmentsResult, tiersResult, rewardsResult, giftUsageResult] = await Promise.all([
     supabase.from('promotion_assignments').select('*').eq('artist_id', artistId),
     supabase.from('promotion_tiers').select('*'),
     supabase.from('promotion_reward_products').select('*'),
@@ -147,4 +153,27 @@ export const archivePromotionDefinition = async (promotionId: string) => {
   const { data, error } = await supabase.rpc('archive_promotion_definition', { p_promotion_id: promotionId });
   if (error) throw toPromotionError(error);
   return Boolean(data);
+};
+
+
+export interface SaveEventPromotionSelectionInput {
+  eventId: string;
+  promotionId: string;
+  expectedRevision: number;
+  assignments: Array<Pick<PromotionAssignment, 'event_phase' | 'starts_at' | 'ends_at' | 'combination_policy'>>;
+  confirmationToken?: string;
+}
+
+export const saveEventPromotionSelection = async (input: SaveEventPromotionSelectionInput) => {
+  const { data, error } = await supabase.rpc('save_event_promotion_selection', {
+    p_event_id: input.eventId, p_promotion_id: input.promotionId,
+    p_expected_revision: input.expectedRevision, p_assignments: input.assignments,
+    p_confirmation_token: input.confirmationToken || null,
+  });
+  if (error?.message.includes('promotion_conflict_confirmation_required')) {
+    const detail = JSON.parse(error.details);
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+  }
+  if (error) throw toPromotionError(error);
+  return data as string;
 };

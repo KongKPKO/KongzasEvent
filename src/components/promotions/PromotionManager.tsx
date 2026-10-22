@@ -181,7 +181,6 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
 
   const validate = () => {
     if (!name.trim()) return th ? 'กรอกชื่อโปรโมชัน' : 'Enter a promotion name.';
-    if (!assignmentKeys.length) return th ? 'เลือกช่องทางขายอย่างน้อย 1 ช่องทาง' : 'Choose at least one sales channel.';
     if ([startsAt, endsAt].some((value) => value && !Number.isFinite(new Date(value).getTime()))) return th ? 'วันเวลาไม่ถูกต้อง กรุณาระบุใหม่' : 'Invalid date. Please enter it again.';
     if (startsAt && endsAt && new Date(startsAt) >= new Date(endsAt)) return th ? 'เวลาเริ่มต้องมาก่อนเวลาสิ้นสุด' : 'Start time must be before end time.';
     if ((targetType === 'product' || targetType === 'product_line') && !effectiveTargetIds.length) return th ? 'เลือกสินค้าอย่างน้อย 1 รายการ' : 'Choose at least one product.';
@@ -213,7 +212,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
         }
         await savePromotionDefinition({ ...payload, confirmation_token: error.token });
       }
-      reset(); setEditorOpen(false); setMessage(th ? 'บันทึกโปรโมชันแล้ว จะใช้ตามช่องทางและช่วงเวลาที่กำหนด' : 'Promotion saved. It will apply in the assigned channels and schedule.'); await refresh(); requestAnimationFrame(() => listRef.current?.focus());
+      reset(); setEditorOpen(false); setMessage(th ? 'บันทึกโปรโมชันแล้ว' : 'Promotion saved.'); await refresh(); requestAnimationFrame(() => listRef.current?.focus());
     } catch (error) { console.error(error); setMessage(th ? 'บันทึกโปรโมชันไม่สำเร็จ กรุณาตรวจข้อมูลอีกครั้ง' : 'Could not save promotion. Check the form and try again.'); }
     finally { setSaving(false); }
   };
@@ -259,7 +258,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
         reset();
         setEditorOpen(false);
         await refresh();
-        setMessage(th ? 'บันทึกโปรโมชันแล้ว จะใช้ตามช่องทางและช่วงเวลาที่กำหนด' : 'Promotion saved. It will apply in the assigned channels and schedule.');
+        setMessage(th ? 'บันทึกโปรโมชันแล้ว' : 'Promotion saved.');
         requestAnimationFrame(() => listRef.current?.focus());
       }}
     />;
@@ -322,7 +321,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
           {promotionType !== 'quantity_discount' && <p className="promotion-context">{th ? 'ก่อนเปิดใช้ อย่าลืมจัดสรรสต็อกของแถมให้ทุกช่องทางที่เลือก ระบบตรวจสต็อกอีกครั้งตอนสั่งซื้อ' : 'Allocate gift stock to each selected channel. Availability is rechecked at checkout.'}</p>}
           {lockedEventId && <a className="promotion-button" href={`/manage-events/${lockedEventId}/preorder`} target="_blank" rel="noopener noreferrer">{th ? 'ดูช่วงขายของงาน' : 'Review sales windows'} ↗</a>}
           {message && <p role="alert" className="promotion-notice">{message}</p>}
-          <button disabled={saving || loading || loadError} className="promotion-button promotion-primary promotion-submit">{saving ? <Loader2 className="animate-spin" size={17} /> : <Check size={17} />}{saving ? (th ? 'กำลังตรวจและบันทึก…' : 'Checking and saving…') : editingArchived ? (th ? 'บันทึกและเปิดใช้อีกครั้ง' : 'Save and reactivate') : editingId ? (th ? 'บันทึกการแก้ไข' : 'Save changes') : (th ? 'บันทึกและเปิดใช้' : 'Save and activate')}</button>
+          <button disabled={saving || loading || loadError} className="promotion-button promotion-primary promotion-submit">{saving ? <Loader2 className="animate-spin" size={17} /> : <Check size={17} />}{saving ? (th ? 'กำลังตรวจและบันทึก…' : 'Checking and saving…') : editingArchived ? (th ? 'บันทึกและเปิดใช้อีกครั้ง' : 'Save and reactivate') : editingId ? (th ? 'บันทึกการแก้ไข' : 'Save changes') : assignmentKeys.length ? (th ? 'บันทึกและเปิดใช้' : 'Save and activate') : (th ? 'บันทึกโปรโมชั่น' : 'Save promotion')}</button>
           <p className="promotion-help">{th ? 'ตรวจโปรซ้อนก่อนบันทึก ออเดอร์เดิมคงราคาเดิม' : 'Overlaps are checked before saving. Existing orders keep their prices.'}</p>
         </aside>
       </div>

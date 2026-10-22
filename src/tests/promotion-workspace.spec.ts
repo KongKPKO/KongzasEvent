@@ -31,7 +31,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole('button', { name: /Login/i }).click();
     await expect(page).not.toHaveURL(/manage-login/);
-    await page.goto(`/manage-events/${eventId}/promotion`);
+    await page.goto('/manage-promotions');
     await selectLanguage(page, 'th');
     await page.getByRole('button', { name: 'สร้างโปรโมชัน', exact: true }).click();
 
@@ -187,5 +187,99 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     await service.from('event_products').delete().eq('event_id', eventId);
     await service.from('products').delete().in('id', productIds);
     await service.from('events').delete().eq('id', eventId);
+  }
+});
+
+
+test('store creates offers; event selection preserves other channels and cancelled saves', async ({ page }) => {
+  test.setTimeout(90000);
+  const suffix = randomUUID().slice(0, 8), email = `event-promo-${suffix}@example.test`, password = 'LocalPromotion123!';
+  const { service, userId } = await ensureOwnerArtistFixture({ email, password, slug: `event-promo-${suffix}`, displayName: 'Event promotion selection' });
+  const eventA = randomUUID(), eventB = randomUUID(), campaign = randomUUID(), product = randomUUID(), order = randomUUID(), competitor = randomUUID();
+  const must = (result: { error: unknown }) => { if (result.error) throw result.error; };
+  const start = new Date(Date.now() - 3600000).toISOString(), end = new Date(Date.now() + 86400000).toISOString();
+  const name = `Reusable offer ${suffix}`;
+  try {
+    must(await service.from('events').insert([eventA, eventB].map((id, index) => ({ id, artist_id: userId, event_name: `Selection event ${index}`, start_date: new Date(Date.now() - 7200000).toISOString(), end_date: new Date(Date.now() + 172800000).toISOString(), status: 'Confirmed' }))));
+    must(await service.from('online_campaigns').insert({ id: campaign, artist_id: userId, name: 'Untouched campaign', slug: campaign, opens_at: start, closes_at: end }));
+    must(await service.from('products').insert({ id: product, artist_id: userId, name: 'Selection product', price: 100, status: 'enable', is_unlimited: true }));
+    must(await service.from('event_products').insert([eventA, eventB].map(event_id => ({ event_id, artist_id: userId, product_id: product, is_enabled: true, is_unlimited: true }))));
+    must(await service.from('online_campaign_products').insert({ campaign_id: campaign, artist_id: userId, product_id: product, is_enabled: true, is_unlimited: true }));
+    await page.addInitScript(() => { localStorage.setItem('nireq-language', 'en'); localStorage.setItem('nireq-replay-consent-v1', 'rejected'); });
+    await page.goto('/manage-login');
+    await page.locator('input[type=email]').fill(email); await page.locator('input[type=password]').fill(password);
+    await page.getByRole('button', { name: /Login/i }).click();
+    await expect(page).not.toHaveURL(/manage-login/);
+    await page.goto('/manage-promotions');
+    await page.getByRole('button', { name: 'Create promotion', exact: true }).click();
+    const editor = page.locator('#promotion-editor');
+    await editor.getByLabel('Promotion name', { exact: true }).fill(name);
+    await editor.getByRole('checkbox', { name: /^Discount/ }).check();
+    await editor.getByLabel('Amount (THB)', { exact: true }).fill('10');
+    await editor.getByRole('button', { name: 'Save promotion', exact: true }).click();
+    await expect(editor).toBeHidden();
+    const saved = await service.from('artist_promotions').select('id,v1_config').eq('artist_id', userId).single().throwOnError();
+    const promotionId = saved.data!.id;
+    expect((await service.from('promotion_assignments').select('id').eq('promotion_id', promotionId)).data).toEqual([]);
+    must(await service.from('promotion_assignments').insert([
+      { promotion_id: promotionId, artist_id: userId, event_id: eventA, event_phase: 'live', starts_at: start, ends_at: end, is_paused: true, combination_policy: 'exclusive' },
+      { promotion_id: promotionId, artist_id: userId, event_id: eventB, event_phase: 'postorder', starts_at: start, ends_at: end, is_paused: false, combination_policy: 'combine' },
+      { promotion_id: promotionId, artist_id: userId, campaign_id: campaign, starts_at: start, ends_at: end, is_paused: false, combination_policy: 'exclusive' },
+    ]));
+    must(await service.from('artist_promotions').insert({ id: competitor, artist_id: userId, name: 'Competing offer', target_type: 'all', rule_type: 'discount', promotion_type: 'quantity_discount', buy_quantity: 3, reward_value: 5, lifecycle_status: 'ready' }));
+    must(await service.from('promotion_assignments').insert({ promotion_id: competitor, artist_id: userId, event_id: eventA, event_phase: 'live', is_paused: false, combination_policy: 'exclusive' }));
+    must(await service.from('orders').insert({ id: order, event_id: eventA, status: 'confirmed', total_price: 90, subtotal_price: 100, discount_total: 10, pricing_breakdown: [{ id: promotionId, name, discount_amount: 10 }] }));
+    const assignmentFields = 'id,event_id,event_phase,campaign_id,starts_at,ends_at,is_paused,combination_policy';
+    const before = (await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id').throwOnError()).data!;
+    const orderBefore = (await service.from('orders').select('*').eq('id', order).single().throwOnError()).data;
+    const others = before.filter(item => item.event_id !== eventA);
+    await page.goto(`/manage-events/${eventA}/promotion`);
+    await expect(page.getByRole('button', { name: 'Create promotion', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Manage store promotions', exact: true })).toHaveAttribute('href', '/manage-promotions');
+    const row = page.locator('article').filter({ has: page.getByRole('heading', { name, exact: true }) });
+    await row.getByRole('button', { name: 'Select promotion', exact: true }).click();
+    const selection = row.getByRole('form', { name: `Assign ${name}` });
+    await selection.getByRole('checkbox', { name: 'Live event', exact: true }).check();
+    const accessibility = await new AxeBuilder({ page }).include('.promotion-workspace').withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+    page.once('dialog', dialog => dialog.dismiss());
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection.getByRole('alert')).toContainText('Not saved');
+    expect((await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id')).data).toEqual(before);
+    page.once('dialog', dialog => dialog.accept());
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection).toBeHidden();
+    await expect(row.getByRole('button', { name: 'Usage settings', exact: true })).toBeFocused();
+    await page.screenshot({ path: `output/playwright/event-promotion-selection-${test.info().project.name}.png`, fullPage: true });
+    const after = (await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id').throwOnError()).data!;
+    expect(after.filter(item => item.event_id !== eventA)).toEqual(others);
+    expect(after.find(item => item.event_id === eventA)).toEqual({ ...before.find(item => item.event_id === eventA)!, is_paused: false });
+    expect((await service.from('artist_promotions').select('v1_config').eq('id', promotionId).single()).data?.v1_config).toEqual(saved.data!.v1_config);
+    await row.getByRole('button', { name: 'Usage settings', exact: true }).click();
+    await selection.getByRole('checkbox', { name: 'Live event', exact: true }).uncheck();
+    await page.route('**/rest/v1/rpc/save_event_promotion_selection', route => route.fulfill({ status: 503, json: { message: 'test_unavailable' } }));
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection.getByRole('alert')).toContainText('Could not confirm');
+    expect((await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id')).data).toEqual(after);
+    await page.unroute('**/rest/v1/rpc/save_event_promotion_selection');
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection).toBeHidden();
+    expect((await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id')).data).toEqual(before);
+    expect((await service.from('orders').select('*').eq('id', order).single()).data).toEqual(orderBefore);
+    await row.getByRole('button', { name: 'Select promotion', exact: true }).click();
+    must(await service.from('artist_promotions').update({ name: 'Changed elsewhere' }).eq('id', promotionId));
+    await selection.getByRole('checkbox', { name: 'Live event', exact: true }).check();
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection.getByRole('alert')).toContainText('The promotion changed');
+    expect((await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id')).data).toEqual(before);
+    for (const width of [390, 1280]) { await page.setViewportSize({ width, height: 900 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); }
+  } finally {
+    must(await service.from('orders').delete().eq('id', order));
+    must(await service.from('artist_promotions').delete().eq('artist_id', userId));
+    must(await service.from('online_campaigns').delete().eq('id', campaign));
+    must(await service.from('events').delete().in('id', [eventA, eventB]));
+    must(await service.from('products').delete().eq('id', product));
+    must(await service.from('artists').delete().eq('id', userId));
+    must(await service.auth.admin.deleteUser(userId));
   }
 });

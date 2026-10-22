@@ -143,6 +143,7 @@ const CustomerLayout = () => {
             {displayArtist && (
                <CallingNotification
                   artistId={displayArtist.id}
+                  events={availableEvents}
                   slug={displayArtist.slug}
                   broadcastMessage={displayArtist.broadcast_message}
                />

@@ -5,7 +5,9 @@ import { supabase } from '../supabaseClient';
 import { Bell, ChevronRight, Coffee, Info, AlertTriangle, PauseCircle } from 'lucide-react';
 import { uiText, useI18n } from '../i18n';
 import { formatDateInTimeZone } from '../utils/timezone';
+import type { RealtimeEvent } from '../hooks/useArtistRealtime';
 import {
+  getEventSalesPhase,
   TICKET_UPDATED_EVENT,
   clearStoredTicketId,
   getStoredTicketId,
@@ -14,13 +16,15 @@ import {
 
 interface CallingNotificationProps {
   artistId: string;
+  events: RealtimeEvent[];
   slug: string;
   broadcastMessage?: string;
 }
 
-const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcastMessage }: CallingNotificationProps) => {
+const CallingNotification = ({ artistId, events, slug, broadcastMessage: initialBroadcastMessage }: CallingNotificationProps) => {
   const { t, language } = useI18n();
   const navigate = useNavigate();
+  const liveEventIds = events.filter(event => getEventSalesPhase(event) === 'live').map(event => event.id).join('|');
   const [isCalling, setIsCalling] = useState(false);
   const [ticketNumber, setTicketNumber] = useState<string | null>(null);
   const [ticketId, setTicketId] = useState<string | null>(null);
@@ -54,6 +58,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
   // 1. โหลดข้อมูลเริ่มต้น
   useEffect(() => {
     if (!artistId) return;
+    let active = true;
 
     // 1.1 ดึง Broadcast ล่าสุด
     const fetchBroadcast = async () => {
@@ -62,7 +67,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
         .select('broadcast_message')
         .eq('id', artistId)
         .maybeSingle();
-      if (data) setBroadcastMessage(data.broadcast_message);
+      if (active && data) setBroadcastMessage(data.broadcast_message);
     };
     fetchBroadcast();
 
@@ -78,12 +83,14 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
             .eq('id', storedTicketId)
             .maybeSingle();
 
+        if (!active || getStoredTicketId(artistId) !== storedTicketId) return;
         // รองรับทั้ง serving และ calling
-        if (data && isTicketFromToday(data) && (data.status === 'serving' || data.status === 'calling')) {
+        if (data && liveEventIds.split('|').includes(data.event_id) && isTicketFromToday(data) && (data.status === 'serving' || data.status === 'calling')) {
           setIsCalling(true);
           setTicketNumber(data.queue_number);
           await fetchQueueingArea(data.event_id);
         } else {
+          setIsCalling(false);
           if (data && !isTicketFromToday(data)) {
             clearStoredTicketId(artistId);
           }
@@ -92,7 +99,8 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
       };
       fetchTicketStatus();
     }
-  }, [artistId]);
+    return () => { active = false; };
+  }, [artistId, liveEventIds]);
 
   // 2. Keep ticketId in sync when the customer joins the queue in the same tab
   //    or in a different tab.
@@ -118,6 +126,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
 
     const syncTicketFromStorage = () => {
       const stored = getStoredTicketId(artistId);
+      if (!stored) { setIsCalling(false); setQueueingArea(null); }
       // Functional update avoids stale-closure comparison and
       // skips a re-render when the value hasn't changed.
       setTicketId((prev) => (stored !== prev ? stored : prev));
@@ -147,7 +156,8 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
     if (ticketId) {
        ticketChannel = supabase.channel(`my-ticket-notification:${ticketId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${ticketId}` }, (payload) => {
-            if (!payload.new) return;
+            if (!payload.new || getStoredTicketId(artistId) !== ticketId) return;
+            if (!liveEventIds.split('|').includes(payload.new.event_id)) { setIsCalling(false); return; }
             if (payload.new.status === 'serving' || payload.new.status === 'calling') {
               setIsCalling(true);
               setTicketNumber(payload.new.queue_number);
@@ -173,7 +183,7 @@ const CallingNotification = ({ artistId, slug, broadcastMessage: initialBroadcas
       if (ticketChannel) supabase.removeChannel(ticketChannel);
       supabase.removeChannel(broadcastChannel);
     };
-  }, [ticketId, artistId]);
+  }, [ticketId, artistId, liveEventIds]);
 
 
   // 🎨 RENDER LOGIC

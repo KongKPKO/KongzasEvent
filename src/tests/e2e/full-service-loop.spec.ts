@@ -241,3 +241,68 @@ test.describe('full queue and POS service loop', () => {
     }
   });
 });
+
+for (const boundReceipt of [true, false]) {
+  test(`ended event receipt does not block the next event (${boundReceipt ? 'bound' : 'legacy'} receipt)`, async ({ page }) => {
+    test.setTimeout(90_000);
+    const oldEvent = randomUUID(), oldQueue = randomUUID(), oldOrder = randomUUID();
+    const now = Date.now();
+    const eventAge = boundReceipt ? 86400000 : 0;
+    try {
+      // Cover yesterday and the same day; both Events remain Confirmed/open.
+      must(await service.from('events').insert({ id: oldEvent, artist_id: artistId, event_name: 'Earlier event', start_date: new Date(now - eventAge - 7200000).toISOString(), end_date: new Date(now - eventAge - 3600000).toISOString(), status: 'Confirmed', is_booth_open: true }), 'seed earlier event');
+      must(await service.from('queues').insert({ id: oldQueue, event_id: oldEvent, artist_id: artistId, queue_number: 77, status: 'calling', queue_service_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now - eventAge)) }), 'seed earlier ticket');
+      must(await service.from('orders').insert({ id: oldOrder, event_id: oldEvent, queue_id: oldQueue, status: 'confirmed', total_price: 100, currency: 'THB' }), 'seed earlier order');
+      await page.addInitScript(({ artistId, eventId, oldQueue, oldOrder, boundReceipt }) => {
+        if (sessionStorage.getItem('old-receipt-seeded')) return;
+        sessionStorage.setItem('old-receipt-seeded', 'true');
+        localStorage.setItem('nireq-language', 'en');
+        localStorage.setItem('nireq-replay-consent-v1', 'rejected');
+        localStorage.setItem(`customerSelectedEventId:${artistId}`, eventId);
+        localStorage.setItem(`ticket_id_${artistId}`, oldQueue);
+        localStorage.setItem(`orderSent_${artistId}`, 'true');
+        localStorage.setItem(`sentOrderId_${artistId}`, oldOrder);
+        if (boundReceipt) localStorage.setItem(`sentOrderTicketId_${artistId}`, oldQueue);
+      }, { artistId, eventId, oldQueue, oldOrder, boundReceipt });
+      await page.goto(`/${artistSlug}/menu`);
+      const add = page.getByRole('button', { name: `Add: ${productName}`, exact: true });
+      await expect(add).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'Close order notification', exact: true })).toBeHidden();
+      await expect(page.getByRole('button', { name: /Your Turn.*Queue 77/ })).toBeHidden();
+      await page.reload();
+      await expect(add).toBeEnabled();
+      await add.click();
+      await page.goto(`/${artistSlug}/queue`);
+      await page.getByRole('button', { name: /Get Ticket|Join (?:the )?Queue/i }).click();
+      await expect(page.locator('.queue-ticket-number')).toBeVisible();
+      const nextQueue = await page.evaluate(artistId => localStorage.getItem(`ticket_id_${artistId}`), artistId);
+      expect(nextQueue).toBeTruthy(); expect(nextQueue).not.toBe(oldQueue);
+      must(await service.from('queues').update({ status: 'calling' }).eq('id', nextQueue!), 'call next event ticket');
+      await page.goto(`/${artistSlug}/menu`);
+      await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
+      await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Confirm Order?', exact: true }).getByRole('button', { name: 'Send Order', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Close order notification', exact: true })).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole('button', { name: 'Close order notification', exact: true })).toBeVisible();
+      await expect(add).toBeDisabled();
+      // A failed receipt check must not let this ticket submit a second order.
+      await page.route('**/rest/v1/rpc/get_customer_order_status', route => route.abort('failed'));
+      await page.reload();
+      await expect(add).toBeEnabled();
+      await add.click();
+      await expect(page.getByRole('button', { name: 'Wait', exact: true })).toBeDisabled();
+      await page.unroute('**/rest/v1/rpc/get_customer_order_status');
+      await page.reload();
+      await expect(page.getByRole('button', { name: 'Close order notification', exact: true })).toBeVisible();
+      const nextOrder = dataOrThrow(await service.from('orders').select('event_id,status').eq('queue_id', nextQueue!).single(), 'read new event order');
+      expect(nextOrder).toEqual({ event_id: eventId, status: 'confirmed' });
+      const previousOrder = dataOrThrow(await service.from('orders').select('event_id,status,total_price').eq('id', oldOrder).single(), 'read preserved earlier order');
+      expect(previousOrder).toEqual({ event_id: oldEvent, status: 'confirmed', total_price: 100 });
+    } finally {
+      must(await service.from('orders').delete().eq('id', oldOrder), 'delete earlier order');
+      must(await service.from('queues').delete().eq('event_id', oldEvent), 'delete earlier queues');
+      must(await service.from('events').delete().eq('id', oldEvent), 'delete earlier event');
+    }
+  });
+}

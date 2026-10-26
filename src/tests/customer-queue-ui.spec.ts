@@ -14,7 +14,9 @@ test('customer queue preserves a ticket across browsing and shows service comple
     await page.getByRole('button', { name: 'Get Ticket', exact: true }).click();
     const ticket = page.getByRole('region', { name: 'Your queue ticket', exact: true });
     await expect(ticket).toContainText('#1');
-    await page.getByRole('link', { name: /Browse creator goods/ }).click();
+    const browse = page.getByRole('link', { name: /Browse this creator’s work/ });
+    await expect(browse).toHaveAttribute('href', `/${slug}/menu`);
+    await browse.click();
     await expect(page).toHaveURL(new RegExp(`/${slug}/menu`));
     await expect(page.locator('main.creator-store')).toBeVisible();
     await page.goto(`/${slug}/queue`);
@@ -31,6 +33,10 @@ test('customer queue preserves a ticket across browsing and shows service comple
     await expect(ticket).toContainText(/Complete/i, { timeout: 12000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally {
-    await fixture.service.auth.admin.deleteUser(fixture.userId);
+    await fixture.service.from('queues').delete().eq('event_id', eventId).throwOnError();
+    await fixture.service.from('events').delete().eq('id', eventId).throwOnError();
+    await fixture.service.from('artists').delete().eq('id', fixture.userId).throwOnError();
+    const deleted = await fixture.service.auth.admin.deleteUser(fixture.userId);
+    if (deleted.error) throw deleted.error;
   }
 });

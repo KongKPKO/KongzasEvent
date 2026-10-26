@@ -269,6 +269,7 @@ if (mode === 'local') {
     'src/tests/release-cache.spec.ts',
     'src/tests/public-i18n-smoke.spec.ts',
     'src/tests/queue-availability.spec.ts',
+    'src/tests/customer-queue-ui.spec.ts',
     'src/tests/online-shop-discovery.spec.ts',
     'src/tests/storefront.spec.ts',
     'src/tests/seller-type-customer.spec.ts',

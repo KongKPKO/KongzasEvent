@@ -14,7 +14,7 @@ import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
 
 const ProductList = lazy(() => import('../../components/menu/ProductList'));
 import { formatPrice } from '../../utils/currency';
-import { calculatePromotionPricing, getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
+import { getPromotionBadgesForProduct, type PromotionRule } from '../../utils/promotionPricing';
 import { normalizeProductRecord } from '../../utils/schemaCompat';
 import { uiText, useI18n } from '../../i18n';
 import { quotePromotions, requiresPromotionReview } from '../../lib/promotions';
@@ -182,7 +182,8 @@ const MenuView = () => {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<'submit_order' | 'cancel_order' | null>(null);
-  const [promotionQuote, setPromotionQuote] = useState<PromotionQuote | null>(null);
+  const [promotionQuoteResult, setPromotionQuoteResult] = useState<{ key: string; quote: PromotionQuote } | null>(null);
+  const [promotionRefresh, setPromotionRefresh] = useState(0);
   const [promotionQuoteLoading, setPromotionQuoteLoading] = useState(false);
   const [promotionQuoteFailed, setPromotionQuoteFailed] = useState(false);
   const [rewardChoices, setRewardChoices] = useState<PromotionChoice[]>([]);
@@ -254,7 +255,7 @@ const MenuView = () => {
   const cartItems = useMemo(() => products
     .filter((product) => (cart[product.id] || 0) > 0)
     .map((product) => ({ product, quantity: cart[product.id] || 0 })), [products, cart]);
-  const pricing = useMemo(() => calculatePromotionPricing(cartItems, promotions), [cartItems, promotions]);
+
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
     selectedCategory !== ALL_CATEGORIES ||
@@ -307,42 +308,47 @@ const MenuView = () => {
   const hasValidPreorderEmail = isValidEmail(preorderCustomer.email);
   const postOrderPhoneMissing = isPostOrderMode && preorderCustomer.phone.trim().length === 0;
   const postOrderAddressMissing = isPostOrderMode && preorderCustomer.shippingAddress.trim().length === 0;
+  const quotePhase = isPostOrderMode ? 'postorder' : isPreorderMode ? 'preorder' : 'live';
+  const promotionQuoteKey = JSON.stringify([selectedEvent?.id, selectedEventPhase, quotePhase, cartItems.map(item => [item.product.id, item.quantity, item.product.price, item.product.currency]), rewardChoices, promotionChoices, promotionRefresh]);
+  const cartContextKey = JSON.stringify([contextArtist?.id, selectedEvent?.id, cartItems.map(item => [item.product.id, item.quantity])]);
+  const submissionContextKey = JSON.stringify([cartContextKey, selectedEventPhase, menuTicketId]);
+  const currentCheckout = useRef({ submissionContextKey, promotionQuoteKey, cartContextKey, artistId: contextArtist?.id });
+  currentCheckout.current = { submissionContextKey, promotionQuoteKey, cartContextKey, artistId: contextArtist?.id };
+  // Invalidate synchronously on cart/context edits, before the request effect runs.
+  const promotionQuote = promotionQuoteResult?.key === promotionQuoteKey ? promotionQuoteResult.quote : null;
   const requiredPromotionChoices = promotionQuote?.required_choices.filter((choice) => !choice.exhausted) || [];
   const exhaustedPromotionChoices = promotionQuote?.required_choices.filter((choice) => choice.exhausted) || [];
-  const displayedSubtotal = isAdvanceOrderFlow && promotionQuote ? promotionQuote.subtotal : pricing.subtotal;
-  const displayedDiscount = isAdvanceOrderFlow && promotionQuote ? promotionQuote.discount_total : pricing.discountTotal;
-  const displayedTotal = isAdvanceOrderFlow && promotionQuote ? promotionQuote.total : pricing.total;
+  const displayedSubtotal = promotionQuote?.subtotal ?? cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const displayedDiscount = promotionQuote?.discount_total ?? 0;
+  const displayedTotal = promotionQuote?.total ?? 0;
+  const displayedTotalLabel = promotionQuote ? formatPrice(displayedTotal, cartCurrency) : '—';
 
   useEffect(() => {
-    if (!isAdvanceOrderFlow || !selectedEvent?.id || cartItems.length === 0) {
-      setPromotionQuote(null);
+    setPromotionQuoteResult(null);
+    if (!selectedEvent?.id || cartItems.length === 0 || selectedEventPhase === 'closed') {
       setPromotionQuoteLoading(false);
       setPromotionQuoteFailed(false);
       return;
     }
     let active = true;
-    setPromotionQuote(null);
     setPromotionQuoteLoading(true);
     setPromotionQuoteFailed(false);
     const timer = window.setTimeout(() => {
       void quotePromotions({
         eventId: selectedEvent.id,
-        eventPhase: isPostOrderMode ? 'postorder' : 'preorder',
+        eventPhase: quotePhase,
         items: cartItems.map((item) => ({ product_id: item.product.id, quantity: item.quantity })),
-        rewardChoices,
-        promotionChoices,
-      }).then((nextQuote) => { if (active) setPromotionQuote(nextQuote); })
+        rewardChoices: isAdvanceOrderFlow ? rewardChoices : [],
+        promotionChoices: isAdvanceOrderFlow ? promotionChoices : [],
+      }).then((quote) => { if (active) setPromotionQuoteResult({ key: promotionQuoteKey, quote }); })
         .catch((error) => {
           console.error(error);
-          if (active) {
-            setPromotionQuoteFailed(true);
-            setToast({ tone: 'error', title: uiText(language, 'Could not calculate promotions') });
-          }
+          if (active) setPromotionQuoteFailed(true);
         })
         .finally(() => { if (active) setPromotionQuoteLoading(false); });
     }, 150);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [cartItems, isAdvanceOrderFlow, isPostOrderMode, language, promotionChoices, rewardChoices, selectedEvent?.id]);
+  }, [cartItems, isAdvanceOrderFlow, quotePhase, promotionQuoteKey, promotionChoices, rewardChoices, selectedEvent?.id, selectedEventPhase]);
 
   const fetchPromotions = async (artistId: string, eventId?: string | null) => {
     const { data, error } = await supabase.rpc('list_active_promotions', {
@@ -357,6 +363,7 @@ const MenuView = () => {
     }
 
     setPromotions((data || []) as PromotionRule[]);
+    setPromotionRefresh(value => value + 1);
   };
 
   // --- Persist cart to localStorage ---
@@ -367,11 +374,11 @@ const MenuView = () => {
   }, [cart, cartItemNames, contextArtist?.id]);
 
   useEffect(() => {
-    if (!isAdvanceOrderFlow) return;
+    if (!selectedEvent?.id) return;
     setNowMs(Date.now());
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 60000);
     return () => window.clearInterval(intervalId);
-  }, [isAdvanceOrderFlow]);
+  }, [selectedEvent?.id]);
 
   useEffect(() => {
     if (!preorderCustomerStorageKey) return;
@@ -591,7 +598,7 @@ const MenuView = () => {
   // --- 3. Helpers ---
 
   const updateQuantity = (productId: string, delta: number, productName?: string) => {
-    if (isOrderSent) return;
+    if (isOrderSent || submitting) return;
     setAcceptExhaustedRewards(false);
     setCart(prev => {
       const current = prev[productId] || 0;
@@ -618,7 +625,7 @@ const MenuView = () => {
 
   // --- 4. Confirm Order Logic ---
   const handleConfirmOrder = async () => {
-    if (totalItems === 0) return;
+    if (totalItems === 0 || !promotionQuote || promotionQuoteLoading || submitting) return;
 
     if (isAdvanceOrderFlow) {
       setAdvanceOrderSubmitAttempted(true);
@@ -691,6 +698,10 @@ const MenuView = () => {
       return;
     }
 
+    if (!promotionQuote || promotionQuoteLoading || submitting) return;
+    const reviewedQuote = promotionQuote;
+    const reviewedKey = promotionQuoteKey;
+    const reviewedContext = submissionContextKey;
     const localQueueId = getStoredTicketId(displayArtist?.id);
     if (!localQueueId) {
         setConfirmAction(null);
@@ -702,6 +713,14 @@ const MenuView = () => {
     setConfirmAction(null);
     setSubmitting(true);
     try {
+        const latestQuote = await quotePromotions({ eventId: selectedEvent?.id, eventPhase: 'live', items: cartItems.map(item => ({ product_id: item.product.id, quantity: item.quantity })) });
+        if (currentCheckout.current.submissionContextKey !== reviewedContext || currentCheckout.current.promotionQuoteKey !== reviewedKey) return;
+        if (latestQuote.pricing_hash !== reviewedQuote.pricing_hash) {
+          setPromotionQuoteResult({ key: reviewedKey, quote: latestQuote });
+          setToast({ tone: 'warning', title: language === 'th' ? 'โปรโมชั่นหรือยอดเปลี่ยนแล้ว กรุณาตรวจยอดและยืนยันอีกครั้ง' : 'Offers or totals changed. Review the updated total and confirm again.' });
+          setIsCartOpen(true);
+          return;
+        }
         // 2. Validate Queue Status (Server Check - Strict)
         const { data: queueData, error: queueError } = await supabase
             .from('queues')
@@ -773,6 +792,7 @@ const MenuView = () => {
             notes: ''
         }));
 
+        if (currentCheckout.current.submissionContextKey !== reviewedContext || currentCheckout.current.promotionQuoteKey !== reviewedKey) return;
         const { data: createdOrderId, error: orderError } = await supabase.rpc('create_customer_order_with_stock', {
             p_queue_id: localQueueId,
             p_items: itemPayload
@@ -782,6 +802,15 @@ const MenuView = () => {
 
         const orderId = Array.isArray(createdOrderId) ? createdOrderId[0] : createdOrderId;
         if (!orderId) throw new Error(uiText(language, 'Order creation failed'));
+        // Preserve a committed response even if the phase/route changed in flight.
+        const receiptArtistId = contextArtist?.id;
+        if (receiptArtistId) {
+          localStorage.setItem(`orderSent_${receiptArtistId}`, 'true');
+          localStorage.setItem(`sentOrderId_${receiptArtistId}`, orderId);
+          localStorage.setItem(`sentOrderTicketId_${receiptArtistId}`, localQueueId);
+          localStorage.setItem(`orderCompleted_${receiptArtistId}`, 'false');
+        }
+        if (currentCheckout.current.artistId !== receiptArtistId) return;
 
         setVerifiedOrderId(orderId);
         setSentOrderId(orderId);
@@ -789,11 +818,16 @@ const MenuView = () => {
         setIsOrderCompleted(false);
         setOrderBannerDismissed(false);
         setIsOrderSent(true);
-        setIsCartOpen(false);
-        clearCart();
+        if (currentCheckout.current.cartContextKey === cartContextKey) {
+          setIsCartOpen(false);
+          clearCart();
+        }
         setToast({ tone: 'success', title: t('menuOrderSentToast'), detail: t('menuOrderSentDetail') });
 
     } catch (err: any) {
+        if (currentCheckout.current.submissionContextKey !== reviewedContext || currentCheckout.current.promotionQuoteKey !== reviewedKey) return;
+        setPromotionQuoteResult(null);
+        setPromotionQuoteFailed(true);
         setToast({ tone: 'error', title: t('menuOrderSendError'), detail: uiText(language, err.message) });
         console.error(err);
     } finally {
@@ -1100,21 +1134,21 @@ const MenuView = () => {
       : t('menuQueueGuidanceNeedTicket');
   const canSubmitSelection = isAdvanceOrderFlow
     ? preorderWindowOpen && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards)
-    : canConfirmOrder;
+    : canConfirmOrder && !promotionQuoteLoading && Boolean(promotionQuote);
   const orderGuidance = isAdvanceOrderFlow ? preorderGuidance : queueGuidance;
   const orderStatusReadyLabel = isAdvanceOrderFlow ? t('menuPreorderReady') : t('menuReadyConfirm');
   const orderStatus = (() => {
     if (canSubmitSelection) return { label: orderStatusReadyLabel, tone: 'ready' as const };
-    if (!isAdvanceOrderFlow) return { label: t('menuSelectionOnly'), tone: 'warning' as const };
-    if (!preorderWindowOpen) return { label: t('menuPreorderClosed'), tone: 'warning' as const };
+    if (!isAdvanceOrderFlow && !canConfirmOrder) return { label: t('menuSelectionOnly'), tone: 'warning' as const };
+    if (isAdvanceOrderFlow && !preorderWindowOpen) return { label: t('menuPreorderClosed'), tone: 'warning' as const };
     if (totalItems === 0) return { label: uiText(language, 'Select items'), tone: 'waiting' as const };
     if (promotionQuoteLoading || (!promotionQuote && !promotionQuoteFailed)) {
       return { label: t('commonWorking'), tone: 'waiting' as const };
     }
-    if (requiredPromotionChoices.length > 0) {
+    if (isAdvanceOrderFlow && requiredPromotionChoices.length > 0) {
       return { label: language === 'th' ? 'เลือกของแถมโปรโมชั่นให้ครบ' : 'Choose your promotion gifts', tone: 'warning' as const };
     }
-    if (exhaustedPromotionChoices.length > 0 && !acceptExhaustedRewards) {
+    if (isAdvanceOrderFlow && exhaustedPromotionChoices.length > 0 && !acceptExhaustedRewards) {
       return { label: uiText(language, 'Review the new total without this promotion, then confirm to continue.'), tone: 'warning' as const };
     }
     return { label: uiText(language, 'Could not calculate promotions'), tone: 'warning' as const };
@@ -1174,6 +1208,8 @@ const MenuView = () => {
   if (catalogError && !loading) return <main className="shop-empty" role="alert"><h1 className="text-xl font-bold">{language === 'th' ? 'โหลดสินค้าไม่สำเร็จ' : 'Could not load products'}</h1><p>{language === 'th' ? 'ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง ตะกร้าของคุณยังอยู่' : 'Check your connection and try again. Your cart is still saved.'}</p><button className="shop-outline" onClick={() => setCatalogRetry(value => value + 1)}>{language === 'th' ? 'ลองอีกครั้ง' : 'Try again'}</button></main>;
   if (loading) return <main className="p-8 text-center text-gray-600">{t('menuLoading')}</main>;
 
+  const quoteStatusNotice = !promotionQuote && <div role={promotionQuoteFailed ? 'alert' : 'status'} className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-950">{promotionQuoteFailed ? uiText(language, 'Could not calculate promotions') : (language === 'th' ? 'กำลังคำนวณโปรโมชั่นและยอดรวม…' : 'Calculating offers and total…')}{promotionQuoteFailed && <button type="button" className="ml-2 underline font-bold" onClick={() => setPromotionRefresh(value => value + 1)}>{language === 'th' ? 'ลองใหม่' : 'Retry'}</button>}</div>;
+
   return (
     <main className="creator-store relative mx-auto min-h-screen w-full pb-48 lg:pb-8">
       <Toast message={toast} onClose={() => setToast(null)} />
@@ -1189,12 +1225,14 @@ const MenuView = () => {
             <div className="checkout-totals">
               <div><span>{t('campaignSubtotal')}</span><strong>{formatPrice(displayedSubtotal, cartCurrency)}</strong></div>
               {displayedDiscount > 0 && <div><span>{uiText(language, 'Discount')}</span><strong>−{formatPrice(displayedDiscount, cartCurrency)}</strong></div>}
-              <div><span>{t('menuTotal')} · {totalItems} {t('menuItems')}</span><strong>{formatPrice(displayedTotal, cartCurrency)}</strong></div>
+              <div><span>{t('menuTotal')} · {totalItems} {t('menuItems')}</span><strong>{displayedTotalLabel}</strong></div>
             </div>
-            {isAdvanceOrderFlow && promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{promotionGiftLabel(promotionQuote, reward, language)}</p>)}
+            {promotionQuote?.applied_promotions.map(promotion => <p className="checkout-help" key={promotion.id}><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <> · −{formatPrice(promotion.discount_amount, cartCurrency)}</>}</p>)}
+            {promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{promotionGiftLabel(promotionQuote, reward, language)}</p>)}
             <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />
+            {quoteStatusNotice}
             <p className="checkout-hold-note">{isAdvanceOrderFlow ? (language === 'th' ? 'หลังยืนยัน ระบบจะจองสต็อกให้ 15 นาทีเพื่อชำระเงิน' : 'After confirmation, stock is held for 15 minutes while you pay.') : orderGuidance}</p>
-            <button type="button" disabled={submitting} className="shop-add" onClick={submitConfirmedOrder}>{submitting ? t('commonWorking') : isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}</button>
+            <button type="button" disabled={submitting || !canSubmitSelection} className="shop-add" onClick={submitConfirmedOrder}>{submitting ? t('commonWorking') : isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderConfirmButton') : t('menuConfirmOrderButton')}</button>
           </aside>
         </div>
       </CheckoutDialog>}
@@ -1425,10 +1463,6 @@ const MenuView = () => {
                                 {Object.entries(cart).map(([id, qty]) => {
                                     const product = products.find(p => p.id === id);
                                     if (!product || qty === 0) return null;
-                                    const lineBreakdowns = pricing.lineBreakdowns[id] || [];
-                                    const lineDiscount = lineBreakdowns.reduce((sum, item) => sum + item.discountAmount, 0);
-                                    const lineSubtotal = product.price * qty;
-                                    const lineTotal = Math.max(0, lineSubtotal - lineDiscount);
                                     return (
                                         <div key={id} className="bg-gray-50 p-2 rounded-lg border border-gray-100">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1437,9 +1471,6 @@ const MenuView = () => {
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-sm text-gray-800 break-words">{product.name}</div>
                                                         <div className="text-[11px] text-gray-500">{formatPrice(product.price, product.currency)} / {t('menuUnit')}</div>
-                                                        {lineDiscount > 0 && (
-                                                            <div className="mt-0.5 text-[11px] font-bold text-emerald-700">{t('menuNow')} {formatPrice(lineTotal, product.currency)} {t('menuFrom')} {formatPrice(lineSubtotal, product.currency)}</div>
-                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
@@ -1449,46 +1480,12 @@ const MenuView = () => {
                                                     <button onClick={() => updateQuantity(id, -qty, product.name)} className="h-11 w-11 rounded-xl border border-red-200 bg-white text-red-600 text-xs font-black" aria-label={t('productRemove', { name: product.name })}>x</button>
                                                 </div>
                                             </div>
-                                            {lineBreakdowns.length > 0 && (
-                                                <div className="mt-2 space-y-1">
-                                                    {lineBreakdowns.map((entry, entryIndex) => (
-                                                        <div key={`${entry.ruleId}-${entryIndex}`} className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div>
-                                                                    <div className="text-[11px] font-black text-emerald-800">{entry.label}</div>
-                                                                    <div className="text-[11px] text-emerald-700">{entry.freeQuantity > 0 ? t('menuItemFree', { count: entry.freeQuantity }) : t('menuDiscountApplied', { count: entry.affectedQuantity })}</div>
-                                                                </div>
-                                                                <div className="text-[11px] font-black text-emerald-700">- {formatPrice(entry.discountAmount, product.currency)}</div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })}
                             </div>
 
-                            {!isAdvanceOrderFlow && pricing.appliedPromotions.length > 0 && (
-                                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-                                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2">
-                                        <Sparkles size={12} /> {t('menuAppliedPromotions')}
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        {pricing.appliedPromotions.map((promotion) => (
-                                            <div key={promotion.ruleId} className="flex items-start justify-between gap-2 rounded-lg bg-white/90 border border-emerald-100 px-2 py-1.5">
-                                                <div>
-                                                    <div className="text-[11px] font-bold text-gray-800">{promotion.label}</div>
-                                                    <div className="text-[11px] text-gray-600">{promotion.message}</div>
-                                                </div>
-                                                <div className="text-[11px] font-black text-emerald-700">- {formatPrice(promotion.discountAmount, cartCurrency)}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {isAdvanceOrderFlow && promotionQuote && promotionQuote.applied_promotions.length > 0 && (
+                            {promotionQuote && promotionQuote.applied_promotions.length > 0 && (
                                 <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
                                     <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2"><Sparkles size={12} /> {t('menuAppliedPromotions')}</div>
                                     <div className="space-y-1.5">
@@ -1498,7 +1495,10 @@ const MenuView = () => {
                                 </div>
                             )}
 
-            {isAdvanceOrderFlow && <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />}
+            <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />
+            {quoteStatusNotice}
+            {!isAdvanceOrderFlow && promotionQuote && <p className="mt-2 text-[11px] text-gray-600">{language === 'th' ? 'ยอดตามโปรโมชั่นปัจจุบัน ร้านตรวจยอดและของแถมอีกครั้งก่อนรับชำระ' : 'Based on current offers. The booth checks the total and gifts again before payment.'}</p>}
+            {!isAdvanceOrderFlow && requiredPromotionChoices.length > 0 && <p className="mt-2 text-xs text-amber-900">{language === 'th' ? 'มีโปรโมชั่นหรือของแถมที่ต้องเลือกร่วมกับร้านก่อนรับชำระ ยอดนี้ยังไม่รวมสิทธิ์ที่ยังไม่ได้เลือก' : 'Some offers or gifts need a choice at the booth before payment. Unselected benefits are not included in this total.'}</p>}
             {isAdvanceOrderFlow && requiredPromotionChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
               <PromotionChoicePicker choice={choice} onConfirm={(selection) => {
                 setAcceptExhaustedRewards(false);
@@ -1524,7 +1524,7 @@ const MenuView = () => {
                                 )}
                                 <div className="flex items-center justify-between pt-1 border-t border-gray-200">
                                     <span className="text-xs font-bold text-gray-700">{t('menuTotal')}</span>
-                                    <span className="text-sm font-black text-gray-900">{formatPrice(displayedTotal, cartCurrency)}</span>
+                                    <span className="text-sm font-black text-gray-900">{displayedTotalLabel}</span>
                                 </div>
                             </div>
 
@@ -1699,7 +1699,7 @@ const MenuView = () => {
                             <>
                                 <button type="button" onClick={() => setIsCartOpen(!isCartOpen)} className="flex min-h-14 flex-1 cursor-pointer flex-col justify-center text-left lg:cursor-default">
                                     <div className="flex items-center gap-1 text-gray-600 text-[11px] font-bold uppercase tracking-wider"><span>{t('menuTotalLabel')}</span><span className="lg:hidden">{isCartOpen ? <ChevronDown size={10}/> : <ChevronUp size={10} className="cart-chevron-nudge"/>}</span></div>
-                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{formatPrice(displayedTotal, cartCurrency)}</span><span className="text-[11px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
+                                    <div className="flex items-baseline gap-1.5"><span className="text-lg font-black text-gray-900 leading-none">{displayedTotalLabel}</span><span className="text-[11px] font-semibold text-gray-600">/ {totalItems} {t('menuItems')}</span></div>
                                     {displayedDiscount > 0 && (
                                         <div className="text-[11px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(displayedDiscount, cartCurrency)}</div>
                                     )}

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, ImageOff, Sparkles, Star } from 'lucide-react';
+import { ImageOff, Sparkles, Star } from 'lucide-react';
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -22,10 +22,10 @@ export default function StorefrontHeader({ name, bio, avatar, artworks = [], sel
   const profileImage = avatar ? <ShopImage src={avatar} name={name} className="shop-avatar" eager /> : <span className="shop-avatar shop-initial inline-flex items-center justify-center" aria-hidden="true">{name.charAt(0)}</span>;
   return <section className="shop-intro">
     {pictures.length > 0 && <div className="shop-artwork" aria-hidden="true">
-      <Heart className="shop-banner-heart" size={28} fill="currentColor" />
+      <Star className="shop-banner-heart" size={28} fill="currentColor" />
       <Sparkles className="shop-banner-sparkles" size={32} />
       <div className="shop-banner-confetti">{[0, 1, 2, 3, 4, 5].map(index => <Star key={index} className={`shop-confetti shop-confetti-${index}`} size={18} fill="currentColor" />)}</div>
-      <span className="shop-artwork-caption">{sellerLabels.artwork}<Heart size={20} fill="currentColor" /></span>
+      <span className="shop-artwork-caption">{sellerLabels.artwork}<Sparkles size={20} /></span>
       <div className="shop-artwork-pictures">{pictures.map(product => <div className="shop-print" key={product.id}><ShopImage src={product.image_url} name="" eager /></div>)}</div>
     </div>}
     <div className="shop-identity">

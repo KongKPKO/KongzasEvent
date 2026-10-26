@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,7 +248,7 @@ async function deliverEmail(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        From: { Email: "preorders@nireq.local", Name: "NireQ" },
+        From: { Email: "preorders@nireq.local", Name: "Paimon" },
         To: [{ Email: to, Name: toName }],
         Subject: message.subject,
         HTML: message.html,
@@ -272,7 +273,11 @@ async function deliverEmail(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: Deno.env.get("PREORDER_EMAIL_FROM") || Deno.env.get("APPLICATION_EMAIL_FROM") || "NireQ <preorders@resend.dev>",
+      from: withPaimonSenderName(
+        Deno.env.get("PREORDER_EMAIL_FROM") ||
+          Deno.env.get("APPLICATION_EMAIL_FROM") ||
+          "Paimon <preorders@resend.dev>",
+      ),
       to: [to],
       subject: message.subject,
       html: message.html,
@@ -296,7 +301,7 @@ function buildPreorderEmail(
   event: NotificationEvent,
 ) {
   const eventInfo = getEventInfo(order);
-  const artistName = eventInfo.artistName || "NireQ creator";
+  const artistName = eventInfo.artistName || "Paimon creator";
   const eventName = eventInfo.eventName || "your event";
   const isPostOrder = order.order_type === "post_event";
   const orderLabel = isPostOrder ? "Post-order" : "Pre-order";
@@ -397,20 +402,20 @@ function renderMessage(input: {
   ].filter(Boolean).join("\n");
 
   const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641">
       <h1 style="font-size:20px;margin:0 0 12px">${escapeHtml(input.heading)}</h1>
       <p>${escapeHtml(input.intro)}</p>
-      <div style="border:1px solid #f3d1e2;background:#fff7fb;border-radius:14px;padding:14px;margin:16px 0">
+      <div style="border:1px solid #DCB07C;border-top:4px solid #3A7EBC;background:#f7f4ee;border-radius:14px;padding:14px;margin:16px 0">
         <p style="margin:0 0 8px"><strong>Status:</strong> ${escapeHtml(input.status)}</p>
         <p style="margin:0 0 8px"><strong>Event:</strong> ${escapeHtml(input.eventName)}</p>
         <p style="margin:0 0 8px"><strong>Pickup code:</strong> <span style="font-family:monospace;font-size:20px;letter-spacing:3px">${escapeHtml(input.pickupCode)}</span></p>
         <p style="margin:0"><strong>Amount:</strong> ${escapeHtml(input.amount)}</p>
       </div>
       ${input.locationLine ? `<p><strong>Location:</strong> ${escapeHtml(input.locationLine)}</p>` : ""}
-      ${input.orderUrl ? `<p style="margin:16px 0"><a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#db2777;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 20px;border-radius:12px">Track your order</a></p>` : ""}
+      ${input.orderUrl ? `<p style="margin:16px 0"><a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#202641;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 20px;border-radius:12px">Track your order</a></p>` : ""}
       <h2 style="font-size:14px;margin:18px 0 8px">Items</h2>
       ${itemsHtml}
-      <p style="white-space:pre-wrap;color:#4b5563">${escapeHtml(input.note)}</p>
+      <p style="white-space:pre-wrap;color:#202641">${escapeHtml(input.note)}</p>
     </div>
   `;
 

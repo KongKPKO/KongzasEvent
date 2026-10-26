@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
 
 const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Content-Type": "application/json" };
 const reply = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {status,headers});
@@ -33,17 +34,17 @@ Deno.serve(async req => {
   if (!claim.send) return reply({status:claim.status,duplicate:true});
   const orderLink = `${site.replace(/\/$/,'')}/${encodeURIComponent(store.slug)}/order/${encodeURIComponent(order.pickup_code)}`;
   const subject = `ลิงก์สถานะคำสั่งซื้อ / Order status: ${order.pickup_code}`;
-  const text = `ทีมช่วยเหลือ NireQ ส่งลิงก์สถานะคำสั่งซื้อให้คุณอีกครั้งตามคำขอ\nNireQ support has resent your order status link on request.\n\n${orderLink}\n\nเปิดลิงก์เพื่อดูสถานะล่าสุด อีเมลนี้ไม่ใช่การยืนยันชำระเงินหรือคำขอให้โอนเงินเพิ่ม\nOpen the link for the latest status. This email is not a payment confirmation or a request for another payment.`;
+  const text = `ทีมช่วยเหลือ Paimon ส่งลิงก์สถานะคำสั่งซื้อให้คุณอีกครั้งตามคำขอ\nPaimon support has resent your order status link on request.\n\n${orderLink}\n\nเปิดลิงก์เพื่อดูสถานะล่าสุด อีเมลนี้ไม่ใช่การยืนยันชำระเงินหรือคำขอให้โอนเงินเพิ่ม\nOpen the link for the latest status. This email is not a payment confirmation or a request for another payment.`;
   let status = 'unknown';
   try {
     const key = Deno.env.get('RESEND_API_KEY');
     // Each explicit resend has its own identity; transport retries must reuse it.
     const response = key ? await fetch('https://api.resend.com/emails',{
       method:'POST',signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`admin-order-link/${input.request_id}`},
-      body:JSON.stringify({from:Deno.env.get('PREORDER_EMAIL_FROM') || Deno.env.get('APPLICATION_EMAIL_FROM') || 'NireQ <orders@resend.dev>',to:[order.customer_email],subject,text}),
+      body:JSON.stringify({from:withPaimonSenderName(Deno.env.get('PREORDER_EMAIL_FROM') || Deno.env.get('APPLICATION_EMAIL_FROM') || 'Paimon <orders@resend.dev>'),to:[order.customer_email],subject,text}),
     }) : await fetch(Deno.env.get('MAILPIT_API_URL') || 'http://host.docker.internal:54324/api/v1/send',{
       method:'POST',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({From:{Email:'support@nireq.local',Name:'NireQ'},To:[{Email:order.customer_email}],Subject:subject,Text:text}),
+      body:JSON.stringify({From:{Email:'support@nireq.local',Name:'Paimon'},To:[{Email:order.customer_email}],Subject:subject,Text:text}),
     });
     status = response.ok ? 'accepted' : response.status>=500 ? 'unknown' : 'failed';
     await response.body?.cancel();

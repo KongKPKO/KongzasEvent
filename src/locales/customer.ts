@@ -44,7 +44,7 @@ export const customerThaiText: Record<string, string> = {
   Email: 'อีเมล',
   cosplay: 'คอสเพลย์',
   Other: 'อื่น ๆ',
-  'Nireq home': 'หน้าแรก Nireq',
+  'Paimon home': 'หน้าแรก Paimon',
   'Please enter an email address for pre-order updates.': 'กรุณากรอกอีเมลเพื่อรับข้อมูลอัปเดตพรีออเดอร์',
   'Please enter a valid email address.': 'กรุณากรอกอีเมลให้ถูกต้อง',
   'Please enter a phone number for shipping.': 'กรุณากรอกเบอร์โทรศัพท์สำหรับการจัดส่ง',

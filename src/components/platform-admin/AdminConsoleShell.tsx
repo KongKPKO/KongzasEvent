@@ -16,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { BrandStar } from '../BrandMark';
 import { LanguageToggle, useI18n } from '../../i18n';
 import { signOutLocally } from '../../utils/workspaceSession';
 
@@ -89,9 +90,9 @@ export default function AdminConsoleShell({ children, title, description, backTo
     <>
       <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4">
         <Link to="/admin" className="flex min-h-11 items-center gap-3 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-pink-700">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-sm font-black text-white">N</span>
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-white"><BrandStar size={20} /></span>
           <span>
-            <span className="block text-sm font-black text-slate-950">Nireq</span>
+            <span className="block text-sm font-black text-slate-950">Paimon</span>
             <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-pink-700">Platform admin</span>
           </span>
         </Link>

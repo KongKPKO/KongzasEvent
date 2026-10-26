@@ -13,8 +13,8 @@ const EventAppearancePreview = ({ appearances }: EventAppearancePreviewProps) =>
   if (appearances.length === 0) return null;
 
   return (
-    <div className="mt-4 border-t border-fuchsia-100 pt-3" data-testid="public-event-appearances">
-      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-fuchsia-700">
+    <div className="mt-4 border-t border-pink-100 pt-3" data-testid="public-event-appearances">
+      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-pink-700">
         <Sparkles size={13} aria-hidden="true" />
         {t('eventsCosplan')}
       </div>
@@ -28,17 +28,17 @@ const EventAppearancePreview = ({ appearances }: EventAppearancePreviewProps) =>
           const placeLabel = [appearance.zone, appearance.booth].filter(Boolean).join(' · ');
 
           return (
-            <article key={appearance.id} className="flex w-[248px] shrink-0 snap-start gap-3 rounded-2xl border border-fuchsia-100 bg-gradient-to-br from-fuchsia-50 to-white p-2.5">
-              <div className="h-24 w-[72px] shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-fuchsia-100">
+            <article key={appearance.id} className="flex w-[248px] shrink-0 snap-start gap-3 rounded-2xl border border-pink-100 bg-gradient-to-br from-pink-50 to-white p-2.5">
+              <div className="h-24 w-[72px] shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-pink-100">
                 {appearance.image_url ? (
                   <img src={getMenuImageUrl(appearance.image_url)} alt={`${appearance.character_name} ${uiText(language, 'cosplay')}`} loading="lazy" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-fuchsia-300"><Sparkles size={25} aria-hidden="true" /></div>
+                  <div className="flex h-full w-full items-center justify-center text-pink-300"><Sparkles size={25} aria-hidden="true" /></div>
                 )}
               </div>
               <div className="min-w-0 flex-1 py-0.5">
                 <h5 className="line-clamp-2 text-sm font-black leading-4 text-gray-900">{appearance.character_name}</h5>
-                {appearance.series_name && <p className="mt-1 truncate text-[11px] font-bold text-fuchsia-700">{appearance.series_name}</p>}
+                {appearance.series_name && <p className="mt-1 truncate text-[11px] font-bold text-pink-700">{appearance.series_name}</p>}
                 <div className="mt-2 space-y-1 text-[10px] font-bold text-gray-600">
                   <p className="flex items-center gap-1"><CalendarDays size={11} aria-hidden="true" />{dateLabel}{appearance.day_label ? ` · ${appearance.day_label}` : ''}</p>
                   {timeLabel && <p className="flex items-center gap-1"><Clock3 size={11} aria-hidden="true" />{timeLabel}</p>}

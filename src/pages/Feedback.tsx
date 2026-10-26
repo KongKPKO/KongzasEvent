@@ -16,7 +16,7 @@ import {
 const categories: Array<{ value: FeedbackCategory; th: string; en: string; descriptionTh: string; descriptionEn: string }> = [
   { value: 'bug', th: 'แจ้งข้อผิดพลาด', en: 'Report a bug', descriptionTh: 'บางอย่างไม่ทำงานหรือแสดงผลผิด', descriptionEn: 'Something is broken or behaves incorrectly' },
   { value: 'support', th: 'ขอความช่วยเหลือ', en: 'Get help', descriptionTh: 'ติดขัดในการใช้งานหรือต้องการคำแนะนำ', descriptionEn: 'You are stuck or need guidance' },
-  { value: 'suggestion', th: 'เสนอแนะ', en: 'Share an idea', descriptionTh: 'บอกสิ่งที่อยากให้ Nireq ทำได้ดีขึ้น', descriptionEn: 'Tell us how Nireq could improve' },
+  { value: 'suggestion', th: 'เสนอแนะ', en: 'Share an idea', descriptionTh: 'บอกสิ่งที่อยากให้ Paimon ทำได้ดีขึ้น', descriptionEn: 'Tell us how Paimon could improve' },
 ];
 
 export default function Feedback() {
@@ -101,9 +101,9 @@ export default function Feedback() {
 
   return (
     <main className="min-h-screen bg-[#fffaf7] text-gray-950">
-      <header className="border-b border-rose-100 bg-white/95">
+      <header className="border-b border-brand-border bg-white/95">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 font-semibold text-gray-700 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-pink-500">
+          <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 font-semibold text-gray-700 hover:bg-brand-soft focus:outline-none focus:ring-2 focus:ring-pink-500">
             <ChevronLeft className="h-5 w-5" /> {tr('กลับหน้าแรก', 'Back to home')}
           </Link>
           <LanguageToggle />
@@ -119,11 +119,11 @@ export default function Feedback() {
             <Link to="/help/guide" className="mb-3 inline-flex min-h-11 items-center text-sm font-bold underline">{tr('คู่มือและคำถามที่พบบ่อย', 'Guides and common questions')}</Link>
             <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{tr('ให้เราช่วยคุณ', 'How can we help?')}</h1>
             <p className="mt-3 text-base leading-7 text-gray-600">
-              {tr('แจ้งปัญหา ขอความช่วยเหลือ หรือส่งไอเดียให้ทีม Nireq แบบสั้น ๆ เราจะให้เลขอ้างอิงทันทีหลังส่ง', 'Report a problem, ask for help, or share an idea. You will receive a reference number as soon as it is sent.')}
+              {tr('แจ้งปัญหา ขอความช่วยเหลือ หรือส่งไอเดียให้ทีม Paimon แบบสั้น ๆ เราจะให้เลขอ้างอิงทันทีหลังส่ง', 'Report a problem, ask for help, or share an idea. You will receive a reference number as soon as it is sent.')}
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="rounded-3xl border border-rose-100 bg-white p-5 shadow-sm sm:p-7" noValidate>
+          <form onSubmit={handleSubmit} className="rounded-3xl border border-brand-border bg-white p-5 shadow-sm sm:p-7" noValidate>
             <fieldset disabled={submitting}>
               <legend className="mb-3 text-sm font-bold text-gray-800">{tr('เรื่องที่ต้องการติดต่อ', 'What is this about?')}</legend>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -146,7 +146,7 @@ export default function Feedback() {
                   <textarea value={details} onChange={event => setDetails(event.target.value)} maxLength={5000} required rows={7} className="rounded-xl border border-gray-300 px-4 py-3 text-base font-normal leading-6 outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100" placeholder={tr('บอกขั้นตอนที่ทำ สิ่งที่คาดหวัง และสิ่งที่เห็นจริง โดยไม่ใส่รหัสผ่านหรือข้อมูลการชำระเงิน', 'Tell us the steps, what you expected, and what you saw. Do not include passwords or payment information.')} />
                 </label>
                 <label className="grid gap-2 text-sm font-bold text-gray-800">
-                  {tr('ส่วนของระบบ (ไม่บังคับ)', 'Area of Nireq (optional)')}
+                  {tr('ส่วนของระบบ (ไม่บังคับ)', 'Area of Paimon (optional)')}
                   <input value={module} onChange={event => setModule(event.target.value)} maxLength={80} className="min-h-12 rounded-xl border border-gray-300 px-4 text-base font-normal outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100" placeholder={tr('เช่น คิว, POS, แคมเปญออนไลน์', 'For example: Queue, POS, Online Campaign')} />
                 </label>
                 {!user && (
@@ -183,7 +183,7 @@ export default function Feedback() {
         </section>
 
         <aside className="space-y-5">
-          <div className="rounded-3xl border border-rose-100 bg-white p-5 shadow-sm">
+          <div className="rounded-3xl border border-brand-border bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2"><MessageSquareText className="h-5 w-5 text-pink-600" /><h2 className="font-black">{tr('รายการของฉัน', 'My requests')}</h2></div>
             {!user && <p className="mt-3 text-sm leading-6 text-gray-600">{tr('เข้าสู่ระบบเพื่อดูสถานะคำขอที่เคยส่งจากบัญชีของคุณ', 'Sign in to track requests sent from your account.')}</p>}
             {user && loadingTickets && <div className="mt-4 flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />{tr('กำลังโหลด…', 'Loading…')}</div>}

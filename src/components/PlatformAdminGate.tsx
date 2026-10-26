@@ -73,7 +73,7 @@ export default function PlatformAdminGate({ children, userId, accessToken }: {
         const removed = await supabase.auth.mfa.unenroll({ factorId: factor.id });
         if (removed.error) throw removed.error;
       }
-      const result = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'NireQ Platform Admin', issuer: 'NireQ' });
+      const result = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Paimon Platform Admin', issuer: 'Paimon' });
       if (result.error) throw result.error;
       setFactorId(result.data.id);
       setEnrollment({ qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(result.data.totp.qr_code.replace(/^data:image\/svg\+xml;utf-8,/, ''))}`, secret: result.data.totp.secret });

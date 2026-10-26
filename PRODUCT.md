@@ -2,13 +2,13 @@
 
 ## Users
 
-Nireq serves creator-booth operators, booth staff, and event visitors at high-traffic events such as fan conventions, artist alleys, pop-up markets, and cosplay or game events.
+Paimon serves creator-booth operators, booth staff, and event visitors at high-traffic events such as fan conventions, artist alleys, pop-up markets, and cosplay or game events.
 
 Creators and managers use the admin workspace to configure events, catalog stock, pre-orders, pickup, queue operations, POS checkout, dashboard metrics, and order records. Sellers and queue staff use focused operational screens during live booth hours. Customers use mobile pages to discover booths, join queues, browse menus, pre-order, and track their status without relying on noisy chat groups.
 
 ## Product Purpose
 
-Nireq reduces booth congestion and checkout confusion by connecting event setup, customer queueing, digital menus, stock-aware ordering, POS checkout, pre-order reservations, pickup fulfillment, and post-event records in one lightweight workflow.
+Paimon reduces booth congestion and checkout confusion by connecting event setup, customer queueing, digital menus, stock-aware ordering, POS checkout, pre-order reservations, pickup fulfillment, and post-event records in one lightweight workflow.
 
 Success means booth teams can open operations quickly, see the next task for each event, sell without overselling stock, call or serve queues clearly, fulfill pre-orders safely, and review orders after the event.
 
@@ -136,3 +136,7 @@ Target WCAG AA for product surfaces. Prioritize readable contrast, 44px touch ta
 - Event sales reports retain the established completed-order/date/time-zone definition. Dashboard metrics are aggregated in the database; summaries and product rows share a currency selection instead of adding unlike currencies. The product breakdown groups actual sale units and saved price/name/SKU snapshots, with expandable variants and separate currency rows; parent totals and variant rows must not be counted together. Order-level discounts allocate proportionally with deterministic largest-remainder cents. Category and image may use current catalog metadata.
 - Existing refunds are recorded at order level without reliable per-item money/returned-unit allocation. Product refund columns show unavailable rather than invented amounts; product net deducts allocated discounts only. This limitation is displayed in the report and CSV leaves unavailable refund cells blank.
 - POS history is a read-only, paginated event view for existing owner/manager/seller access. Queue staff receive no money/history access. Viewing orders never changes the current cart, queue, order status or payment. Historical queue labels come from the saved order relationship. Actor information appears only where recorded.
+
+## Brand presentation
+
+Paimon is the public brand. Use an ivory surface, navy text, accessible blue actions and restrained gold stars/constellation details. Keep status colors and operational readability. Brand changes preserve existing domains, Firebase/Supabase project identifiers, customer browser storage keys, offline records and public routes.

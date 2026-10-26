@@ -1,4 +1,4 @@
-/* Hallmark · NireQ existing design tokens; scoped consumers preserve the app brand. */
+/* Hallmark · Paimon design tokens; scoped consumers preserve the app brand. */
 :root {
   --color-catalog-paper: var(--surface);
   --color-catalog-muted: var(--surface-muted);
@@ -8,10 +8,10 @@
   --color-promotion-secondary: var(--color-text);
   --color-promotion-soft: var(--brand-soft);
   --color-promotion-hover: var(--brand-primary-hover);
-  --color-entry-paper: oklch(99% 0.008 350);
+  --color-entry-paper: #f7f4ee;
   --color-entry-soft: var(--brand-soft);
   --color-entry-border: var(--brand-border);
-  --color-entry-tape: oklch(89% 0.07 350);
+  --color-entry-tape: #dcb07c;
   --color-entry-secondary: var(--color-text);
   --color-entry-green: oklch(45% 0.1 160);
   --color-entry-green-soft: oklch(97% 0.025 160);
@@ -24,8 +24,8 @@
 
 /* Discovery reference: soft paper, stationery accents. */
 :root {
-  --color-discovery-paper: oklch(98.5% 0.014 350);
-  --color-discovery-peach: oklch(94% 0.05 60);
-  --color-discovery-lilac: oklch(94% 0.035 305);
-  --color-discovery-shadow: oklch(55% 0.12 350 / .07);
+  --color-discovery-paper: #f7f4ee;
+  --color-discovery-peach: #f1dfc7;
+  --color-discovery-lilac: #dcebf6;
+  --color-discovery-shadow: rgb(32 38 65 / .08);
 }

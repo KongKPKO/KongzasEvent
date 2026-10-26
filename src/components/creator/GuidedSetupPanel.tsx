@@ -10,7 +10,7 @@ interface GuidedSetupPanelProps {
   onNavigate: (path: string) => void;
 }
 
-// Hallmark · existing NireQ workflow · pre-emit critique: P4 H4 E4 S4 R5 V4
+// Hallmark · existing Paimon workflow · pre-emit critique: P4 H4 E4 S4 R5 V4
 export default function GuidedSetupPanel({ readiness, eventId, compact = false, onEditEvent, onNavigate }: GuidedSetupPanelProps) {
   const { language } = useI18n();
   const th = language === 'th';

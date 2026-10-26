@@ -31,7 +31,7 @@ export default function ReplayConsentControl() {
   );
   return (
     <section aria-label={th ? 'ความเป็นส่วนตัว' : 'Privacy preferences'} className="mx-auto my-3 max-w-xl rounded-xl border border-pink-200 bg-white p-4 text-gray-900 shadow-lg" data-private>
-      <h2 className="font-bold">{th ? 'ช่วยปรับปรุง NireQ ด้วยบันทึกการใช้งาน?' : 'Help improve NireQ with session replay?'}</h2>
+      <h2 className="font-bold">{th ? 'ช่วยปรับปรุง Paimon ด้วยบันทึกการใช้งาน?' : 'Help improve Paimon with session replay?'}</h2>
       <p className="mt-2 text-sm">{th ? 'หากยินยอม เราจะใช้ LogRocket บันทึกการใช้งานโดยปกปิดข้อความและรูป คุณปฏิเสธได้และยังใช้บริการได้ตามปกติ' : 'With your permission, LogRocket records usage with text and images hidden. You can decline and use all core features.'}</p>
       {consent === 'accepted' && <p className="mt-2 text-sm">{th ? 'การถอนความยินยอมจะโหลดหน้านี้ใหม่เพื่อหยุดบันทึก กรุณาบันทึกงานก่อน' : 'Withdrawing consent reloads this page to stop recording. Save your work first.'}</p>}
       {error && <p role="alert" className="mt-2 text-sm text-red-700">{th ? 'บันทึกตัวเลือกไม่ได้ กรุณาอนุญาตพื้นที่จัดเก็บของเว็บไซต์แล้วลองใหม่' : 'Could not save your choice. Enable site storage and try again.'}</p>}

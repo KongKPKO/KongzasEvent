@@ -52,7 +52,7 @@ export const commerceThaiText: Record<string, string> = {
   "Close product template": "ปิดแม่แบบสินค้า",
   "Closes": "ปิดรับเมื่อ",
   "Compressing...": "กำลังบีบอัด...",
-  "Confirm what you received directly from the customer. Nireq does not check your bank account.": "ยืนยันยอดที่คุณได้รับจากลูกค้าเอง Nireq ไม่ตรวจบัญชีธนาคารให้",
+  "Confirm what you received directly from the customer. Paimon does not check your bank account.": "ยืนยันยอดที่คุณได้รับจากลูกค้าเอง Paimon ไม่ตรวจบัญชีธนาคารให้",
   "Could not load products. Please retry.": "โหลดสินค้าไม่สำเร็จ กรุณาลองใหม่",
   "Could not read this iPhone image": "อ่านรูปจาก iPhone นี้ไม่สำเร็จ",
   "Create Template": "สร้างแม่แบบ",

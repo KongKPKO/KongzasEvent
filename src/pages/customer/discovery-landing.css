@@ -1,4 +1,4 @@
-/* Hallmark · macrostructure: creator ticket + discovery catalogue · theme: NireQ reference
+/* Hallmark · macrostructure: creator ticket + discovery catalogue · theme: Paimon celestial
  * Reference: user-supplied creator-pass mockup · P4 H5 E4 S5 R4 V4 */
 .discovery-landing { background: var(--color-discovery-paper); }
 .discovery-landing .customer-brand-header { border-bottom: 1px solid var(--color-entry-border); }
@@ -12,8 +12,8 @@
 .discovery-benefits li { display: flex; align-items: center; gap: .375rem; font-size: .72rem; }
 .discovery-benefits svg { color: var(--color-catalog-accent); flex-shrink: 0; }
 .discovery-visual { position: relative; min-height: 400px; padding: 2.5rem 5rem 3rem 0; isolation: isolate; }
-.discovery-visual::before { content: ''; position: absolute; inset: 1.5rem; background: var(--color-entry-soft); border-radius: 35% 40% 28% 42%; transform: rotate(-7deg); z-index: -2; }
-.discovery-pass { position: relative; z-index: 2; background: var(--color-catalog-paper); border: 1px solid var(--color-entry-border); border-radius: 1rem; padding: 1rem; box-shadow: 0 14px 36px var(--color-discovery-shadow); transform: rotate(-2deg); }
+.discovery-visual::before { content: ""; position: absolute; inset: .5rem 0 1rem 1.5rem; background-color: var(--celestial-navy); background-image: var(--celestial-starfield); background-position: center; background-size: cover; border: 1px solid var(--celestial-gold); border-radius: 45% 45% 1.5rem 1.5rem; z-index: -2; }
+.discovery-pass { position: relative; z-index: 2; background: var(--color-catalog-paper); border: 1px solid var(--color-entry-border); border-radius: 1rem; padding: 1rem; box-shadow: 0 14px 36px var(--color-discovery-shadow); transform: none; }
 .discovery-pass::before, .discovery-pass::after { content: ''; position: absolute; width: 100%; height: 10px; left: 0; background: radial-gradient(circle at 8px 0, transparent 6px, var(--color-catalog-paper) 6.5px) 0 0 / 16px 10px repeat-x; }
 .discovery-pass::before { top: -8px; }
 .discovery-pass::after { bottom: -8px; transform: rotate(180deg); }
@@ -69,7 +69,7 @@
 .discovery-landing .discovery-card { border-radius: 1.125rem; padding: .5rem; box-shadow: 0 4px 18px var(--color-discovery-shadow); }
 .discovery-cover { position: relative; height: 102px; border-radius: .75rem; background: var(--color-entry-soft); }
 .discovery-cover > img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-.discovery-cover-art { display: flex; justify-content: space-around; align-items: center; height: 100%; background: repeating-linear-gradient(135deg, var(--color-entry-soft) 0 20px, var(--color-discovery-paper) 20px 40px); border-radius: inherit; color: var(--color-entry-tape); }
+.discovery-cover-art { display: flex; justify-content: space-around; align-items: center; height: 100%; background: var(--celestial-navy) var(--celestial-starfield) center / cover; border-radius: inherit; color: var(--color-entry-tape); }
 .discovery-cover-art svg { width: 48px; height: 48px; transform: rotate(-15deg); }
 .discovery-heart { position: absolute; top: .375rem; right: .375rem; width: 44px; height: 44px; display: grid; place-items: center; color: var(--color-catalog-accent); border-radius: 50%; background: var(--color-catalog-paper); }
 .discovery-heart:hover, .discovery-heart[aria-pressed='true'] { background: var(--color-entry-soft); }
@@ -150,3 +150,6 @@
  .discovery-visual-note { right: .75rem; }
  .discovery-visual > .discovery-mini-ticket { right: .75rem; }
 }
+
+/* The seller action remains in the hero when the compact header needs room. */
+@media (max-width: 479px) { .discovery-landing .discovery-creator-nav { display: none; } }

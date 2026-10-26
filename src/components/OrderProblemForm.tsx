@@ -51,7 +51,7 @@ export default function OrderProblemForm({ orderId, code, onSaved }: { orderId: 
     <summary className="cursor-pointer font-bold text-pink-700">{th ? 'แจ้งปัญหาออเดอร์' : 'Report an order problem'}</summary>
     {saved ? <p role="status" className="mt-3 text-sm text-emerald-700">{th ? 'บันทึกปัญหาแล้ว ร้านจะติดต่อกลับตามช่องทางที่ให้ไว้' : 'Report saved. The shop will contact you using the details you provided.'}</p> :
       <form onSubmit={submit} className="mt-4 space-y-3">
-        <p className="text-sm text-gray-600">{th ? 'ร้านจะติดต่อและตกลงวิธีแก้ปัญหากับคุณนอกระบบ ไม่มีแชทในหน้านี้' : 'The shop will contact you outside NireQ to agree on a solution. This page is not a chat.'}</p>
+        <p className="text-sm text-gray-600">{th ? 'ร้านจะติดต่อและตกลงวิธีแก้ปัญหากับคุณนอกระบบ ไม่มีแชทในหน้านี้' : 'The shop will contact you outside Paimon to agree on a solution. This page is not a chat.'}</p>
         {pending ? <p className="text-sm text-amber-800">{th ? 'มีรายการที่ยังไม่ทราบผล กดส่งซ้ำเพื่อตรวจและส่งรายการเดิม' : 'A previous submission is unconfirmed. Retry to check and submit the same report.'}</p> : <>
           <label className="block text-sm font-semibold">{th ? 'ประเภทปัญหา' : 'Problem type'}<select value={category} onChange={e => setCategory(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border p-2">
             <option value="payment">{th ? 'การชำระเงิน' : 'Payment'}</option><option value="delivery">{th ? 'การรับหรือจัดส่งสินค้า' : 'Pickup or delivery'}</option><option value="item">{th ? 'สินค้า' : 'Items'}</option><option value="other">{th ? 'อื่น ๆ' : 'Other'}</option>

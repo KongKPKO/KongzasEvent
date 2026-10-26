@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Nireq</title>
-  <rect width="512" height="512" rx="136" fill="#be185d"/>
-  <path d="M132 370V142h57l134 142V142h57v228h-53L189 224v146z" fill="#fff"/>
-  <circle cx="382" cy="367" r="38" fill="#fbcfe8"/>
+  <title id="title">Paimon</title>
+  <rect width="512" height="512" rx="136" fill="#202641"/>
+  <circle cx="256" cy="256" r="145" fill="none" stroke="#DCB07C" stroke-width="16" stroke-dasharray="12 28" opacity=".9"/>
+  <path d="M256 76c18 106 67 155 180 180-113 25-162 74-180 180-18-106-67-155-180-180 113-25 162-74 180-180Z" fill="#f7f4ee"/>
+  <path d="m256 148 30 78 78 30-78 30-30 78-30-78-78-30 78-30 30-78Z" fill="#4295CE" opacity=".7"/>
+  <circle cx="398" cy="114" r="24" fill="#DCB07C"/>
+  <circle cx="116" cy="398" r="14" fill="#4295CE"/>
 </svg>

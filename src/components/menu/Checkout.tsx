@@ -20,7 +20,7 @@ export function CheckoutDialog({ open, title, busy = false, onClose, children }:
   }, [open]);
   return <dialog ref={dialog} className="checkout-dialog" aria-labelledby={titleId} aria-busy={busy} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <header className="checkout-header">
-      <div><p>NireQ · {language === 'th' ? 'ตรวจรายการก่อนยืนยัน' : 'Review before confirming'}</p><h2 id={titleId}>{title}</h2></div>
+      <div><p>Paimon · {language === 'th' ? 'ตรวจรายการก่อนยืนยัน' : 'Review before confirming'}</p><h2 id={titleId}>{title}</h2></div>
       <button type="button" autoFocus disabled={busy} onClick={onClose} aria-label={language === 'th' ? 'ปิด' : 'Close'}><X size={22} /></button>
     </header>
     {children}

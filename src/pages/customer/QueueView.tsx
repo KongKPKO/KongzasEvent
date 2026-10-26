@@ -612,7 +612,7 @@ const QueueView = () => {
     };
 
     if (loading) return (
-        <div className="min-h-screen bg-[#fff7fb] pb-24 flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl animate-pulse">
+        <div className="min-h-screen bg-pink-50 pb-24 flex flex-col items-center w-full max-w-md mx-auto relative shadow-xl animate-pulse">
             {/* Header Skeleton */}
             <div className="w-full h-16 bg-white/50 border-b border-pink-50 flex items-center px-4 gap-3">
                 <div className="w-10 h-10 rounded-full bg-gray-200" />

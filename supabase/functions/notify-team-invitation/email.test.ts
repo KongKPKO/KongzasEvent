@@ -20,6 +20,9 @@ test("staff invitation includes trusted invitation context and escapes HTML", ()
   assert.match(html, /Creator &lt;Fest&gt;/);
   assert.doesNotMatch(html, /Creator <Fest>/);
   assert.match(html, /Sign in and review invitation/);
+  assert.match(html, /on Paimon/);
+  assert.match(text, /on Paimon/);
+  assert.doesNotMatch(html, /NireQ|#db2777|#f3d1e2|#fff7fb/);
   assert.match(text, /Invited by: owner@example\.com/);
   assert.match(text, /Event access: Creator <Fest>, Winter Market/);
 });
@@ -37,6 +40,7 @@ test("manager invitation offers signup and returning-user destinations", () => {
 
   assert.match(html, /Event access:<\/strong> <strong>All events<\/strong>/);
   assert.match(html, /Create manager account/);
-  assert.match(html, /Already have a NireQ account\?/);
+  assert.match(html, /Already have a Paimon account\?/);
   assert.match(html, /Sign in to review the invitation/);
+  assert.doesNotMatch(html, /NireQ|#db2777|#f3d1e2|#fff7fb/);
 });

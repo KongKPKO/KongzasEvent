@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -172,7 +173,7 @@ function buildEmail(
   event: NotificationEvent,
 ) {
   const orderCode = String(order.pickup_code || "");
-  const artistName = String(artist.display_name || "NireQ creator");
+  const artistName = String(artist.display_name || "Paimon creator");
   const campaignName = String(campaign.name || "Online campaign");
   const siteUrl = String(Deno.env.get("PUBLIC_SITE_URL") || "").replace(/\/$/, "");
   const orderUrl = siteUrl && artist.slug ? `${siteUrl}/${artist.slug}/order/${encodeURIComponent(orderCode)}` : "";
@@ -205,7 +206,7 @@ async function deliverEmail(to: string, toName: string, message: { subject: stri
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        From: { Email: "orders@nireq.local", Name: "NireQ" },
+        From: { Email: "orders@nireq.local", Name: "Paimon" },
         To: [{ Email: to, Name: toName }],
         Subject: message.subject,
         HTML: message.html,
@@ -220,7 +221,11 @@ async function deliverEmail(to: string, toName: string, message: { subject: stri
     method: "POST",
     headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: Deno.env.get("PREORDER_EMAIL_FROM") || Deno.env.get("APPLICATION_EMAIL_FROM") || "NireQ <orders@resend.dev>",
+      from: withPaimonSenderName(
+        Deno.env.get("PREORDER_EMAIL_FROM") ||
+          Deno.env.get("APPLICATION_EMAIL_FROM") ||
+          "Paimon <orders@resend.dev>",
+      ),
       to: [to],
       subject: message.subject,
       html: message.html,

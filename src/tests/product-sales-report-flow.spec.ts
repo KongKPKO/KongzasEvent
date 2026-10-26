@@ -74,7 +74,7 @@ test('management report expands historical variants, filters, exports Thai-safe 
     const css = getComputedStyle(element);
     return { padding: css.paddingLeft, background: css.backgroundColor, border: css.borderTopColor, accent: css.borderTopWidth };
   });
-  await expect.poll(metricAppearance).toEqual({ padding: '16px', background: 'rgb(255, 255, 255)', border: 'rgb(190, 24, 93)', accent: '3px' });
+  await expect.poll(metricAppearance).toEqual({ padding: '16px', background: 'rgb(255, 255, 255)', border: 'rgb(40, 103, 158)', accent: '3px' });
   const queuePanel = page.locator('details.report-panel').first();
   await queuePanel.locator('summary').click();
   await expect.poll(() => queuePanel.evaluate(element => ({ padding: getComputedStyle(element).paddingLeft, background: getComputedStyle(element).backgroundColor }))).toEqual({ padding: '24px', background: 'rgb(255, 255, 255)' });

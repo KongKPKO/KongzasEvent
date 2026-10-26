@@ -11,11 +11,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['nireq-mark.svg', 'apple-touch-icon.png', 'mask-icon.svg', 'robots.txt', 'sitemap.xml'],
       manifest: {
-        name: 'Nireq',
-        short_name: 'Nireq',
+        name: 'Paimon',
+        short_name: 'Paimon',
         description: 'Creator booth queues, orders, payment evidence, and pickup.',
-        theme_color: '#be185d',
-        background_color: '#fffafc',
+        theme_color: '#202641',
+        background_color: '#f7f4ee',
         display: 'standalone',
         start_url: '/',
         icons: [

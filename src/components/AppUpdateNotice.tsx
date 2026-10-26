@@ -38,7 +38,7 @@ export default function AppUpdateNotice() {
   if (!available) return null;
   return (
     <div role="status" className="fixed right-3 top-3 z-[100] max-w-sm rounded-xl border border-pink-200 bg-white p-3 text-sm text-gray-900 shadow-lg">
-      <p className="font-bold">{language === 'th' ? 'มี NireQ เวอร์ชันใหม่' : 'A new NireQ version is available'}</p>
+      <p className="font-bold">{language === 'th' ? 'มี Paimon เวอร์ชันใหม่' : 'A new Paimon version is available'}</p>
       <p className="mt-1">{language === 'th' ? 'บันทึกงานและทำรายการที่ค้างให้เสร็จก่อนโหลดใหม่' : 'Save your work and finish any pending action before reloading.'}</p>
       <div className="mt-2 flex gap-2">
         <button type="button" className="min-h-11 rounded-lg bg-pink-600 px-3 font-bold text-white" onClick={() => window.location.reload()}>

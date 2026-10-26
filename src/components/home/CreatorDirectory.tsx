@@ -28,9 +28,9 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
   return (
     <div className="px-4 mt-2 mb-4 lg:px-6">
       <div className="flex items-center gap-2 px-1 mb-3">
-        <Compass size={16} className="text-[#d63384]" />
+        <Compass size={16} className="text-pink-700" />
         <h2 className="font-bold text-gray-900 text-xl">{t('creatorsExplore')}</h2>
-        <Link to="/discover" className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-black text-[#d63384] hover:bg-pink-50">
+        <Link to="/discover" className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-black text-pink-700 hover:bg-pink-50">
           {t('creatorsViewAll')}
         </Link>
       </div>
@@ -77,7 +77,7 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
                 </div>
                 <div className="mt-1.5 text-[13px] font-semibold leading-tight text-gray-800">{creator.event_name}</div>
                 <div className="flex items-center gap-1.5 text-xs leading-tight text-gray-600 mt-1.5">
-                  <MapPin size={12} className="text-[#d63384] shrink-0" />
+                  <MapPin size={12} className="text-pink-700 shrink-0" />
                   <span className="line-clamp-1">{creator.location || t('creatorsLocationSoon')}</span>
                 </div>
                 {creator.booth_detail && (
@@ -88,7 +88,7 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
               </div>
             </div>
             <div className="flex justify-end mt-2">
-              <span className="inline-flex min-h-11 items-center gap-1 rounded-full bg-pink-50 px-3 text-xs font-black text-[#d63384]">
+              <span className="inline-flex min-h-11 items-center gap-1 rounded-full bg-pink-50 px-3 text-xs font-black text-pink-700">
                 <Sparkles size={11} />
                 {t('creatorsViewBooth')}
               </span>

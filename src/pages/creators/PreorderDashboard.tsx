@@ -409,9 +409,9 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         detail={
           reviewAction
             ? language === 'th'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\n${reviewAction.type === 'confirm' ? 'ยืนยันว่าตรวจหลักฐานและได้รับเงินโอนแล้ว NireQ ไม่ได้ตรวจบัญชีธนาคารให้ ออเดอร์จะเข้าสู่รายการเตรียมส่งมอบ' : reviewAction.type === 'ship' ? 'กรอกเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์' : 'การไม่รับสลิปจะยกเลิกออเดอร์และคืนสต็อกที่จอง หากลูกค้าโอนแล้วแต่แนบสลิปผิด ควรติดต่อให้ชัดเจนก่อน'}`
+              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\n${reviewAction.type === 'confirm' ? 'ยืนยันว่าตรวจหลักฐานและได้รับเงินโอนแล้ว Paimon ไม่ได้ตรวจบัญชีธนาคารให้ ออเดอร์จะเข้าสู่รายการเตรียมส่งมอบ' : reviewAction.type === 'ship' ? 'กรอกเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์' : 'การไม่รับสลิปจะยกเลิกออเดอร์และคืนสต็อกที่จอง หากลูกค้าโอนแล้วแต่แนบสลิปผิด ควรติดต่อให้ชัดเจนก่อน'}`
               : reviewAction.type === 'confirm'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Nireq does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
+              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Paimon does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
               : reviewAction.type === 'ship'
                 ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
                 : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
@@ -524,7 +524,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <h2 className="text-2xl font-black text-gray-900">{scope === 'post_event' ? copy("Post-order Dashboard") : copy("Pre-order Dashboard")}</h2>
           </div>
           <p className="mt-1 text-sm font-semibold text-gray-500">{eventInfo?.event_name || copy("Event")} · {scope === 'post_event' ? copy("Review transfers, then ship orders") : copy("Review transfers, then prepare production")}</p>
-          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">{copy("Customers pay the seller directly. Nireq stores private evidence for your review; you decide whether to confirm or reject it.")}</p>
+          <p className="mt-2 text-xs font-semibold leading-5 text-gray-500">{copy("Customers pay the seller directly. Paimon stores private evidence for your review; you decide whether to confirm or reject it.")}</p>
         </section>
 
         {failedNotification && (

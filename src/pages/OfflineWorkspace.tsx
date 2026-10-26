@@ -93,7 +93,7 @@ export default function OfflineWorkspace() {
     ], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'nireq-pending-records.json';
+    link.download = 'paimon-pending-records.json';
     document.body.append(link);
     link.click();
     link.remove();

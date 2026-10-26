@@ -1,6 +1,7 @@
 import { useI18n, uiText } from '../i18n';
 import React from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
+import { BrandWordmark } from './BrandMark';
 
 const MainLayout: React.FC = () => {
   const { language } = useI18n();
@@ -37,7 +38,7 @@ const MainLayout: React.FC = () => {
           <div className="flex justify-between items-center h-16">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-primary font-bold text-xl tracking-tight">
-                Nireq
+                <BrandWordmark className="main-brand-wordmark" size={19} />
               </Link>
             </div>
             <div className="flex space-x-8 items-center ml-auto">

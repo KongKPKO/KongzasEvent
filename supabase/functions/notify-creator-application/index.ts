@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,7 +104,7 @@ Deno.serve(async (req: Request) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          From: { Email: "onboarding@nireq.local", Name: "Nireq" },
+          From: { Email: "onboarding@nireq.local", Name: "Paimon" },
           To: [{ Email: message.to, Name: message.toName }],
           Subject: message.subject,
           HTML: message.html,
@@ -129,7 +130,7 @@ Deno.serve(async (req: Request) => {
         "Idempotency-Key": deliveryKey(applicationId, event, application),
       },
       body: JSON.stringify({
-        from: Deno.env.get("APPLICATION_EMAIL_FROM") || "Nireq <onboarding@resend.dev>",
+        from: withPaimonSenderName(Deno.env.get("APPLICATION_EMAIL_FROM") || "Paimon <onboarding@resend.dev>"),
         to: [message.to],
         subject: message.subject,
         html: message.html,
@@ -223,7 +224,7 @@ function buildEmailMessage(application: Record<string, unknown>, event: Notifica
   if (event === "auto_approved") {
     return {
       to: adminEmail,
-      toName: "Nireq Admin",
+      toName: "Paimon Admin",
       subject: `New self-serve shop workspace: ${String(application.creator_name ?? "")}`,
       html: renderAutoApprovedApplicationEmail(application),
       text: renderAutoApprovedApplicationText(application),
@@ -232,7 +233,7 @@ function buildEmailMessage(application: Record<string, unknown>, event: Notifica
 
   return {
     to: adminEmail,
-    toName: "Nireq Admin",
+    toName: "Paimon Admin",
     subject: `New shop application: ${String(application.creator_name ?? "")}`,
     html: renderApplicationEmail(application),
     text: renderApplicationText(application),
@@ -261,10 +262,10 @@ function renderAutoApprovedApplicationText(application: Record<string, unknown>)
 
 function renderAutoApprovedApplicationEmail(application: Record<string, unknown>) {
   return `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641;border-top:4px solid #3A7EBC;padding-top:16px">
       <h1 style="font-size:20px;margin:0 0 12px">New self-serve shop workspace</h1>
       <p>The workspace was created automatically and is logged for monitoring.</p>
-      <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open signup monitor</a></p>
+      <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#202641;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open signup monitor</a></p>
       <p><strong>Status:</strong> ${escapeHtml(application.status)}</p>
       <p><strong>Creator:</strong> ${escapeHtml(application.creator_name)}</p>
       <p><strong>Contact:</strong> ${escapeHtml(application.contact_name)} &lt;${escapeHtml(application.email)}&gt;</p>
@@ -275,7 +276,7 @@ function renderAutoApprovedApplicationEmail(application: Record<string, unknown>
       <p><strong>X:</strong> ${renderLink(application.x_url)}</p>
       <p><strong>Facebook:</strong> ${renderLink(application.facebook_url)}</p>
       <p><strong>TikTok:</strong> ${renderLink(application.tiktok_url)}</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0" />
+      <hr style="border:none;border-top:1px solid #DCB07C;margin:18px 0" />
       <p style="white-space:pre-wrap">${escapeHtml(application.application_note)}</p>
     </div>
   `;
@@ -307,9 +308,9 @@ function renderApplicationText(application: Record<string, unknown>) {
 
 function renderApplicationEmail(application: Record<string, unknown>) {
   return `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641;border-top:4px solid #3A7EBC;padding-top:16px">
       <h1 style="font-size:20px;margin:0 0 12px">New shop application</h1>
-      <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Review application</a></p>
+      <p><a href="${escapeHtml(appUrl("/admin/applications"))}" style="display:inline-block;background:#202641;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Review application</a></p>
       <p><strong>Status:</strong> ${escapeHtml(application.status)}</p>
       <p><strong>Creator:</strong> ${escapeHtml(application.creator_name)}</p>
       <p><strong>Contact:</strong> ${escapeHtml(application.contact_name)} &lt;${escapeHtml(application.email)}&gt;</p>
@@ -320,7 +321,7 @@ function renderApplicationEmail(application: Record<string, unknown>) {
       <p><strong>X:</strong> ${renderLink(application.x_url)}</p>
       <p><strong>Facebook:</strong> ${renderLink(application.facebook_url)}</p>
       <p><strong>TikTok:</strong> ${renderLink(application.tiktok_url)}</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0" />
+      <hr style="border:none;border-top:1px solid #DCB07C;margin:18px 0" />
       <p style="white-space:pre-wrap">${escapeHtml(application.application_note)}</p>
     </div>
   `;
@@ -339,12 +340,12 @@ function renderApprovedText(application: Record<string, unknown>) {
 
 function renderApprovedEmail(application: Record<string, unknown>) {
   return `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641;border-top:4px solid #3A7EBC;padding-top:16px">
       <h1 style="font-size:20px;margin:0 0 12px">Your shop workspace is approved</h1>
       <p><strong>${escapeHtml(application.creator_name)}</strong> is ready to use.</p>
       <p>Sign in with the email and password you created when you applied. We do not send passwords by email.</p>
-      <p><a href="${escapeHtml(appUrl("/manage-login"))}" style="display:inline-block;background:#047857;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open shop login</a></p>
-      <p style="color:#4b5563"><strong>Public page:</strong> <a href="${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}">${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}</a></p>
+      <p><a href="${escapeHtml(appUrl("/manage-login"))}" style="display:inline-block;background:#202641;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px;font-weight:700">Open shop login</a></p>
+      <p style="color:#202641"><strong>Public page:</strong> <a href="${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}">${escapeHtml(appUrl(`/${String(application.desired_slug ?? "")}/home`))}</a></p>
     </div>
   `;
 }
@@ -363,10 +364,10 @@ function renderRejectedText(application: Record<string, unknown>) {
 
 function renderRejectedEmail(application: Record<string, unknown>) {
   return `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641;border-top:4px solid #3A7EBC;padding-top:16px">
       <h1 style="font-size:20px;margin:0 0 12px">Shop application update</h1>
       <p>Your application for <strong>${escapeHtml(application.creator_name)}</strong> was not approved at this time.</p>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:16px 0">
+      <div style="background:#f7f4ee;border:1px solid #DCB07C;border-radius:12px;padding:14px;margin:16px 0">
         <strong>Review note</strong>
         <p style="white-space:pre-wrap;margin:8px 0 0">${escapeHtml(application.review_note || "Your application was not approved at this time.")}</p>
       </div>

@@ -228,7 +228,7 @@ test.describe('Public release assets', () => {
     }
 
     const manifest = JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8'));
-    expect(manifest.name).toBe('Nireq');
+    expect(manifest.name).toBe('Paimon');
 
     for (const icon of manifest.icons) {
       const response = await request.get(`/${icon.src}`);

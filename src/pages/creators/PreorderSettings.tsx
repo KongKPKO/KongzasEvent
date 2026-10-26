@@ -726,7 +726,7 @@ export default function PreorderSettings() {
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 id="payment-settings" tabIndex={-1} className="text-base font-black text-gray-950">{localize('Payment methods', 'ช่องทางชำระเงิน')}</h2>
-                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Money goes directly to your account. NireQ only stores the instruction and slip workflow.")}</p>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">{copy("Money goes directly to your account. Paimon only stores the instruction and slip workflow.")}</p>
                     <p className="mt-1 text-xs font-semibold text-gray-500">
                       {localize(
                         'One payment method groups one recipient’s PromptPay, QR, and bank accounts. Add another method for another recipient.',

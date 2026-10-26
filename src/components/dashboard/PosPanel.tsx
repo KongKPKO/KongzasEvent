@@ -1676,7 +1676,7 @@ export default function POSPanel({
                 <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div ref={paymentDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="payment-title" className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
                         <h3 id="payment-title" className="text-2xl font-black text-gray-800 text-center mb-2">{uiText(language, 'Record payment')}</h3>
-                        <p className="text-gray-500 text-center mb-6">{uiText(language, 'Confirm what you received directly from the customer. Nireq does not check your bank account.')}<br />{uiText(language, 'Amount')}: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
+                        <p className="text-gray-500 text-center mb-6">{uiText(language, 'Confirm what you received directly from the customer. Paimon does not check your bank account.')}<br />{uiText(language, 'Amount')}: <span className="text-pink-600 font-bold">{formatPrice(displayedTotal, cart[0]?.product.currency)}</span></p>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <button
                                 onClick={() => handlePayment('cash')}

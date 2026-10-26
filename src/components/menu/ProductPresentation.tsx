@@ -164,7 +164,7 @@ function ProductKindSummary({
   const itemCount = getBundleItemCount(product.bundle_items);
 
   if (kind === 'photo') {
-    return <div className="inline-flex items-center gap-1 text-[11px] font-bold text-fuchsia-700"><Images size={13} />{images.length} {labels.photos}</div>;
+    return <div className="inline-flex items-center gap-1 text-[11px] font-bold text-pink-700"><Images size={13} />{images.length} {labels.photos}</div>;
   }
   if (kind === 'bundle') {
     return (

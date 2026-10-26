@@ -97,7 +97,7 @@ const EventsList = ({ events, artistSlug, onSelectEvent, nextUpEventId, appearan
                       </span>
                     )}
                     {isNextUp && (
-                      <span className="rounded-bl-2xl bg-[#d63384] px-3 py-1 text-xs font-bold text-white">
+                      <span className="rounded-bl-2xl bg-pink-700 px-3 py-1 text-xs font-bold text-white">
                         {t('eventsNextUp')}
                       </span>
                     )}
@@ -107,7 +107,7 @@ const EventsList = ({ events, artistSlug, onSelectEvent, nextUpEventId, appearan
                 <div className={`flex items-start gap-4 ${isCancelled ? 'opacity-50' : ''}`}>
                   <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border shrink-0
                       ${!isCancelled ? 'bg-pink-50 border-pink-100' : 'bg-white border-gray-100'}`}>
-                    <span className={`text-xs font-bold uppercase ${!isCancelled ? 'text-[#d63384]' : 'text-gray-400'}`}>{month}</span>
+                    <span className={`text-xs font-bold uppercase ${!isCancelled ? 'text-pink-700' : 'text-gray-400'}`}>{month}</span>
                     <span className="text-2xl font-black text-gray-900 leading-none">{day}</span>
                   </div>
 
@@ -116,20 +116,20 @@ const EventsList = ({ events, artistSlug, onSelectEvent, nextUpEventId, appearan
                     <div className="space-y-1.5 text-gray-600 text-sm font-medium">
                       {event.location && (
                         <div className="flex items-start gap-2">
-                          <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
+                          <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-pink-700'} />
                           <span>{event.location}</span>
                         </div>
                       )}
                       {event.booth_detail && (
                         <div className="flex items-start gap-2">
-                          <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} />
+                          <MapPin size={14} className={isCancelled ? 'text-gray-400' : 'text-pink-700'} />
                           <span>{t('eventsBooth')} {event.booth_detail}</span>
                         </div>
                       )}
 
-                      {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{event.entrance_fee}</span></div>}
-                      {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}
-                      <div className="flex items-center gap-2"><Calendar size={14} className={isCancelled ? 'text-gray-400' : 'text-[#d63384]'} /><span>{formatDateRange(event.start_date, event.end_date)}</span></div>
+                      {event.entrance_fee && <div className="flex items-center gap-2"><Ticket size={14} className={isCancelled ? 'text-gray-400' : 'text-pink-700'} /><span>{event.entrance_fee}</span></div>}
+                      {event.transit_info && <div className="flex items-start gap-2"><Train size={14} className={isCancelled ? 'text-gray-400' : 'text-pink-700'} /><div className="whitespace-pre-line">{event.transit_info}</div></div>}
+                      <div className="flex items-center gap-2"><Calendar size={14} className={isCancelled ? 'text-gray-400' : 'text-pink-700'} /><span>{formatDateRange(event.start_date, event.end_date)}</span></div>
                     </div>
                   </div>
                 </div>

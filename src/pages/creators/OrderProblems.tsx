@@ -51,7 +51,7 @@ export default function OrderProblems({ actorContext }: { actorContext: ActorCon
     <AdminHeader activePage="problems" actorRole={actorContext.role} userEmail={actorContext.member_email} />
     <main className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
       <h1 className="text-2xl font-bold text-gray-900">{th ? 'ปัญหาออเดอร์' : 'Order problems'}</h1>
-      <p className="text-sm text-gray-600">{th ? 'ติดต่อผู้ซื้อภายนอกระบบ แล้วบันทึกผลที่ตกลงกัน รายการที่ยังไม่จบจะพักการลบข้อมูลที่เกี่ยวข้อง' : 'Contact the buyer outside NireQ, then record the agreed solution. Open reports pause deletion of related data.'}</p>
+      <p className="text-sm text-gray-600">{th ? 'ติดต่อผู้ซื้อภายนอกระบบ แล้วบันทึกผลที่ตกลงกัน รายการที่ยังไม่จบจะพักการลบข้อมูลที่เกี่ยวข้อง' : 'Contact the buyer outside Paimon, then record the agreed solution. Open reports pause deletion of related data.'}</p>
       <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer font-semibold">{th ? 'บันทึกปัญหาที่รับจากช่องทางอื่น' : 'Record a problem received elsewhere'}</summary>
         <form className="my-3 flex flex-wrap gap-2" onSubmit={async e => {
           e.preventDefault(); setOrderId(null);

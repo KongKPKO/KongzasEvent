@@ -61,7 +61,7 @@ const CustomerHeader = ({ title, avatarUrl, avatarDisplay, compactStacked = fals
                 )
              )}
             
-             <h1 className="text-2xl font-black text-[#d63384] tracking-tight drop-shadow-sm leading-none">
+             <h1 className="text-2xl font-black text-pink-700 tracking-tight drop-shadow-sm leading-none">
                 {title}
              </h1>
          </div>

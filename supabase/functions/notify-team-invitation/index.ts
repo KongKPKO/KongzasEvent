@@ -31,6 +31,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
 import { buildInviteHtml, buildInviteText } from "./email.ts";
 
 const corsHeaders = {
@@ -208,7 +209,7 @@ Deno.serve(async (req: Request) => {
       managerSignupUrl = `${appUrl}/staff-signup?email=${encodeURIComponent(invitation.invited_email)}&workspace=${encodeURIComponent(artistName)}`;
     }
 
-    const subject = `You've been invited to join ${artistName} on NireQ`;
+    const subject = `You've been invited to join ${artistName} on Paimon`;
     const emailInput = {
       artistName,
       inviterEmail,
@@ -232,7 +233,7 @@ Deno.serve(async (req: Request) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          From: { Email: "invites@nireq.local", Name: "NireQ" },
+          From: { Email: "invites@nireq.local", Name: "Paimon" },
           To: [{ Email: invitation.invited_email, Name: invitation.invited_email }],
           Subject: subject,
           HTML: html,
@@ -258,7 +259,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: Deno.env.get("APPLICATION_EMAIL_FROM") || "NireQ <invites@resend.dev>",
+        from: withPaimonSenderName(Deno.env.get("APPLICATION_EMAIL_FROM") || "Paimon <invites@resend.dev>"),
         to: [invitation.invited_email],
         subject,
         html,

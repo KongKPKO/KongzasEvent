@@ -44,7 +44,7 @@ const SocialFooter = ({ artist }: SocialFooterProps) => {
                 target="_blank"
                 rel="noreferrer"
                 aria-label={link.label}
-                className="grid h-11 w-11 place-items-center rounded-full border border-pink-100 bg-white text-black shadow-sm transition-all hover:scale-105 hover:text-[#d63384] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-100"
+                className="grid h-11 w-11 place-items-center rounded-full border border-pink-100 bg-white text-black shadow-sm transition-all hover:scale-105 hover:text-pink-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-100"
               >
                  {link.icon}
               </a>

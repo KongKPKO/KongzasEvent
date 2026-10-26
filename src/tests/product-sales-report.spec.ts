@@ -22,10 +22,13 @@ const rows: ProductSalesRow[] = [{
 test('product sales CSV uses UTF-8 BOM, Thai headings and one row per variant', () => {
   const csv = buildProductSalesCsv(rows, 'th');
   expect(csv.charCodeAt(0)).toBe(0xFEFF);
-  expect(csv).toContain('"สินค้า","ตัวเลือก","รหัสสินค้า"');
-  expect(csv).toContain('"พวงกุญแจ, ""คู่""","แดง","KEY-RED"');
-  expect(csv.split('\r\n')).toHaveLength(3);
-  expect(csv).toContain('"30","","270","THB"');
+  const lines = csv.split('\r\n');
+  expect(lines).toHaveLength(3);
+  expect(lines[0]).toBe('\uFEFF"สินค้า","ตัวเลือก","รหัสสินค้า","หมวดหมู่","จำนวนขาย","ยอดขายก่อนส่วนลด","สกุลเงิน"');
+  expect(lines[1]).toBe('"พวงกุญแจ, ""คู่""","แดง","KEY-RED","ของสะสม","2","300","THB"');
+  expect(csv).not.toContain('ส่วนลดที่จัดสรร');
+  expect(csv).not.toContain('ยอดคืนเงิน');
+  expect(csv).not.toContain('ยอดขายสุทธิ');
 });
 
 test('report normalization converts database numerics without inventing refunds', () => {

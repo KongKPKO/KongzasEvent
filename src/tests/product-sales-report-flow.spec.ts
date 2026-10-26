@@ -37,7 +37,7 @@ test.beforeAll(async () => {
   must(products);
   productIds = products.data!.map((item) => item.id);
   must(await service.from('events').insert({ id: eventId, artist_id: artistId, event_name: 'Product report event', start_date: '2026-10-16T00:00:00Z', end_date: '2026-10-20T00:00:00Z', event_timezone: 'Asia/Bangkok', status: 'Confirmed' }));
-  const order = await service.from('orders').insert({ event_id: eventId, status: 'completed', total_price: 270, subtotal_price: 300, discount_total: 30, payment_method: 'cash', currency: 'THB', created_at: '2026-10-17T03:00:00Z' }).select('id').single();
+  const order = await service.from('orders').insert({ event_id: eventId, status: 'completed', total_price: 270, subtotal_price: 300, discount_total: 30, pricing_breakdown: [{ ruleId: 'saved-offer', label: 'Saved 10 percent', discountAmount: 30 }], payment_method: 'cash', currency: 'THB', created_at: '2026-10-17T03:00:00Z' }).select('id').single();
   must(order);
   must(await service.from('order_items').insert([
     { order_id: order.data!.id, product_id: productIds[0], quantity: 1, price_per_unit: 100, currency: 'THB', product_name_snapshot: 'Original set — Option A', sku_snapshot: 'OLD-A' },
@@ -87,8 +87,12 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await expect(parentRow).toContainText('Original set');
   await expect(parentRow.locator('td').nth(2)).toHaveText('2');
   await expect(parentRow.locator('td').nth(3)).toContainText('300');
-  await expect(parentRow.locator('td').nth(4)).toContainText('30');
-  await expect(parentRow.locator('td').nth(6)).toContainText('270');
+  await expect(parentRow.locator('td')).toHaveCount(4);
+  await expect(report.getByRole('columnheader', { name: 'Discount', exact: true })).toHaveCount(0);
+  const promotions = page.getByRole('region', { name: 'Promotion usage', exact: true });
+  await expect(promotions).toContainText('Saved 10 percent');
+  await expect(promotions).toContainText('Used in 1 order');
+  await expect(promotions).toContainText('30');
   const search = report.getByRole('searchbox', { name: 'Search products' });
   expect(await search.evaluate(input => parseFloat(getComputedStyle(input).paddingLeft))).toBeGreaterThanOrEqual(40);
   const galleryTrigger = parentRow.getByRole('button', { name: 'View all 6 images of Original set' });
@@ -123,7 +127,8 @@ test('management report expands historical variants, filters, exports Thai-safe 
   expect(csv.charCodeAt(0)).toBe(0xFEFF);
   expect(csv).toContain('"Product","Variant","Product code"');
   expect(csv).toContain('"Original set","Option B","OLD-B"');
-  expect(csv).toContain('"20","","180","THB"');
+  expect(csv).toContain('"1","200","THB"');
+  expect(csv).not.toContain('Allocated discount');
 
   await page.screenshot({ path: testInfo.outputPath('product-sales-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -141,9 +146,11 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await page.route('**/rest/v1/products?**', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Media unavailable for test' }) }));
   await page.reload();
   await expect(report.getByRole('status').filter({ hasText: 'Additional product images could not load' })).toBeVisible();
-  await expect(report.locator('article')).toContainText('270');
+  await expect(report.locator('article')).toContainText('300');
   await page.unroute('**/rest/v1/orders?**');
   await page.goto(`/manage-events/${eventId}/history`);
+  await page.locator('.report-order summary').first().click();
+  await expect(page.getByRole('region', { name: 'Promotions used in this order' })).toContainText('Saved 10 percent');
   const totals = page.getByRole('region', { name: 'Filtered totals' });
   await expect(totals).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(totals).toHaveCSS('padding-left', '16px');

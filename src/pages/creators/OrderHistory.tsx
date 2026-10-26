@@ -1,3 +1,4 @@
+import OrderPromotionDetails from '../../components/reports/OrderPromotionDetails';
 import './sales-reports.css';
 import EventDateFilter, { matchesEventDate } from '../../components/EventDateFilter';
 import { uiText, useI18n } from '../../i18n';
@@ -215,6 +216,7 @@ export default function EventHistory() {
                 </summary>
                 <div className="report-order-body"><p className="text-sm mb-3">{th ? 'ช่องทาง: ' : 'Channel: '}{copy(order.order_type === 'preorder' ? 'Pre-order' : order.order_type === 'post_event' ? 'Post-order' : order.queue_id ? 'Live Queue' : 'Walk-in')}</p>
                   {order.pickup_status && order.pickup_status !== 'not_required' && <p className="text-sm mb-3">{th ? 'การรับสินค้า: ' : 'Fulfillment: '}{({ awaiting_pickup: th ? 'รอรับสินค้า' : 'Awaiting pickup', picked_up: th ? 'รับสินค้าแล้ว' : 'Picked up', cancelled: th ? 'ยกเลิก' : 'Cancelled', expired: th ? 'หมดอายุ' : 'Expired', awaiting_shipment: th ? 'รอจัดส่ง' : 'Awaiting shipment', shipped: th ? 'จัดส่งแล้ว' : 'Shipped' })[order.pickup_status]}{order.picked_up_at && ` · ${new Date(order.picked_up_at).toLocaleString(th ? 'th-TH' : 'en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' })}`}</p>}
+                  <OrderPromotionDetails pricingBreakdown={order.pricing_breakdown} currency={order.currency} />
                   <ActivityRewardsCard
                     pricingBreakdown={order.pricing_breakdown}
                     state={activityRewardStateForOrder(

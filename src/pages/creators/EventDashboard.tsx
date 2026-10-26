@@ -7,6 +7,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import EventNavTabs from '../../components/EventNavTabs';
 import AdminHeader from '../../components/AdminHeader';
 import ProductSalesBreakdown from '../../components/reports/ProductSalesBreakdown';
+import PromotionSalesSummary, { type PromotionSalesSummaryData } from '../../components/reports/PromotionSalesSummary';
 import { supabase } from '../../supabaseClient';
 import { buildUtf8Csv, downloadUtf8Csv } from '../../lib/productSalesReport';
 import { ArrowLeft, Clock3, CreditCard, DollarSign, Download, PackageCheck, ShoppingBag, Store, Ticket, TrendingUp, Users } from 'lucide-react';
@@ -26,6 +27,7 @@ interface EventInfo {
 }
 
 interface SalesAnalytics {
+  promotionSummary: PromotionSalesSummaryData;
   currency: string; currencies: string[]; revenue: number; subtotal: number; discountTotal: number;
   itemCount: number; completedOrderCount: number; avgOrderValue: number;
   paymentSummary: {cashOrders:number; cashRevenue:number; transferOrders:number; transferRevenue:number};
@@ -36,6 +38,7 @@ interface SalesAnalytics {
   hourlySales: Array<{hour:string; orders:number; revenue:number}>;
 }
 const emptyAnalytics: SalesAnalytics = {
+  promotionSummary:{ rows:[],unattributedDiscount:0,discountTotal:0,discountMismatch:false },
   currency:'THB',currencies:[],revenue:0,subtotal:0,discountTotal:0,itemCount:0,completedOrderCount:0,avgOrderValue:0,
   paymentSummary:{cashOrders:0,cashRevenue:0,transferOrders:0,transferRevenue:0},
   orderTypeSummary:{preorderOrders:0,preorderRevenue:0,postOrders:0,postRevenue:0,awaitingPickupCount:0,liveQueueOrders:0,liveQueueRevenue:0,walkinOrders:0,walkinRevenue:0},
@@ -322,6 +325,7 @@ export default function EventDashboard() {
           </section>
         </div>
 
+        {eventId && <PromotionSalesSummary summary={analytics.promotionSummary} currency={analytics.currency} historyUrl={`/manage-events/${eventId}/history?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`} />}
         {eventId && <ProductSalesBreakdown eventId={eventId} eventName={eventInfo.event_name} from={from} to={to} currency={analytics.currency} />}
 
       </div>

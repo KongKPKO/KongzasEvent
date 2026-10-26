@@ -68,7 +68,7 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const [sort, setSort] = useState<ProductSalesSort>('net');
+  const [sort, setSort] = useState<ProductSalesSort>('gross');
   const [direction, setDirection] = useState<ProductSalesDirection>('desc');
   const [page, setPage] = useState(1);
   const [result, setResult] = useState(emptyResult);
@@ -196,8 +196,7 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
       <label className="flex-1 basis-52">
         {th ? 'เรียงตาม' : 'Sort by'}
         <select value={sortValue} onChange={(event) => changeSort(event.target.value)}>
-          <option value="net-desc">{th ? 'ยอดขายสุทธิ มาก → น้อย' : 'Net sales, high to low'}</option>
-          <option value="gross-desc">{th ? 'ยอดขายรวม มาก → น้อย' : 'Gross sales, high to low'}</option>
+          <option value="gross-desc">{th ? 'ยอดขายก่อนส่วนลด มาก → น้อย' : 'Gross before order discounts, high to low'}</option>
           <option value="quantity-desc">{th ? 'จำนวนขาย มาก → น้อย' : 'Units sold, high to low'}</option>
           <option value="name-asc">{th ? 'ชื่อสินค้า ก → ฮ' : 'Product name, A–Z'}</option>
           <option value="name-desc">{th ? 'ชื่อสินค้า ฮ → ก' : 'Product name, Z–A'}</option>
@@ -222,10 +221,7 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
               <th scope="col">{th ? 'สินค้า' : 'Product'}</th>
               <th scope="col">{th ? 'หมวดหมู่' : 'Category'}</th>
               <th scope="col" className="numeric">{th ? 'จำนวน' : 'Units'}</th>
-              <th scope="col" className="numeric">{th ? 'ยอดรวม' : 'Gross'}</th>
-              <th scope="col" className="numeric">{th ? 'ส่วนลด' : 'Discount'}</th>
-              <th scope="col" className="numeric">{th ? 'คืนเงิน*' : 'Refund*'}</th>
-              <th scope="col" className="numeric">{th ? 'ยอดสุทธิ' : 'Net'}</th>
+              <th scope="col" className="numeric">{th ? 'ยอดขายก่อนส่วนลด' : 'Gross before order discounts'}</th>
             </tr></thead>
             <tbody>{result.rows.map((row) => <DesktopRows key={row.family_id} row={row} expanded={expanded.has(row.family_id)} onToggle={() => toggleExpanded(row.family_id)} th={th} categoryLabel={categoryLabel} onGallery={setGallery} />)}</tbody>
           </table>
@@ -241,8 +237,8 @@ export default function ProductSalesBreakdown({ eventId, eventName, from, to, cu
 
     <p className="mt-5 border-t border-gray-100 pt-4 text-xs leading-relaxed text-gray-500">
       {th
-        ? '* ระบบบันทึกการคืนเงินที่ระดับออเดอร์ จึงยังจัดสรรยอดคืนให้สินค้าแต่ละชิ้นอย่างเชื่อถือไม่ได้ ช่องคืนเงินจะแสดง “—” และยอดสุทธิรายสินค้าหักเฉพาะส่วนลดที่จัดสรรแล้ว หมวดหมู่และรูปใช้ข้อมูลแคตตาล็อกปัจจุบัน'
-        : '* Refunds are recorded at order level, so they cannot be reliably allocated to individual products. Refund shows “—”, and product net deducts allocated discounts only. Category and image use the current catalog.'}
+        ? '* ยอดรายสินค้าเป็นยอดขายก่อนหักส่วนลดและการคืนเงินระดับออเดอร์ ดูการใช้โปรโมชันได้ในรายงานโปรโมชันแยกต่างหาก และดูส่วนลดกับการคืนเงินของแต่ละออเดอร์ได้ในประวัติออเดอร์'
+        : '* Product figures are gross sales before order-level discounts and refunds. See promotion usage in the separate promotion report, and each order’s discounts and refunds in order history.'}
     </p>
   </section>;
 }
@@ -292,20 +288,20 @@ function DesktopRows({ row, expanded, onToggle, th, categoryLabel, onGallery }: 
   return <>
     <tr className="product-sales-parent-row">
       <td><div className="flex items-center gap-2">{row.has_variants ? <button type="button" className="report-icon shrink-0" aria-expanded={expanded} aria-controls={detailId} onClick={onToggle} aria-label={expanded ? (th ? `ซ่อนตัวเลือกของ ${row.name}` : `Collapse ${row.name} variants`) : (th ? `ดูตัวเลือกของ ${row.name}` : `Expand ${row.name} variants`)}><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button> : <span className="w-11 shrink-0" />}<ProductIdentity row={row} th={th} onGallery={onGallery} /></div></td>
-      <td>{categoryLabel(row.category)}</td><td className="numeric font-bold">{row.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(row.gross, row.currency)}</td><td className="numeric">{formatPrice(row.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-black">{formatPrice(row.net, row.currency)}</td>
+      <td>{categoryLabel(row.category)}</td><td className="numeric font-bold">{row.quantity.toLocaleString()}</td><td className="numeric font-black">{formatPrice(row.gross, row.currency)}</td>
     </tr>
     {expanded && row.has_variants && row.variants.map((variant, index) => <tr id={index === 0 ? detailId : undefined} key={variant.product_id} className="product-sales-variant-row">
       <td><div className="flex items-center gap-3 pl-14"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><div className="font-bold text-gray-800">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</div><div className="mt-0.5 text-xs text-gray-500">{variant.sku || (th ? 'ไม่มีรหัสสินค้า' : 'No product code')}</div></div></div></td>
-      <td>{categoryLabel(row.category)}</td><td className="numeric">{variant.quantity.toLocaleString()}</td><td className="numeric">{formatPrice(variant.gross, row.currency)}</td><td className="numeric">{formatPrice(variant.discount, row.currency)}</td><td className="numeric text-gray-400">—</td><td className="numeric font-bold">{formatPrice(variant.net, row.currency)}</td>
+      <td>{categoryLabel(row.category)}</td><td className="numeric">{variant.quantity.toLocaleString()}</td><td className="numeric font-bold">{formatPrice(variant.gross, row.currency)}</td>
     </tr>)}
   </>;
 }
 
 function MobileRow({ row, expanded, onToggle, th, categoryLabel, onGallery }: { row: ProductSalesRow; expanded: boolean; onToggle: () => void; th: boolean; categoryLabel: (value: string) => string; onGallery: OpenGallery }) {
   return <article className="rounded-xl border border-gray-200 bg-white p-4">
-    <div className="flex items-start justify-between gap-3"><ProductIdentity row={row} th={th} onGallery={onGallery} /><div className="shrink-0 text-right"><div className="text-xs text-gray-500">{th ? 'ยอดสุทธิ' : 'Net'}</div><div className="font-black text-gray-900">{formatPrice(row.net, row.currency)}</div></div></div>
-    <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><span className="block text-xs text-gray-500">{th ? 'หมวดหมู่' : 'Category'}</span><strong>{categoryLabel(row.category)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'จำนวนขาย' : 'Units sold'}</span><strong>{row.quantity.toLocaleString()}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ยอดรวม' : 'Gross'}</span><strong>{formatPrice(row.gross, row.currency)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'ส่วนลด' : 'Discount'}</span><strong>{formatPrice(row.discount, row.currency)}</strong></div></div>
+    <div className="flex items-start justify-between gap-3"><ProductIdentity row={row} th={th} onGallery={onGallery} /><div className="shrink-0 text-right"><div className="text-xs text-gray-500">{th ? 'ยอดก่อนส่วนลด' : 'Gross before discounts'}</div><div className="font-black text-gray-900">{formatPrice(row.gross, row.currency)}</div></div></div>
+    <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><span className="block text-xs text-gray-500">{th ? 'หมวดหมู่' : 'Category'}</span><strong>{categoryLabel(row.category)}</strong></div><div><span className="block text-xs text-gray-500">{th ? 'จำนวนขาย' : 'Units sold'}</span><strong>{row.quantity.toLocaleString()}</strong></div></div>
     {row.has_variants && <button type="button" className="report-button mt-3 w-full justify-between" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? (th ? 'ซ่อนตัวเลือก' : 'Hide variants') : (th ? 'ดูตัวเลือก' : 'View variants')}</span><ChevronDown size={17} className={expanded ? '' : '-rotate-90'} aria-hidden="true" /></button>}
-    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-3"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มีรหัสสินค้า' : 'No product code')}</div></div></div><strong>{formatPrice(variant.net, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดรวม' : 'gross'} {formatPrice(variant.gross, row.currency)} · {th ? 'ส่วนลด' : 'discount'} {formatPrice(variant.discount, row.currency)}</div></div>)}</div>}
+    {expanded && row.has_variants && <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">{row.variants.map((variant) => <div key={variant.product_id} className="py-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-3"><ImagePreview images={variant.images || []} name={variant.variant_name === 'Default' ? variant.name : variant.variant_name} th={th} onGallery={onGallery} /><div><strong className="text-gray-900">{variant.variant_name === 'Default' ? variant.name : variant.variant_name}</strong><div className="text-xs text-gray-500">{variant.sku || (th ? 'ไม่มีรหัสสินค้า' : 'No product code')}</div></div></div><strong>{formatPrice(variant.gross, row.currency)}</strong></div><div className="mt-1 text-xs text-gray-500">{variant.quantity.toLocaleString()} {th ? 'ชิ้น' : 'units'} · {th ? 'ยอดก่อนส่วนลด' : 'gross before discounts'} {formatPrice(variant.gross, row.currency)}</div></div>)}</div>}
   </article>;
 }

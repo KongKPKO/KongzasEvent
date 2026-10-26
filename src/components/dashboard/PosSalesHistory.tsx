@@ -1,3 +1,4 @@
+import OrderPromotionDetails from '../reports/OrderPromotionDetails';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock3, ReceiptText, Search, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
@@ -451,6 +452,7 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
                     </dl>
                   </div>
 
+                  <OrderPromotionDetails pricingBreakdown={detail.pricing_breakdown} currency={detail.currency} />
                   <ActivityRewardsCard
                     pricingBreakdown={detail.pricing_breakdown}
                     state={activityRewardStateForOrder(detail.status, detail.payment_status)}

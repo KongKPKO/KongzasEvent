@@ -106,6 +106,7 @@ test.beforeAll(async () => {
     total_price: 160,
     subtotal_price: 180,
     discount_total: 20,
+    pricing_breakdown: [{ id: 'history-offer', name: 'Recorded promotion', discount_amount: 20, rule_text: 'Saved offer' }],
     payment_method: 'cash',
     currency: 'THB',
     order_type: 'live_queue',
@@ -160,6 +161,7 @@ test('POS history is read-only and preserves the active queue and cart', async (
   await drawer.getByText(`#${historicalOrderId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, { exact: true }).click();
   const detail = drawer.getByTestId('pos-sale-detail');
   await expect(detail.getByText('Recorded sale name', { exact: true })).toBeVisible();
+  await expect(detail.getByRole('region', { name: 'Promotions used in this order' })).toContainText('Recorded promotion');
   await expect(detail.getByText('RECORDED-POS-SKU', { exact: false })).toBeVisible();
   await expect(detail.getByText('Queue #27', { exact: true })).toBeVisible();
   await expect(detail.getByText('The recorded discount is stored at order level and is not allocated to individual items.', { exact: true })).toBeVisible();

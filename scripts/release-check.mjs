@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+import { regressionPlan } from './regression-suites.mjs';
+import { parseRegressionArgs, changedPaths, describePlan, browserFile, selectCollectedCases } from './regression-selection.mjs';
 
 const args = process.argv.slice(2);
-const isHygieneOnly = args.includes('hygiene');
-const isGuardOnly = args.includes('guard');
-const mode = args.find(a => !['hygiene', 'guard'].includes(a)) || 'local';
+const options = parseRegressionArgs(args);
+const isHygieneOnly = options.hygiene;
+const isGuardOnly = options.guard;
+const mode = options.mode;
 const workdir = process.env.SUPABASE_WORKDIR;
 
 const checkHygiene = () => {
@@ -240,10 +245,24 @@ const readLocalSupabaseEnv = () => {
   };
 };
 
-// Always check hygiene first
+const plan = mode === 'local' && !isHygieneOnly && !isGuardOnly
+  ? regressionPlan({ suite: options.suite, scopes: options.scopes, paths: options.suite === 'affected' ? changedPaths(options.base) : [], isolated: Boolean(workdir) })
+  : null;
+if (options.list) {
+  console.log(describePlan(plan));
+  process.exit(0);
+}
+
+// Always check hygiene before executing verification.
 checkHygiene();
 
 if (isHygieneOnly) {
+  process.exit(0);
+}
+
+if (plan) console.log(describePlan(plan));
+if (plan && !plan.build) {
+  console.log('Static verification passed; no runtime cases or fixture backend selected.');
   process.exit(0);
 }
 
@@ -253,82 +272,41 @@ if (mode === 'local') {
 
   run('node', ['scripts/validate-env.mjs', mode], { env: localEnv });
   run('npm', ['run', 'build'], { env: localEnv });
-  run('supabase', [
-    'test', 'db', '--local',
+  if (plan.sql === 'all' || plan.sql.length) run('supabase', [
+    'test', 'db', ...(plan.sql === 'all' ? [] : plan.sql.map(file => resolve(file))), '--local',
     ...(workdir ? ['--workdir', workdir] : []),
   ], { env: localEnv });
   const projectId = readFileSync(`${workdir || '.'}/supabase/config.toml`, 'utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)?.[1];
   if (!projectId) throw new Error('Local Supabase project_id is required for concurrency tests.');
-  run('bash', ['supabase/tests/team_permission_boundaries_concurrency_test.sh'], {
+  if (plan.teamRace) run('bash', ['supabase/tests/team_permission_boundaries_concurrency_test.sh'], {
     env: { ...localEnv, TEAM_RACE_TEST_DISPOSABLE: '1', TEAM_RACE_TEST_DB_CONTAINER: `supabase_db_${projectId}` },
   });
-  run('node', ['scripts/test-promotion-release.mjs'], { env: localEnv });
-  run('npx', ['playwright', 'test',
-    'src/tests/setup-readiness.spec.ts',
-    'src/tests/production-readiness.spec.ts',
-    'src/tests/release-cache.spec.ts',
-    'src/tests/public-i18n-smoke.spec.ts',
-    'src/tests/queue-availability.spec.ts',
-    'src/tests/customer-queue-ui.spec.ts',
-    'src/tests/online-shop-discovery.spec.ts',
-    'src/tests/storefront.spec.ts',
-    'src/tests/seller-type-customer.spec.ts',
-    'src/tests/event-card-order-link.spec.ts',
-    'src/tests/profile-member-save.spec.ts',
-    'src/tests/multi-payment-display.spec.ts',
-    'src/tests/event-multi-payment.spec.ts',
-    'src/tests/campaign-multi-payment.spec.ts',
-    'src/tests/catalog-stock-retry.spec.ts',
-    'src/tests/production-inventory.spec.ts',
-    'src/tests/image-upload.spec.ts',
-    'src/tests/image-storage.spec.ts',
-    'src/tests/offline-operations.spec.ts',
-    'src/tests/promotion-save.spec.ts',
-    'src/tests/promotion-mixed-rewards.spec.ts',
-    'src/tests/promotion-workspace.spec.ts',
-    'src/tests/customer-live-promotions.spec.ts',
-    'src/tests/promotion-flexible-benefits.spec.ts',
-    'src/tests/activity-rewards-display.spec.ts',
-    'src/tests/activity-reward-pos.spec.ts',
-    'src/tests/event-catalog-setup.spec.ts',
-    'src/tests/catalog-sales-channels.spec.ts',
-    'src/tests/security-rls-regression.spec.ts',
-    'src/tests/e2e/full-service-loop.spec.ts',
-    'src/tests/e2e/pilot-auth.spec.ts',
-    'src/tests/e2e/pilot-preorder.spec.ts',
-    'src/tests/auth-user-errors.spec.ts',
-    'src/tests/platform-admin-mfa.spec.ts',
-    'src/tests/phase2-workspace-identity.spec.ts',
-    'src/tests/platform-admin-console.spec.ts',
-    'src/tests/account-management-suspension.spec.ts',
-    'src/tests/feedback-support.spec.ts',
-    'src/tests/team-permissions.spec.ts',
-    'src/tests/notify-creator-application.spec.ts',
-    'src/tests/admin-support.spec.ts',
-    'src/tests/store-suspension.spec.ts',
-    'src/tests/localization.spec.ts',
-    'src/tests/language-menu.spec.ts',
-    ...(workdir ? [
-      'src/tests/e2e/pilot-login-recovery.spec.ts',
-      'src/tests/e2e/pilot-multi-shop.spec.ts',
-      'src/tests/e2e/language-selection.spec.ts',
-    ] : []),
-    'src/tests/regression/online-campaign.spec.ts',
-    'src/tests/product-sales-report.spec.ts',
-    'src/tests/product-sales-report-flow.spec.ts',
-    'src/tests/pos-sales-history.spec.ts',
-    'src/tests/pos-queue-drawer.spec.ts',
-    'src/tests/bundle-pos-last-stock.spec.ts',
-    'src/tests/auto-bundle-editor.spec.ts',
-    'src/tests/product-presentation.spec.ts',
-    'src/tests/product-families-flow.spec.ts',
-    'src/tests/product-types-flow.spec.ts',
-    'src/tests/product-csv-import.spec.ts',
-    'src/tests/product-csv-import-flow.spec.ts',
-    'src/tests/event-appearances.spec.ts',
-    '--project=desktop-chromium',
-  ], { env: localEnv });
-  run('npm', ['run', 'test:api:smoke'], { env: localEnv });
+  if (plan.promotionRace) run('node', ['scripts/test-promotion-release.mjs'], { env: localEnv });
+  if (plan.browser.length) {
+    const directory = mkdtempSync(join(tmpdir(), 'paimon-regression-'));
+    const list = join(directory, 'tests.txt');
+    const report = join(directory, 'collection.json');
+    const files = [...new Set(plan.browser.map(browserFile))];
+    for (const file of files) if (!existsSync(file)) throw new Error(`Regression file no longer exists: ${file}`);
+    let status = 1;
+    try {
+      run('npx', ['playwright', 'test', ...files, '--project=desktop-chromium', '--list', '--reporter=json'], {
+        env: { ...localEnv, PLAYWRIGHT_JSON_OUTPUT_FILE: report },
+      });
+      const cases = selectCollectedCases(plan.browser, JSON.parse(readFileSync(report, 'utf8')));
+      // Exact cases also work with installed Playwright versions that do not expand file/group entries.
+      writeFileSync(list, cases.join('\n') + '\n');
+      console.log(`Validated ${cases.length} selected browser scenarios; every requested selector exists.`);
+      const command = ['playwright', 'test', ...files, '--project=desktop-chromium', '--test-list', list];
+      console.log(`\n> npx ${command.join(' ')}`);
+      const result = spawnSync('npx', command, { stdio: 'inherit', shell: process.platform === 'win32', env: localEnv });
+      status = result.status || (result.error || result.signal ? 1 : 0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+    if (status !== 0) process.exit(status);
+  }
+  if (plan.api) run('npm', ['run', 'test:api:smoke'], { env: localEnv });
 } else {
   if (isGuardOnly) {
     console.error('The fixture guard is only available for local release tests.');
@@ -353,4 +331,4 @@ if (mode === 'local') {
   ], { env: remoteEnv });
 }
 
-console.log(`\nRelease check passed for ${mode}.`);
+console.log(`\n${mode === 'local' ? plan.label : 'Public release'} check passed for ${mode}.`);

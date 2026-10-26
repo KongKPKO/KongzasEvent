@@ -37,6 +37,9 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_KEY }}
         run: node scripts/validate-release-env.mjs ci
 
+      - name: Regression selection contract
+        run: npm run test:regression:unit
+
       - name: Run Lint & Build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

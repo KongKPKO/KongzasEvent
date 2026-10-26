@@ -10,7 +10,7 @@
     "build:staging": "node scripts/validate-env.mjs staging && tsc && vite build --mode staging",
     "build:prod": "node scripts/validate-env.mjs production && tsc && vite build --mode production",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "verify": "npm run lint && npm run test:release",
+    "verify": "npm run lint && npm run test:regression:unit && npm run test:regression",
     "check:public": "node scripts/release-check.mjs",
     "check:hygiene": "node scripts/release-check.mjs hygiene",
     "preview": "vite preview",
@@ -19,7 +19,7 @@
     "test:release:guard": "node scripts/release-check.mjs local guard",
     "test:release:lan": "node scripts/release-check.mjs lan",
     "test:release:staging": "node scripts/release-check.mjs staging",
-    "test:regression": "npx playwright test src/tests/regression/regression.spec.ts",
+    "test:regression": "node scripts/release-check.mjs local --suite affected",
     "test:accessibility": "npx playwright test src/tests/accessibility.spec.ts",
     "test:security": "npx playwright test src/tests/security.spec.ts src/tests/security.extend.spec.ts src/tests/security-rls-regression.spec.ts",
     "test:performance:real": "npx playwright test src/tests/performance-real-data.spec.ts --project=desktop-chromium",
@@ -30,7 +30,14 @@
     "check:deploy-source": "npm run check:hygiene && sh -c 'test -z \"$(git status --porcelain)\" || { echo \"Deploy stopped: commit the intended changes before deploying.\" >&2; exit 1; }'",
     "push:current": "git push --set-upstream origin HEAD",
     "deploy:staging": "npm run check:deploy-source && npm run build:staging && npm run push:current && firebase hosting:channel:deploy dev --only nireqapp --expires 30d",
-    "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --only hosting:nireqapp"
+    "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --only hosting:nireqapp",
+    "verify:full": "npm run lint && npm run test:regression:unit && npm run test:release",
+    "test:regression:legacy": "npx playwright test src/tests/regression/regression.spec.ts",
+    "test:regression:smoke": "node scripts/release-check.mjs local --suite smoke",
+    "test:regression:lightweight": "node scripts/release-check.mjs local --suite lightweight",
+    "test:regression:full": "node scripts/release-check.mjs local --suite full",
+    "test:regression:plan": "node scripts/release-check.mjs local --suite affected --list",
+    "test:regression:unit": "node --test scripts/regression-selection.test.mjs"
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",

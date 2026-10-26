@@ -71,6 +71,8 @@ npx playwright test src/tests/public-i18n-smoke.spec.ts --project=desktop-chromi
 npm run test:api:smoke
 ```
 
+Use `npm run test:regression:plan` to inspect the affected Smoke/Lightweight/Full selection. `npm run verify` checks the current staged, unstaged and untracked diff. Before an approved release run `npm run verify:full`; see [regression sets](testing/regression.md).
+
 Run broader suites when the change touches shared behavior:
 
 ```bash

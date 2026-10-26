@@ -17,12 +17,12 @@ npm run dev
 npm run verify
 ```
 
-Use the narrowest existing test while developing. Run `npm run verify` before handing off a code change.
+Use the narrowest existing test while developing. Run `npm run verify` before handing off a code change. It performs impact-based regression selection; inspect `npm run test:regression:plan` when needed. Use `npm run verify:full` before an approved deployment. After committing changes, pass `--base <pre-change-commit>` to `npm run test:regression` when verifying that committed diff; a clean default run is only Smoke. See `docs/testing/regression.md`.
 
 ## Definition of Done
 
 - The requested behavior works through the real user flow.
-- For code changes, `npm run verify` passes.
+- For code changes, `npm run verify` passes for the complete affected diff. Shared/schema/unknown impacts automatically run Full; approved releases additionally require `npm run verify:full`.
 - Changes to money, stock, authentication, authorization, or RLS also run the relevant regression or security test.
 - Report any skipped check or environment limitation; never describe an unrun check as passing.
 - Continue through implementation, relevant validation, and fixes caused by this change. For UI changes, exercise the affected user flow in a browser when available.

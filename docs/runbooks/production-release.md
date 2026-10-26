@@ -24,11 +24,11 @@ The release candidate must come from the agreed release branch with no unexplain
 
 ```bash
 npm ci
-npm run verify
+npm run verify:full
 git diff --check
 ```
 
-`npm run verify` must complete hygiene, lint, environment validation, build, public Playwright smoke, and local API smoke. Run the focused production regressions too:
+`npm run verify:full` must complete hygiene, lint, environment validation, build, public Playwright smoke, and local API smoke. Run the focused production regressions too:
 
 ```bash
 npx playwright test \

@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "target": "nireqapp",
+    "public": "public",
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "redirects": [
+      {
+        "regex": "^/(.*)$",
+        "destination": "https://paimonq.com/:1",
+        "type": 302
+      }
+    ]
+  }
+}

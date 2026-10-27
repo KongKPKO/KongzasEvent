@@ -75,6 +75,11 @@ export default function CreatorRegister() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const authRequestRef = useRef(0);
   const authUserIdRef = useRef<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errorMsg) errorRef.current?.focus();
+  }, [errorMsg]);
 
   useEffect(() => {
     let active = true;
@@ -495,7 +500,7 @@ export default function CreatorRegister() {
             </button>
 
             {errorMsg && (
-              <div data-testid="creator-register-error" role="alert" className="mt-3 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+              <div ref={errorRef} tabIndex={-1} data-testid="creator-register-error" role="alert" className="mt-3 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
                 <AlertCircle size={18} className="mt-0.5 shrink-0" />
                 {errorMsg}
               </div>

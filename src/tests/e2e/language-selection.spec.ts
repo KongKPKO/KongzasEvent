@@ -154,7 +154,7 @@ test('all event menus show the event before navigation and action feedback close
     const navBounds = await nav.boundingBox();
     expect(titleBounds!.y + titleBounds!.height).toBeLessThan(navBounds!.y);
     await page.setViewportSize({ width: 375, height: 900 });
-    await expect(nav.getByRole('combobox', { name: 'Event page', exact: true })).toHaveValue(key);
+    await expect(nav.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-current', 'page');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.setViewportSize({ width: 1280, height: 900 });
     if (key === 'catalog') await page.screenshot({ path: testInfo.outputPath('event-context.png'), fullPage: true });

@@ -557,10 +557,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       }
 
       const { total, available, allocated, reserved } = getCatalogStockValues(product);
+      const awaitingFulfillment = inventory[product.id]?.awaiting_fulfillment_stock;
 
       return (
          <div className={compact ? 'mt-1' : ''}>
-            <div className={compact ? 'grid grid-cols-3 gap-1 text-[10px]' : 'grid grid-cols-3 gap-1.5 text-[11px]'}>
+            <div className={compact ? 'grid grid-cols-2 gap-1 text-[10px]' : 'grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]'}>
                <div>
                   <div className="font-black text-gray-900">{total}</div>
                   <div className="font-bold text-gray-400">{language === 'th' ? 'ของที่มีอยู่' : 'Physical on hand'}</div>
@@ -572,6 +573,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div>
                   <div className="font-black text-pink-700">{allocated}</div>
                   <div className="font-bold text-gray-400">{t('catalogInSalesChannels')}</div>
+               </div>
+               <div>
+                  <div className="font-black text-blue-700">{awaitingFulfillment ?? '—'}</div>
+                  <div className="font-bold text-gray-400" title={language === 'th' ? 'สินค้าจากยอดขายออนไลน์ที่ยังไม่ส่งมอบ รวมรายการคืนเงินที่ยังไม่คืนสต็อก ไม่นับสินค้ารับสั่งผลิต' : 'Online stock sales not yet fulfilled, including refunded items not returned to stock; excludes made-to-order items.'}>{language === 'th' ? 'ออนไลน์ยังไม่ส่งมอบ' : 'Online stock not fulfilled'}</div>
                </div>
             </div>
             {reserved > 0 && (

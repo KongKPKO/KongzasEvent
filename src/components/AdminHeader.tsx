@@ -64,13 +64,13 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
     return (
         <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-40 shadow-sm relative">
             {/* Left: Brand + Event Badge */}
-            <div className="flex items-center gap-2">
-                <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักร้าน' : 'Shop workspace'} className="festival-wordmark">
+            <div className="flex min-w-0 flex-1 items-center gap-2 xl:flex-none">
+                <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักร้าน' : 'Shop workspace'} className="festival-wordmark shrink-0">
                     <BrandWordmark className="festival-brand-mark" size={17} />
                 </Link>
                 {/* Active Event Badge */}
                 {activeEvent && (
-                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex items-center gap-1.5 max-w-[140px] md:max-w-none">
+                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex min-w-0 items-center gap-1.5 max-w-[140px] md:max-w-none">
                         <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse shrink-0"></span>
                         <span className="truncate">{activeEvent.event_name}</span>
                     </div>
@@ -139,7 +139,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
 
             {/* Mobile Menu Button */}
             <button
-                className="xl:hidden icon-touch inline-flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="xl:hidden icon-touch inline-flex shrink-0 items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 aria-expanded={isMenuOpen} aria-controls="workspace-menu" aria-label={isMenuOpen ? (language === 'th' ? 'ปิดเมนู' : 'Close workspace menu') : (language === 'th' ? 'เปิดเมนู' : 'Open workspace menu')}
             >

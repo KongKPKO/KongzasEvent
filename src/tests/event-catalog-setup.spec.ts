@@ -81,6 +81,11 @@ test('new event reuses a product list, reviews bulk stock and can explicitly sta
     await setup.getByLabel('Allocate selected visible products').fill('2');
     await setup.getByRole('button', { name: 'Apply quantity', exact: true }).click();
     await expect(setup.getByLabel('Stock Existing print', { exact: true })).toHaveValue('2');
+    await setup.getByLabel('Stock Existing print', { exact: true }).fill('');
+    await expect(setup.getByLabel('Stock Existing print', { exact: true })).toHaveValue('');
+    await setup.getByLabel('Stock Existing print', { exact: true }).pressSequentially('5');
+    await expect(setup.getByLabel('Stock Existing print', { exact: true })).toHaveValue('5');
+    await setup.getByLabel('Stock Existing print', { exact: true }).fill('2');
     await expect(setup.getByLabel('Stock New print', { exact: true })).toHaveValue('2');
     await page.screenshot({ path: testInfo.outputPath('event-catalog-before-create.png') });
     await page.getByRole('button', { name: 'Save Event', exact: true }).click();

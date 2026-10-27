@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Monitor, Users } from 'lucide-react';
 import { canAccessManagementPages, canAccessQueuePages, canUsePos } from '../types/access';
@@ -26,8 +26,18 @@ export default function EventNavTabs({ eventId, eventName, active, actorRole, ch
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
+  const tabsRef = useRef<HTMLDivElement>(null);
   const th = language === 'th';
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'auto' }); }, [eventId, active]);
+  useEffect(() => {
+    const list = tabsRef.current;
+    const current = list?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!list || !current) return;
+    const bounds = list.getBoundingClientRect();
+    const item = current.getBoundingClientRect();
+    if (item.right > bounds.right) list.scrollLeft += item.right - bounds.right;
+    else if (item.left < bounds.left) list.scrollLeft -= bounds.left - item.left;
+  }, [active, eventId, language]);
   // Pages that render this without an actorContext are management-only routes.
   const role = actorRole ?? 'manager';
 
@@ -70,14 +80,8 @@ export default function EventNavTabs({ eventId, eventName, active, actorRole, ch
         <p className="mt-2 text-sm font-bold text-gray-700">{th ? 'หน้าปัจจุบัน' : 'Current page'} · {tabs.find(tab => tab.key === active)?.label}</p>
       </header>
       <nav aria-label={th ? "เมนูอีเวนต์" : "Event sections"} className="flex flex-wrap items-center gap-2">
-        <label className="grid w-full min-w-0 gap-1 text-xs font-bold text-gray-600 sm:hidden">
-          {th ? 'หน้าของอีเวนต์' : 'Event page'}
-          <select value={active || ''} onChange={event => openTab(event.target.value)} className="min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-pink-900">
-            <option value="" disabled>{th ? 'เลือกหน้า' : 'Choose a page'}</option>
-            {tabs.filter(tab => tab.visible).map(tab => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
-          </select>
-        </label>
-        <div className="hidden w-full min-w-0 flex-wrap sm:flex items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+        <p className="w-full text-xs font-bold text-gray-600 sm:hidden">{th ? 'เมนูอีเวนต์ · เลื่อนดูเพิ่มเติม' : 'Event sections · swipe for more'}</p>
+        <div ref={tabsRef} className="flex w-full min-w-0 flex-nowrap overflow-x-auto sm:flex-wrap items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
           {tabs.filter((tab) => tab.visible).map((tab) => (
             <button
               key={tab.key}

@@ -155,6 +155,7 @@ test.describe('Public Nireq smoke', () => {
     const error = page.getByTestId('creator-register-error');
     await expect(error).toContainText('Registration service unavailable');
     await expect(error).toBeInViewport();
+    await expect(error).toBeFocused();
     await expect(page.locator('[data-testid="creator-register-submit"], [data-testid="creator-register-error"]')).toHaveCount(2);
     expect(await page.locator('[data-testid="creator-register-submit"], [data-testid="creator-register-error"]').evaluateAll(elements =>
       elements.map(element => element.getAttribute('data-testid'))

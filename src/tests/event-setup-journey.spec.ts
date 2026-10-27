@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { matchesEventDate } from '../components/EventDateFilter';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
+import { selectLanguage } from './helpers/languageMenu';
 
 test('sales dates include both boundaries in the event timezone', () => {
   const matches = (value: string) => matchesEventDate(value, '2026-09-15', '2026-09-15', 'Asia/Bangkok');
@@ -16,7 +17,8 @@ test('owner can follow Thai event setup, configure windows and keep report dates
   const checkWidths = async () => {
     for (const width of [320, 375, 414, 768]) {
       await page.setViewportSize({ width, height: 900 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const overflow = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, elements: [...document.querySelectorAll('body *')].filter(element => element.getBoundingClientRect().right > innerWidth && getComputedStyle(element).position !== 'fixed').slice(0, 8).map(element => element.className.toString()) }));
+      expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.width);
     }
   };
   const email = 'event-journey-e2e@nireq.local';
@@ -37,12 +39,12 @@ test('owner can follow Thai event setup, configure windows and keep report dates
     await page.getByRole('button', { name: /Login to Dashboard|Sign in|Login/i }).click();
     await expect(page).not.toHaveURL(/manage-login/);
     await page.goto(`/manage-events/${id}/workspace`);
-    await page.getByRole('button', { name: 'TH', exact: true }).click();
+    await selectLanguage(page, 'th');
     await expect(page.getByRole('heading', { name: 'ตั้งค่าให้ครบ ก่อนเริ่มขาย' })).toBeVisible();
     await checkWidths();
     await page.getByRole('button', { name: 'เลือกสินค้าและจัดสรรสต็อก', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/manage-events/${id}/catalog`));
-    await expect(page.getByRole('heading', { name: 'สินค้าและสต็อกของงาน', exact: true })).toBeVisible();
+    await expect(page.getByText('เลือกสินค้าและสต็อกของงาน', { exact: true })).toBeVisible();
     await page.getByRole('navigation', { name: 'เมนูอีเวนต์' }).getByRole('button', { name: 'ช่วงขายและรับเงิน', exact: true }).click();
     await page.getByText('ตรวจหรือแก้รายละเอียดงาน', { exact: true }).click();
     await expect(page.getByLabel('วันและเวลาเริ่มงาน')).toBeVisible();
@@ -56,8 +58,8 @@ test('owner can follow Thai event setup, configure windows and keep report dates
     await expect(page.getByText('บันทึกการตั้งค่าแล้ว', { exact: true })).toBeVisible();
     await checkWidths();
     await page.setViewportSize({ width: 375, height: 900 });
-    await page.getByRole('combobox', { name: 'หน้าของอีเวนต์', exact: true }).selectOption('promotion');
-    await expect(page.getByRole('heading', { name: 'โปรโมชันของร้าน', exact: true })).toBeVisible();
+    await page.getByRole('navigation', { name: 'เมนูอีเวนต์' }).getByRole('button', { name: 'โปรโมชัน', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'โปรโมชั่นในอีเวนต์', exact: true })).toBeVisible();
     await checkWidths();
     await page.getByRole('button', { name: 'ออเดอร์ก่อนงาน', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'ออเดอร์ก่อนงาน', exact: true })).toBeVisible();

@@ -577,3 +577,52 @@ body {
 .queue-join-card > *, .customer-queue-ticket > *, .queue-now-serving > * { position: relative; }
 .queue-now-serving > * { z-index: 1; }
 .queue-now-serving::after { z-index: 0; width: 115px; height: 145px; top: -28px; right: 8px; opacity: .75; }
+
+/* Celestial accents are decorative and stay behind content and controls. */
+.shop-identity, .order-heading, .public-auth-intro, .checkout-header,
+[data-event-context] > header { position: relative; isolation: isolate; }
+.shop-identity::after, .order-heading::after, .public-auth-intro::after,
+.checkout-header::after, [data-event-context] > header::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: .25rem;
+  top: 0;
+  width: 110px;
+  height: 130px;
+  opacity: .24;
+  background: linear-gradient(150deg, #a9d5ed, #3a7ebc 65%, #dcb07c);
+  -webkit-mask: url('/celestial-stars.svg') center / contain no-repeat;
+  mask: url('/celestial-stars.svg') center / contain no-repeat;
+  pointer-events: none;
+}
+.shop-identity::after { right: .25rem; top: -.25rem; width: 92px; height: 105px; }
+.public-auth-intro::after { top: -1rem; right: 0; width: 150px; height: 190px; }
+.order-heading::after { top: -1rem; right: .5rem; width: 90px; height: 105px; }
+.checkout-header::after { right: 5rem; top: -1rem; width: 74px; height: 100px; opacity: .18; }
+[data-event-context] > header::after { top: .25rem; right: .5rem; opacity: .2; }
+.shop-artwork {
+  background-image: url('/celestial-stars.svg'), var(--celestial-starfield);
+  background-position: right 1% center, center;
+  background-size: 130px 180px, cover;
+  background-repeat: no-repeat;
+}
+.festival-wordmark { position: relative; isolation: isolate; }
+.festival-wordmark::after, .customer-brand-logo::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: -1.1rem;
+  width: 32px;
+  height: 42px;
+  opacity: .28;
+  background: #3a7ebc;
+  -webkit-mask: url('/celestial-stars.svg') center / contain no-repeat;
+  mask: url('/celestial-stars.svg') center / contain no-repeat;
+  pointer-events: none;
+}
+@media (max-width: 639px) {
+  .public-auth-intro::after { width: 95px; height: 125px; right: 0; }
+  .shop-identity::after, [data-event-context] > header::after { width: 70px; height: 90px; }
+}

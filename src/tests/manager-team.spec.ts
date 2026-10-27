@@ -81,15 +81,13 @@ test('manager opens team, invites event staff and removes them without role edit
       ownerPage.once('dialog', dialog => dialog.dismiss());
       await eventAccess.click();
       await expect(eventAccess).toBeChecked();
-      await ownerPage.route('**/rest/v1/event_member_assignments?*', async route => {
-        if (route.request().method() === 'DELETE') await route.fulfill({ status: 503, json: { message: 'Unavailable' } });
-        else await route.continue();
-      });
+      await ownerPage.route('**/rest/v1/rpc/replace_event_member_assignments', route =>
+        route.fulfill({ status: 503, json: { message: 'Unavailable' } }));
       ownerPage.once('dialog', dialog => dialog.accept());
       await eventAccess.click();
       await expect(ownerPage.getByRole('alert')).toContainText('Access update did not complete');
       await expect(eventAccess).toBeChecked();
-      await ownerPage.getByRole('button', { name: 'Language', exact: true }).click();
+      await ownerPage.getByRole('button', { name: /^Language:/ }).click();
       await ownerPage.getByRole('menuitemradio', { name: /ไทย/ }).click();
       for (const width of [320, 375, 414, 768, 1280]) {
         await ownerPage.setViewportSize({ width, height: 900 });
@@ -97,7 +95,7 @@ test('manager opens team, invites event staff and removes them without role edit
       }
       await ownerPage.screenshot({ path: '/tmp/nireq-team-ui.png', fullPage: true });
       await ownerPage.goto('/invitations');
-      await ownerPage.getByRole('button', { name: 'Language', exact: true }).click();
+      await ownerPage.getByRole('button', { name: /^Language:/ }).click();
       await ownerPage.getByRole('menuitemradio', { name: /ไทย/ }).click();
       await expect(ownerPage.getByRole('heading', { name: 'คำเชิญของฉัน' })).toBeVisible();
       await expect(ownerPage.getByText('ไม่มีคำเชิญที่รอตอบรับ', { exact: false })).toBeVisible();

@@ -4,4 +4,4 @@ Disallow: /manage-
 Disallow: /live/
 Disallow: /admin/
 
-Sitemap: https://nireqapp.com/sitemap.xml
+Sitemap: https://paimonq.com/sitemap.xml

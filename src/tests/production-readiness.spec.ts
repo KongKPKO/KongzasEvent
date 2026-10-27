@@ -38,9 +38,9 @@ test.describe('Production readiness public UX', () => {
     }
 
     await page.goto('/manage-login');
-    await expect(page.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
-    await expect(page.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
-    await expect(page.getByRole('link', { name: 'Cookies' })).toHaveAttribute('href', '/cookies');
+    await expect(page.getByRole('link', { name: 'Privacy', exact: true })).toHaveAttribute('href', '/privacy');
+    await expect(page.getByRole('link', { name: 'Terms', exact: true })).toHaveAttribute('href', '/terms');
+    await expect(page.getByRole('link', { name: 'Cookies', exact: true })).toHaveAttribute('href', '/cookies');
   });
 
   test('password recovery dialog traps focus, closes on Escape, and restores focus', async ({ page }) => {

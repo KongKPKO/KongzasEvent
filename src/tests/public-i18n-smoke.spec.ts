@@ -194,7 +194,7 @@ test.describe('Public Nireq fixture smoke', () => {
 
     await page.goto(`/${publicSlug}/menu`);
 
-    await expect(page.getByRole('button', { name: 'Language', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Language:/ })).toBeVisible();
     await expect(page.getByText('Queue Number', { exact: true })).toBeVisible();
     await expect(page.getByText('Anonymous Smoke Product')).toBeVisible();
 

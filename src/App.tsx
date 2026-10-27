@@ -23,7 +23,12 @@ import {
 
 const CustomerLayout = lazy(() => import('./pages/customer/CustomerLayout'));
 const CustomerHome = lazy(() => import('./pages/customer/Home'));
-const DiscoveryHome = lazy(() => import('./pages/customer/DiscoveryHome'));
+// Start downloading the public landing page while the saved session is restored.
+// Other routes keep it lazy so staff and customers do not download it unnecessarily.
+const initialDiscovery = typeof window !== 'undefined' && ['/', '/discover'].includes(window.location.pathname)
+  ? import('./pages/customer/DiscoveryHome')
+  : null;
+const DiscoveryHome = lazy(() => initialDiscovery ?? import('./pages/customer/DiscoveryHome'));
 const MenuView = lazy(() => import('./pages/customer/MenuView'));
 const CampaignAwareOrderStatus = lazy(() => import('./pages/customer/CampaignAwareOrderStatus'));
 const OnlineCampaignStorefront = lazy(() => import('./pages/customer/OnlineCampaignStorefront'));
@@ -60,6 +65,7 @@ const InvitationsPage = lazy(() => import('./pages/InvitationsPage'));
 import { clearObservabilityUser, identifyObservabilityUser } from './lib/observability';
 import WorkspaceChooser from './components/WorkspaceChooser';
 import { clearOperationalWorkspaceState, signOutLocally } from './utils/workspaceSession';
+import PageSeo from './components/PageSeo';
 
 function ConnectingScreen() {
   const { language } = useI18n();
@@ -402,6 +408,7 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
+        <PageSeo />
         <Suspense fallback={<ConnectingScreen />}>
           <Routes>
             <Route path="/offline" element={<OfflineWorkspace />} />

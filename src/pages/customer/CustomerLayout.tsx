@@ -10,6 +10,7 @@ import CallingNotification from '../../components/CallingNotification';
 import { uiText, useI18n } from '../../i18n';
 import { supabase } from '../../supabaseClient';
 import { customerEventStorageKey, getCurrentCustomerEvents, getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
+import { applySeoDetails, getSeoDetails } from '../../lib/seo';
 
 const CustomerLayout = () => {
    const { t, language } = useI18n();
@@ -35,6 +36,11 @@ const CustomerLayout = () => {
          : undefined,
    });
    const displayArtist = artist && realtimeArtist ? { ...artist, ...realtimeArtist, slug: artist.slug } : artist;
+   useEffect(() => {
+      if (loading) return;
+      const details = getSeoDetails(location.pathname, language, window.location.hostname, displayArtist?.display_name || undefined);
+      applySeoDetails(displayArtist ? details : { ...details, canonical: null, noindex: true });
+   }, [displayArtist?.display_name, language, loading, location.pathname]);
    const [selectedEventId, setSelectedEventIdState] = useState<string | null>(null);
    const availableEvents = useMemo(() => getCurrentCustomerEvents(events), [events]);
    const selectedEvent = availableEvents.find((event) => event.id === selectedEventId) || availableEvents[0] || null;

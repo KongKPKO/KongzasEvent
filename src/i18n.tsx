@@ -1882,8 +1882,7 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
       <button
         ref={trigger}
         type="button"
-        aria-label={t('selectLanguage')}
-        aria-describedby={`${id}-value`}
+        aria-label={`${t('selectLanguage')}: ${language === 'th' ? 'ไทย' : 'English'}`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? `${id}-menu` : undefined}

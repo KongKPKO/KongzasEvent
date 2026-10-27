@@ -335,9 +335,9 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
 
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           {!eventInfo ? (
-            <div className="p-8 text-center text-sm font-bold text-gray-400">{uiText(language, 'Event not found or you do not have access.')}</div>
+            <div className="p-8 text-center text-sm font-bold text-gray-600">{uiText(language, 'Event not found or you do not have access.')}</div>
           ) : filteredOrders.length === 0 ? (
-            <div className="p-8 text-center text-sm font-bold text-gray-400">{uiText(language, 'No pickup orders found.')}</div>
+            <div className="p-8 text-center text-sm font-bold text-gray-600">{uiText(language, 'No pickup orders found.')}</div>
           ) : (
             <div className="divide-y divide-gray-100">
               {filteredOrders.map((order) => (

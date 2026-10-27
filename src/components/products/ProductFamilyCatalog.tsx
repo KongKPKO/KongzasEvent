@@ -70,7 +70,7 @@ function ProductVisual<TVariant extends CatalogFamilyVariant>({ parent, variants
     );
   }
 
-  return fallbackImage ? <img src={getImageUrl(fallbackImage, 650)} alt={parent.name} className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <div className="flex h-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400"><PackageSearch size={28} /><span className="text-xs font-black uppercase tracking-wide">{uiText(language, 'Missing image')}</span></div>;
+  return fallbackImage ? <img src={getImageUrl(fallbackImage, 650)} alt={parent.name} className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <div className="flex h-full flex-col items-center justify-center gap-2 bg-gray-50 text-gray-600"><PackageSearch size={28} /><span className="text-xs font-black uppercase tracking-wide">{uiText(language, 'Missing image')}</span></div>;
 }
 
 export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVariant>({

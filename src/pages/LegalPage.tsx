@@ -82,7 +82,7 @@ export default function LegalPage({ kind }: { kind: LegalPageKind }) {
       </nav>
       <article className="max-w-3xl mx-auto">
         <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">{page.title}</h1>
-        <p className="mt-2 text-sm text-gray-500">{th ? 'ปรับปรุงล่าสุด' : 'Last updated'} {page.updated}</p>
+        <p className="mt-2 text-sm text-gray-600">{th ? 'ปรับปรุงล่าสุด' : 'Last updated'} {page.updated}</p>
 
         <nav aria-label={th ? 'สารบัญ' : 'On this page'} className="mt-8 border-y border-pink-200 py-4">
           <p className="mb-2 text-sm font-bold">{th ? 'เนื้อหาในหน้านี้' : 'On this page'}</p>

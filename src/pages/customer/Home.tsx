@@ -234,7 +234,7 @@ const Home = () => {
   if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
 
   return (
-    <div className="creator-home min-h-screen w-full max-w-6xl mx-auto flex flex-col pb-24 relative">
+    <main className="creator-home min-h-screen w-full max-w-6xl mx-auto flex flex-col pb-24 relative">
       
       {/* Offline Indicator */}
       {!isConnected && (
@@ -303,7 +303,7 @@ const Home = () => {
          <CreatorDirectory creators={nearbyCreators} />
       </Suspense>
 
-    </div>
+    </main>
   );
 };
 

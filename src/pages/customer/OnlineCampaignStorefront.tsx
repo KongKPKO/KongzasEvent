@@ -4,7 +4,7 @@ import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import { useEffect, useMemo, useState } from 'react';
 import StoreSuspensionNotice from '../../components/StoreSuspensionNotice';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, Loader2, Minus, Plus, ShoppingCart, X } from 'lucide-react';
 import { uiText, useI18n } from '../../i18n';
 import { createCampaignOrder, getPublicOnlineCampaign, notifyOnlineCampaignOrder, OnlineCampaignError } from '../../lib/onlineCampaigns';
@@ -15,6 +15,7 @@ import type { PromotionChoice, PromotionQuote } from '../../types/promotion';
 import { formatPrice } from '../../utils/currency';
 import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
+import { applySeoDetails, getSeoDetails } from '../../lib/seo';
 
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
@@ -37,6 +38,7 @@ export default function OnlineCampaignStorefront() {
   const { t, dateLocale, language } = useI18n();
   const [campaign, setCampaign] = useState<PublicOnlineCampaign | null>(null);
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadRetry, setLoadRetry] = useState(0);
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -57,6 +59,12 @@ export default function OnlineCampaignStorefront() {
   const [selectedProduct, setSelectedProduct] = useState<CampaignDisplayProduct | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(selectedProduct), () => setSelectedProduct(null));
+
+  useEffect(() => {
+    if (loading) return;
+    const details = getSeoDetails(location.pathname, language, window.location.hostname, campaign?.name);
+    applySeoDetails(campaign ? details : { ...details, canonical: null, noindex: true });
+  }, [campaign, language, loading, location.pathname]);
 
   useEffect(() => {
     if (!slug || !campaignSlug) return;

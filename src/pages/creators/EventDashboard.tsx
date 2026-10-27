@@ -300,7 +300,7 @@ export default function EventDashboard() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-black text-gray-900 text-sm">{product.qty} {copy("sold")}</div>
-                    <div className="text-xs text-gray-500">{formatPrice(product.revenue, analytics.currency)}</div>
+                    <div className="text-xs text-gray-600">{formatPrice(product.revenue, analytics.currency)}</div>
                   </div>
                 </div>
               ))}
@@ -368,7 +368,7 @@ function PaymentRow({ label, orders, value, color }: { label: string; orders: nu
     <div className={`rounded-xl border px-4 py-3 ${color === 'emerald' ? 'bg-emerald-50 border-emerald-100' : 'bg-blue-50 border-blue-100'}`}>
       <div className="flex items-center justify-between mb-1">
         <div className="font-bold text-gray-800">{copy(label)}</div>
-        <div className="text-xs text-gray-500">{orders} {copy("orders")}</div>
+        <div className="text-xs text-gray-600">{orders} {copy("orders")}</div>
       </div>
       <div className="text-lg font-black text-gray-900">{value}</div>
     </div>

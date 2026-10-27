@@ -571,7 +571,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             </label>
           </div>
           {visibleOrders.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-400">
+            <div className="p-6 text-sm font-bold text-gray-600">
               {filter === 'needs_review' && !search
                 ? copy("No slips waiting for review — all caught up.")
                 : filter === 'to_ship' && !search
@@ -688,7 +688,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <h2 className="text-lg font-black text-gray-900">{copy("Production Summary")}</h2>
           </div>
           {summary.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-400">{copy("No submitted or confirmed pre-orders yet.")}</div>
+            <div className="p-6 text-sm font-bold text-gray-600">{copy("No submitted or confirmed pre-orders yet.")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">

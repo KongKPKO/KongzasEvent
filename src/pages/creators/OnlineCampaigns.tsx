@@ -93,7 +93,7 @@ export default function OnlineCampaigns() {
     <section className="space-y-3">
       <h2 className="text-sm font-black uppercase tracking-wide text-gray-500">{title}</h2>
       {items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-sm font-semibold text-gray-400">
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-sm font-semibold text-gray-600">
           {t('campaignEmptyGroup')}
         </div>
       ) : (

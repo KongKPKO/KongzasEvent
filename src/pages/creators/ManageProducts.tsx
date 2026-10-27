@@ -640,7 +640,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                <div className="bg-pink-400" style={{ width: `${eventPct}%` }} />
                {reservedSold > 0 && <div className="bg-amber-400" style={{ width: `${reservedPct}%` }} />}
             </div>
-            <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-400'}>
+            <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-600'}>
                {uiText(language, 'Pool')} {pool} · {uiText(language, 'Move central stock into this event')}
             </div>
          </div>
@@ -2977,7 +2977,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                               <div className="mt-3 rounded-lg border border-dashed border-pink-100 bg-pink-50/30 p-3">
                                  <div className="mb-2 flex items-center justify-between gap-2">
                                     <label htmlFor={`template-variants-${template.id}`} className="text-xs font-black uppercase tracking-wide text-pink-700">{uiText(language, 'Add variants')}</label>
-                                    <span className="text-[11px] font-bold text-gray-400">{uiText(language, 'Creates missing products later')}</span>
+                                    <span className="text-[11px] font-bold text-gray-600">{uiText(language, 'Creates missing products later')}</span>
                                  </div>
                                  <textarea
                                     id={`template-variants-${template.id}`}
@@ -3289,7 +3289,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                            <span className="text-xs font-black uppercase tracking-wide text-gray-500">{eventText("Bulk actions for visible rows")}</span>
-                           <span className="text-[11px] font-bold text-gray-400">{eventText("Uses current search and filters")}</span>
+                           <span className="text-[11px] font-bold text-gray-600">{eventText("Uses current search and filters")}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                            <button
@@ -3423,7 +3423,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
 	                                             <div className="grid grid-cols-2 gap-2">
 	                                                <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{eventText("Event price")}</span>
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-600">{eventText("Event price")}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3436,7 +3436,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                   />
 	                                                </label>
 	                                                {product.product_kind !== 'bundle' && <label className="min-w-0">
-	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-400">{eventText("Event stock")}</span>
+	                                                   <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-600">{eventText("Event stock")}</span>
 	                                                   <input
 	                                                      type="number"
 	                                                      min="0"
@@ -3480,7 +3480,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         {eventText("Remove")}</button>
 	                                                   </>
 	                                                ) : (
-	                                                   <span className="text-[11px] font-bold text-gray-400">{eventText("Save first to move stock.")}</span>
+	                                                   <span className="text-[11px] font-bold text-gray-600">{eventText("Save first to move stock.")}</span>
 	                                                )}
 	                                             </div>
 	                                          </div>
@@ -3745,6 +3745,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      <select
                         value={sortOption}
+                        aria-label={language === 'th' ? 'เรียงสินค้าตาม' : 'Sort products by'}
                         onChange={(e) => setSortOption(e.target.value)}
                         className="w-full pl-10 pr-8 py-2.5 appearance-none rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm font-medium text-sm"
                      >

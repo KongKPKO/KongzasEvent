@@ -512,7 +512,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                   </div>
                 )}
                 {inviteEventIds.length === 0 && (
-                  <p className="mt-2 text-[11px] font-semibold text-red-500">{tr('เลือกอย่างน้อย 1 อีเวนต์สำหรับบทบาทนี้', 'Select at least one event for this role.')}</p>
+                  <p className="mt-2 text-[11px] font-semibold text-red-700">{tr('เลือกอย่างน้อย 1 อีเวนต์สำหรับบทบาทนี้', 'Select at least one event for this role.')}</p>
                 )}
               </div>
             )}
@@ -537,7 +537,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             <h2 className="text-sm font-bold text-gray-800">{tr('คำเชิญที่รอตอบรับ', 'Pending Invitations')}</h2>
           </div>
           {pendingInvitations.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-gray-400">{tr('ไม่มีคำเชิญที่รอตอบรับ', 'No pending invitations.')}</p>
+            <p className="px-4 py-5 text-sm text-gray-600">{tr('ไม่มีคำเชิญที่รอตอบรับ', 'No pending invitations.')}</p>
           ) : (
             <div className="divide-y divide-gray-100">
               {pendingInvitations.map((inv) => (

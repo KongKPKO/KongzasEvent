@@ -39,7 +39,7 @@ export default function ReplayConsentControl() {
         <button type="button" onClick={() => choose('rejected')} className="min-h-11 rounded-lg border border-pink-300 px-4 font-semibold text-pink-800">{th ? (consent === 'accepted' ? 'ถอนความยินยอมและโหลดใหม่' : 'ไม่ยินยอม') : (consent === 'accepted' ? 'Withdraw and reload' : 'Decline')}</button>
         <button type="button" onClick={() => choose('accepted')} className="min-h-11 rounded-lg border border-pink-300 px-4 font-semibold text-pink-800">{th ? 'ยินยอม' : 'Allow'}</button>
         {consent && <button type="button" onClick={() => setOpen(false)} className="min-h-11 px-3 underline">{th ? 'ปิด' : 'Close'}</button>}
-        <a href="/cookies" className="inline-flex min-h-11 items-center px-3 underline">{th ? 'อ่านรายละเอียด' : 'Learn more'}</a>
+        <a href="/cookies" className="inline-flex min-h-11 items-center px-3 underline">{th ? 'รายละเอียดคุกกี้และความเป็นส่วนตัว' : 'Cookie and privacy details'}</a>
       </div>
     </section>
   );

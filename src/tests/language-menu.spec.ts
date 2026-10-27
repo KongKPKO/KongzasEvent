@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('language menu stays joined to its trigger and supports pointer and keyboard selection', async ({ page }) => {
   await page.goto('/manage-login');
-  let trigger = page.getByRole('button', { name: 'Language', exact: true });
+  let trigger = page.getByRole('button', { name: /^Language:/ });
   await trigger.click();
   const menu = page.getByRole('menu', { name: 'Language', exact: true });
   await expect(menu).toBeVisible();
@@ -14,7 +14,7 @@ test('language menu stays joined to its trigger and supports pointer and keyboar
   expect(Math.abs(buttonBox!.width - menuBox!.width)).toBeLessThanOrEqual(1);
   await expect(page.getByRole('menuitemradio', { name: 'EN · English', exact: true })).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('menuitemradio', { name: 'TH · ไทย', exact: true }).click();
-  trigger = page.getByRole('button', { name: 'ภาษา', exact: true });
+  trigger = page.getByRole('button', { name: /^ภาษา:/ });
   await expect(trigger).toHaveAttribute('data-language', 'th');
   await expect(trigger).toBeFocused();
   await expect(page.getByRole('menu')).toBeHidden();
@@ -23,7 +23,7 @@ test('language menu stays joined to its trigger and supports pointer and keyboar
   await page.keyboard.press('End');
   await expect(page.getByRole('menuitemradio', { name: 'EN · English', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
-  trigger = page.getByRole('button', { name: 'Language', exact: true });
+  trigger = page.getByRole('button', { name: /^Language:/ });
   await expect(trigger).toHaveAttribute('data-language', 'en');
   await trigger.click();
   await page.keyboard.press('Escape');
@@ -37,9 +37,9 @@ test('language menu stays joined to its trigger and supports pointer and keyboar
   await expect(page.getByRole('menu')).toBeHidden();
   await expect(trigger).not.toBeFocused();
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Language', exact: true })).toHaveAttribute('data-language', 'en');
+  await expect(page.getByRole('button', { name: /^Language:/ })).toHaveAttribute('data-language', 'en');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Language', exact: true }).click();
+  await page.getByRole('button', { name: /^Language:/ }).click();
   const mobileMenu = await page.getByRole('menu').boundingBox();
   expect(mobileMenu!.x).toBeGreaterThanOrEqual(0);
   expect(mobileMenu!.x + mobileMenu!.width).toBeLessThanOrEqual(390);

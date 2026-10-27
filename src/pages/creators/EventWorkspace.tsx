@@ -1099,7 +1099,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           <details className="sales-readiness" aria-label={copy("Event setup checklist")}>
             <summary className="cursor-pointer font-bold">{language === 'th' ? 'ดูรายละเอียดความพร้อม' : 'Setup details'}</summary>
             <div className="mb-4 mt-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Setup")}</p>
+              <p className="text-xs font-black uppercase tracking-wide text-gray-600">{copy("Setup")}</p>
               <h2 className="text-lg font-black text-gray-900">{copy("Before sales open")}</h2>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1114,7 +1114,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={copy("Event timeline")}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Event timeline")}</p>
+                <p className="text-xs font-black uppercase tracking-wide text-gray-600">{copy("Event timeline")}</p>
                 <h2 className="text-lg font-black text-gray-900">{copy("Progress at a glance")}</h2>
               </div>
             </div>
@@ -1127,7 +1127,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:p-5" aria-label={uiText(language, 'Attention items')}>
             <div className="mb-4">
-              <p className="text-xs font-black uppercase tracking-wide text-gray-400">{copy("Attention")}</p>
+              <p className="text-xs font-black uppercase tracking-wide text-gray-600">{copy("Attention")}</p>
               <h2 className="text-lg font-black text-gray-900">{copy("Needs action")}</h2>
             </div>
             {attentionItems.length > 0 ? (
@@ -1326,7 +1326,7 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-left shadow-sm">
-      <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{copy(label)}</p>
+      <p className="text-[10px] font-black uppercase tracking-wide text-gray-600">{copy(label)}</p>
       <p className="mt-1 truncate text-base font-black text-gray-900">{value}</p>
     </div>
   );

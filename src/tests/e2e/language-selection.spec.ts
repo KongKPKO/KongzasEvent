@@ -51,7 +51,7 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
   expect(eventNavBounds).not.toBeNull();
   expect(headingBounds!.y + headingBounds!.height).toBeLessThan(eventNavBounds!.y);
   await selectLanguage(page, 'th');
-  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
+  await expect(page.getByRole('button', { name: /^ภาษา:/ })).toHaveAttribute('data-language', 'th');
   await expect(page.getByRole('heading', { name: 'ตั้งค่าให้ครบ ก่อนเริ่มขาย', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Queue', exact: true })).toBeVisible();
   await expect(page.getByText('Home', { exact: true }).first()).toBeVisible();
@@ -70,11 +70,11 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
 
   await page.getByRole('button', { name: 'แคตตาล็อก', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'คลังสินค้า', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
+  await expect(page.getByRole('button', { name: /^ภาษา:/ })).toHaveAttribute('data-language', 'th');
   await selectLanguage(page, 'en');
   await expect(page.getByRole('heading', { name: 'Product catalog', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Language', exact: true })).toHaveAttribute('data-language', 'en');
+  await expect(page.getByRole('button', { name: /^Language:/ })).toHaveAttribute('data-language', 'en');
   await page.goto(`/manage-events/${eventId}/workspace`);
   await selectLanguage(page, 'th');
   await expect(page.getByRole('heading', { name: 'ตั้งค่าให้ครบ ก่อนเริ่มขาย', exact: true })).toBeVisible();
@@ -86,7 +86,7 @@ test('public login and legal pages follow the selected language after reload', a
   await selectLanguage(page, 'th');
   await expect(page.getByRole('tab', { name: 'ผู้ขาย / ผู้จัดการ', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('button', { name: 'ภาษา', exact: true })).toHaveAttribute('data-language', 'th');
+  await expect(page.getByRole('button', { name: /^ภาษา:/ })).toHaveAttribute('data-language', 'th');
   await page.goto('/privacy');
   await expect(page.getByRole('heading', { level: 1, name: 'นโยบายความเป็นส่วนตัว', exact: true })).toBeVisible();
   await selectLanguage(page, 'en');

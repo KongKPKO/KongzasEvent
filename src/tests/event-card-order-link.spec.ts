@@ -187,6 +187,25 @@ const mockCustomerStorefront = async (page: Page, state: StorefrontMockState = {
   });
 };
 
+test('event cards retain their light background in dark device mode on mobile and desktop', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
+  await mockCustomerStorefront(page);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(`/${artistSlug}/home`);
+    const upcoming = page.getByRole('link', { name: /Future Preorder Event.*Pre-order open/ }).locator('.card');
+    const postorder = page.getByRole('link', { name: /Ended Postorder Event.*Post-order open/ }).locator('.card');
+    await expect(upcoming).toBeVisible();
+    const light = await Promise.all([upcoming, postorder].map(card => card.evaluate(el => getComputedStyle(el).backgroundColor)));
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const dark = await Promise.all([upcoming, postorder].map(card => card.evaluate(el => getComputedStyle(el).backgroundColor)));
+    expect(dark).toEqual(light);
+    await expect(upcoming.getByText('Future Preorder Event')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`event-card-dark-${width}.png`), fullPage: true });
+  }
+});
+
 test('event cards open their own preorder and postorder catalogs while online campaigns stay separate', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
   await mockCustomerStorefront(page);

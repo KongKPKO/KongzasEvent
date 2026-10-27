@@ -169,6 +169,9 @@ body {
 }
 
 /* Creator Festival: quiet surfaces keep artwork and live actions prominent. */
+/* Event details use dark text in both device color schemes. */
+.card.customer-event-card { background: rgba(255, 255, 255, .7); border-color: rgba(255, 255, 255, .3); }
+
 .festival-header { border-color: #e2edf4; box-shadow: none; gap: 1rem; }
 .festival-wordmark { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; font-size: 1.6rem; font-weight: 800; letter-spacing: -.045em; color: var(--celestial-navy); }
 .festival-wordmark span { color: inherit; }

@@ -70,7 +70,7 @@ const EventsList = ({ events, artistSlug, onSelectEvent, nextUpEventId, appearan
 
             const eventCard = (
               <Card
-                className={`border-none shadow-sm p-4 rounded-3xl relative overflow-hidden ring-1 ring-gray-100 transition-all duration-300
+                className={`customer-event-card border-none shadow-sm p-4 rounded-3xl relative overflow-hidden ring-1 ring-gray-100 transition-all duration-300
                     ${isCancelled
                     ? 'bg-gray-50 opacity-100 grayscale-[0.8] ring-gray-200'
                     : isNextUp

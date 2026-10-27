@@ -199,7 +199,7 @@ export default function DiscoveryHome() {
   return <PublicShell discovery>
     <main>
       <section className="discovery-intro public-width">
-        <div className="discovery-intro-copy"><p className="public-kicker">{t('discoveryEyebrow')}</p>
+        <div className="discovery-intro-copy"><p className="discovery-welcome"><span className="discovery-welcome-star" aria-hidden="true" />{th ? 'ไพม่อนยินดีต้อนรับคุณ' : 'Paimon welcomes you'}</p><p className="public-kicker">{t('discoveryEyebrow')}</p>
           <h1>{t('discoveryTitle')}<span>{t('discoveryTitleAccent')}</span></h1>
           <p>{t('discoverySubtitle')}</p>
           <div className="discovery-hero-actions"><a className="public-button public-primary" href="#discover"><Search size={20} />{t('discoveryFindBooth')}</a><Link className="public-button" to="/creator/register"><Store size={20} />{t('discoveryOwnBooth')}</Link></div>

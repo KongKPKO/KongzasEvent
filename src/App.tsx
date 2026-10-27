@@ -61,6 +61,14 @@ import { clearObservabilityUser, identifyObservabilityUser } from './lib/observa
 import WorkspaceChooser from './components/WorkspaceChooser';
 import { clearOperationalWorkspaceState, signOutLocally } from './utils/workspaceSession';
 
+function ConnectingScreen() {
+  const { language } = useI18n();
+  return <div className="connecting-screen" role="status">
+    <span className="connecting-star" aria-hidden="true" />
+    <span>{language === 'th' ? 'กำลังเชื่อมต่อกับ Paimon…' : 'Connecting to Paimon…'}</span>
+  </div>;
+}
+
 function EventAccessRoute({
   allowedRoles,
   fallbackPath,
@@ -331,7 +339,7 @@ function App() {
   }
 
   if (currentPath !== '/offline' && (loading || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">{t('loading')}</div>;
+    return <ConnectingScreen />;
   }
 
   const needsSession = currentPath.startsWith('/manage') || currentPath.startsWith('/admin') || ['/invitations', '/creator/register', '/staff-signup', '/reset-password'].includes(currentPath);
@@ -394,7 +402,7 @@ function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app-container">
-        <Suspense fallback={<div className="flex justify-center items-center h-screen">{t('loading')}</div>}>
+        <Suspense fallback={<ConnectingScreen />}>
           <Routes>
             <Route path="/offline" element={<OfflineWorkspace />} />
             <Route path="/manage-login" element={<ManageLogin refreshWorkspace={() => syncSessionContext(session)} />} />

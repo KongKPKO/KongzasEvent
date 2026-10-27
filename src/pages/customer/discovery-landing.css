@@ -1,10 +1,13 @@
 /* Hallmark · macrostructure: creator ticket + discovery catalogue · theme: Paimon celestial
  * Reference: user-supplied creator-pass mockup · P4 H5 E4 S5 R4 V4 */
 .discovery-landing { background: var(--color-discovery-paper); }
+.discovery-welcome { display: flex; align-items: center; gap: .5rem; margin: 0 0 1rem; color: #3a6f99; font-size: .875rem; font-weight: 700; letter-spacing: .025em; }
+.discovery-welcome-star { width: 30px; height: 38px; flex: none; background: linear-gradient(150deg, #3a7ebc, #dcb07c); -webkit-mask: url('/celestial-stars.svg') center / contain no-repeat; mask: url('/celestial-stars.svg') center / contain no-repeat; animation: celestial-welcome 2.5s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .discovery-welcome-star { animation: none; } }
 .discovery-landing .customer-brand-header { border-bottom: 1px solid var(--color-entry-border); }
 .discovery-landing .discovery-intro { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 2rem; padding-block: 3rem 2.5rem; }
 .discovery-landing .discovery-intro h1 { font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.3; letter-spacing: -.035em; }
-.discovery-landing .discovery-intro-copy > p:not(.public-kicker) { margin-top: 1rem; font-size: 1.1rem; line-height: 1.75; max-width: 43ch; }
+.discovery-landing .discovery-intro-copy > p:not(.public-kicker):not(.discovery-welcome) { margin-top: 1rem; font-size: 1.1rem; line-height: 1.75; max-width: 43ch; }
 .discovery-hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
 .discovery-landing .public-primary { box-shadow: 0 6px 16px var(--color-discovery-shadow); }
 .discovery-hero-actions .public-button { padding-inline: 1rem; }

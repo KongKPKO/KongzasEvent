@@ -87,11 +87,14 @@ test.describe('Public Nireq smoke', () => {
     await selectLanguage(page, 'th');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+    await expect(page.getByText('ไพม่อนยินดีต้อนรับคุณ')).toBeVisible();
     const thaiHeading = page.getByRole('heading', { name: /ค้นหาร้านและบูธ/ });
     await expect(thaiHeading).toBeVisible();
     await expect(thaiHeading).toHaveCSS('font-family', /Noto Sans Thai/);
     expect((await thaiHeading.boundingBox())?.height).toBeGreaterThan(0);
     await expect(page.getByText(/Mobile Test Artist|Security Test Artist|Performance/i)).toHaveCount(0);
+    await selectLanguage(page, 'en');
+    await expect(page.getByText('Paimon welcomes you')).toBeVisible();
   });
 
   test('creator application form exposes stable fields and validation', async ({ page }, testInfo) => {

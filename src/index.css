@@ -290,6 +290,11 @@ body {
   .shop-detail-copy { padding: 20px; }
 }
 
+.connecting-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: .75rem; padding: 1rem; color: #526984; }
+.connecting-star { width: 32px; height: 42px; flex: none; background: #3a7ebc; opacity: .7; -webkit-mask: url('/celestial-stars.svg') center / contain no-repeat; mask: url('/celestial-stars.svg') center / contain no-repeat; animation: celestial-welcome 2.5s ease-in-out infinite alternate; }
+@keyframes celestial-welcome { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .connecting-star { animation: none; } }
+
 .shop-name, .shop-product h3, .shop-detail h2 { color: #202641; }
 .shop-product h3 { font-size: 14px; font-weight: 650; line-height: 1.4; }
 .shop-product-purchase { margin-top: auto; padding-top: 5px; }

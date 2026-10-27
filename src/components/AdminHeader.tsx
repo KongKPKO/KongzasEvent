@@ -43,13 +43,13 @@ const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
     return 'workspaceNavTeam';
 };
 
-export default function AdminHeader({ activePage, activeEvent, actorRole = 'owner', userEmail: contextEmail = null }: AdminHeaderProps) {
+export default function AdminHeader({ activePage, activeEvent, actorRole, userEmail: contextEmail = null }: AdminHeaderProps) {
     const { t, language } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-    const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole));
+    const filteredNavItems = navItems.filter((item) => item.roles.includes(actorRole || 'owner'));
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -62,7 +62,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
     }, [contextEmail]);
 
     return (
-        <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 shadow-sm relative">
+        <header className="festival-header bg-white border-b border-gray-200 min-h-14 flex items-center justify-between px-4 md:px-6 shrink-0 z-40 shadow-sm relative">
             {/* Left: Brand + Event Badge */}
             <div className="flex items-center gap-2">
                 <Link to="/manage-events" aria-label={language === 'th' ? 'หน้าหลักร้าน' : 'Shop workspace'} className="festival-wordmark">
@@ -149,6 +149,8 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
                 <div id="workspace-menu" className="max-h-[calc(100dvh-4rem)] overflow-y-auto absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg xl:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
+                    <AccountMenu actorRole={actorRole} userEmail={contextEmail} inline />
+                    <div className="h-px bg-gray-100 my-1"></div>
                     {filteredNavItems.map((item) => {
                         const Icon = item.icon;
                         // Highlight Live nav whether the user is on /live/queue, /live/pos, or the legacy /manage-pos-queues
@@ -201,8 +203,6 @@ export default function AdminHeader({ activePage, activeEvent, actorRole = 'owne
                     <div className="px-4 py-2">
                         <LanguageToggle />
                     </div>
-                    <div className="h-px bg-gray-100 my-1"></div>
-                    <AccountMenu actorRole={actorRole} userEmail={contextEmail} inline />
                 </div>
             )}
         </header>

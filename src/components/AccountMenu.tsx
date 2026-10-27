@@ -19,7 +19,7 @@ export default function AccountMenu({
   userEmail,
   inline = false,
 }: {
-  actorRole: ActorRole;
+  actorRole?: ActorRole;
   userEmail?: string | null;
   inline?: boolean;
 }) {
@@ -88,13 +88,18 @@ export default function AccountMenu({
     }
   };
 
-  const selected = workspaces.find((workspace) => workspace.artist_id === selectedId);
+  const selected = workspaces.find((workspace) => workspace.artist_id === selectedId) || (workspaces.length === 1 ? workspaces[0] : undefined);
+  const currentRole = selected?.role || actorRole;
   const panel = (
     <div className={inline ? 'space-y-2' : 'absolute right-0 top-12 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-3 shadow-xl'}>
       <div className="rounded-lg bg-gray-50 px-3 py-2">
         <p className="truncate text-sm font-bold text-gray-900">{email || uiText(language, 'Signed in')}</p>
-        <p className="mt-0.5 truncate text-xs font-semibold text-gray-500">{selected?.artist_name || uiText(language, 'Workspace')} · {roleLabel(actorRole, language)}</p>
+        <p className="mt-0.5 truncate text-xs font-semibold text-gray-500">{selected?.artist_name || uiText(language, 'Workspace')} · {currentRole ? roleLabel(currentRole, language) : (language === 'th' ? 'ไม่สามารถระบุบทบาท' : 'Role unavailable')}</p>
       </div>
+      <button type="button" disabled={signingOut} onClick={() => void logout()} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60">
+        {signingOut ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <LogOut size={17} aria-hidden="true" />}
+        {uiText(language, signingOut ? 'Signing out…' : 'Sign out')}
+      </button>
       {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{uiText(language, error)}</p>}
       {loading ? (
         <div className="flex min-h-11 items-center gap-2 px-3 text-sm text-gray-500"><Loader2 className="animate-spin" size={16} />{uiText(language, 'Loading workspaces…')}</div>
@@ -120,10 +125,6 @@ export default function AccountMenu({
       <Link to="/help" className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50" onClick={() => setOpen(false)}>
         <HelpCircle size={17} aria-hidden="true" />{uiText(language, 'Help and report a problem')}
       </Link>
-      <button type="button" disabled={signingOut} onClick={() => void logout()} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60">
-        {signingOut ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <LogOut size={17} aria-hidden="true" />}
-        {uiText(language, signingOut ? 'Signing out…' : 'Sign out')}
-      </button>
     </div>
   );
 
@@ -132,7 +133,7 @@ export default function AccountMenu({
     <div ref={rootRef} className="relative">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-label={`${language === 'th' ? 'บัญชี' : 'Account'}: ${selected?.artist_name || email || 'User'}`} aria-expanded={open} className="workspace-action flex min-h-11 items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-gray-50">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-pink-100 text-xs font-black text-pink-700">{(email || 'U').charAt(0).toUpperCase()}</span>
-        <span className="hidden max-w-[150px] lg:block"><span className="block truncate text-[11px] font-bold text-gray-800">{selected?.artist_name || email || uiText(language, 'Account')}</span><span className="block text-[10px] font-semibold text-gray-500">{roleLabel(actorRole, language)}</span></span>
+        <span className="hidden max-w-[150px] lg:block"><span className="block truncate text-[11px] font-bold text-gray-800">{selected?.artist_name || email || uiText(language, 'Account')}</span><span className="block text-[10px] font-semibold text-gray-500">{currentRole ? roleLabel(currentRole, language) : (language === 'th' ? 'ไม่สามารถระบุบทบาท' : 'Role unavailable')}</span></span>
         <ChevronDown size={14} className="text-gray-400" aria-hidden="true" />
       </button>
       {open && panel}

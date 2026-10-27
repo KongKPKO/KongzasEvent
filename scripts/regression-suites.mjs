@@ -37,6 +37,7 @@ export const FULL_BROWSER_SPECS = [
   "src/tests/auth-user-errors.spec.ts",
   "src/tests/platform-admin-mfa.spec.ts",
   "src/tests/phase2-workspace-identity.spec.ts",
+  "src/tests/mobile-staff-account.spec.ts",
   "src/tests/platform-admin-console.spec.ts",
   "src/tests/account-management-suspension.spec.ts",
   "src/tests/feedback-support.spec.ts",
@@ -131,8 +132,8 @@ export const DOMAINS = {
   workspace: {
     impact: 'P1', usage: 'low', rationale: 'Less frequent membership and suspension changes have account-wide consequences.',
     smoke: [],
-    lightweight: browser('team-permissions', 'phase2-workspace-identity'),
-    full: browser('team-invitation-email', 'security-rls-regression', 'team-permissions', 'phase2-workspace-identity', 'account-management-suspension', 'store-suspension', 'e2e/pilot-multi-shop', 'profile-member-save', 'setup-readiness'),
+    lightweight: browser('team-permissions', 'phase2-workspace-identity', 'mobile-staff-account'),
+    full: browser('team-invitation-email', 'security-rls-regression', 'team-permissions', 'phase2-workspace-identity', 'mobile-staff-account', 'account-management-suspension', 'store-suspension', 'e2e/pilot-multi-shop', 'profile-member-save', 'setup-readiness'),
     sql: sql('team_invitations', 'team_permission_boundaries', 'phase2_multi_workspace_identity', 'account_management_suspension', 'store_suspension', 'shop_profile_update'),
     teamRace: true,
   },

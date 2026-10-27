@@ -462,7 +462,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         <div className="festival-live flex flex-col h-[100dvh] bg-gray-50 overflow-hidden">
 
             <Toast message={toast} onClose={() => setToast(null)} />
-            <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} />
+            <AdminHeader activePage="pos" activeEvent={activeEvent} actorRole={actorContext.role} userEmail={actorContext.member_email} />
 
             <div className="festival-boothbar relative shrink-0 border-b border-gray-200 bg-white px-4 py-3">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">

@@ -558,3 +558,22 @@ body {
   .customer-brand-inner > div > a { flex-shrink: 0; white-space: nowrap; }
   .customer-brand-header .public-nav-link { font-size: 12px; padding-inline: 0; }
 }
+
+/* Stars stay behind queue information and never intercept the ticket actions. */
+.customer-queue-ticket::before, .queue-join-card::before, .queue-now-serving::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background: url('/celestial-stars.svg') center / contain no-repeat;
+}
+.customer-queue-ticket::before, .queue-join-card::before {
+  width: 105px;
+  height: 140px;
+  top: 50px;
+  right: -15px;
+  opacity: .32;
+}
+.queue-join-card, .queue-now-serving { position: relative; overflow: hidden; }
+.queue-join-card > *, .customer-queue-ticket > *, .queue-now-serving > * { position: relative; }
+.queue-now-serving > * { z-index: 1; }
+.queue-now-serving::after { z-index: 0; width: 115px; height: 145px; top: -28px; right: 8px; opacity: .75; }

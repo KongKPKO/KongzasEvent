@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 320" fill="none">
+  <defs>
+    <radialGradient id="glow"><stop stop-color="#d9f4ff" stop-opacity=".9"/><stop offset=".24" stop-color="#a6d5f1" stop-opacity=".38"/><stop offset="1" stop-color="#8abde0" stop-opacity="0"/></radialGradient>
+    <linearGradient id="star" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".6" stop-color="#e4f5ff"/><stop offset="1" stop-color="#7ab7dc"/></linearGradient>
+  </defs>
+  <circle cx="132" cy="140" r="110" fill="url(#glow)"/>
+  <path d="M132 5C135 101 139 127 201 140C139 151 135 177 132 278C128 177 124 151 62 140C124 127 128 101 132 5Z" fill="url(#star)"/>
+  <path d="M132 35v210M78 140h108" stroke="#fff" stroke-opacity=".55" stroke-width=".8"/>
+  <path d="M201 42C203 64 205 70 220 73C205 76 203 82 201 104C199 82 197 76 182 73C197 70 199 64 201 42ZM49 181C51 197 52 202 64 204C52 206 51 211 49 227C47 211 46 206 34 204C46 202 47 197 49 181Z" fill="#e5f5ff"/>
+  <g fill="#dcb07c"><circle cx="37" cy="73" r="1.5"/><circle cx="218" cy="174" r="1.5"/><circle cx="85" cy="257" r="1"/></g>
+  <path d="M33 124c17-49 56-79 99-82M228 154c-7 43-37 80-80 94" stroke="#dcb07c" stroke-opacity=".45" stroke-width=".8"/>
+</svg>

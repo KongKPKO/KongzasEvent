@@ -27,12 +27,12 @@ interface AdminHeaderProps {
 // Setup-mode items (configuration-oriented, used before/between events)
 // Live-mode items (operational, used during events)
 const navItems = [
-    { path: '/manage-order-problems', label: 'Order problems', icon: ClipboardCheck, page: 'problems' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
-    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-profile', label: 'Shop profile', icon: User, page: 'profile' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-online-sales', label: 'Online Sales', icon: ShoppingBag, page: 'online-sales' as VisiblePage, roles: ['owner', 'manager', 'seller'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-promotions', label: 'Promotion', icon: Sparkles, page: 'promotion' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-order-problems', label: 'Order problems', icon: ClipboardCheck, page: 'problems' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-team', label: 'Team', icon: UserCog, page: 'team' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
 ];
 

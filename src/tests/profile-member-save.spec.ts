@@ -35,8 +35,12 @@ for (const role of ['owner', 'manager']) {
       expect(saved.data).toEqual({ seller_type: 'cosplayer', is_public: true, is_verified: true });
       await page.reload();
       await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');
-      await page.getByRole('link', { name: 'Manage events', exact: true }).click();
-      await expect(page).toHaveURL(/\/manage-events\?view=all$/);
+      await page.getByRole('button', { name: 'Open workspace menu' }).click();
+      const menu = page.locator('#workspace-menu');
+      const labels = await menu.locator('button[aria-label]').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')));
+      expect(labels.filter(label => ['Events', 'Online Sales', 'Catalog', 'Promotion', 'Order problems', 'Shop profile', 'Team'].includes(label || ''))).toEqual(['Shop profile', 'Events', 'Online Sales', 'Catalog', 'Promotion', 'Order problems', 'Team']);
+      await menu.getByRole('button', { name: 'Events', exact: true }).click();
+      await expect(page).toHaveURL(/\/manage-events$/);
       await expect(page.locator('#artist-seller-type')).toHaveCount(0);
       await page.goto('/manage-events?tab=profile');
       await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');

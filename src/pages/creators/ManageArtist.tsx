@@ -866,11 +866,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
           </div>
         )}
 
-        <nav className="mb-5 flex flex-wrap gap-3 text-sm font-bold text-pink-800" aria-label={language === 'th' ? 'ตั้งค่าร้าน' : 'Shop settings'}>
-          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-profile">{language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile'}</Link>
-          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-events?view=all">{language === 'th' ? 'จัดการอีเวนต์' : 'Manage events'}</Link>
-          <Link className="min-h-11 inline-flex items-center px-4" to="/help">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
-        </nav>
+        <Link className="mb-5 inline-flex min-h-11 items-center text-sm font-bold text-pink-800" to="/help">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
         <div className={showProfile ? 'max-w-3xl mx-auto' : showPublicationReview ? 'grid grid-cols-1 lg:grid-cols-3 gap-6' : 'space-y-5'}>
           
           {/* --- LEFT COL: Profile Settings --- */}

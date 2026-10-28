@@ -176,7 +176,7 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     await sellerLogin.login(sellerEmail, password);
     await expect(sellerPage).toHaveURL(/manage-events|live\/(?:pos|queue)/, { timeout: 20_000 });
     await sellerPage.goto(`/live/pos?eventId=${eventId}`);
-    await expect(sellerPage.getByTestId('pos-event-selector')).toHaveValue(eventId, { timeout: 20_000 });
+    await expect(sellerPage.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', eventId, { timeout: 20_000 });
     await expect(sellerPage.getByTestId('booth-toggle')).toBeVisible();
 
     const activeSale = sellerPage.locator('[aria-label="Active sale queue"]');
@@ -282,7 +282,7 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     await queueStaffLogin.login(queueStaffEmail, password);
     await expect(queueStaffPage).toHaveURL(/live\/queue/, { timeout: 20_000 });
     await queueStaffPage.goto(`/live/queue?eventId=${eventId}`);
-    await expect(queueStaffPage.getByTestId('pos-event-selector')).toHaveValue(eventId, { timeout: 20_000 });
+    await expect(queueStaffPage.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', eventId, { timeout: 20_000 });
     await expect(queueStaffPage.getByTestId('booth-toggle')).toHaveCount(0);
     await expect(queueStaffPage.getByRole('switch', { name: /Open booth|Close booth/ })).toHaveCount(0);
     await expect(queueStaffPage.getByText('#1', { exact: true }).first()).toBeVisible({ timeout: 20_000 });

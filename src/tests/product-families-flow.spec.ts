@@ -104,11 +104,10 @@ test('mobile POS gives products most of the viewport and keeps tools and cart av
   const bounds = await region.boundingBox();
   expect(bounds!.height).toBeGreaterThan(350);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await expect(page.getByTestId('pos-event-selector')).toBeHidden();
-  await page.getByRole('button', { name: 'Booth tools', exact: true }).click();
-  await expect(page.getByTestId('pos-event-selector')).toBeVisible();
+  await expect(page.getByTestId('pos-active-event')).toBeVisible();
   await expect(page.getByTestId('booth-toggle')).toBeVisible();
-  await page.getByRole('button', { name: 'Booth tools', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Back to event', exact: true })).toBeVisible();
+  await expect(page.getByTestId('pos-event-selector')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Select Customer', exact: true })).toHaveValue('');
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Sort products by', exact: true })).toBeVisible();

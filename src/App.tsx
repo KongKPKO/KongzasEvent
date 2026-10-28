@@ -455,6 +455,10 @@ function App() {
               element={session ? (canUseManagement ? <ManageArtist /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />
             <Route
+              path="/manage-profile"
+              element={session ? (canUseManagement ? <ManageArtist profilePage /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
+            />
+            <Route
               path="/manage-online-sales"
               element={session ? (canSell ? <OnlineCampaigns /> : <Navigate to="/manage-pos-queues" replace />) : <Navigate to="/manage-login" replace />}
             />

@@ -96,8 +96,12 @@ test('live event load failure is not presented as an empty or closed booth', asy
   await expect(page.getByText('No active event', { exact: true })).toBeHidden();
   await page.unroute('**/rest/v1/rpc/list_accessible_pos_events');
   await page.getByRole('button', { name: 'Retry loading workspace', exact: true }).click();
-  await expect(page.getByTestId('pos-event-selector')).toHaveValue(eventId, { timeout: 30_000 });
+  await expect(page.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', eventId, { timeout: 30_000 });
   await expect(page.getByTestId('booth-status')).toHaveText('Booth Open');
+  await page.goto(`/manage-pos-queues?eventId=${randomUUID()}`);
+  await expect(page.getByRole('heading', { name: 'This event is not available' })).toBeVisible();
+  await expect(page.getByTestId('booth-toggle')).toBeDisabled();
+  await expect(page.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', '');
 });
 
 

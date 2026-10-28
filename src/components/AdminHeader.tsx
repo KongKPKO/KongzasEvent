@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, Calendar, Coffee, Sparkles, UserCog, User, Menu, X, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import type { ActorRole } from '../types/access';
 import { LanguageToggle, useI18n , uiText} from '../i18n';
 import AccountMenu from './AccountMenu';
@@ -14,7 +14,7 @@ interface ActiveEvent {
 }
 
 type ActivePage = 'events' | 'menu' | 'promotion' | 'pos' | 'online-sales';
-type VisiblePage = ActivePage | 'team' | 'problems';
+type VisiblePage = ActivePage | 'team' | 'problems' | 'profile';
 
 interface AdminHeaderProps {
     activePage: VisiblePage;
@@ -29,6 +29,7 @@ interface AdminHeaderProps {
 const navItems = [
     { path: '/manage-order-problems', label: 'Order problems', icon: ClipboardCheck, page: 'problems' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-events', label: 'Events', icon: Calendar, page: 'events' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
+    { path: '/manage-profile', label: 'Shop profile', icon: User, page: 'profile' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-online-sales', label: 'Online Sales', icon: ShoppingBag, page: 'online-sales' as VisiblePage, roles: ['owner', 'manager', 'seller'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-products', label: 'Catalog', icon: Coffee, page: 'menu' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
     { path: '/manage-promotions', label: 'Promotion', icon: Sparkles, page: 'promotion' as VisiblePage, roles: ['owner', 'manager'] as ActorRole[], group: 'setup' as const },
@@ -94,7 +95,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
-                    const label = item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
+                    const label = item.page === 'profile' ? (language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile') : item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
 
                     return (
                         <button
@@ -159,7 +160,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                         activePage === item.page ||
                         location.pathname === item.path ||
                         (isLiveItem && (location.pathname.startsWith('/live') || location.pathname === '/manage-pos-queues'));
-                        const label = item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
+                        const label = item.page === 'profile' ? (language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile') : item.page === 'problems' ? (language === 'th' ? 'ปัญหาออเดอร์' : 'Order problems') : item.page === 'promotion' ? (language === 'th' ? 'โปรโมชัน' : item.label) : t(getNavLabel(item.page));
                         return (
                             <button
                                 key={item.path}

@@ -22,7 +22,11 @@ for (const role of ['owner', 'manager']) {
       await login.goto();
       await login.login(memberEmail, password);
       await expect(page).not.toHaveURL(/manage-login/);
-      await page.goto('/manage-events?tab=profile');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Open workspace menu' }).click();
+      await page.getByRole('button', { name: 'Shop profile', exact: true }).click();
+      await expect(page).toHaveURL(/\/manage-profile$/);
+      await expect(page.getByRole('heading', { name: 'Shop profile', exact: true })).toBeVisible();
       await expect(page.locator('#artist-seller-type')).toHaveValue('creator');
       await page.locator('#artist-seller-type').selectOption('cosplayer');
       await page.getByRole('button', { name: 'Save Updates', exact: true }).click();
@@ -30,6 +34,11 @@ for (const role of ['owner', 'manager']) {
       const saved = await fixture.service.from('artists').select('seller_type, is_public, is_verified').eq('id', fixture.userId).single().throwOnError();
       expect(saved.data).toEqual({ seller_type: 'cosplayer', is_public: true, is_verified: true });
       await page.reload();
+      await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');
+      await page.getByRole('link', { name: 'Manage events', exact: true }).click();
+      await expect(page).toHaveURL(/\/manage-events\?view=all$/);
+      await expect(page.locator('#artist-seller-type')).toHaveCount(0);
+      await page.goto('/manage-events?tab=profile');
       await expect(page.locator('#artist-seller-type')).toHaveValue('cosplayer');
       await page.goto(`/${slug}/home`);
       await expect(page.getByText('Cosplayer shop', { exact: true })).toBeVisible();

@@ -176,13 +176,15 @@ const formatMoney = (amount: number, currency: string) =>
     maximumFractionDigits: currency === 'THB' ? 0 : 2,
   }).format(amount || 0);
 
-const ManageArtist = () => {
+const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
   const { language, dateLocale, t } = useI18n();
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const publicationHeadingRef = useRef<HTMLHeadingElement>(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const showProfile = profilePage || searchParams.get('tab') === 'profile';
+  const showPublicationReview = searchParams.get('focus') === 'publish';
   const browserTimeZone = getBrowserTimeZone();
   const profilePanelRef = useRef<HTMLDivElement>(null);
   
@@ -476,7 +478,7 @@ const ManageArtist = () => {
     const forcedGrid =
       searchParams.get('view') === 'all' ||
       searchParams.get('focus') === 'publish' ||
-      searchParams.get('tab') === 'profile' ||
+      showProfile ||
       searchParams.has('editEvent') ||
       (typeof window !== 'undefined' && window.sessionStorage.getItem('forceEventGrid') === 'true');
 
@@ -484,7 +486,7 @@ const ManageArtist = () => {
     if (!forcedGrid && activeEvents.length === 1) {
       navigate(`/manage-events/${activeEvents[0].id}/workspace`, { replace: true });
     }
-  }, [events, isLoading, navigate, searchParams]);
+  }, [events, isLoading, navigate, searchParams, showProfile]);
 
   useEffect(() => {
     if (isLoading || searchParams.get('focus') !== 'publish') return;
@@ -805,7 +807,7 @@ const ManageArtist = () => {
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
        
        {/* ✅ Unified Admin Header */}
-       <AdminHeader activePage="events" actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
+       <AdminHeader activePage={showProfile ? 'profile' : 'events'} actorRole={actorContext?.role} userEmail={actorContext?.member_email} />
 
       {/* Main Content */}
       <main className="w-full max-w-[1140px] mx-auto px-4 md:px-6 pb-12 pt-2 overflow-x-hidden">
@@ -813,7 +815,7 @@ const ManageArtist = () => {
         {/* Header */}
         <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
            <div>
-              <h1 ref={publicationHeadingRef} tabIndex={-1} className="scroll-mt-20 text-xl font-black text-gray-800 tracking-tight">{searchParams.get('focus') === 'publish' ? (language === 'th' ? 'ตรวจการเผยแพร่หน้าร้าน' : 'Review storefront publication') : (language === 'th' ? 'ตั้งค่าร้านและโปรไฟล์' : 'Shop settings and profile')}</h1>
+              <h1 ref={publicationHeadingRef} tabIndex={-1} className="scroll-mt-20 text-xl font-black text-gray-800 tracking-tight">{showPublicationReview ? (language === 'th' ? 'ตรวจการเผยแพร่หน้าร้าน' : 'Review storefront publication') : showProfile ? (language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile') : (language === 'th' ? 'จัดการอีเวนต์' : 'Manage events')}</h1>
               {searchParams.get('focus') === 'publish' && <p className="mt-2 max-w-xl text-sm text-gray-600">{language === 'th' ? (artist.is_public ? 'ร้านเผยแพร่แล้ว กดเปิดหน้าร้านลูกค้าเพื่อตรวจดูได้' : 'ตรวจข้อมูลร้านและอีเวนต์ด้านล่างให้ครบก่อนกดเผยแพร่ การเข้าหน้านี้ยังไม่เปิดร้านให้ลูกค้าเห็น') : (artist.is_public ? 'Your shop is published. Open the public catalog to review the customer view.' : 'Review your profile and event before publishing. Visiting this page does not publish your shop.')}</p>}
               <p className="text-sm md:text-base text-pink-700 font-bold">{artist.display_name}</p>
            </div>
@@ -865,14 +867,14 @@ const ManageArtist = () => {
         )}
 
         <nav className="mb-5 flex flex-wrap gap-3 text-sm font-bold text-pink-800" aria-label={language === 'th' ? 'ตั้งค่าร้าน' : 'Shop settings'}>
-          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-events?tab=profile">{language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile'}</Link>
+          <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-profile">{language === 'th' ? 'โปรไฟล์ร้าน' : 'Shop profile'}</Link>
           <Link className="min-h-11 inline-flex items-center rounded-xl border border-pink-200 bg-white px-4" to="/manage-events?view=all">{language === 'th' ? 'จัดการอีเวนต์' : 'Manage events'}</Link>
           <Link className="min-h-11 inline-flex items-center px-4" to="/help">{language === 'th' ? 'ช่วยเหลือและนโยบาย' : 'Help and policies'}</Link>
         </nav>
-        <div className={searchParams.get('tab') === 'profile' ? 'max-w-3xl mx-auto' : 'grid grid-cols-1 lg:grid-cols-3 gap-6'}>
+        <div className={showProfile ? 'max-w-3xl mx-auto' : showPublicationReview ? 'grid grid-cols-1 lg:grid-cols-3 gap-6' : 'space-y-5'}>
           
           {/* --- LEFT COL: Profile Settings --- */}
-          <div ref={profilePanelRef} className="workspace-card h-auto self-start scroll-mt-20">
+          {(showProfile || showPublicationReview) && <div ref={profilePanelRef} className="workspace-card h-auto self-start scroll-mt-20">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
                <User className="text-pink-700" size={16} />
                <h2 className="font-bold text-sm text-slate-800">{language === 'th' ? 'ข้อมูลที่ลูกค้าเห็นบนหน้าร้าน' : 'Your public shop profile'}</h2>
@@ -959,11 +961,11 @@ const ManageArtist = () => {
                </Button>
                {profileFeedback && <p role={profileFeedback.error ? 'alert' : 'status'} className={profileFeedback.error ? 'text-sm text-red-700' : 'text-sm text-emerald-800'}>{profileFeedback.text}</p>}
             </form>
-          </div>
+          </div>}
 
 
            {/* --- RIGHT COL: Event Workspaces --- */}
-          {searchParams.get('tab') !== 'profile' && <div className="lg:col-span-2 space-y-5">
+          {!showProfile && <div className="lg:col-span-2 space-y-5">
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">

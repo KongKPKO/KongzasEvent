@@ -524,11 +524,8 @@ body {
 @media (max-width: 767px) {
   .festival-live .festival-header { min-height: 48px; }
   .festival-boothbar { padding: 0 12px; }
-  .festival-boothbar > div { flex-direction: row; align-items: center; gap: 8px; }
+  .festival-boothbar > div { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
   .festival-boothbar .mt-1 { margin-top: 0; }
-  .pos-booth-tools-toggle { min-width: 44px; height: 44px; font-size: 24px; }
-  .pos-booth-tools { position: absolute; top: 44px; right: 8px; z-index: 40; width: min(340px, calc(100vw - 16px)); padding: 12px; border: 1px solid #e2edf4; border-radius: 12px; background: white; box-shadow: 0 8px 24px #20264120; }
-  .pos-booth-tools > * { width: 100%; min-height: 44px; }
   .festival-live [data-testid="pos-switcher"] { padding: 0 8px; gap: 8px; }
   .festival-live [data-testid="pos-switcher"] > button { min-height: 44px; padding: 4px 8px; border: 0; border-radius: 0; }
   .pos-product-toolbar { padding: 2px 12px; }

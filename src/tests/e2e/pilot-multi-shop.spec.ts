@@ -217,8 +217,8 @@ test.describe('four-shop concurrent service pilot', () => {
           auth: { persistSession: false, autoRefreshToken: false },
         });
         await session.adminPage.goto(`/manage-pos-queues?eventId=${session.eventId}`);
-        await expectReadyOrRecover(session.adminPage, session.adminPage.getByTestId('pos-event-selector'), session);
-        await expect(session.adminPage.getByTestId('pos-event-selector')).toHaveValue(session.eventId, { timeout: 30_000 });
+        await expectReadyOrRecover(session.adminPage, session.adminPage.getByTestId('pos-active-event'), session);
+        await expect(session.adminPage.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', session.eventId, { timeout: 30_000 });
         await expect(session.adminPage.getByTestId('booth-status')).toHaveText('Booth Open');
       }));
 

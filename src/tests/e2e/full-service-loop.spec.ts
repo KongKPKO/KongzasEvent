@@ -102,7 +102,7 @@ test.describe('full queue and POS service loop', () => {
       await expectSignedInAccount(adminPage);
 
       await adminPage.goto(`/manage-pos-queues?eventId=${eventId}`);
-      await expect(adminPage.getByTestId('pos-event-selector')).toHaveValue(eventId, { timeout: 20_000 });
+      await expect(adminPage.getByTestId('pos-active-event')).toHaveAttribute('data-event-id', eventId, { timeout: 20_000 });
       await expect(adminPage.getByTestId('booth-status')).toHaveText('Booth Open');
 
       const customerPage = await customerContext.newPage();

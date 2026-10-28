@@ -2,6 +2,19 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 test.describe('Production readiness public UX', () => {
+  test('public landing remains usable while session restoration waits and management stays gated', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('nireq-language', 'en');
+      Object.defineProperty(navigator, 'locks', { value: { request: () => new Promise(() => {}) } });
+    });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.getByRole('link', { name: 'Log in', exact: true }).click();
+    await expect(page).toHaveURL(/\/manage-login$/);
+    await expect(page.getByRole('status')).toContainText('Connecting to Paimon');
+    await expect(page.getByTestId('creator-login-submit')).toHaveCount(0);
+  });
+
   test('Paimon public surfaces retain saved language and remain accessible at mobile and desktop widths', async ({ page }, testInfo) => {
     await page.addInitScript(() => localStorage.setItem('nireq-language', 'th'));
     for (const width of [320, 390, 1280]) {

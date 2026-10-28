@@ -8,7 +8,6 @@ function LiveQueueRedirect() {
   return <Navigate to={`/live/queue${search}`} replace />;
 }
 import { supabase } from './supabaseClient';
-import PlatformAdminGate from './components/PlatformAdminGate';
 import type { Session } from '@supabase/supabase-js';
 import { completePendingVerifiedCreatorSignup, fetchActorContext, WorkspaceSelectionRequiredError } from './utils/access';
 import type { ActorContext, ActorRole, ActorWorkspace } from './types/access';
@@ -43,6 +42,7 @@ const HelpPage = lazy(() => import('./pages/HelpPage'));
 const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const OrderProblems = lazy(() => import('./pages/creators/OrderProblems'));
 const PlatformAdminConsole = lazy(() => import('./pages/PlatformAdminConsole'));
+const PlatformAdminGate = lazy(() => import('./components/PlatformAdminGate'));
 const Feedback = lazy(() => import('./pages/Feedback'));
 const ManageArtist = lazy(() => import('./pages/creators/ManageArtist'));
 const ManageTeam = lazy(() => import('./pages/creators/ManageTeam'));
@@ -127,6 +127,7 @@ function isManagementLocation(path: string) {
 
 function App() {
   const { t, language } = useI18n();
+  const { pathname: currentPath } = useLocation();
   const [session, setSession] = useState<Session | null>(null);
   const [actorContext, setActorContext] = useState<ActorContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -313,10 +314,7 @@ function App() {
     return '/';
   };
 
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-  const isCustomerRoute = typeof window !== 'undefined'
-    ? /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(window.location.pathname)
-    : false;
+  const isCustomerRoute = /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(currentPath);
   const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/offline', '/help/guide', '/discover', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
   const isManagementPath = isManagementLocation(currentPath);
@@ -344,7 +342,8 @@ function App() {
     </main>;
   }
 
-  if (currentPath !== '/offline' && (loading || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
+  const isPublicLanding = currentPath === '/' || currentPath === '/discover';
+  if (currentPath !== '/offline' && ((loading && !isPublicLanding) || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
     return <ConnectingScreen />;
   }
 
@@ -406,7 +405,7 @@ function App() {
   }
 
   return (
-    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <>
       <div className="app-container">
         <PageSeo />
         <Suspense fallback={<ConnectingScreen />}>
@@ -591,8 +590,10 @@ function App() {
           }}
         />
       )}
-    </Router>
+    </>
   );
 }
 
-export default App;
+export default function AppRoot() {
+  return <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><App /></Router>;
+}

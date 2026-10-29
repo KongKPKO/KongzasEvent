@@ -37,6 +37,7 @@ const getErrorMessage = (error: unknown) => {
 
 export const getPreorderErrorMessage = (error: unknown) => {
   const message = getErrorMessage(error);
+  if (message.includes('order_lookup_rate_limited')) return 'มีการตรวจรหัสจำนวนมาก กรุณารอหนึ่งนาทีแล้วลองอีกครั้ง / Too many lookup attempts. Please try again in one minute.';
   if (message.includes('supply_policy_changed_reload')) return 'วิธีขายเปลี่ยนแล้ว กรุณาโหลดสินค้าใหม่และตรวจรายการก่อนยืนยัน / Supply policy changed. Reload and review your items.';
   if (message.includes('production_stock_not_ready')) return 'สินค้ารับสั่งผลิตยังไม่ครบ กรุณารับสินค้าเข้าก่อนส่งมอบ / Receive the missing production stock before fulfillment.';
   if (message.includes('production_limit_exceeded')) return 'ยอดรับสั่งผลิตเต็มแล้ว กรุณาตรวจรายการอีกครั้ง / The production order cap has been reached.';

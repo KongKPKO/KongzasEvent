@@ -925,6 +925,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
                {/* Socials */}
                <div className="space-y-1">
                   <h3 className="text-[10px] font-bold uppercase text-slate-600 tracking-wider mb-0.5">{language === 'th' ? 'ช่องทางติดต่อสาธารณะ' : 'Public contact links'}</h3>
+                  <p className="text-xs text-slate-600">{language === 'th' ? 'อีเมลติดต่อจะแสดงให้ลูกค้าเห็นเมื่อเผยแพร่ร้าน ค่าเริ่มต้นอาจเป็นอีเมลที่ใช้สมัคร คุณสามารถเปลี่ยนได้' : 'Your contact email is visible to customers when your shop is published. It may initially be your signup email; you can change it.'}</p>
                   <div className="flex flex-col gap-1">
                      {(['x_url', 'ig_url', 'facebook_url', 'tiktok_url', 'email'] as const).map((field) => (
                        <div key={field} className="relative group">

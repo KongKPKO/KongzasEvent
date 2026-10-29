@@ -18,7 +18,7 @@ with public_rpc(signature) as (
   values
     ('public.cancel_customer_order_with_stock_release(uuid)'),
     ('public.cancel_public_preorder_before_payment(uuid,text)'),
-    ('public.create_customer_order_with_stock(uuid,jsonb,uuid)'),
+    ('public.create_customer_order_with_stock(uuid,jsonb,text,uuid)'),
     ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid,jsonb,jsonb,text,boolean)'),
     ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),
@@ -59,7 +59,7 @@ with public_rpc(signature) as (
   values
     ('public.cancel_customer_order_with_stock_release(uuid)'),
     ('public.cancel_public_preorder_before_payment(uuid,text)'),
-    ('public.create_customer_order_with_stock(uuid,jsonb,uuid)'),
+    ('public.create_customer_order_with_stock(uuid,jsonb,text,uuid)'),
     ('public.create_online_campaign_order(uuid,jsonb,text,uuid,text,text,text,text,text,uuid,jsonb,jsonb,text,boolean)'),
     ('public.create_preorder_with_stock(uuid,jsonb,text,text,text,uuid,text,text,text,text,jsonb,jsonb,text,boolean)'),
     ('public.create_queue_ticket(uuid,uuid,text)'),

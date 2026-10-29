@@ -518,7 +518,7 @@ const QueueView = () => {
 
             if (error) {
                 console.error("Error leaving queue (RPC Failed):", error, "Ticket ID:", myTicket.id);
-                setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: t('queueTryAgain') });
+                setToast({ tone: 'error', title: t('queueCouldNotLeave'), detail: error.message?.includes('ticket_ownership_mismatch') ? (language === 'th' ? 'ไม่สามารถยืนยันเจ้าของคิวได้ กรุณาติดต่อสตาฟหน้าบูธเพื่อยกเลิกคิว' : 'We could not verify this ticket. Please ask booth staff to cancel it.') : t('queueTryAgain') });
                 return;
             }
 

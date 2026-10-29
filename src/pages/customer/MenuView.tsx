@@ -30,6 +30,7 @@ import {
   getEventPhaseWindow,
   getEventSalesPhase,
   getStoredTicketId,
+  getOrCreateCustomerFingerprint,
   ticketStorageKey,
 } from '../../utils/customerEvents';
 import type { CustomerOutletContext } from '../../types/customerContext';
@@ -795,6 +796,7 @@ const MenuView = () => {
         if (currentCheckout.current.submissionContextKey !== reviewedContext || currentCheckout.current.promotionQuoteKey !== reviewedKey) return;
         const { data: createdOrderId, error: orderError } = await supabase.rpc('create_customer_order_with_stock', {
             p_queue_id: localQueueId,
+            p_customer_fingerprint: getOrCreateCustomerFingerprint(displayArtist?.id),
             p_items: itemPayload
         });
 

@@ -490,8 +490,10 @@ test.describe('RLS and mutation security regressions', () => {
     });
 
     const customerQueueId = randomUUID();
+    const customerFingerprint = randomUUID();
     const queueInsert = await service.from('queues').insert({
       id: customerQueueId,
+      customer_fingerprint: customerFingerprint,
       artist_id: ids.artist,
       event_id: ids.event,
       queue_number: 178,
@@ -505,8 +507,21 @@ test.describe('RLS and mutation security regressions', () => {
     });
     expect(queueInsert.error).toBeNull();
 
+    const unauthorizedOrder = await anon.rpc('create_customer_order_with_stock', {
+      p_queue_id: customerQueueId,
+      p_items: [{ product_id: ids.product, quantity: 1 }],
+      p_customer_fingerprint: randomUUID(),
+    });
+    expect(unauthorizedOrder.error?.message).toContain('ticket_ownership_mismatch');
+    const legacyOrder = await anon.rpc('create_customer_order_with_stock', {
+      p_queue_id: customerQueueId,
+      p_items: [{ product_id: ids.product, quantity: 1 }],
+    });
+    expect(legacyOrder.error).not.toBeNull();
+
     const customerOrder = await anon.rpc('create_customer_order_with_stock', {
       p_queue_id: customerQueueId,
+      p_customer_fingerprint: customerFingerprint,
       p_items: [{ product_id: ids.product, quantity: 1 }],
       p_payment_idempotency_key: randomUUID(),
     });

@@ -409,6 +409,11 @@ select is(
   'customer cancel before payment releases its checkout hold'
 );
 
+-- Keep unrelated local fixtures out of this global cleanup assertion; the test rolls back.
+update public.order_payments
+set stock_hold_expires_at = now() + interval '1 day'
+where stock_hold_expires_at <= now();
+
 create temp table _expired_hold as
 select * from public.create_preorder_with_stock(
   (select event_id from _preorder_ids),

@@ -26,8 +26,10 @@ const serviceDate = () => new Intl.DateTimeFormat('en-CA', {
 
 const seedCallingTicket = async (page: Page) => {
   const queueId = randomUUID();
+  const fingerprint = randomUUID();
   must(await service.from('queues').insert({
     id: queueId,
+    customer_fingerprint: fingerprint,
     artist_id: artistId,
     event_id: eventId,
     queue_number: Math.floor(Math.random() * 900_000) + 1,
@@ -35,11 +37,12 @@ const seedCallingTicket = async (page: Page) => {
     status: 'calling',
     called_at: new Date().toISOString(),
   }), 'seed calling queue ticket');
-  await page.addInitScript(({ fixtureArtistId, fixtureQueueId }) => {
+  await page.addInitScript(({ fixtureArtistId, fixtureQueueId, fixtureFingerprint }) => {
     localStorage.setItem('nireq-language', 'en');
     localStorage.setItem('nireq-replay-consent-v1', 'rejected');
     localStorage.setItem(`ticket_id_${fixtureArtistId}`, fixtureQueueId);
-  }, { fixtureArtistId: artistId, fixtureQueueId: queueId });
+    localStorage.setItem(`customer_fingerprint_${fixtureArtistId}`, fixtureFingerprint);
+  }, { fixtureArtistId: artistId, fixtureQueueId: queueId, fixtureFingerprint: fingerprint });
   return queueId;
 };
 

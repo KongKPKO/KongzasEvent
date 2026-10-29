@@ -49,6 +49,76 @@ test.afterAll(async () => {
   must(await service.auth.admin.deleteUser(artistId));
 });
 
+test('compact catalog and event tables retain stock controls on desktop and mobile', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/manage-products');
+    await page.getByRole('button', { name: 'Table', exact: true }).click();
+    const catalog = page.getByRole('region', { name: 'Product catalog table' });
+    const row = catalog.getByTestId(`catalog-row-${product.data!.id}`);
+    await expect(row).toBeVisible();
+    if (width === 390) {
+      const left = (await catalog.boundingBox())!.x + 1;
+      await catalog.evaluate(element => { element.scrollLeft = 500; });
+      expect((await row.locator('.catalog-compact-grid > :first-child').boundingBox())!.x).toBeCloseTo(left, 0);
+    }
+    await expect(row.locator('details.stock-details')).not.toHaveAttribute('open', '');
+    await row.getByText('Manage stock and details').click();
+    await expect(row.getByRole('button', { name: 'Track stock', exact: true })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Adjust stock', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-table-${width}.png`) });
+    await page.goto(`/manage-events/${eventId}/catalog`);
+    await page.getByRole('button', { name: 'Operations', exact: true }).click();
+    const eventTable = page.getByRole('region', { name: 'Event products and stock table' });
+    const eventRow = eventTable.locator('.event-stock-grid').filter({ hasText: 'Simple service' });
+    await expect(eventRow).toBeVisible();
+    if (width === 390) {
+      const left = (await eventTable.boundingBox())!.x + 1;
+      await eventTable.evaluate(element => { element.scrollLeft = 500; });
+      expect((await eventRow.locator(':scope > :first-child').boundingBox())!.x).toBeCloseTo(left, 0);
+    }
+    await expect(eventRow.locator('details.stock-details')).not.toHaveAttribute('open', '');
+    await eventRow.getByText('Supply and stock settings').click();
+    await expect(eventRow.getByText('Supply / made to order')).toBeVisible();
+    await expect(eventRow.getByLabel('Event price for Simple service')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`event-table-${width}.png`) });
+  }
+});
+
+test('catalog table shows each item image and respects cleared photo galleries', async ({ page }) => {
+  const singleParent = randomUUID(), photoParent = randomUUID();
+  const own = randomUUID(), inherited = randomUUID(), photo = randomUUID(), cleared = randomUUID();
+  const base = 'https://example.test';
+  must(await service.from('product_parents').insert([
+    { id: singleParent, artist_id: artistId, name: 'Image test single', base_price: 10, product_kind: 'single', image_url: `${base}/parent.png` },
+    { id: photoParent, artist_id: artistId, name: 'Image test photo', base_price: 10, product_kind: 'photo', image_url: `${base}/photo-parent.png` },
+  ]));
+  must(await service.from('products').insert([
+    { id: own, artist_id: artistId, parent_product_id: singleParent, name: 'Own image', variant_name: 'Own image', price: 10, image_url: `${base}/own.png` },
+    { id: inherited, artist_id: artistId, parent_product_id: singleParent, name: 'Inherited image', variant_name: 'Inherited image', price: 10 },
+    { id: photo, artist_id: artistId, parent_product_id: photoParent, name: 'Photo image', variant_name: 'Photo image', price: 10, product_kind: 'photo', variant_gallery_images: [`${base}/photo-item.png`] },
+    { id: cleared, artist_id: artistId, parent_product_id: photoParent, name: 'Cleared image', variant_name: 'Cleared image', price: 10, product_kind: 'photo', variant_gallery_images: [] },
+  ]));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto('/manage-products');
+  await page.getByRole('button', { name: 'Table', exact: true }).click();
+  await expect(page.getByTestId(`catalog-row-${own}`).locator('img').first()).toHaveAttribute('src', /own\.png/);
+  await expect(page.getByTestId(`catalog-row-${inherited}`).locator('img').first()).toHaveAttribute('src', /parent\.png/);
+  await expect(page.getByTestId(`catalog-row-${photo}`).locator('img').first()).toHaveAttribute('src', /photo-item\.png/);
+  await expect(page.getByTestId(`catalog-row-${cleared}`).locator('img')).toHaveCount(0);
+});
+
 test('customer can search 30 items with fixed actions and preview images on desktop and mobile', async ({ page }) => {
   const result = await service.from('products').select('id').eq('artist_id', artistId).like('name', 'Design %');
   must(result);

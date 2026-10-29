@@ -588,9 +588,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
-   const renderCatalogStockFlow = (product: Product, compact = false) => product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{product.bundle_items?.some(item => item.product_id) ? (language === 'th' ? `พร้อมจัดชุด ${inventory[product.id]?.bundle_available ?? 'ไม่จำกัด'} · ใช้ของร่วมกับการขายแยก` : `${inventory[product.id]?.bundle_available ?? 'Unlimited'} bundles · shared component stock`) : (language === 'th' ? 'ชุดเดิม: แก้ไขเพื่อเลือกสินค้าส่วนประกอบ' : 'Legacy bundle: edit to select components')}</div> : <div className="space-y-2">
+   const renderCatalogStockFlow = (product: Product, compact = false, table = false) => product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{product.bundle_items?.some(item => item.product_id) ? (language === 'th' ? `พร้อมจัดชุด ${inventory[product.id]?.bundle_available ?? 'ไม่จำกัด'} · ใช้ของร่วมกับการขายแยก` : `${inventory[product.id]?.bundle_available ?? 'Unlimited'} bundles · shared component stock`) : (language === 'th' ? 'ชุดเดิม: แก้ไขเพื่อเลือกสินค้าส่วนประกอบ' : 'Legacy bundle: edit to select components')}</div> : <div className="space-y-2">
       {renderCatalogStockNumbers(product, compact)}
-      {inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+      {inventory[product.id] && (table ? <details className="stock-details"><summary>{language === 'th' ? 'จัดการสต็อกและดูรายละเอียด' : 'Manage stock and details'}</summary><InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} /></details> : <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />)}
+      {table && inventory[product.id]?.production_shortfall > 0 && <p className="text-xs font-bold text-amber-800">{inventory[product.id].tracking ? (language === 'th' ? 'ยอดรับสั่งผลิตยังขาด' : 'Production shortfall') : (language === 'th' ? 'ยอดยืนยันรอเตรียมของ' : 'Confirmed units to prepare')}: {inventory[product.id].production_shortfall}</p>}
    </div>;
 
    const renderEventCatalogStockNumbers = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => {
@@ -647,7 +648,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       );
    };
 
-   const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => <div className="space-y-2">
+   const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false, table = false) => <div className="space-y-2">
       {product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{(() => {
          const limits = (product.bundle_items || []).map(item => {
             const component = item.product_id ? eventCatalogDraft[item.product_id] : undefined;
@@ -657,8 +658,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          const quantity = limits.length ? Math.min(...limits) : 0;
          return language === 'th' ? `พร้อมขาย ${Number.isFinite(quantity) ? quantity : 'ไม่จำกัด'} ชุด · ใช้สต็อกส่วนประกอบในอีเวนต์ร่วมกับขายแยก` : `${Number.isFinite(quantity) ? quantity : 'Unlimited'} bundles · shared event component stock`;
       })()}</div> : renderEventCatalogStockNumbers(product, draft, stockLimit, compact)}
-      {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
-      {product.product_kind !== 'bundle' && inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+      {table && inventory[product.id]?.production_shortfall > 0 && <p className="text-xs font-bold text-amber-800">{inventory[product.id].tracking ? (language === 'th' ? 'ยอดรับสั่งผลิตยังขาด' : 'Production shortfall') : (language === 'th' ? 'ยอดยืนยันรอเตรียมของ' : 'Confirmed units to prepare')}: {inventory[product.id].production_shortfall}</p>}
+      {table ? <details className="stock-details"><summary>{language === 'th' ? 'ตั้งค่าวิธีขายและสต็อก' : 'Supply and stock settings'}</summary>
+         {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
+         {product.product_kind !== 'bundle' && inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+      </details> : <>
+         {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
+         {product.product_kind !== 'bundle' && inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
+      </>}
    </div>;
 
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
@@ -3492,15 +3499,15 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                  ))}
 	                              </div>
                            ) : (
-                              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-                                 <div className="hidden xl:grid xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
+                              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white" role="region" aria-label={language === 'th' ? 'ตารางสินค้าและสต็อกในอีเวนต์' : 'Event products and stock table'} tabIndex={0}>
+                                 <div className="event-stock-grid min-w-[1000px] gap-3 bg-gray-50 px-4 py-3 text-[11px] font-black uppercase tracking-wide text-gray-500">
                                     <div>{eventText("Product")}</div>
                                     <div>{eventText("Sell / Price")}</div>
                                     <div>{eventText("Central to event")}</div>
                                     <div>{eventText("Event stock")}</div>
                                     <div>{eventText("Actions")}</div>
                                  </div>
-                                 <div className="divide-y divide-gray-100">
+                                 <div className="min-w-[1000px] divide-y divide-gray-100">
                                     {filteredEventCatalogProducts.map((product) => {
                                        const draft = eventCatalogDraft[product.id] || buildEventCatalogFallback(product);
                                        const stockLimit = getEventCatalogStockLimit(product);
@@ -3516,7 +3523,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        return (
                                           <div
                                              key={`event-catalog-operation-${product.id}`}
-                                             className="grid grid-cols-1 gap-3 px-4 py-4 xl:grid-cols-[minmax(230px,1.35fr)_145px_220px_150px_125px] xl:items-start"
+                                             className="event-stock-grid items-start gap-3 px-4 py-3"
                                           >
                                              <div className="min-w-0 flex items-center gap-3">
                                                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-gray-100">
@@ -3538,7 +3545,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                 </div>
                                              </div>
 
-                                             {product.product_kind !== 'bundle' && <div className="space-y-2">
+                                             {product.product_kind !== 'bundle' ? <div className="space-y-2">
                                                 <label className="flex items-center justify-between gap-2 text-xs font-black text-gray-700">
                                                    <span>{eventText("Sell")}</span>
                                                    <input
@@ -3558,10 +3565,11 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                    placeholder={String(product.price)}
                                                    aria-label={uiText(language, 'Event price for {name}').replace('{name}', product.name)}
                                                 />
-                                             </div>}
+                                             </div> : <div />}
 
                                              <div className={stockOverLimit ? 'rounded-lg bg-red-50 p-2' : 'rounded-lg bg-gray-50 p-2'}>
-                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
+                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true, true)}
+                                                {stockOverLimit && <p className="mt-1 text-xs font-bold text-red-700">{eventText("Max")}{stockLimit} {eventText("available for this event.")}</p>}
                                              </div>
 
                                              <div className="space-y-2">
@@ -3871,7 +3879,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   families={filteredProductFamilies}
                   displayMode={catalogDisplayMode}
                   getImageUrl={(path) => getMenuImageUrl(path || '')}
-                  renderVariantStock={renderCatalogStockFlow}
+                  renderVariantStock={(product, compact) => renderCatalogStockFlow(product, compact, catalogDisplayMode === 'operations')}
                   renderVariantActions={renderCatalogActions}
                   onEditFamily={openFamilyEditor}
                />

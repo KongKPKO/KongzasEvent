@@ -57,3 +57,14 @@ html:has(.catalog-workspace), body:has(.catalog-workspace) { overflow-x: clip; }
   .catalog-table-image { width: 56px; height: 72px; }
   .catalog-operations-table th, .catalog-operations-table td { padding-inline: 4px; }
 }
+
+.catalog-compact-grid { display: grid; grid-template-columns: minmax(200px, 1.1fr) minmax(150px, .8fr) 80px minmax(240px, 1fr) 220px; }
+.event-stock-grid { display: grid; grid-template-columns: minmax(220px, 1.3fr) 120px minmax(240px, 1.2fr) 120px 125px; }
+.stock-details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--color-catalog-accent); font-size: 12px; font-weight: 700; }
+.stock-details > summary::before { content: '▸'; margin-right: 6px; }
+.stock-details[open] > summary::before { content: '▾'; }
+.stock-details > summary:focus-visible { outline: 2px solid var(--color-catalog-accent); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .catalog-compact-grid > :first-child, .event-stock-grid > :first-child { position: sticky; left: 0; z-index: 1; background: white; }
+  .catalog-compact-grid.bg-gray-50 > :first-child, .event-stock-grid.bg-gray-50 > :first-child { background: rgb(249 250 251); }
+}

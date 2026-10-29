@@ -158,18 +158,22 @@ export default function ProductFamilyCatalog<TVariant extends CatalogFamilyVaria
 
   return (
     <>
-      <div className="space-y-3">
-        {families.flatMap(family => family.variants.map(variant => (
-          <article key={variant.id} data-testid={`catalog-row-${variant.id}`} className="overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="grid gap-3 p-3 xl:grid-cols-[minmax(200px,1fr)_minmax(160px,1fr)_100px_120px_220px] xl:items-center">
-              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100"><ProductVisual parent={family.parent} variants={[variant]} getImageUrl={getImageUrl} language={language} /></div><div className="min-w-0"><h3 className="break-words text-sm font-black">{variant.variant_name && variant.variant_name !== 'Default' ? variant.variant_name : family.parent.name}</h3><p className="mt-1 text-xs text-gray-500">{kindLabel(language, family.parent.product_kind)}</p></div></div>
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white" role="region" aria-label={thai ? 'ตารางแคตตาล็อกสินค้า' : 'Product catalog table'} tabIndex={0}>
+        <div className="catalog-compact-grid min-w-[1050px] gap-3 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-600"><div>{thai ? 'สินค้า' : 'Product'}</div><div>{thai ? 'สินค้าหลัก / หมวดหมู่' : 'Main product / category'}</div><div>{thai ? 'ราคา' : 'Price'}</div><div>{thai ? 'สต็อก' : 'Stock'}</div><div>{thai ? 'จัดการ' : 'Actions'}</div></div>
+        <div className="min-w-[1050px] divide-y divide-gray-100">
+        {families.flatMap(family => family.variants.map(variant => {
+          const itemImage = family.parent.product_kind === 'photo' && variant.variant_gallery_images != null ? variant.variant_gallery_images[0] : variant.image_url || family.parent.image_url || (family.parent.product_kind === 'photo' ? (variant.gallery_images || family.parent.gallery_images)?.[0] : undefined);
+          return <article key={variant.id} data-testid={`catalog-row-${variant.id}`} className="bg-white">
+            <div className="catalog-compact-grid items-center gap-3 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-100">{itemImage ? <img src={getImageUrl(itemImage, 160)} alt="" className="h-full w-full object-cover" loading="lazy" /> : <PackageSearch className="m-4 text-gray-400" />}</div><div className="min-w-0"><h3 className="break-words text-sm font-black">{variant.variant_name && variant.variant_name !== 'Default' ? variant.variant_name : family.parent.name}</h3><p className="mt-1 text-xs text-gray-500">{kindLabel(language, family.parent.product_kind)}</p></div></div>
               <div><p className="text-[10px] font-bold text-gray-500">{thai ? 'สินค้าหลัก / หมวดหมู่' : 'Main product / category'}</p><p className="break-words text-sm font-bold text-pink-800">{family.parent.name}</p><p className="text-xs text-gray-600">{family.parent.category || (thai ? 'อื่น ๆ' : 'Other')}</p></div>
               <div className="text-sm font-black text-pink-700">{formatPrice(variant.price_override ?? family.parent.base_price, family.parent.currency)}</div>
               <div>{renderVariantStock(variant, true)}</div>
               <div>{renderVariantActions(variant, 'table')}</div>
             </div>
-          </article>
-        )))}
+          </article>;
+        }))}
+        </div>
       </div>
       {popup}
     </>

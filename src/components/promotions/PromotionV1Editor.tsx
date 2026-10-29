@@ -121,7 +121,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
   const [assignmentKeys, setAssignmentKeys] = useState(existing?.assignments.filter((assignment) => !assignment.is_paused).map((assignment) => assignment.campaign_id ? `campaign:${assignment.campaign_id}` : `event:${assignment.event_id}:${assignment.event_phase}`) || []);
   const [startsAt, setStartsAt] = useState(promotionLocalDateTime(firstAssignment?.starts_at));
   const [endsAt, setEndsAt] = useState(promotionLocalDateTime(firstAssignment?.ends_at));
-  const [combinationPolicy, setCombinationPolicy] = useState<PromotionCombinationPolicy>(firstAssignment?.combination_policy || 'exclusive');
+  const [combinationPolicy, setCombinationPolicy] = useState<PromotionCombinationPolicy>(firstAssignment?.combination_policy || 'combine');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [previewChannel, setPreviewChannel] = useState(assignmentKeys[0] || '');
@@ -174,7 +174,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
         starts_at: previous && startsAt === promotionLocalDateTime(firstAssignment?.starts_at) ? previous.starts_at : toIso(startsAt),
         ends_at: previous && endsAt === promotionLocalDateTime(firstAssignment?.ends_at) ? previous.ends_at : toIso(endsAt),
         is_paused: false,
-        combination_policy: previous && combinationPolicy === (firstAssignment?.combination_policy || 'exclusive') ? previous.combination_policy : combinationPolicy,
+        combination_policy: previous && combinationPolicy === (firstAssignment?.combination_policy || 'combine') ? previous.combination_policy : combinationPolicy,
       };
     }),
   });

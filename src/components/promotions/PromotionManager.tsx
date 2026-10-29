@@ -113,7 +113,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
   const [assignmentKeys, setAssignmentKeys] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
-  const [combinationPolicy, setCombinationPolicy] = useState<PromotionCombinationPolicy>('exclusive');
+  const [combinationPolicy, setCombinationPolicy] = useState<PromotionCombinationPolicy>('combine');
 
   const productLines = useMemo(() => Array.from(new Set(products.map((product) => product.variant_group_name).filter(Boolean) as string[])).sort(), [products]);
   const lineProductIds = useMemo(() => products.filter((product) => product.variant_group_name === productLine).map((product) => product.id), [productLine, products]);
@@ -140,7 +140,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
 
 
   const reset = () => {
-    setEditingId(null); setName(''); setPromotionType('condition_reward'); setTargetType('all'); setCategory(''); setTag(''); setProductLine(''); setTargetProductIds([]); setBuyQuantity('3'); setRewardValue('50'); setRewardQuantity('1'); setRewardSelectionMode('fixed'); setRewardProductIds([]); setTierGrantMode('highest_only'); setTiers([newTier()]); setAssignmentKeys([]); setStartsAt(''); setEndsAt(''); setCombinationPolicy('exclusive'); setMessage('');
+    setEditingId(null); setName(''); setPromotionType('condition_reward'); setTargetType('all'); setCategory(''); setTag(''); setProductLine(''); setTargetProductIds([]); setBuyQuantity('3'); setRewardValue('50'); setRewardQuantity('1'); setRewardSelectionMode('fixed'); setRewardProductIds([]); setTierGrantMode('highest_only'); setTiers([newTier()]); setAssignmentKeys([]); setStartsAt(''); setEndsAt(''); setCombinationPolicy('combine'); setMessage('');
   };
 
   const edit = (definition: PromotionDefinition) => {
@@ -150,7 +150,7 @@ export default function PromotionManager({ artistId, products, eventOptions, cat
     setTiers(definition.tiers.length ? definition.tiers.map((tier) => ({ key: tier.id, threshold: String(tier.threshold_amount), quantity: String(tier.reward_quantity), selectionMode: tier.reward_selection_mode, rewardProductIds: tier.reward_product_ids })) : [newTier()]);
     setAssignmentKeys(definition.assignments.filter((assignment) => !assignment.is_paused).map((assignment) => assignment.campaign_id ? `campaign:${assignment.campaign_id}` : `event:${assignment.event_id}:${assignment.event_phase}`));
     const first = definition.assignments[0];
-    setStartsAt(promotionLocalDateTime(first?.starts_at)); setEndsAt(promotionLocalDateTime(first?.ends_at)); setCombinationPolicy(first?.combination_policy || 'exclusive'); setMessage('');
+    setStartsAt(promotionLocalDateTime(first?.starts_at)); setEndsAt(promotionLocalDateTime(first?.ends_at)); setCombinationPolicy(first?.combination_policy || 'combine'); setMessage('');
 
   };
 

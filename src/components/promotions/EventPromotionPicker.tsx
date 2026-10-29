@@ -45,7 +45,7 @@ export default function EventPromotionPicker({ artistId, eventId, eventName, pro
     setEditing(definition); setError(''); setMessage('');
     setDraft(Object.fromEntries(phases.map(phase => {
       const current = definition.assignments.find(item => item.event_id === eventId && item.event_phase === phase);
-      return [phase, { enabled: current ? !current.is_paused : false, start: promotionLocalDateTime(current?.starts_at), end: promotionLocalDateTime(current?.ends_at), policy: current?.combination_policy || 'exclusive' }];
+      return [phase, { enabled: current ? !current.is_paused : false, start: promotionLocalDateTime(current?.starts_at), end: promotionLocalDateTime(current?.ends_at), policy: current?.combination_policy || 'combine' }];
     })));
   };
   const close = () => {

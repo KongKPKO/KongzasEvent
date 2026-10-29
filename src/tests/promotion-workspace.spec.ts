@@ -38,6 +38,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     const form = page.locator('#promotion-editor');
     const review = page.getByRole('complementary', { name: 'สรุปก่อนบันทึก' });
     await expect(form.getByLabel('ชื่อโปรโมชัน', { exact: true })).toBeFocused();
+    await expect(form.locator('label').filter({ hasText: 'เมื่อชนกับโปรอื่น' }).locator('select')).toHaveValue('combine');
     await expect(form.getByRole('heading', { name: /1\s*ข้อมูลโปรโมชัน/ })).toBeVisible();
     await expect(form.getByRole('heading', { name: /2\s*เงื่อนไขการซื้อ/ })).toBeVisible();
     await expect(form.getByRole('heading', { name: /3\s*สิทธิประโยชน์/ })).toBeVisible();
@@ -221,6 +222,16 @@ test('store creates offers; event selection preserves other channels and cancell
     const saved = await service.from('artist_promotions').select('id,v1_config').eq('artist_id', userId).single().throwOnError();
     const promotionId = saved.data!.id;
     expect((await service.from('promotion_assignments').select('id').eq('promotion_id', promotionId)).data).toEqual([]);
+    await page.goto(`/manage-events/${eventA}/promotion`);
+    const newRow = page.locator('article').filter({ has: page.getByRole('heading', { name, exact: true }) });
+    await newRow.getByRole('button', { name: 'Select promotion', exact: true }).click();
+    const newSelection = newRow.getByRole('form', { name: `Assign ${name}` });
+    await newSelection.getByRole('checkbox', { name: 'Live event', exact: true }).check();
+    await expect(newSelection.getByLabel('Combining offers')).toHaveValue('combine');
+    await newSelection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(newSelection).toBeHidden();
+    expect((await service.from('promotion_assignments').select('combination_policy').eq('promotion_id', promotionId).eq('event_id', eventA).single().throwOnError()).data?.combination_policy).toBe('combine');
+    must(await service.from('promotion_assignments').delete().eq('promotion_id', promotionId));
     must(await service.from('promotion_assignments').insert([
       { promotion_id: promotionId, artist_id: userId, event_id: eventA, event_phase: 'live', starts_at: start, ends_at: end, is_paused: true, combination_policy: 'exclusive' },
       { promotion_id: promotionId, artist_id: userId, event_id: eventB, event_phase: 'postorder', starts_at: start, ends_at: end, is_paused: false, combination_policy: 'combine' },
@@ -239,7 +250,11 @@ test('store creates offers; event selection preserves other channels and cancell
     const row = page.locator('article').filter({ has: page.getByRole('heading', { name, exact: true }) });
     await row.getByRole('button', { name: 'Select promotion', exact: true }).click();
     const selection = row.getByRole('form', { name: `Assign ${name}` });
+    await selection.getByRole('checkbox', { name: 'Pre-order', exact: true }).check();
+    await expect(selection.getByLabel('Combining offers').first()).toHaveValue('combine');
+    await selection.getByRole('checkbox', { name: 'Pre-order', exact: true }).uncheck();
     await selection.getByRole('checkbox', { name: 'Live event', exact: true }).check();
+    await expect(selection.getByLabel('Combining offers')).toHaveValue('exclusive');
     const accessibility = await new AxeBuilder({ page }).include('.promotion-workspace').withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(accessibility.violations).toEqual([]);
     page.once('dialog', dialog => dialog.dismiss());

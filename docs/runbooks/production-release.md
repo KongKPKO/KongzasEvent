@@ -6,9 +6,9 @@ This runbook deliberately separates local verification from remote mutation. Nev
 
 Production identifiers:
 
-- Site: `https://nireqapp.com`
+- Site: `https://paimonq.com`
 - Supabase project ref: `fnutmjnzugpayccscvgr`
-- Firebase Hosting target: `nireqapp`
+- Firebase Hosting target: `paimonq`
 
 Record the branch and immutable SHA:
 
@@ -80,7 +80,7 @@ supabase functions deploy notify-team-invitation --project-ref fnutmjnzugpayccsc
 
 # 4. Build with release identity and deploy Hosting.
 VITE_RELEASE_SHA="$(git rev-parse HEAD)" npm run build:prod
-firebase deploy --only hosting:nireqapp
+firebase deploy --config firebase.prod.json --only hosting:paimonq
 ```
 
 Do not copy any service-role key into a `VITE_*` variable. Browser code receives only the publishable/anon key.

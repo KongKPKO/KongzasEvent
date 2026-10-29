@@ -10,7 +10,7 @@ Use this as the operating map for Nireq environments. Keep real keys in `.env*` 
 | Docker test app | Local app container wired to local Supabase | `eventqueue-test-app` via `.env.docker.test` | `http://localhost:5173` | Disposable |
 | LAN local test | Phone/tablet testing on the same Wi-Fi | Should use Mac LAN IP, not `127.0.0.1` | `http://192.168.1.149:5173` while on current Wi-Fi | Disposable |
 | DEV / Staging | Cloud test that should feel close to production | `Kongzas Event Queue - DEV` / `kdjqitvtxmcrnnpuxuyl` | Firebase preview channel or local build pointed to DEV | Test data only |
-| PROD | Real users and real creator data | `Kongzas Event Queue - PROD` / `fnutmjnzugpayccscvgr` | Firebase Hosting target `createeq` | Protect carefully |
+| PROD | Real users and real creator data | `Kongzas Event Queue - PROD` / `fnutmjnzugpayccscvgr` | Firebase Hosting target `paimonq` | Protect carefully |
 
 Current repo link: Supabase CLI is linked to **PROD** (`fnutmjnzugpayccscvgr`). Be deliberate before running any remote command that defaults to `--linked`.
 
@@ -131,8 +131,8 @@ supabase db push
 Recommended: create `.env.staging` locally with DEV Supabase values, then build with that env. If using Firebase preview channels:
 
 ```bash
-npm run build
-firebase hosting:channel:deploy dev --only createeq --expires 30d
+npm run build:staging
+firebase hosting:channel:deploy dev --only nireqapp --expires 30d
 ```
 
 Shortcut after `.env.staging` is configured:
@@ -194,7 +194,7 @@ supabase db push
 
 ```bash
 npm run build
-firebase deploy --only hosting:createeq
+firebase deploy --config firebase.prod.json --only hosting:paimonq
 ```
 
 Shortcut after `.env.production` is configured:
@@ -207,7 +207,7 @@ npm run deploy:prod
 
 Checklist:
 
-- `https://createeq.web.app/` loads discovery/home.
+- `https://paimonq.com/` loads discovery/home.
 - Creator login works.
 - Admin application list is visible only for admin.
 - Known creator slug loads.
@@ -245,8 +245,8 @@ Create explicit staging/LAN scripts so humans do not have to remember env files:
   "dev:lan": "vite --host 0.0.0.0 --port 5173 --mode lan",
   "build:staging": "tsc && vite build --mode staging",
   "build:prod": "tsc && vite build --mode production",
-  "deploy:staging": "npm run build:staging && firebase hosting:channel:deploy dev --only createeq --expires 30d",
-  "deploy:prod": "npm run build:prod && firebase deploy --only hosting:createeq"
+  "deploy:staging": "npm run build:staging && firebase hosting:channel:deploy dev --only nireqapp --expires 30d",
+  "deploy:prod": "npm run build:prod && firebase deploy --config firebase.prod.json --only hosting:paimonq"
 }
 ```
 

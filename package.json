@@ -30,7 +30,7 @@
     "check:deploy-source": "npm run check:hygiene && sh -c 'test -z \"$(git status --porcelain)\" || { echo \"Deploy stopped: commit the intended changes before deploying.\" >&2; exit 1; }'",
     "push:current": "git push --set-upstream origin HEAD",
     "deploy:staging": "npm run check:deploy-source && npm run build:staging && npm run push:current && firebase hosting:channel:deploy dev --only nireqapp --expires 30d",
-    "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --only hosting:nireqapp",
+    "deploy:prod": "npm run check:deploy-source && npm run build:prod && npm run push:current && firebase deploy --config firebase.prod.json --only hosting:paimonq",
     "verify:full": "npm run lint && npm run test:regression:unit && npm run test:release",
     "test:regression:legacy": "npx playwright test src/tests/regression/regression.spec.ts",
     "test:regression:smoke": "node scripts/release-check.mjs local --suite smoke",

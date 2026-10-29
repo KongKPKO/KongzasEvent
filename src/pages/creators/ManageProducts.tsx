@@ -789,6 +789,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       });
    })();
 
+   const displayedProductCount = filteredProductFamilies.reduce((count, family) => count + family.variants.length, 0);
+
    const hasActiveFilters =
       searchQuery.trim().length > 0 ||
       selectedCategory !== 'All' ||
@@ -3721,7 +3723,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600">
                         <Filter size={12} />
-                        {t('catalogResultCount', { shown: filteredProducts.length, total: products.length })}
+                        {t('catalogResultCount', { shown: displayedProductCount, total: products.length })}
                      </div>
                      {hasActiveFilters && (
                         <button
@@ -3863,7 +3865,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             {/* PRODUCT LIST */}
             <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
                <div>
-                  <h2 className="text-lg font-bold text-gray-800">{language === 'th' ? 'สินค้าหลัก' : 'Main products'} ({filteredProductFamilies.length})</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{catalogDisplayMode === 'visual' ? (language === 'th' ? 'สินค้าหลัก' : 'Main products') : (language === 'th' ? 'รายการสินค้า' : 'Product items')} ({catalogDisplayMode === 'visual' ? filteredProductFamilies.length : displayedProductCount})</h2>
                   <p className="text-xs font-semibold text-gray-500">
                      {catalogDisplayMode === 'visual'
                         ? (language === 'th' ? 'เลือกสินค้าหลักเพื่อดูรูป ราคา และสต็อกของแต่ละรายการ' : 'Open a main product to review photos, prices, and stock for each item.')

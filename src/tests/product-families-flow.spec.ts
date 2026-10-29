@@ -60,7 +60,13 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('/manage-products');
+    await expect(page.getByRole('heading', { name: 'Main products (2)', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Table', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Product items (31)', exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: 'Search products', exact: true }).fill('Design 30');
+    await expect(page.getByRole('heading', { name: 'Product items (30)', exact: true })).toBeVisible();
+    await expect(page.getByText('30 of 31 products', { exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: 'Search products', exact: true }).clear();
     const catalog = page.getByRole('region', { name: 'Product catalog table' });
     const row = catalog.getByTestId(`catalog-row-${product.data!.id}`);
     await expect(row).toBeVisible();

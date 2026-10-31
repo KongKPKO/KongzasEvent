@@ -45,6 +45,7 @@ const CustomerLayout = () => {
    const availableEvents = useMemo(() => getCurrentCustomerEvents(events), [events]);
    const selectedEvent = availableEvents.find((event) => event.id === selectedEventId) || availableEvents[0] || null;
    const selectedEventPhase = selectedEvent ? getEventSalesPhase(selectedEvent) : 'closed';
+   const showQueue = selectedEvent?.queue_enabled !== false || Boolean(displayArtist?.id && getStoredTicketId(displayArtist.id));
 
    const setSelectedEventId = (eventId: string) => {
       if (!displayArtist?.id) return;
@@ -201,7 +202,7 @@ const CustomerLayout = () => {
                         {[
                            { to: `/${slug}/home`, label: t('customerNavHome'), Icon: Home, match: '/home' },
                            { to: `/${slug}/menu`, label: t('customerNavMerch'), Icon: ShoppingBag, match: '/menu' },
-                           { to: `/${slug}/queue`, label: t('customerNavQueue'), Icon: Users, match: '/queue' },
+                           ...(showQueue ? [{ to: `/${slug}/queue`, label: t('customerNavQueue'), Icon: Users, match: '/queue' }] : []),
                         ].map(({ to, label, Icon, match }) => (
                            <Link
                               key={to}
@@ -269,7 +270,7 @@ const CustomerLayout = () => {
                   </Link>
                </motion.div>
 
-               <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
+               {showQueue && <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
                      to={`/${slug}/queue`}
                      className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.endsWith('/queue') ? 'text-pink-700' : 'text-slate-600'}`}
@@ -278,7 +279,7 @@ const CustomerLayout = () => {
                      <Users size={22} strokeWidth={location.pathname.endsWith('/queue') ? 2.5 : 2} aria-hidden="true" />
                      {t('customerNavQueue')}
                   </Link>
-               </motion.div>
+               </motion.div>}
 
                <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link

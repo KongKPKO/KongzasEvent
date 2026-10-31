@@ -654,9 +654,12 @@ const QueueView = () => {
         isQueueOpen,
         broadcastMessage: displayArtist?.broadcast_message,
     });
-    const isQueueUnavailable = !queueAvailability.acceptsTickets;
+    const isQueueUnavailable = activeEvent?.queue_enabled === false || !queueAvailability.acceptsTickets;
     const queueActionGuidance = (() => {
         if (!myTicket) {
+            if (activeEvent?.queue_enabled === false) {
+                return { title: language === 'th' ? 'อีเวนต์นี้ไม่ใช้คิวออนไลน์' : 'Online queue is not used for this event', detail: language === 'th' ? 'เลือกชมสินค้าและซื้อได้ที่หน้าบูธ' : 'Browse products and purchase at the booth.', tone: 'slate' };
+            }
             if (queueAvailability.state === 'event-ended') {
                 return { title: t('queueEventEnded'), detail: t('queueEventEndedDetail'), tone: 'slate' };
             }

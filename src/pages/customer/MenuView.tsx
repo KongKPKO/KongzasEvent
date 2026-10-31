@@ -1129,11 +1129,12 @@ const MenuView = () => {
     && userQueueEventId === selectedEvent?.id && (!sentOrderTicketId || sentOrderTicketId === menuTicketId);
   const canConfirmOrder = !receiptCheckPending && userQueueEventId === selectedEvent?.id
     && (userQueueStatus === 'calling' || userQueueStatus === 'serving');
+  const noQueueWalkIn = !isAdvanceOrderFlow && selectedEvent?.queue_enabled === false && !userQueueNumber;
   const queueGuidance = canConfirmOrder
     ? t('menuQueueGuidanceReady')
     : userQueueNumber
       ? t('menuQueueGuidanceWaiting')
-      : t('menuQueueGuidanceNeedTicket');
+      : noQueueWalkIn ? (language === 'th' ? 'อีเวนต์นี้ไม่ใช้คิวออนไลน์ เลือกชมสินค้าและซื้อได้ที่หน้าบูธ' : 'This event does not use online queues. Browse products and purchase at the booth.') : t('menuQueueGuidanceNeedTicket');
   const canSubmitSelection = isAdvanceOrderFlow
     ? preorderWindowOpen && !promotionQuoteLoading && Boolean(promotionQuote) && requiredPromotionChoices.length === 0 && (exhaustedPromotionChoices.length === 0 || acceptExhaustedRewards)
     : canConfirmOrder && !promotionQuoteLoading && Boolean(promotionQuote);
@@ -1256,7 +1257,7 @@ const MenuView = () => {
 
       <StorefrontHeader name={displayArtist?.display_name || t('customerNavMerch')} bio={displayArtist?.bio} avatar={resolveAvatarUrl(displayArtist?.image_url)} artworks={products.filter(product => product.status !== 'disable')} sellerType={displayArtist?.seller_type} homeHref={displayArtist?.slug ? `/${displayArtist.slug}/home` : undefined}>
         <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/home`}><ShoppingBag size={22} aria-hidden="true" /><span>{t('customerNavHome')}</span><span aria-hidden="true">→</span></Link>
-        <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/queue`}><Ticket size={22} aria-hidden="true" /><span>{userQueueNumber ? `${t('menuQueueNumber')} #${userQueueNumber}` : t('menuQueueNumber')}</span><span aria-hidden="true">→</span></Link>
+        {(selectedEvent?.queue_enabled !== false || userQueueNumber) && <Link className="shop-channel" to={`/${displayArtist?.slug || slug}/queue`}><Ticket size={22} aria-hidden="true" /><span>{userQueueNumber ? `${t('menuQueueNumber')} #${userQueueNumber}` : t('menuQueueNumber')}</span><span aria-hidden="true">→</span></Link>}
       </StorefrontHeader>
       <div className="shop-filters relative z-30 w-full border-b border-pink-100 bg-white/95 shadow-sm shadow-pink-50 backdrop-blur-xl">
          <div className="mx-auto max-w-6xl px-4 pb-3 pt-3 lg:px-6">
@@ -1707,7 +1708,7 @@ const MenuView = () => {
                                     )}
                                     <div className={`mt-0.5 text-[11px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
                                 </button>
-                                <button
+                                {!noQueueWalkIn && <button
                                     onClick={handleConfirmOrder}
                                     disabled={submitting || !canSubmitSelection}
                                     className={[
@@ -1716,7 +1717,7 @@ const MenuView = () => {
                                     ].join(' ')}
                                 >
                                     {submitting ? t('menuSending') : (<><span>{isPostOrderMode ? t('menuPostOrderSubmit') : isPreorderMode ? t('menuPreorderSubmit') : canConfirmOrder ? t('menuConfirm') : t('menuWait')}</span><ShoppingBag size={14} strokeWidth={2.5} /></>)}
-                                </button>
+                                </button>}
                             </>
                         )}
                     </div>

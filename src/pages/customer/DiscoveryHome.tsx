@@ -19,6 +19,7 @@ interface DiscoveryEventRecord {
   event_name: string;
   status?: string | null;
   is_booth_open?: boolean | null;
+  queue_enabled?: boolean | null;
   start_date?: string | null;
   end_date?: string | null;
   location?: string | null;
@@ -150,7 +151,7 @@ export default function DiscoveryHome() {
             return {
               artist_id: artist.id,
               has_online_shop: onlineArtistIds.has(artist.id),
-              accepts_queue: Boolean(event && artist.is_queue_open),
+              accepts_queue: Boolean(event && event.queue_enabled !== false && artist.is_queue_open),
               products: products.filter(product => product.artist_id === artist.id),
               slug: artist.slug,
               display_name: artist.display_name,

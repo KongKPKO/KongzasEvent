@@ -64,6 +64,7 @@ interface WorkspaceEvent {
   preorder_pickup_instructions?: string | null;
   status?: string | null;
   is_booth_open?: boolean | null;
+  queue_enabled?: boolean;
   location?: string | null;
   booth_detail?: string | null;
   location_name?: string | null;
@@ -937,6 +938,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         booth_detail: eventDraft.booth_detail || null,
         booth_number: eventDraft.booth_detail || null,
         queueing_area: eventDraft.queueing_area || '',
+        ...(eventDraft.queue_enabled !== event.queue_enabled ? { queue_enabled: eventDraft.queue_enabled !== false } : {}),
         entrance_fee: eventDraft.entrance_fee || '',
         transit_info: eventDraft.transit_info || '',
       };
@@ -1044,6 +1046,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 </span>}
               </div>
         </EventNavTabs>
+
+        {canAccessManagementPages(actorContext.role) && <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4" aria-label={language === 'th' ? 'คิวออนไลน์ของอีเวนต์' : 'Event online queue'}>
+          <div><h2 className="text-sm font-bold">{language === 'th' ? 'คิวออนไลน์ของอีเวนต์' : 'Event online queue'}</h2><p className="mt-1 text-sm text-gray-600">{event.queue_enabled === false ? (language === 'th' ? 'ไม่ใช้งาน · ลูกค้าดูสินค้าและซื้อหน้าบูธได้' : 'Off · customers can browse and buy at the booth') : (language === 'th' ? 'ใช้งาน · ลูกค้ารับคิวได้เมื่อเปิดบูธ' : 'On · customers can join when the booth is open')}</p></div>
+          <button type="button" onClick={openEventEditor} className="workspace-action rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold">{language === 'th' ? 'ตั้งค่าคิว' : 'Queue settings'}</button>
+        </section>}
 
         {setupReadiness && (
           <GuidedSetupPanel
@@ -1273,6 +1280,11 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
                   placeholder={uiText(language, 'e.g. Queue lane beside Booth A12')}
                 />
+              </label>
+
+              <label className="flex items-start gap-3 rounded-xl border border-gray-200 p-3">
+                <input type="checkbox" className="mt-1 h-4 w-4" checked={eventDraft.queue_enabled !== false} onChange={(change) => setEventDraft(previous => ({ ...previous, queue_enabled: change.target.checked }))} />
+                <span><span className="block font-bold">{language === 'th' ? 'ใช้งานคิวออนไลน์ในอีเวนต์นี้' : 'Use online queue for this event'}</span><span className="mt-1 block text-xs text-gray-600">{language === 'th' ? 'เมื่อปิด ลูกค้าดูสินค้าและมาซื้อหน้าบูธได้ โดยไม่ต้องรับคิวออนไลน์' : 'When off, customers can browse products and purchase at the booth without joining an online queue.'}</span></span>
               </label>
 
               <label className="block space-y-1">

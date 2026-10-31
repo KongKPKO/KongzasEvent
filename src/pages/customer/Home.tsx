@@ -11,7 +11,7 @@ import type { CustomerOutletContext } from '../../types/customerContext';
 import type { EventAppearance } from '../../types/eventAppearance';
 import type { SellerType } from '../../utils/sellerType';
 import type { RealtimeEvent } from '../../hooks/useArtistRealtime';
-import { getEventSalesPhase } from '../../utils/customerEvents';
+import { getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
@@ -83,6 +83,7 @@ const Home = () => {
   const {
     artist: contextArtist,
     events,
+    selectedEvent,
     isConnected,
     refresh,
     setSelectedEventId,
@@ -261,7 +262,7 @@ const Home = () => {
           )}
         </div>
 
-        <div className="mt-3 grid w-full grid-cols-2 gap-3">
+        <div className={`mt-3 grid w-full gap-3 ${selectedEvent?.queue_enabled !== false || getStoredTicketId(displayArtist?.id) ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <Link
             to={`/${displayArtist.slug}/menu`}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 text-sm font-black text-white shadow-lg shadow-pink-100 transition active:scale-95"
@@ -269,14 +270,15 @@ const Home = () => {
             <ShoppingBag size={17} aria-hidden="true" />
             {t('customerNavMerch')}
           </Link>
-          <Link
+          {(selectedEvent?.queue_enabled !== false || Boolean(getStoredTicketId(displayArtist?.id))) && <Link
             to={`/${displayArtist.slug}/queue`}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-pink-200 bg-white px-4 text-sm font-black text-pink-700 shadow-sm transition active:scale-95"
           >
             <Users size={17} aria-hidden="true" />
             {t('customerNavQueue')}
-          </Link>
+          </Link>}
         </div>
+        {selectedEvent?.queue_enabled === false && <p className="mt-3 text-center text-sm text-slate-600">{language === 'th' ? 'อีเวนต์นี้ไม่ใช้คิวออนไลน์ เลือกชมสินค้าและซื้อได้ที่หน้าบูธ' : 'This event does not use online queues. Browse products and purchase at the booth.'}</p>}
       </StorefrontHeader>
 
 

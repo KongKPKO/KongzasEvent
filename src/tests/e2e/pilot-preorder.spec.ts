@@ -161,6 +161,17 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await login.goto();
     await login.login(adminEmail, adminPassword);
     await expectSignedInAccount(adminPage);
+    await adminPage.goto('/manage-profile');
+    await adminPage.getByRole('button', { name: 'Hide storefront', exact: true }).click();
+    await adminPage.getByRole('dialog').getByRole('button', { name: 'Hide storefront', exact: true }).click();
+    await expect(adminPage.getByText('Storefront is hidden', { exact: true })).toBeVisible();
+    await expect.poll(async () => dataOrThrow(await service.from('artists').select('is_public').eq('id', artistId).single(), 'read visibility').is_public).toBe(false);
+
+    const hiddenStorePage = await customerContext.newPage();
+    await hiddenStorePage.goto(`/${artistSlug}/menu`);
+    await expect(hiddenStorePage.getByRole('button', { name: `Add: ${productName}`, exact: true })).toHaveCount(0);
+    await hiddenStorePage.close();
+
     await adminPage.goto(`/manage-events/${eventId}/preorder`);
     await expect(adminPage.getByText('Payment deadline', { exact: true })).toHaveCount(0);
     await expect(adminPage.getByText(/require payment and slip submission within 15 minutes/)).toBeVisible();

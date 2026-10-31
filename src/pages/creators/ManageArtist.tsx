@@ -7,6 +7,7 @@ import {
   BarChart2, X, User, Ticket, ExternalLink, Copy, Users, ShoppingCart, PackageCheck, MoreHorizontal, Settings
 } from 'lucide-react';
 import { Button } from '../../components/ui';
+import { ConfirmDialog } from '../../components/ui/Feedback';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AvatarUpload from '../../components/AvatarUpload';
 import AdminHeader from '../../components/AdminHeader';
@@ -198,6 +199,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
   const [isPublishingPublicLink, setIsPublishingPublicLink] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [hideShopConfirm, setHideShopConfirm] = useState(false);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -725,6 +727,25 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
     }
   };
 
+  const handleHideShop = async () => {
+    if (!artist?.id || isPublishingPublicLink) return;
+    setIsPublishingPublicLink(true);
+    setPublishError(null);
+    try {
+      const { error } = await supabase.rpc('unpublish_artist_public_booth', { p_artist_id: artist.id });
+      if (error) throw error;
+      setArtist(prev => prev ? { ...prev, is_public: false } : prev);
+      setHideShopConfirm(false);
+      setCopyFeedback('idle');
+    } catch (error) {
+      console.error('[ManageArtist] Failed to hide shop:', error);
+      setPublishError(language === 'th' ? 'ปิดการแสดงร้านไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not hide the shop. Please try again.');
+      setHideShopConfirm(false);
+    } finally {
+      setIsPublishingPublicLink(false);
+    }
+  };
+
   const handleCopyPublicUrl = async () => {
     if (!publicPageUrl || isPublishingPublicLink) return;
 
@@ -876,6 +897,15 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
                <h2 className="font-bold text-sm text-slate-800">{language === 'th' ? 'ข้อมูลที่ลูกค้าเห็นบนหน้าร้าน' : 'Your public shop profile'}</h2>
             </div>
             
+            <div className="mx-5 mt-5 rounded-xl border border-slate-200 p-4 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h3 className="text-sm font-bold text-slate-900">{language === 'th' ? 'การแสดงหน้าร้านให้ลูกค้า' : 'Customer storefront visibility'}</h3><p className="mt-1 text-sm text-slate-600">{artist.is_public ? (language === 'th' ? 'เปิดแสดงหน้าร้าน' : 'Storefront is visible') : (language === 'th' ? 'ปิดแสดงหน้าร้าน' : 'Storefront is hidden')}</p></div>
+                {artist.is_public ? <button type="button" disabled={isPublishingPublicLink} onClick={() => setHideShopConfirm(true)} className="workspace-action rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold disabled:opacity-50">{language === 'th' ? 'ปิดการแสดงร้าน' : 'Hide storefront'}</button> : <button type="button" disabled={isPublishingPublicLink || !getShareableEvent()} onClick={handlePublishPublicBooth} className="workspace-action rounded-xl bg-pink-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{isPublishingPublicLink ? (language === 'th' ? 'กำลังเผยแพร่…' : 'Publishing…') : (language === 'th' ? 'เปิดแสดงร้าน' : 'Publish storefront')}</button>}
+              </div>
+              <p className="text-xs leading-5 text-slate-600">{language === 'th' ? 'เมื่อปิด ลูกค้าจะไม่เห็นหน้าร้านหรือเข้าคิวและสั่งซื้อใหม่ได้ แต่ลิงก์ติดตามออเดอร์เดิมและ POS หน้างานยังใช้งานได้' : 'When hidden, customers cannot see the storefront, join the queue, or place new orders. Existing order links and in-person POS remain available.'}</p>
+              {!artist.is_public && !getShareableEvent() && <p className="text-xs text-slate-600">{language === 'th' ? 'เพิ่มอีเวนต์ที่ยืนยันแล้วก่อนเปิดแสดงร้าน' : 'Add a confirmed event before publishing.'}</p>}
+            </div>
+            <ConfirmDialog open={hideShopConfirm} title={language === 'th' ? 'ปิดการแสดงหน้าร้าน?' : 'Hide the storefront?'} detail={language === 'th' ? 'ลูกค้าจะเข้าหน้าร้าน เข้าคิว หรือสั่งซื้อใหม่ไม่ได้ ลิงก์ติดตามออเดอร์เดิมและ POS ยังใช้งานได้' : 'Customers cannot access the storefront, join the queue, or place new orders. Existing order links and POS remain available.'} confirmLabel={language === 'th' ? 'ปิดการแสดงร้าน' : 'Hide storefront'} loading={isPublishingPublicLink} onConfirm={() => void handleHideShop()} onCancel={() => setHideShopConfirm(false)} />
             <form onSubmit={(event) => { event.preventDefault(); void handleProfileSave(); }} className="p-5 space-y-5">
                <p className="text-sm leading-6 text-slate-600">{language === 'th' ? 'ชื่อ คำแนะนำร้าน และช่องทางติดต่อจะแสดงบนหน้าร้านเมื่อเผยแพร่แล้ว รูปโปรไฟล์บันทึกทันที ส่วนข้อมูลอื่นกดบันทึกด้านล่าง' : 'Your name, description and contact links appear on your published shop. Profile photos save immediately; save other changes below.'}</p>
                {/* Avatar Upload */}

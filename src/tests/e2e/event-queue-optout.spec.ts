@@ -104,10 +104,23 @@ test('event queue can be disabled while the public shop and walk-in POS remain a
   await login.login(adminEmail, adminPassword);
   await expectSignedInAccount(owner);
   await owner.goto(`/manage-events/${eventId}/workspace`);
-  await owner.getByRole('button', { name: 'Queue settings', exact: true }).click();
-  const dialog = owner.getByRole('dialog', { name: 'Edit Event' });
-  await dialog.getByRole('checkbox', { name: /Use online queue for this event/ }).uncheck();
-  await dialog.getByRole('button', { name: 'Save Event' }).click();
+  await owner.getByRole('button', { name: 'Disable queue', exact: true }).click();
+  const dialog = owner.getByRole('dialog', { name: 'Disable online queue?' });
+  await expect(dialog).toContainText('Existing tickets can still be tracked and served');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(owner.getByText('On · customers can join when the booth is open')).toBeVisible();
+  await owner.route('**/rest/v1/events*', async route => {
+    if (route.request().method() === 'PATCH') await route.fulfill({ status: 503, json: { message: 'Test failure' } });
+    else await route.continue();
+  });
+  await owner.getByRole('button', { name: 'Disable queue', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Disable queue', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Could not change the queue setting');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await owner.unroute('**/rest/v1/events*');
+  await expect(owner.getByText('On · customers can join when the booth is open')).toBeVisible();
+  await owner.getByRole('button', { name: 'Disable queue', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Disable queue', exact: true }).click();
   await expect(owner.getByText('Off · customers can browse and buy at the booth')).toBeVisible();
   const denied = await anon.rpc('create_queue_ticket', { p_artist_id: artistId, p_event_id: eventId, p_customer_fingerprint: randomUUID() });
   expect(denied.error?.message).toContain('queue_not_enabled');
@@ -150,10 +163,7 @@ test('event queue can be disabled while the public shop and walk-in POS remain a
   }).toBe(true);
 
   await owner.goto(`/manage-events/${eventId}/workspace`);
-  await owner.getByRole('button', { name: 'Queue settings', exact: true }).click();
-  const reopenDialog = owner.getByRole('dialog', { name: 'Edit Event' });
-  await reopenDialog.getByRole('checkbox', { name: /Use online queue for this event/ }).check();
-  await reopenDialog.getByRole('button', { name: 'Save Event' }).click();
+  await owner.getByRole('button', { name: 'Enable queue', exact: true }).click();
   await expect(owner.getByText('On · customers can join when the booth is open')).toBeVisible();
   const allowed = await anon.rpc('create_queue_ticket', { p_artist_id: artistId, p_event_id: eventId, p_customer_fingerprint: randomUUID() });
   expect(allowed.error).toBeNull();

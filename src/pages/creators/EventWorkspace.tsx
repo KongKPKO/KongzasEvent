@@ -1,7 +1,7 @@
 import { uiText, useI18n, type Language } from '../../i18n';
 import { eventCopy } from '../../lib/eventCopy';
 import './sales-readiness.css';
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -29,6 +29,7 @@ import AdminHeader from '../../components/AdminHeader';
 import EventNavTabs from '../../components/EventNavTabs';
 import EventAppearanceManager from '../../components/creator/EventAppearanceManager';
 import GuidedSetupPanel from '../../components/creator/GuidedSetupPanel';
+import { ConfirmDialog } from '../../components/ui/Feedback';
 import { deriveSetupReadiness } from '../../lib/setupReadiness';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
@@ -697,6 +698,10 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [eventDraft, setEventDraft] = useState<Partial<WorkspaceEvent>>({});
   const [eventSaving, setEventSaving] = useState(false);
+  const [queueSaving, setQueueSaving] = useState(false);
+  const [queueConfirmOpen, setQueueConfirmOpen] = useState(false);
+  const [queueError, setQueueError] = useState('');
+  const queueSavingRef = useRef(false);
   const browserTimeZone = getBrowserTimeZone();
   const timeZoneOptions = useMemo(
     () => getEventTimeZoneOptions(eventDraft.event_timezone || browserTimeZone),
@@ -938,7 +943,6 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
         booth_detail: eventDraft.booth_detail || null,
         booth_number: eventDraft.booth_detail || null,
         queueing_area: eventDraft.queueing_area || '',
-        ...(eventDraft.queue_enabled !== event.queue_enabled ? { queue_enabled: eventDraft.queue_enabled !== false } : {}),
         entrance_fee: eventDraft.entrance_fee || '',
         transit_info: eventDraft.transit_info || '',
       };
@@ -962,6 +966,35 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       alert(uiText(language, 'Failed to save event.'));
     } finally {
       setEventSaving(false);
+    }
+  };
+
+  const saveQueueSetting = async (enabled: boolean) => {
+    if (!event || queueSavingRef.current) return;
+    queueSavingRef.current = true;
+    setQueueSaving(true);
+    setQueueError('');
+    try {
+      const { data, error: updateError } = await supabase.from('events')
+        .update({ queue_enabled: enabled })
+        .eq('id', event.id)
+        .eq('artist_id', actorContext.artist_id)
+        .eq('queue_enabled', !enabled)
+        .select('queue_enabled')
+        .maybeSingle();
+      if (updateError) throw updateError;
+      if (!data) {
+        setQueueError(language === 'th' ? 'สถานะคิวอาจเปลี่ยนไปแล้ว กรุณาโหลดหน้านี้ใหม่' : 'The queue setting may have changed. Please reload this page.');
+        return;
+      }
+      setEvent(previous => previous ? { ...previous, queue_enabled: data.queue_enabled } : previous);
+      setQueueConfirmOpen(false);
+    } catch (err) {
+      console.error('[EventWorkspace] queue setting failed:', err);
+      setQueueError(language === 'th' ? 'เปลี่ยนการใช้งานคิวไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not change the queue setting. Please try again.');
+    } finally {
+      queueSavingRef.current = false;
+      setQueueSaving(false);
     }
   };
 
@@ -1049,8 +1082,10 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
 
         {canAccessManagementPages(actorContext.role) && <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4" aria-label={language === 'th' ? 'คิวออนไลน์ของอีเวนต์' : 'Event online queue'}>
           <div><h2 className="text-sm font-bold">{language === 'th' ? 'คิวออนไลน์ของอีเวนต์' : 'Event online queue'}</h2><p className="mt-1 text-sm text-gray-600">{event.queue_enabled === false ? (language === 'th' ? 'ไม่ใช้งาน · ลูกค้าดูสินค้าและซื้อหน้าบูธได้' : 'Off · customers can browse and buy at the booth') : (language === 'th' ? 'ใช้งาน · ลูกค้ารับคิวได้เมื่อเปิดบูธ' : 'On · customers can join when the booth is open')}</p></div>
-          <button type="button" onClick={openEventEditor} className="workspace-action rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold">{language === 'th' ? 'ตั้งค่าคิว' : 'Queue settings'}</button>
+          <button type="button" disabled={queueSaving} onClick={() => event.queue_enabled === false ? void saveQueueSetting(true) : setQueueConfirmOpen(true)} className="workspace-action rounded-lg border border-gray-200 px-4 py-2 text-sm font-bold disabled:opacity-50">{queueSaving ? (language === 'th' ? 'กำลังบันทึก…' : 'Saving…') : event.queue_enabled === false ? (language === 'th' ? 'เปิดใช้งานคิว' : 'Enable queue') : (language === 'th' ? 'ปิดใช้งานคิว' : 'Disable queue')}</button>
+          {queueError && !queueConfirmOpen && <p role="alert" className="w-full text-sm text-red-700">{queueError}</p>}
         </section>}
+        <ConfirmDialog open={queueConfirmOpen} title={language === 'th' ? 'ปิดใช้งานคิวออนไลน์?' : 'Disable online queue?'} detail={language === 'th' ? 'ลูกค้าจะรับคิวใหม่ไม่ได้ คิวที่รับไปแล้วจะยังติดตามและให้บริการต่อได้ และยังขายหน้าบูธได้ตามปกติ' : 'Customers cannot join a new queue. Existing tickets can still be tracked and served, and booth sales remain available.'} confirmLabel={language === 'th' ? 'ปิดใช้งานคิว' : 'Disable queue'} loading={queueSaving} onConfirm={() => void saveQueueSetting(false)} onCancel={() => { if (!queueSavingRef.current) setQueueConfirmOpen(false); }}>{queueError && <p role="alert" className="mt-2 text-sm text-red-700">{queueError}</p>}</ConfirmDialog>
 
         {setupReadiness && (
           <GuidedSetupPanel
@@ -1280,11 +1315,6 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
                   placeholder={uiText(language, 'e.g. Queue lane beside Booth A12')}
                 />
-              </label>
-
-              <label className="flex items-start gap-3 rounded-xl border border-gray-200 p-3">
-                <input type="checkbox" className="mt-1 h-4 w-4" checked={eventDraft.queue_enabled !== false} onChange={(change) => setEventDraft(previous => ({ ...previous, queue_enabled: change.target.checked }))} />
-                <span><span className="block font-bold">{language === 'th' ? 'ใช้งานคิวออนไลน์ในอีเวนต์นี้' : 'Use online queue for this event'}</span><span className="mt-1 block text-xs text-gray-600">{language === 'th' ? 'เมื่อปิด ลูกค้าดูสินค้าและมาซื้อหน้าบูธได้ โดยไม่ต้องรับคิวออนไลน์' : 'When off, customers can browse products and purchase at the booth without joining an online queue.'}</span></span>
               </label>
 
               <label className="block space-y-1">

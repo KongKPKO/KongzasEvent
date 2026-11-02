@@ -1,11 +1,12 @@
 import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
 import { SupplyPolicyEditor } from '../../components/products/SupplyPolicyEditor';
 import './sales-readiness.css';
+import './online-campaign-products.css';
 import { ProductMedia } from '../../components/menu/ProductPresentation';
 import EvidenceReview from '../../components/EvidenceReview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ExternalLink, Eye, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, Eye, LayoutGrid, List, Loader2, PackageCheck, Plus, Save, Search, Settings, ShoppingBag, X } from 'lucide-react';
 import AdminHeader from '../../components/AdminHeader';
 import PaymentBankAccountsEditor from '../../components/PaymentBankAccountsEditor';
 import { ConfirmDialog, Toast } from '../../components/ui/Feedback';
@@ -96,6 +97,9 @@ export default function OnlineCampaignWorkspace() {
   const [productMembership, setProductMembership] = useState<ProductMembership>('all');
   const [productSort, setProductSort] = useState<'name_asc' | 'name_desc'>('name_asc');
   const [productPage, setProductPage] = useState(1);
+  const [productView, setProductView] = useState<'cards' | 'table'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'cards' : 'table',
+  );
   const evidenceRequest = useRef(0);
   const [evidencePreview, setEvidencePreview] = useState<{ order: CampaignOrder; url: string } | null>(null);
   const [evidenceLoadingId, setEvidenceLoadingId] = useState<string | null>(null);
@@ -791,11 +795,17 @@ export default function OnlineCampaignWorkspace() {
                   {t('campaignClearFilters')}
                 </button>
               </div>
-              <div className="mt-2 text-xs font-bold text-gray-500">{t('campaignProductResults', { count: filteredCampaignCatalog.length })}</div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-bold text-gray-500">{t('campaignProductResults', { count: filteredCampaignCatalog.length })}</div>
+                <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1" role="group" aria-label={language === 'th' ? 'รูปแบบการแสดงสินค้า' : 'Product view'}>
+                  <button type="button" aria-pressed={productView === 'cards'} onClick={() => setProductView('cards')} className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-black ${productView === 'cards' ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={16} />{t('catalogProductCards')}</button>
+                  <button type="button" aria-pressed={productView === 'table'} onClick={() => setProductView('table')} className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-black ${productView === 'table' ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500'}`}><List size={16} />{t('catalogTable')}</button>
+                </div>
+              </div>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="overflow-x-auto">
+              <div className={productView === 'table' ? 'overflow-x-auto' : 'campaign-products-cards'}>
                 <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
                   <colgroup>
                     <col className="w-[300px]" />
@@ -830,8 +840,8 @@ export default function OnlineCampaignWorkspace() {
                       const committedElsewhere = Math.max(summary.on_hand - summary.available - campaignStock, 0);
                       return (
                         <tr key={productId} className={isIncluded ? 'bg-pink-50/50' : 'hover:bg-gray-50/70'}>
-                          <td className="px-3 py-2">
-                            <div className="flex min-w-[250px] items-center gap-3">
+                          <td className="campaign-card-product px-3 py-2">
+                            <div className="flex items-center gap-3">
                               <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
                                 <ProductMedia product={{ ...product, id: productId }} getImageUrl={getMenuImageUrl} />
                               </div>
@@ -841,33 +851,33 @@ export default function OnlineCampaignWorkspace() {
                                   {isIncluded && <span className="shrink-0 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700">{t('campaignIncluded')}</span>}
                                 </div>
                                 <div className="mt-0.5 font-mono text-[10px] font-bold text-gray-400">{product.sku || '—'}</div>
-                                {allocated && <SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} />}
-                                {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-0.5 text-[10px] font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
                               </div>
                             </div>
+                            {allocated && <SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} />}
+                            {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-1 text-[10px] font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
                           </td>
-                          <td className="px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
+                          <td data-label={t('catalogCategory')} className="px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
                           {product.product_kind === 'bundle' ? (
-                            <td colSpan={3} className="px-2 py-2 text-center text-xs font-bold text-pink-800">{language === 'th' ? 'ใช้สต็อกส่วนประกอบในแคมเปญร่วมกับขายแยก' : 'Shares component stock in this campaign'}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${language === 'th' ? 'ชุดพร้อมขาย' : 'bundles available'}`}</div>}</td>
+                            <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-bold text-pink-800">{language === 'th' ? 'ใช้สต็อกส่วนประกอบในแคมเปญร่วมกับขายแยก' : 'Shares component stock in this campaign'}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${language === 'th' ? 'ชุดพร้อมขาย' : 'bundles available'}`}</div>}</td>
                           ) : product.is_unlimited ? (
-                            <td colSpan={3} className="px-2 py-2 text-center text-xs font-black text-gray-600">{t('catalogUnlimited')}</td>
+                            <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-black text-gray-600">{t('catalogUnlimited')}</td>
                           ) : (
                             <>
-                              <td className="px-2 py-2 text-center text-sm font-black text-gray-900">{summary.on_hand}</td>
-                              <td className="px-2 py-2 text-center text-sm font-black text-emerald-700">{summary.available}</td>
-                              <td className="px-2 py-2 text-center">
+                              <td data-label={t('campaignOnHandStock')} className="px-2 py-2 text-center text-sm font-black text-gray-900">{summary.on_hand}</td>
+                              <td data-label={t('campaignAvailableStock')} className="px-2 py-2 text-center text-sm font-black text-emerald-700">{summary.available}</td>
+                              <td data-label={t('campaignCurrentStock')} className="px-2 py-2 text-center">
                                 {allocated && isIncluded ? (
                                   <input key={`stock-${allocated.stock_total}`} aria-label={`${t('campaignAllocatedStock')} ${product.name}`} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} max={maxCampaignStock} defaultValue={campaignStock} onBlur={(event) => void updateAllocation(productId, Number(event.target.value), allocated.price_override ?? null)} className="h-11 w-20 rounded-xl border border-gray-200 px-3 text-center text-sm font-black" />
                                 ) : <span className="text-sm font-black text-pink-700">0</span>}
                               </td>
                             </>
                           )}
-                          <td className="px-2 py-2">
+                          <td data-label={t('campaignPriceOverride')} className="px-2 py-2">
                             {allocated && isIncluded ? (
                               <input key={`price-${allocated.price_override}`} aria-label={`${t('campaignPriceOverride')} ${product.name}`} type="number" min="0" placeholder={String(product.price)} defaultValue={allocated.price_override ?? ''} onBlur={(event) => void updateAllocation(productId, allocated.stock_total ?? null, event.target.value === '' ? null : Number(event.target.value))} className="h-11 w-24 rounded-xl border border-gray-200 px-3 text-sm font-bold" />
                             ) : <span className="text-sm font-black text-pink-700">{formatPrice(product.price, campaign.currency)}</span>}
                           </td>
-                          <td className="px-2 py-2">
+                          <td data-label={t('campaignMaxPerOrder')} className="px-2 py-2">
                             {allocated && isIncluded ? (
                               <input
                                 key={`limit-${allocated.max_quantity_per_order ?? 'unlimited'}`}
@@ -882,7 +892,7 @@ export default function OnlineCampaignWorkspace() {
                               />
                             ) : <span className="text-xs font-bold text-gray-400">—</span>}
                           </td>
-                          <td className="px-2 py-2 text-right">
+                          <td className="campaign-card-actions px-2 py-2 text-right">
                             {isIncluded ? (
                               <button type="button" disabled={saving} onClick={() => void toggleProduct(productId, false)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-gray-200 px-3 text-xs font-black text-gray-600 hover:border-red-200 hover:text-red-700 disabled:opacity-50"><X size={14} />{t('campaignRemoveProduct')}</button>
                             ) : (

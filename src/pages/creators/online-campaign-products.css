@@ -1,0 +1,61 @@
+.campaign-products-cards table,
+.campaign-products-cards tbody {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+
+.campaign-products-cards colgroup,
+.campaign-products-cards thead {
+  display: none;
+}
+
+.campaign-products-cards tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.campaign-products-cards tbody tr {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+}
+
+.campaign-products-cards tbody tr > td {
+  display: block;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.campaign-products-cards tbody tr > td[data-label]::before {
+  display: block;
+  margin-bottom: 4px;
+  color: #6b7280;
+  content: attr(data-label);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.campaign-products-cards .campaign-card-product,
+.campaign-products-cards .campaign-card-wide,
+.campaign-products-cards .campaign-card-actions {
+  grid-column: 1 / -1;
+}
+
+.campaign-products-cards input[type='number'] {
+  width: 100%;
+  text-align: left;
+}
+
+.campaign-products-cards .campaign-card-actions button {
+  justify-content: center;
+  width: 100%;
+}

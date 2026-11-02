@@ -127,6 +127,37 @@ test.describe('online campaign', () => {
 
   test.afterAll(cleanup);
 
+  test('campaign products offer usable cards on mobile and a switchable table', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 850 });
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+    const cards = page.getByRole('button', { name: /Product cards|การ์ดสินค้า/ });
+    const table = page.getByRole('button', { name: /^Table$|^ตาราง$/ });
+    await expect(cards).toHaveAttribute('aria-pressed', 'true');
+    const stock = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
+    await expect(stock).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const saved = await fixture.service.from('online_campaign_products').select('stock_total').eq('campaign_id', campaignId).eq('product_id', productId).single();
+    if (saved.error) throw saved.error;
+    try {
+      const next = Number(saved.data.stock_total) - 1;
+      await stock.fill(String(next));
+      await stock.blur();
+      await expect.poll(async () => {
+        const row = await fixture.service.from('online_campaign_products').select('stock_total').eq('campaign_id', campaignId).eq('product_id', productId).single();
+        return row.data?.stock_total;
+      }).toBe(next);
+      await table.click();
+      await expect(table).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
+      await cards.click();
+      await expect(stock).toHaveValue(String(next));
+    } finally {
+      await fixture.service.from('online_campaign_products').update({ stock_total: saved.data.stock_total }).eq('campaign_id', campaignId).eq('product_id', productId);
+    }
+  });
+
   test('customer checks out with flat shipping and gets a 15-minute hold', async ({ page }) => {
     await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
     await expect(page.getByRole('heading', { name: 'Cheki Online E2E' })).toBeVisible();

@@ -402,7 +402,8 @@ function renderMessage(input: {
   ].filter(Boolean).join("\n");
 
   const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#202641">
+    <div style="font-family:Arial,Tahoma,sans-serif;line-height:1.6;color:#202641;max-width:560px;padding:24px;border:1px solid #e2eaf1;border-radius:16px">
+      <p style="margin:0 0 24px;font-size:22px;font-weight:bold;color:#202641"><span style="color:#dca970">✦</span> Paimon</p>
       <h1 style="font-size:20px;margin:0 0 12px">${escapeHtml(input.heading)}</h1>
       <p>${escapeHtml(input.intro)}</p>
       <div style="border:1px solid #DCB07C;border-top:4px solid #3A7EBC;background:#f7f4ee;border-radius:14px;padding:14px;margin:16px 0">
@@ -415,7 +416,8 @@ function renderMessage(input: {
       ${input.orderUrl ? `<p style="margin:16px 0"><a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#202641;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 20px;border-radius:12px">Track your order</a></p>` : ""}
       <h2 style="font-size:14px;margin:18px 0 8px">Items</h2>
       ${itemsHtml}
-      <p style="white-space:pre-wrap;color:#202641">${escapeHtml(input.note)}</p>
+      <p style="white-space:pre-wrap;color:#40516a">${escapeHtml(input.note)}</p>
+      <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e6edf3;color:#68778a;font-size:12px">Paimon · <a href="https://paimonq.com/help" style="color:#326b9a">Help</a></p>
     </div>
   `;
 

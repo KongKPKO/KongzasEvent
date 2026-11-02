@@ -644,6 +644,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-600'}>
                {uiText(language, 'Pool')} {pool} · {uiText(language, 'Move central stock into this event')}
             </div>
+            {draft.id && !draft.is_enabled && <div className="mt-1 text-[11px] font-bold text-gray-600">{language === 'th' ? 'สินค้าที่ซ่อนยังกันสต็อกขณะอีเวนต์ใช้งาน ลดสต็อกอีเวนต์เพื่อคืนส่วนที่ไม่ได้ใช้' : 'Hidden products keep their allocation while the event is active. Reduce event stock to release unused units.'}</div>}
          </div>
       );
    };

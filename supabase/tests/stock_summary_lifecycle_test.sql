@@ -32,6 +32,25 @@ select event,artist,'Summary event',now()-interval '1 hour',now()+interval '1 da
 insert into public.event_products(event_id,artist_id,product_id,stock_total,stock_reserved,stock_sold,is_unlimited,is_enabled)
 select event,artist,product,20,0,0,false,true from _summary_ids;
 select is(pg_temp.summary_available(),9,'event allocation and historical campaign sale both count');
+update public.event_products set is_enabled=false where event_id=(select event from _summary_ids);
+select is(pg_temp.summary_available(),9,'hidden event retains its allocation');
+select is(public.calculate_product_event_allocation_available((select product from _summary_ids),null),9,'hidden event allocation reduces capacity elsewhere');
+select is(public.calculate_product_event_allocation_available((select product from _summary_ids),(select event from _summary_ids)),29,'hidden event can edit its own allocation');
+select is(private.catalog_free_stock((select product from _summary_ids)),9,'production stock calculation includes hidden event allocation');
+select is((private.inventory_overview((select artist from _summary_ids))->0->>'available')::integer,9,'inventory overview includes hidden event allocation');
+select * from public.remove_event_stock((select id from public.event_products where event_id=(select event from _summary_ids)),2);
+select is(pg_temp.summary_available(),11,'returning hidden event stock releases it for other channels');
+select * from public.add_event_stock((select id from public.event_products where event_id=(select event from _summary_ids)),2);
+select is(pg_temp.summary_available(),9,'adding hidden event stock reserves it again');
+insert into public.online_campaigns(id,artist_id,name,slug,opens_at,closes_at)
+select gen_random_uuid(),artist,'Other campaign','summary-other',now()-interval '1 hour',now()+interval '1 day' from _summary_ids;
+select throws_ok($$insert into public.online_campaign_products(campaign_id,artist_id,product_id,stock_total,stock_reserved,stock_sold,is_unlimited,is_enabled) select c.id,s.artist,s.product,10,0,0,false,true from _summary_ids s join public.online_campaigns c on c.artist_id=s.artist and c.slug='summary-other'$$,'campaign_stock_exceeds_catalog_stock','campaign cannot take stock held by hidden event');
+insert into public.online_campaign_products(campaign_id,artist_id,product_id,stock_total,stock_reserved,stock_sold,is_unlimited,is_enabled)
+select c.id,s.artist,s.product,9,0,0,false,true from _summary_ids s join public.online_campaigns c on c.artist_id=s.artist and c.slug='summary-other';
+select is(pg_temp.summary_available(),0,'campaign can allocate the remaining stock only');
+select throws_ok($$update public.event_products set stock_total=21 where event_id=(select event from _summary_ids)$$,'event_stock_exceeds_catalog_stock','hidden event cannot overallocate');
+update public.online_campaigns set publication_status='archived' where slug='summary-other';
+update public.event_products set is_enabled=true where event_id=(select event from _summary_ids);
 update public.event_products set stock_sold=1,stock_reserved=1 where event_id=(select event from _summary_ids);
 select is(pg_temp.summary_available(),9,'event sale and hold stay inside its allocation');
 select is(public.calculate_product_event_allocation_available((select product from _summary_ids),null),9,

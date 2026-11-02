@@ -61,7 +61,7 @@ These are agreed business rules, not a claim that every deployment has passed ev
 - Event unused allocations remain protected through an enabled Postorder window after the event date. Closing that window releases only unused capacity.
 - Channel commitments include sold units, outstanding holds, and unused allocation while the channel is active. Holds inside active allocation are counted once, not again on top of that allocation.
 - Catalog ready-to-allocate = recorded total − catalog-level sold/held − channel sold − channel outstanding holds − active unused allocation.
-- Closing, archiving or disabling a channel releases only its unused allocation. Sold units and outstanding holds remain committed. Actual hold release restores capacity; refund alone does not mean returned merchandise is sellable again.
+- Closing or archiving a channel releases only its unused allocation. Hiding an Event product retains its allocation while the Event is active; release its stock explicitly to make it available elsewhere. Disabling a Campaign product releases its unused allocation. Sold units and outstanding holds remain committed. Actual hold release restores capacity; refund alone does not mean returned merchandise is sellable again.
 - Example: total30, Campaign allocation20 → ready10. Sell1 → ready10. Close with sold1 and held1 → ready28. Release that hold → ready29.
 - The summary RPC, Event adjustment capacity and allocation limits must agree. Do not change actual stock counters to make a misleading display add up.
 

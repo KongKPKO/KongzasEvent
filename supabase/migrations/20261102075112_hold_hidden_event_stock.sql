@@ -1,3 +1,4 @@
+begin;
 -- Stop before changing stock semantics if existing allocations already overlap.
 lock table public.products, public.events, public.event_products, public.online_campaigns, public.online_campaign_products in share row exclusive mode;
 do $$ begin
@@ -338,3 +339,5 @@ begin
 end;
 $function$
 ;
+
+commit;

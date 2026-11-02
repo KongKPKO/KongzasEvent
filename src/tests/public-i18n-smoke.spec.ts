@@ -110,7 +110,7 @@ test.describe('Public Nireq smoke', () => {
     await expect(submit).toBeDisabled();
     await expect(submit).toContainText(/Complete required fields|กรอกข้อมูลจำเป็นให้ครบ/);
     for (const id of ['creator-contact-name', 'creator-name', 'creator-slug', 'creator-primary-social', 'creator-application-note']) await expect(page.locator(`#${id}`)).toHaveValue('');
-    await expect(page.locator('.public-slug-prefix')).toHaveText('nireqapp.com/');
+    await expect(page.locator('.public-slug-prefix')).toHaveText(`${new URL(page.url()).host}/`);
     await expect(page.locator('#creator-slug')).toHaveAccessibleName(/Your shop link/);
     await selectLanguage(page, 'th');
     await expect(page.locator('#creator-slug')).toHaveAttribute('placeholder', 'เช่น mali-art');

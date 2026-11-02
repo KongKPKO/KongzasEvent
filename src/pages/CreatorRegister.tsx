@@ -417,7 +417,7 @@ export default function CreatorRegister() {
               </Field>
               <Field label={t('registerSlug')} required hint={t('registerSlugHint')}>
                 <div className="public-slug-input">
-                  <span className="public-slug-prefix">nireqapp.com/</span>
+                  <span className="public-slug-prefix">{window.location.host}/</span>
                   <input
                     id="creator-slug"
                     name="desiredSlug"

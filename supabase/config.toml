@@ -147,9 +147,10 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "https://nireqapp.com"
+site_url = "https://paimonq.com"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
+  "https://paimonq.com/**",
   "https://nireqapp.com/**",
   "https://nireqapp.web.app/**",
   "https://nireqapp--dev-a3j04cfr.web.app/**",

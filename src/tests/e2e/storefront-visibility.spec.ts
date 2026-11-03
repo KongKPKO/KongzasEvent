@@ -83,6 +83,30 @@ test.afterAll(async () => {
 });
 
 test.describe('storefront visibility', () => {
+  test('publication explains a missing visible product and succeeds after adding one', async ({ page }) => {
+    must(await service.from('artists').update({ is_public: false }).eq('id', artistId), 'hide fixture storefront');
+    must(await service.from('events').update({ event_timezone: 'Asia/Bangkok', location: 'Hall A', booth_detail: 'A12' }).eq('id', eventId), 'complete event details');
+    must(await service.from('event_products').update({ is_enabled: false }).eq('event_id', eventId).eq('product_id', productId), 'hide fixture product');
+    const login = new LoginPage(page);
+    await login.goto();
+    await login.login(adminEmail, adminPassword);
+    await expectSignedInAccount(page);
+    await page.goto('/manage-profile');
+    await page.getByRole('button', { name: 'Publish booth', exact: true }).click();
+    await expect(page.getByText('Add at least one enabled product to the customer catalog before publishing.')).toBeVisible();
+    await expect(page.getByText('[object Object]')).toHaveCount(0);
+    await page.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+    await page.reload();
+    await page.getByRole('button', { name: 'เผยแพร่ร้าน', exact: true }).click();
+    await expect(page.getByText('เพิ่มสินค้าและเปิดแสดงอย่างน้อย 1 รายการในอีเวนต์ก่อนเผยแพร่ร้าน')).toBeVisible();
+    must(await service.from('event_products').update({ is_enabled: true }).eq('event_id', eventId).eq('product_id', productId), 'enable fixture product');
+    await page.evaluate(() => localStorage.setItem('nireq-language', 'en'));
+    await page.reload();
+    await page.getByRole('button', { name: 'Publish booth', exact: true }).click();
+    await expect(page.getByText('Storefront is visible', { exact: true })).toBeVisible();
+    await expect.poll(async () => (await service.from('artists').select('is_public').eq('id', artistId).single()).data?.is_public).toBe(true);
+  });
+
   test('walk-in sale works while the storefront is hidden', async ({ page }) => {
     test.setTimeout(120_000);
     const login = new LoginPage(page);

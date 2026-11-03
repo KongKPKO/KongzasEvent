@@ -1,5 +1,5 @@
 import { SELLER_TYPES, getSellerLabels, normalizeSellerType, type SellerType } from '../../utils/sellerType';
-import { uiText, useI18n } from '../../i18n';
+import { uiText, useI18n, type Language } from '../../i18n';
 import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
@@ -135,21 +135,24 @@ const formatEventDateRange = (event: Event, locale: string) => {
   };
 };
 
-const getPublishErrorMessage = (error: unknown) => {
-  const raw = error instanceof Error ? error.message : String(error || '');
-  const messages: Array<[string, string]> = [
-    ['artist_slug_required', 'Add a public booth URL before publishing.'],
-    ['artist_display_name_required', 'Add the booth display name before publishing.'],
-    ['artist_contact_required', 'Add a creator contact email before publishing.'],
-    ['event_timezone_required', 'Set the event timezone before publishing.'],
-    ['event_location_required', 'Set the event location before publishing.'],
-    ['event_booth_or_queue_area_required', 'Add a booth number/detail or queue meeting area before publishing.'],
-    ['customer_visible_product_required', 'Add at least one enabled product to the customer catalog before publishing.'],
-    ['fulfillment_instructions_required', 'Add pickup or fulfillment instructions before publishing timed orders.'],
-    ['payment_instructions_required', 'Add an enabled payment method or payment instructions before publishing timed orders.'],
-    ['event_not_customer_visible', 'Choose a confirmed event that has not ended.'],
+const getPublishErrorMessage = (error: unknown, language: Language) => {
+  const raw = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : '';
+  const messages: Array<[string, string, string]> = [
+    ['artist_slug_required', 'Add a public booth URL before publishing.', 'ตั้งลิงก์หน้าร้านก่อนเผยแพร่'],
+    ['artist_display_name_required', 'Add the booth display name before publishing.', 'ระบุชื่อร้านก่อนเผยแพร่'],
+    ['artist_contact_required', 'Add a creator contact email before publishing.', 'ระบุอีเมลติดต่อร้านก่อนเผยแพร่'],
+    ['event_timezone_required', 'Set the event timezone before publishing.', 'ตั้งเขตเวลาอีเวนต์ก่อนเผยแพร่'],
+    ['event_location_required', 'Set the event location before publishing.', 'ระบุสถานที่จัดอีเวนต์ก่อนเผยแพร่'],
+    ['event_booth_or_queue_area_required', 'Add a booth number/detail or queue meeting area before publishing.', 'ระบุรายละเอียดบูธหรือพื้นที่รอคิวก่อนเผยแพร่'],
+    ['customer_visible_product_required', 'Add at least one enabled product to the customer catalog before publishing.', 'เพิ่มสินค้าและเปิดแสดงอย่างน้อย 1 รายการในอีเวนต์ก่อนเผยแพร่ร้าน'],
+    ['fulfillment_instructions_required', 'Add pickup or fulfillment instructions before publishing timed orders.', 'ระบุวิธีรับสินค้าหรือจัดส่งก่อนเผยแพร่ร้าน'],
+    ['payment_instructions_required', 'Add an enabled payment method or payment instructions before publishing timed orders.', 'เพิ่มและเปิดใช้ช่องทางรับเงินหรือคำแนะนำการชำระเงินก่อนเผยแพร่ร้าน'],
+    ['event_not_customer_visible', 'Choose a confirmed event that has not ended.', 'เลือกอีเวนต์ที่ยืนยันแล้วและยังไม่สิ้นสุดก่อนเผยแพร่'],
+    ['Add a confirmed, non-expired event', 'Add a confirmed, non-expired event before publishing.', 'เพิ่มอีเวนต์ที่ยืนยันแล้วและยังไม่สิ้นสุดก่อนเผยแพร่'],
+    ['Set a public slug', 'Add a public booth URL before publishing.', 'ตั้งลิงก์หน้าร้านก่อนเผยแพร่'],
   ];
-  return messages.find(([code]) => raw.includes(code))?.[1] || raw || 'Failed to publish public booth.';
+  const match = messages.find(([code]) => raw.includes(code));
+  return match ? match[language === 'th' ? 2 : 1] : (language === 'th' ? 'เผยแพร่ร้านไม่สำเร็จ กรุณาลองอีกครั้ง' : 'Could not publish the shop. Please try again.');
 };
 
 const emptyMetric: EventMetric = {
@@ -721,7 +724,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
       setCopyFeedback('idle');
     } catch (error) {
       console.error('[ManageArtist] Failed to publish public booth:', error);
-      setPublishError(uiText(language, getPublishErrorMessage(error)));
+      setPublishError(getPublishErrorMessage(error, language));
     } finally {
       setIsPublishingPublicLink(false);
     }

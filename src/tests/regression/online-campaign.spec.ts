@@ -139,23 +139,31 @@ test.describe('online campaign', () => {
     const stock = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
     await expect(stock).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    const saved = await fixture.service.from('online_campaign_products').select('stock_total').eq('campaign_id', campaignId).eq('product_id', productId).single();
+    const saved = await fixture.service.from('online_campaign_products').select('stock_total,price_override,max_quantity_per_order').eq('campaign_id', campaignId).eq('product_id', productId).single();
     if (saved.error) throw saved.error;
     try {
       const next = Number(saved.data.stock_total) - 1;
       await stock.fill(String(next));
       await stock.blur();
+      page.once('dialog', dialog => void dialog.dismiss());
+      await page.getByRole('button', { name: /Orders|คำสั่งซื้อ/, exact: true }).click();
+      await expect(stock).toHaveValue(String(next));
+      const price = page.getByLabel(/Campaign price E2E Cheki|ราคาในแคมเปญ E2E Cheki/);
+      await price.fill('125');
+      expect((await fixture.service.from('online_campaign_products').select('stock_total').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.stock_total).toBe(saved.data.stock_total);
+      await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
       await expect.poll(async () => {
         const row = await fixture.service.from('online_campaign_products').select('stock_total').eq('campaign_id', campaignId).eq('product_id', productId).single();
         return row.data?.stock_total;
       }).toBe(next);
+      expect((await fixture.service.from('online_campaign_products').select('price_override').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.price_override).toBe(125);
       await table.click();
       await expect(table).toHaveAttribute('aria-pressed', 'true');
       await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
       await cards.click();
       await expect(stock).toHaveValue(String(next));
     } finally {
-      await fixture.service.from('online_campaign_products').update({ stock_total: saved.data.stock_total }).eq('campaign_id', campaignId).eq('product_id', productId);
+      await fixture.service.from('online_campaign_products').update(saved.data).eq('campaign_id', campaignId).eq('product_id', productId);
     }
   });
 
@@ -260,6 +268,7 @@ test.describe('online campaign', () => {
       const limitInput = campaignRow.getByLabel(/Maximum per order|จำกัดสูงสุด\/ออเดอร์/);
       await limitInput.fill('2');
       await limitInput.blur();
+      await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
 
       await expect.poll(async () => {
         const row = await fixture.service.from('online_campaign_products')

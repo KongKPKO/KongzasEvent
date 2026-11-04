@@ -1223,13 +1223,13 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                 <select
                   id="workspace-event-status"
                   name="status"
-                  value={eventDraft.status || copy("Confirmed")}
+                  value={eventDraft.status || 'Confirmed'}
                   onChange={handleEventDraftChange}
                   className="mt-1 min-h-11 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-pink-500"
                 >
-                  <option value={copy("Confirmed")}>{copy("Confirmed")}</option>
-                  <option value={copy("Cancelled")}>{copy("Cancelled")}</option>
-                  <option value={copy("Ended")}>{copy("Ended")}</option>
+                  <option value="Confirmed">{language === 'th' ? 'เปิดใช้งาน' : 'Active'}</option>
+                  <option value="Cancelled">{copy("Cancelled")}</option>
+                  <option value="Ended">{copy("Ended")}</option>
                 </select>
               </div>
 

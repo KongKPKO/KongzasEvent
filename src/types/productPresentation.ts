@@ -4,6 +4,7 @@ export type ProductPresentationKind = ProductKind;
 export type ProductBundleItem = BundleItem;
 
 export interface ProductPresentationFields {
+  gift_only?: boolean;
   supply_mode?: 'stock' | 'production';
   product_kind?: ProductPresentationKind | null;
   gallery_images?: string[] | null;

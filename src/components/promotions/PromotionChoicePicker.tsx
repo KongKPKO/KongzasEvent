@@ -31,12 +31,13 @@ export default function PromotionChoicePicker({ choice, onConfirm }: {
 
   return <div className="rounded-xl border border-pink-200 bg-pink-50 p-3">
     <strong>{th ? `เลือกของแถม ${target} ชิ้น` : `Choose ${target} free gift${target === 1 ? '' : 's'}`}</strong>
+    {choice.shared_stock_conflict && <p role="alert" className="mt-2 text-sm font-bold text-amber-900">{th ? 'ของแถมที่เลือกใช้สต็อกร่วมกันและมีไม่พอ กรุณาเลือกแบบอื่น' : 'The selected gifts share stock and cannot all be fulfilled. Choose different gifts.'}</p>}
     {partial && <p role="alert" className="mt-2 text-sm font-bold text-amber-900">
       {th ? `ของแถมเหลือไม่ครบสิทธิ์: ได้สิทธิ์ ${earned} ชิ้น เหลือให้รับ ${target} ชิ้น` : `Not enough gifts: entitled to ${earned}, only ${target} available.`}
     </p>}
     <div className="mt-2 space-y-2">{options.map((option) => <div key={option.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white p-2">
       <span className="min-w-0 flex-1 text-sm font-bold">{option.name}<span className="block text-xs font-normal text-gray-500">
-        {option.available == null ? (th ? 'ไม่จำกัดสต็อก' : 'Unlimited stock') : (th ? `เหลือ ${option.available} ชิ้น` : `${option.available} remaining`)}
+        {option.available == null ? (th ? 'ไม่จำกัดสต็อก' : 'Unlimited stock') : option.available <= 0 ? (th ? 'หมดแล้ว' : 'Out of stock') : (th ? `เหลือ ${option.available} ชิ้น` : `${option.available} remaining`)}
       </span></span>
       <div className="flex items-center gap-2">
         <button type="button" aria-label={`${th ? 'ลด' : 'Decrease'} ${option.name}`} disabled={option.quantity === 0}

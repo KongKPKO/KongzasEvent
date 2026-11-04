@@ -25,6 +25,7 @@ interface OrderItem {
 
 interface Order {
     id: string;
+    order_sequence: number | null;
     created_at: string;
     total_price: number;
     payment_method: 'cash' | 'transfer';
@@ -108,6 +109,7 @@ export default function EventHistory() {
                 .select(`
                     id,
                     created_at,
+                    order_sequence,
                     event_id,
                     queue_id,
                     status,
@@ -211,7 +213,7 @@ export default function EventHistory() {
             {filteredOrders.length === 0 ? <div className="py-10 text-center"><p>{th ? 'ไม่พบรายการขายที่ตรงกับตัวกรอง' : 'No sales match these filters.'}</p><button type="button" className="report-button mt-4" onClick={() => setSearchParams({}, { replace: true })}>{th ? 'ล้างตัวกรองทั้งหมด' : 'Clear all filters'}</button></div> :
               <div className="space-y-3">{filteredOrders.map(order => <details key={order.id} className="report-order">
                 <summary>
-                  <div className="min-w-0"><span className="font-bold block break-words">{order.customer_name || (order.queues ? `#${order.queues.queue_number}` : copy('Walk-in'))}</span><span className="text-xs text-gray-600 block break-all">{order.pickup_code || order.id}</span><time className="text-xs text-gray-600" dateTime={order.created_at}>{new Date(order.created_at).toLocaleString(th ? 'th-TH' : 'en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' })}</time></div>
+                  <div className="min-w-0">{order.order_sequence != null && <span className="block font-black text-blue-800">{th ? 'ออเดอร์' : 'Order'} #{order.order_sequence}</span>}<span className="font-bold block break-words">{order.customer_name || (order.queues ? `#${order.queues.queue_number}` : copy('Walk-in'))}</span><span className="text-xs text-gray-600 block break-all">{order.pickup_code || order.id}</span><time className="text-xs text-gray-600" dateTime={order.created_at}>{new Date(order.created_at).toLocaleString(th ? 'th-TH' : 'en-GB', { timeZone, dateStyle: 'medium', timeStyle: 'short' })}</time></div>
                   <div className="text-right shrink-0"><strong className="block">{formatPrice(order.total_price, order.currency)}</strong><span className="text-xs">{copy(order.payment_method === 'transfer' ? 'Transfer' : 'Cash')}</span><span className="block text-xs text-pink-700 mt-1">{th ? 'ดูรายละเอียด' : 'View details'}</span></div>
                 </summary>
                 <div className="report-order-body"><p className="text-sm mb-3">{th ? 'ช่องทาง: ' : 'Channel: '}{copy(order.order_type === 'preorder' ? 'Pre-order' : order.order_type === 'post_event' ? 'Post-order' : order.queue_id ? 'Live Queue' : 'Walk-in')}</p>

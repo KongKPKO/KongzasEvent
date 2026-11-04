@@ -24,7 +24,7 @@ export interface PromotionV1Config {
   version: 1;
   condition: PromotionV1Condition;
   discount: { kind: 'fixed' | 'percentage'; value: number } | null;
-  gift: { product_id: string; quantity: number; limit: number | null } | null;
+  gift: { product_id: string; quantity: number; limit: number | null; selection_mode?: 'fixed' | 'customer_choice'; product_ids?: string[] } | null;
   activity?: ActivityReward | null;
 }
 
@@ -156,6 +156,7 @@ export interface PromotionRewardLine {
 export interface PromotionRequiredChoice {
   available_quantity?: number;
   partial?: boolean;
+  shared_stock_conflict?: boolean;
   kind: 'reward' | 'exclusive_promotion';
   promotion_id: string;
   tier_id?: string | null;

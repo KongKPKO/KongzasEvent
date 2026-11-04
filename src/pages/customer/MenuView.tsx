@@ -518,6 +518,7 @@ const MenuView = () => {
             : supabase
                 .from('products')
                 .select('*')
+                .eq('gift_only', false)
                 .eq('artist_id', displayArtist.id)
                 .order('created_at', { ascending: false });
 

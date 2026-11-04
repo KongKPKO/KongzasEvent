@@ -156,6 +156,7 @@ test('POS history is read-only and preserves the active queue and cart', async (
   await page.getByRole('button', { name: 'Sales history', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'Sales history', exact: true });
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('Order #1', { exact: true })).toBeVisible();
   await drawer.getByPlaceholder('Order number or queue number').fill('queue #27');
   await expect(drawer.getByText('Queue #27', { exact: true }).first()).toBeVisible();
   await drawer.getByText(`#${historicalOrderId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, { exact: true }).click();
@@ -173,6 +174,7 @@ test('POS history is read-only and preserves the active queue and cart', async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Sales history', exact: true }).click();
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Search and filters' })).toHaveAttribute('aria-expanded', 'false');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await drawer.getByText(`#${historicalOrderId.replace(/-/g, '').slice(0, 8).toUpperCase()}`, { exact: true }).click();
   await expect(drawer.getByTestId('pos-sale-detail').getByText('Recorded sale name', { exact: true })).toBeVisible();

@@ -10,8 +10,8 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
   test.setTimeout(90000);
   const email = 'promotion-workspace-e2e@nireq.local', password = 'LocalPromotionUX123!';
   const { service, userId } = await ensureOwnerArtistFixture({ email, password, slug: 'promotion-workspace-e2e', displayName: 'Promotion UX test' });
-  const eventId = randomUUID(), firstProductId = randomUUID(), secondProductId = randomUUID(), giftId = randomUUID();
-  const productIds = [firstProductId, secondProductId, giftId];
+  const eventId = randomUUID(), firstProductId = randomUUID(), secondProductId = randomUUID(), giftId = randomUUID(), secondGiftId = randomUUID();
+  const productIds = [firstProductId, secondProductId, giftId, secondGiftId];
   const must = (result: { error: unknown }) => { if (result.error) throw result.error; };
   const runtimeErrors: string[] = [];
   page.on('pageerror', error => runtimeErrors.push(error.message));
@@ -23,6 +23,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
       { id: firstProductId, artist_id: userId, name: 'Mavuika A3', sku: 'MAV-A3', category: 'Print', price: 250, is_unlimited: true, status: 'enable' },
       { id: secondProductId, artist_id: userId, name: 'Mavuika A4', sku: 'MAV-A4', category: 'Print', price: 150, is_unlimited: true, status: 'enable' },
       { id: giftId, artist_id: userId, name: 'Hairclip Tamon', sku: 'GIFT-HAIR', category: 'Accessory', price: 80, is_unlimited: true, status: 'enable' },
+      { id: secondGiftId, artist_id: userId, name: 'Hairclip Hsin', sku: 'GIFT-HSIN', category: 'Accessory', price: 80, is_unlimited: true, status: 'enable' },
     ]));
     must(await service.from('event_products').insert(productIds.map(productId => ({ event_id: eventId, artist_id: userId, product_id: productId, is_enabled: true, is_unlimited: true }))));
 
@@ -67,6 +68,12 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     const giftSearch = form.getByLabel('ค้นหาสินค้าของแถม');
     await giftSearch.fill('GIFT-HAIR');
     await form.getByRole('button', { name: /Hairclip Tamon.*80/ }).click();
+    await form.getByLabel('การเลือกของแถม').selectOption('customer_choice');
+    await giftSearch.fill('GIFT-HSIN');
+    await form.getByRole('button', { name: /Hairclip Hsin.*80/ }).click();
+    await expect(review).toContainText('Hairclip Hsin');
+    await expect(review).toContainText('Hairclip Tamon');
+    await form.getByLabel('การเลือกของแถม').selectOption('fixed');
     await form.getByLabel('จำกัดจำนวนสิทธิ์ทั้งหมด').fill('20');
 
     await expect(review).toContainText('Mavuika A3');

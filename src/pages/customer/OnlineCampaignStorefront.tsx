@@ -304,7 +304,7 @@ export default function OnlineCampaignStorefront() {
                   <div className="relative w-32 shrink-0 overflow-hidden bg-pink-50 sm:w-40"><ProductMedia product={representative} getImageUrl={getMenuImageUrl} /></div>
                   <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">
                     <div className="min-w-0">
-                      <h2 className="truncate font-black text-gray-950">{entry.label}</h2>
+                      <h2 className="break-words font-black text-gray-950">{entry.label}</h2>
                       <div className="mt-1 flex flex-wrap gap-1">{(representative.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{tag}</span>)}</div>
                       <p className="mt-1 text-xs font-bold text-pink-700">{variants.length} {language === 'th' ? 'รายการสินค้า' : variants.length === 1 ? 'item' : 'items'}</p>
                       <div className="mt-2 text-lg font-black text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, campaign.currency) : `${formatPrice(prices.min, campaign.currency)}–${formatPrice(prices.max, campaign.currency)}`}</div>

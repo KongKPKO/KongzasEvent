@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { order_id, order_code, event } = await req.json();
     if (!isUuid(order_id)) return json({ error: "order_id must be a valid UUID" }, 400);
-    if (!["created", "ready_for_pickup", "shipped", "payment_rejected", "refund_required"].includes(event)) {
+    if (!["created", "confirmed", "payment_rejected"].includes(event)) {
       return json({ error: "invalid notification event" }, 400);
     }
 
@@ -103,6 +103,7 @@ Deno.serve(async (req: Request) => {
 
 function stateMatches(event: NotificationEvent, order: Record<string, unknown>, payment: Record<string, unknown>) {
   if (event === "created") return payment.payment_status === "awaiting_payment";
+  if (event === "confirmed") return payment.payment_status === "payment_confirmed";
   if (event === "ready_for_pickup") return payment.payment_status === "payment_confirmed" && order.fulfillment_method === "pickup" && order.pickup_status === "awaiting_pickup";
   if (event === "shipped") return payment.payment_status === "payment_confirmed" && order.fulfillment_method === "shipping" && order.pickup_status === "shipped" && Boolean(order.tracking_number);
   if (event === "payment_rejected") return payment.payment_status === "payment_rejected";

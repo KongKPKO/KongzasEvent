@@ -175,6 +175,7 @@ export default function ProductFamilyEditor({
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [basePrice, setBasePrice] = useState('');
   const [kind, setKind] = useState<ProductFormat>('single');
+  const [giftOnly, setGiftOnly] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [variants, setVariants] = useState<EditableVariant[]>([newVariant()]);
@@ -200,6 +201,7 @@ export default function ProductFamilyEditor({
     setCurrency(parent?.currency || DEFAULT_CURRENCY);
     setBasePrice(parent == null ? '' : String(parent.base_price));
     setKind(parent?.product_kind === 'photo' ? 'photo' : 'single');
+    setGiftOnly(Boolean(parent?.gift_only));
     setImageUrl(parent?.image_url || '');
     setGalleryImages(uniqueImages(parent?.gallery_images || []));
     setVariants(initialVariants.length ? initialVariants.map((variant, index) => toEditableVariant(variant, index, initialVariants.length === 1)) : [newVariant()]);
@@ -335,6 +337,7 @@ export default function ProductFamilyEditor({
         currency,
         base_price: parsedBasePrice,
         product_kind: kind,
+        gift_only: giftOnly,
         gallery_images: kind === 'photo' ? cleanGallery : [],
         bundle_items: [],
         preorder_closes_at: parent?.preorder_closes_at ?? null,
@@ -376,6 +379,7 @@ export default function ProductFamilyEditor({
         </header>
 
         <form onSubmit={submit} className="min-h-0 flex-1 overflow-y-auto">
+          <label className="mx-5 mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm"><input type="checkbox" checked={giftOnly} onChange={event => setGiftOnly(event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block">{language === 'th' ? 'ใช้เป็นของแถมเท่านั้น' : 'Gift only'}</strong><span className="text-xs text-gray-600">{language === 'th' ? 'ซ่อนจากรายการขาย แต่ยังจัดสรรสต็อกและเลือกเป็นของแถมในโปรโมชั่นได้' : 'Hidden from sale, but stock can be allocated and used for promotions.'}</span></span></label>
           <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.45fr)]">
             <div className="space-y-4">
               <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">

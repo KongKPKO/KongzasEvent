@@ -1,4 +1,5 @@
 import BundleEditor from '../../components/products/BundleEditor';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { fetchInventoryOverview, type InventoryOverview } from '../../lib/inventory';
 import { InventoryBreakdown } from '../../components/products/InventoryBreakdown';
 import { SupplyPolicyEditor, type SupplySettings } from '../../components/products/SupplyPolicyEditor';
@@ -659,6 +660,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          const quantity = limits.length ? Math.min(...limits) : 0;
          return language === 'th' ? `พร้อมขาย ${Number.isFinite(quantity) ? quantity : 'ไม่จำกัด'} ชุด · ใช้สต็อกส่วนประกอบในอีเวนต์ร่วมกับขายแยก` : `${Number.isFinite(quantity) ? quantity : 'Unlimited'} bundles · shared event component stock`;
       })()}</div> : renderEventCatalogStockNumbers(product, draft, stockLimit, compact)}
+      {product.product_kind === 'bundle' && (() => {
+         const missing = (product.bundle_items || []).filter(item => item.product_id && !eventCatalogDraft[item.product_id]?.is_enabled);
+         return missing.length > 0 ? <p role="status" className="rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{language === 'th' ? 'ยังไม่ได้เพิ่มหรือเปิดขายสินค้าในชุดสำหรับอีเวนต์นี้:' : 'Add and enable these bundle components in this event:'} {missing.map(item => item.name || products.find(candidate => candidate.id === item.product_id)?.name || item.product_id).join(', ')}</p> : null;
+      })()}
       {table && inventory[product.id]?.production_shortfall > 0 && <p className="text-xs font-bold text-amber-800">{inventory[product.id].tracking ? (language === 'th' ? 'ยอดรับสั่งผลิตยังขาด' : 'Production shortfall') : (language === 'th' ? 'ยอดยืนยันรอเตรียมของ' : 'Confirmed units to prepare')}: {inventory[product.id].production_shortfall}</p>}
       {table ? <details className="stock-details"><summary>{language === 'th' ? 'ตั้งค่าวิธีขายและสต็อก' : 'Supply and stock settings'}</summary>
          {draft.id && selectedEventId && supplyPolicies[product.id] && <SupplyPolicyEditor key={`${selectedEventId}-${product.id}`} productId={product.id} eventId={selectedEventId} settings={supplyPolicies[product.id]} />}
@@ -844,6 +849,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const hasEventCatalogChanges = JSON.stringify(eventCatalogDraft) !== JSON.stringify(eventCatalogSavedDraft) || hasUnsavedNewEventProducts;
    const hasEventCurrencyChange = eventCurrencyDraft !== eventCurrencySaved;
    const hasPendingEventCatalogChanges = hasEventCatalogChanges || hasEventCurrencyChange;
+   useUnsavedChanges(activeWorkspaceTab === 'event-catalog' && hasPendingEventCatalogChanges, language === 'th' ? 'มีการแก้ไขสินค้าที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved product changes. Leave?');
    const getEventCatalogStockLimit = (product: Product) => {
       if (product.is_unlimited) return Number.POSITIVE_INFINITY;
       const calculatedLimit = eventCatalogStockLimitByProduct[product.id];

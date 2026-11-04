@@ -1100,7 +1100,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusBadgeClass}`}>
-                              {ended ? uiText(language, 'Ended') : uiText(language, evt.selling_mode === 'preorder' ? 'Pre-order' : evt.selling_mode === 'post_event' ? 'Post-order' : evt.status)}
+                              {ended ? uiText(language, 'Ended') : evt.selling_mode === 'preorder' ? uiText(language, 'Pre-order') : evt.selling_mode === 'post_event' ? uiText(language, 'Post-order') : evt.status === 'Confirmed' ? (language === 'th' ? 'เปิดใช้งาน' : 'Active') : uiText(language, evt.status)}
                             </span>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${boothBadgeClass}`}>
                               {uiText(language, evt.is_booth_open ? 'Booth open' : 'Booth closed')}
@@ -1211,7 +1211,7 @@ const ManageArtist = ({ profilePage = false }: { profilePage?: boolean }) => {
                      <div className="space-y-1 flex-1">
                         <label className="font-bold text-xs uppercase text-gray-600">{uiText(language, 'Status')}</label>
                         <select name="status" value={currentEvent.status || 'Confirmed'} onChange={handleFunctionChange} className="min-h-11 w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm font-semibold focus:border-pink-500 outline-none" aria-label={uiText(language, 'Event status')}>
-                           <option value="Confirmed">{uiText(language, 'Confirmed')}</option>
+                           <option value="Confirmed">{language === 'th' ? 'เปิดใช้งาน' : 'Active'}</option>
                            <option value="Cancelled">{uiText(language, 'Cancelled')}</option>
                            <option value="Ended">{uiText(language, 'Ended')}</option>
                         </select>

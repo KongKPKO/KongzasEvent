@@ -1,4 +1,5 @@
 import OrderPromotionDetails from '../reports/OrderPromotionDetails';
+import { getOrderSequences } from '../../lib/orderSequences';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock3, ReceiptText, Search, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
@@ -12,6 +13,7 @@ const PAGE_SIZE = 20;
 
 type HistoryOrder = {
   id: string;
+  order_sequence?: number;
   order_number: string;
   created_at: string;
   status: string;
@@ -121,6 +123,7 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
   const listRequestRef = useRef(0);
   const detailRequestRef = useRef(0);
   const [searchInput, setSearchInput] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -208,7 +211,15 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
       setLoadError(true);
       setHistory({ orders: [], total: 0, page, page_size: PAGE_SIZE });
     } else {
-      setHistory(normalizePage(data));
+      const normalized = normalizePage(data);
+      try {
+        const sequences = await getOrderSequences(normalized.orders.map(order => order.id));
+        if (request !== listRequestRef.current) return;
+        setHistory({ ...normalized, orders: normalized.orders.map(order => ({ ...order, order_sequence: sequences[order.id] })) });
+      } catch (sequenceError) {
+        console.error('[PosSalesHistory] Could not load order numbers:', sequenceError);
+        setLoadError(true);
+      }
     }
     setLoading(false);
   }, [effectiveDates.from, effectiveDates.to, eventId, open, orderStatus, page, paymentMethod, paymentStatus, search, timeZone]);
@@ -328,7 +339,8 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
           </button>
         </header>
 
-        <div className="shrink-0 space-y-3 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
+        <button type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(value => !value)} className="min-h-11 shrink-0 border-b bg-white px-4 text-left text-sm font-bold text-blue-700 md:hidden">{filtersOpen ? text('Hide filters', 'ซ่อนตัวกรอง') : text('Search and filters', 'ค้นหาและตัวกรอง')}{(searchInput || orderStatus || paymentMethod || paymentStatus || dateMode !== 'latest') ? ' •' : ''}</button>
+        <div className={`${filtersOpen ? 'block' : 'hidden'} max-h-[45dvh] shrink-0 space-y-3 overflow-y-auto border-b border-gray-200 bg-white px-4 py-3 sm:px-6 md:block md:max-h-none md:overflow-visible`}>
           <div className="flex flex-wrap gap-2" aria-label={text('Date shortcuts', 'ตัวเลือกช่วงวันที่')}>
             <button type="button" onClick={() => { setDateMode('latest'); setPage(1); }} aria-pressed={dateMode === 'latest'} className={`min-h-10 rounded-xl border px-4 text-sm font-bold ${dateMode === 'latest' ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200 text-gray-700'}`}>{text('Latest', 'ล่าสุด')}</button>
             <button type="button" onClick={() => { setDateMode('today'); setPage(1); }} aria-pressed={dateMode === 'today'} className={`min-h-10 rounded-xl border px-4 text-sm font-bold ${dateMode === 'today' ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-200 text-gray-700'}`}>{text('Today', 'วันนี้')}</button>
@@ -399,7 +411,8 @@ export default function PosSalesHistory({ open, eventId, eventName, eventTimeZon
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-black text-gray-900">#{order.order_number}</div>
+                          {order.order_sequence != null && <div className="font-black text-blue-800">{text('Order', 'ออเดอร์')} #{order.order_sequence}</div>}
+                          <div className="text-xs font-bold text-gray-600">#{order.order_number}</div>
                           <div className="mt-1 flex items-center gap-1 text-xs text-gray-500"><Clock3 size={13} aria-hidden="true" />{formatDateTime(order.created_at)}</div>
                         </div>
                         <div className="shrink-0 text-right font-black text-gray-900">{formatPrice(Number(order.total_price), order.currency)}</div>

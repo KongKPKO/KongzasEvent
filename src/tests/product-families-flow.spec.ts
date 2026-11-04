@@ -532,6 +532,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
 
 
 test('creates a component bundle separately with quantities and no item stock editor', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'en'));
   const login = new LoginPage(page);
   await login.goto(); await login.login(email, password);
@@ -539,6 +540,10 @@ test('creates a component bundle separately with quantities and no item stock ed
   await page.goto('/manage-products');
   await page.getByRole('button', { name: 'Create bundle', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Create bundle', exact: true });
+  const scrollArea = dialog.locator('fieldset').locator('..');
+  expect(await scrollArea.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+  await scrollArea.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  expect(await scrollArea.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
   await expect(dialog.getByText('Items under this product', { exact: true })).toHaveCount(0);
   await dialog.getByLabel('Bundle name', { exact: true }).fill('Shared bundle test');
   await dialog.getByLabel('Bundle price', { exact: true }).fill('250');

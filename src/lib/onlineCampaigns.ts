@@ -63,6 +63,7 @@ export class OnlineCampaignError extends Error {
 
 export type CampaignNotificationEvent =
   | 'created'
+  | 'confirmed'
   | 'ready_for_pickup'
   | 'shipped'
   | 'payment_rejected'
@@ -94,13 +95,13 @@ export async function getCampaignWorkspace(campaignId: string, artistId?: string
   const workspace = data as CampaignWorkspace;
   // The workspace RPC predates item galleries. Read only its authorized catalog
   // IDs through RLS, in bounded batches to avoid oversized PostgREST URLs.
-  const missing = workspace.catalog.filter(product => product.gallery_images === undefined || product.variant_gallery_images === undefined);
+  const missing = workspace.catalog.filter(product => product.gallery_images === undefined || product.variant_gallery_images === undefined || product.gift_only === undefined || (product.product_kind === 'bundle' && product.bundle_items === undefined));
   const batches = [];
   for (let index = 0; index < missing.length; index += 100) {
     batches.push(missing.slice(index, index + 100));
   }
   const results = await Promise.all(batches.map(products => supabase.from('products')
-    .select('id, product_kind, gallery_images, variant_gallery_images')
+    .select('id, product_kind, gift_only, bundle_items, gallery_images, variant_gallery_images')
     .eq('artist_id', workspace.campaign.artist_id)
     .in('id', products.map(product => product.product_id || product.id || ''))));
   results.forEach(result => throwRpcError(result.error));

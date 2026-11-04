@@ -26,6 +26,7 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
         options: available === 0 ? [] : [
           { product_id: 'A', name: 'Gift A', available: 1 },
           ...(available === 2 ? [{ product_id: 'B', name: 'Gift B', available: 1 }] : []),
+          { product_id: 'C', name: 'Gift C', available: 0 },
         ],
       }],
     } });
@@ -40,6 +41,8 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
   await expect(page.getByTestId('activity-rewards')).toContainText(/Activity rewards after payment confirmation|สิทธิ์กิจกรรมหลังยืนยันการชำระเงิน/);
   await expect(page.getByTestId('activity-rewards')).toContainText(/rewards are provisional.*confirms payment|สิทธิ์ที่รอยืนยัน.*ร้านยืนยันการชำระเงิน/);
   const confirm = page.getByRole('button', { name: /Confirm selected gifts|ยืนยันของแถมที่เลือก/ });
+  await expect(page.getByText(/Out of stock|หมดแล้ว/, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Increase Gift C|เพิ่ม Gift C/ })).toBeDisabled();
   await expect(confirm).toBeDisabled();
   await page.getByRole('button', { name: /Increase Gift A|เพิ่ม Gift A/ }).click();
   await expect(confirm).toBeDisabled();

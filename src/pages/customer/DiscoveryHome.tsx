@@ -137,7 +137,7 @@ export default function DiscoveryHome() {
         const publicIds = (artists || []).map(artist => artist.id);
         const productResult = publicIds.length ? await supabase.from('products')
           .select('id, artist_id, name, price, image_url, category, parent_product_id, product_kind, gallery_images, variant_gallery_images').in('artist_id', publicIds)
-          .is('deleted_at', null).in('status', ['enable', 'soldout']).order('created_at', { ascending: false }) : { data: [], error: null };
+          .is('deleted_at', null).eq('gift_only', false).in('status', ['enable', 'soldout']).order('created_at', { ascending: false }) : { data: [], error: null };
         if (active) setProductError(Boolean(productResult.error));
         const products = (productResult.data || []) as DiscoveryProduct[];
         const byArtist = new Map<string, DiscoveryEventRecord>();

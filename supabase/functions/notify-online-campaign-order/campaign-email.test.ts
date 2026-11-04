@@ -16,6 +16,21 @@ test('campaign email uses the configured site, escapes content, and lists items 
   assert.doesNotMatch(email.html, /<script>/);
   assert.match(email.text, /- 1x <One>\n- 2x Two/);
   assert.match(email.text, /0\.00/);
+  assert.match(email.html, /รับคำสั่งซื้อแล้ว รอชำระเงิน/);
+  assert.match(email.html, /Your order is reserved/);
+});
+
+test('confirmed payment email is bilingual and works for delivery orders', () => {
+  const email = buildCampaignEmail({ pickup_code: 'OC-789', fulfillment_method: 'shipping' }, {}, { slug: 'shop' }, {}, [], 'confirmed', 'https://paimonq.com');
+  assert.match(email.subject, /ยืนยันการชำระเงินแล้ว.*Payment confirmed/);
+  assert.match(email.html, /Your payment is confirmed/);
+  assert.match(email.html, /https:\/\/paimonq\.com\/shop\/order\/OC-789/);
+});
+
+test('rejection explains that the online order is cancelled', () => {
+  const email = buildCampaignEmail({ pickup_code: 'OC-789' }, {}, { slug: 'shop' }, {}, [], 'payment_rejected', 'https://paimonq.com');
+  assert.match(email.html, /คำสั่งซื้อนี้ถูกยกเลิกแล้ว/);
+  assert.doesNotMatch(email.html, /ส่งหลักฐานใหม่/);
 });
 
 test('shipment notification includes tracking and leaves link out when site is absent', () => {

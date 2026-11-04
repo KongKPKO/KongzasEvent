@@ -137,6 +137,33 @@ test.afterAll(async () => {
   must(await service.auth.admin.deleteUser(artistId));
 });
 
+test('sold-out filter shows unavailable products without letting staff add them', async ({ page }) => {
+  const soldId = randomUUID();
+  must(await service.from('products').insert({ id: soldId, artist_id: artistId, name: 'Sold out fixture', price: 100, currency: 'THB', stock_total: 0, is_unlimited: false, status: 'enable' }));
+  must(await service.from('event_products').insert({ event_id: eventId, product_id: soldId, artist_id: artistId, stock_total: 0, is_unlimited: false, is_enabled: true }));
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const login = new LoginPage(page);
+    await login.goto();
+    await login.login(ownerEmail, password);
+    await expect(page).toHaveURL(/manage-events/, { timeout: 30_000 });
+    await page.goto(`/live/pos?eventId=${eventId}`);
+    const region = page.getByRole('region', { name: /Product list|Product grid/ });
+    await expect(region.getByText('Current catalog name')).toBeVisible();
+    await expect(region.getByText('Sold out fixture')).toHaveCount(0);
+    await page.getByRole('button', { name: /Sold out 1|สินค้าหมด 1/ }).click();
+    await expect(region.getByText('Current catalog name')).toHaveCount(0);
+    const sold = region.getByRole('button').filter({ has: page.getByRole('heading', { name: 'Sold out fixture' }) });
+    await expect(sold).toBeDisabled();
+    await expect(sold.getByText(/Sold Out|หมด/)).toBeVisible();
+    await page.getByRole('button', { name: /Sold out 1|สินค้าหมด 1/ }).click();
+    await expect(region.getByText('Current catalog name')).toBeVisible();
+  } finally {
+    must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', soldId));
+    must(await service.from('products').delete().eq('id', soldId));
+  }
+});
+
 test('POS history is read-only and preserves the active queue and cart', async ({ page }, testInfo) => {
   const login = new LoginPage(page);
   await login.goto();

@@ -824,52 +824,64 @@ export default function OnlineCampaignWorkspace() {
                       const allocated = workspace.products.find((item) => item.product_id === productId);
                       const summary = getStockSummary(product);
                       const isIncluded = allocatedIds.has(productId);
-                      const campaignStock = Number(allocated?.stock_total || 0);
+                      const campaignStock = isIncluded ? Number(allocated?.stock_total || 0) : 0;
                       const maxCampaignStock = campaignStock + summary.available;
                       const committedElsewhere = Math.max(summary.on_hand - summary.available - campaignStock, 0);
+                      const used = Number(allocated?.stock_sold || 0) + Number(allocated?.stock_reserved || 0);
+                      const draftStockValue = productEdits[productId]?.stock;
+                      const requestedStock = draftStockValue !== undefined && draftStockValue.trim() !== '' ? Number(draftStockValue) : campaignStock;
+                      const shownStock = Number.isSafeInteger(requestedStock) && requestedStock >= used && requestedStock <= maxCampaignStock ? requestedStock : campaignStock;
+                      const centralStock = Math.max(summary.available + campaignStock - shownStock, 0);
+                      const remainingStock = Math.max(shownStock - used, 0);
+                      const stockPool = Math.max(summary.on_hand, centralStock + remainingStock + used, 1);
                       return (
                         <tr key={productId} className={isIncluded ? 'bg-pink-50/50' : 'hover:bg-gray-50/70'}>
                           <td className="campaign-card-product px-3 py-2">
-                            <div className="flex items-center gap-3">
-                              <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
+                            <div className="campaign-product-heading flex items-center gap-3">
+                              <div className="campaign-product-image grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
                                 <ProductMedia product={{ ...product, id: productId }} getImageUrl={getMenuImageUrl} />
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <div className="truncate text-sm font-black text-gray-950">{product.name}</div>
+                                  <div className="campaign-product-name text-sm font-black text-gray-950">{product.name}</div>
                                   {isIncluded && <span className="shrink-0 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700">{t('campaignIncluded')}</span>}
                                 </div>
                                 <div className="mt-0.5 font-mono text-[10px] font-bold text-gray-400">{product.sku || '—'}</div>
+                                <span className="campaign-product-category mt-2 inline-block rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600">{product.category || '—'}</span>
                                 {product.gift_only && <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{language === 'th' ? 'ของแถมเท่านั้น' : 'Gift only'}</span>}
                               </div>
                             </div>
-                            {allocated && <fieldset disabled={Object.keys(productEdits).length > 0}><SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} /></fieldset>}
-                            {allocated && isIncluded && product.product_kind !== 'bundle' && !allocated.is_unlimited && allocated.supply_mode !== 'production' && <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-2 text-xs font-bold text-slate-600">
-                              <div><strong className="block text-emerald-700">{summary.available}</strong>{language === 'th' ? 'สต็อกกลาง' : 'Central stock'}</div>
-                              <div><strong className="block text-blue-700">{allocated.available_quantity ?? Math.max(campaignStock - Number(allocated.stock_reserved || 0) - Number(allocated.stock_sold || 0), 0)}</strong>{language === 'th' ? 'เหลือขาย' : 'Available'}</div>
-                              <div><strong className="block text-amber-700">{Number(allocated.stock_sold || 0)} / {Number(allocated.stock_reserved || 0)}</strong>{language === 'th' ? 'ขายแล้ว / จองไว้' : 'Sold / held'}</div>
+                            {!isIncluded && !product.is_unlimited && product.product_kind !== 'bundle' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><strong className="text-emerald-700">{summary.available}</strong> {language === 'th' ? 'สต็อกกลางพร้อมจัดสรร' : 'Central stock available to allocate'}</div>}
+                            {allocated && isIncluded && product.product_kind !== 'bundle' && !product.is_unlimited && !allocated.is_unlimited && allocated.supply_mode !== 'production' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600">
+                              <div className="grid grid-cols-3 gap-2">
+                                <div><strong className="block text-emerald-700">{centralStock}</strong>{language === 'th' ? 'สต็อกกลาง' : 'Central stock'}</div>
+                                <div><strong className="block text-blue-700">{remainingStock}</strong>{language === 'th' ? 'เหลือขาย' : 'Available'}</div>
+                                <div><strong className="block text-amber-700">{used}</strong>{language === 'th' ? 'ขายแล้ว / จองไว้' : 'Sold / held'}</div>
+                              </div>
+                              <div data-testid="campaign-stock-bar" className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-gray-200"><div className="bg-emerald-700" style={{ width: `${centralStock / stockPool * 100}%` }} /><div className="bg-blue-700" style={{ width: `${remainingStock / stockPool * 100}%` }} /><div className="bg-amber-700" style={{ width: `${used / stockPool * 100}%` }} /></div>
                             </div>}
+                            {allocated && <fieldset className="mt-2" disabled={Object.keys(productEdits).length > 0}><SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} /></fieldset>}
                             {product.product_kind === 'bundle' && isIncluded && (() => {
                               const missing = (product.bundle_items || []).filter(item => item.product_id && !allocatedIds.has(item.product_id));
                               return missing.length ? <p role="status" className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{language === 'th' ? 'ยังไม่ได้เพิ่มสินค้าในชุดเข้าแคมเปญ:' : 'Add these bundle components to the campaign:'} {missing.map(item => item.name || workspace.catalog.find(candidate => (candidate.product_id || candidate.id) === item.product_id)?.name || item.product_id).join(', ')}</p> : null;
                             })()}
                             {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-1 text-[10px] font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
                           </td>
-                          <td data-label={t('catalogCategory')} className="px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
+                          <td data-label={t('catalogCategory')} className="campaign-card-redundant px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
                           {product.product_kind === 'bundle' ? (
                             <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-bold text-pink-800">{language === 'th' ? 'ใช้สต็อกส่วนประกอบในแคมเปญร่วมกับขายแยก' : 'Shares component stock in this campaign'}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${language === 'th' ? 'ชุดพร้อมขาย' : 'bundles available'}`}</div>}</td>
                           ) : product.is_unlimited ? (
                             <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-black text-gray-600">{t('catalogUnlimited')}</td>
                           ) : (
                             <>
-                              <td data-label={t('campaignOnHandStock')} className="px-2 py-2 text-center text-sm font-black text-gray-900">{summary.on_hand}</td>
-                              <td data-label={t('campaignAvailableStock')} className="px-2 py-2 text-center text-sm font-black text-emerald-700">{summary.available}</td>
+                              <td data-label={t('campaignOnHandStock')} className="campaign-card-redundant px-2 py-2 text-center text-sm font-black text-gray-900">{summary.on_hand}</td>
+                              <td data-label={t('campaignAvailableStock')} className="campaign-card-redundant px-2 py-2 text-center text-sm font-black text-emerald-700">{summary.available}</td>
                               <td data-label={t('campaignCurrentStock')} className="px-2 py-2 text-center">
                                 {allocated && isIncluded ? (
                                   <div>
                                     <input key={`stock-${allocated.stock_total}`} aria-label={`${t('campaignAllocatedStock')} ${product.name}`} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} max={maxCampaignStock} value={productEdits[productId]?.stock ?? String(campaignStock)} onChange={(event) => editProduct(productId, 'stock', event.target.value)} className="h-11 w-20 rounded-xl border border-gray-200 px-3 text-center text-sm font-black" />
                                     {allocated.supply_mode !== 'production' && !allocated.is_unlimited && (
-                                      <div className="mt-1 text-xs font-bold text-emerald-700">{t('campaignStockRemaining')}: {allocated.available_quantity ?? Math.max(campaignStock - Number(allocated.stock_reserved || 0) - Number(allocated.stock_sold || 0), 0)}</div>
+                                      <div className="campaign-card-redundant mt-1 text-xs font-bold text-blue-700">{t('campaignStockRemaining')}: {allocated.available_quantity ?? Math.max(campaignStock - Number(allocated.stock_reserved || 0) - Number(allocated.stock_sold || 0), 0)}</div>
                                     )}
                                   </div>
                                 ) : <span className="text-sm font-black text-pink-700">0</span>}

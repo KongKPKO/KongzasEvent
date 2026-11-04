@@ -151,7 +151,8 @@ interface QueueItem {
 }
 
 type SortType = 'name' | 'price_low' | 'price_high';
-type QuickFilter = 'all' | 'promo' | 'low_stock' | 'recent' | 'pinned';
+type QuickFilter = 'all' | 'promo' | 'low_stock' | 'sold_out' | 'recent' | 'pinned';
+const isPosSoldOut = (product: Product) => product.status === 'soldout' || getAvailableUnits(product) <= 0;
 type ViewMode = 'compact' | 'visual';
 type ViewPreference = 'auto' | ViewMode;
 
@@ -527,15 +528,16 @@ export default function POSPanel({
                     tagHaystack.includes(query);
                 const matchesCategory = selectedCategory === 'All' || ((product.category || 'Other').trim() || 'Other') === selectedCategory;
                 const matchesTag = selectedTag === 'All' || (product.tags || []).some((tag) => tag.trim() === selectedTag);
-                const inStock = getAvailableUnits(product) > 0;
+                const soldOut = isPosSoldOut(product);
                 const matchesQuickFilter =
                     selectedQuickFilter === 'all' ||
                     (selectedQuickFilter === 'promo' && getPromotionBadgesForProduct(product, promotions).length > 0) ||
                     (selectedQuickFilter === 'low_stock' && isLowStock(product)) ||
+                    (selectedQuickFilter === 'sold_out' && soldOut) ||
                     (selectedQuickFilter === 'recent' && recentProductIds.includes(product.id)) ||
                     (selectedQuickFilter === 'pinned' && pinnedProductIds.includes(product.id));
 
-                return matchesSearch && matchesCategory && matchesTag && inStock && matchesQuickFilter;
+                return matchesSearch && matchesCategory && matchesTag && (selectedQuickFilter === 'sold_out' ? soldOut : !soldOut) && matchesQuickFilter;
             })
             .sort((a, b) => {
                 const aPinned = pinnedProductIds.includes(a.id) ? 1 : 0;
@@ -577,7 +579,7 @@ export default function POSPanel({
             const fresh = productsById.get(item.product.id);
             if (!fresh) continue;
             const available = getAvailableUnits(fresh);
-            if (Number.isFinite(available) && item.quantity > available) {
+            if (fresh.status === 'soldout' || (Number.isFinite(available) && item.quantity > available)) {
                 overdrafts.add(item.product.id);
             }
         }
@@ -649,8 +651,8 @@ export default function POSPanel({
 
     const addToCart = (product: Product) => {
         if (loadedContextKey !== saleContextKey) return;
+        if (!canUsePos || loading || orderLoading || fetchError || isPosSoldOut(product)) return;
         dirtyContexts.current.add(saleContextKey);
-        if (!canUsePos || loading || orderLoading || fetchError) return;
 
         setRecentProductIds((prev) => [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 12));
 
@@ -716,6 +718,7 @@ export default function POSPanel({
     const highlightedCounts = useMemo(() => ({
         promo: products.filter((product) => getPromotionBadgesForProduct(product, promotions).length > 0).length,
         lowStock: products.filter((product) => isLowStock(product) && getAvailableUnits(product) > 0).length,
+        soldOut: products.filter(isPosSoldOut).length,
         recent: recentProductIds.length,
         pinned: pinnedProductIds.length,
     }), [products, promotions, recentProductIds.length, pinnedProductIds.length]);
@@ -953,6 +956,7 @@ export default function POSPanel({
         { id: 'all', label: uiText(language, 'All items'), count: products.length, icon: Grid2x2 },
         { id: 'promo', label: uiText(language, 'Promo'), count: highlightedCounts.promo, icon: Sparkles },
         { id: 'low_stock', label: uiText(language, 'Low stock'), count: highlightedCounts.lowStock, icon: PackageX },
+        { id: 'sold_out', label: language === 'th' ? 'สินค้าหมด' : 'Sold out', count: highlightedCounts.soldOut, icon: PackageX },
         { id: 'recent', label: uiText(language, 'Recent'), count: highlightedCounts.recent, icon: Clock3 },
         { id: 'pinned', label: uiText(language, 'Pinned'), count: highlightedCounts.pinned, icon: Pin },
     ];
@@ -1243,6 +1247,7 @@ export default function POSPanel({
         const image = getProductImages(product)[0];
                                         const promoBadges = getPromotionBadgesForProduct(product, promotions);
                                         const available = getAvailableUnits(product);
+                                        const soldOut = isPosSoldOut(product);
                                         const lowStock = isLowStock(product);
                                         const isPinned = pinnedProductIds.includes(product.id);
                                         const displayName = product.variant_group_name && product.variant_name ? product.variant_name : product.name;
@@ -1254,11 +1259,11 @@ export default function POSPanel({
                                                     className="bg-white rounded-xl shadow-sm border border-gray-100 px-3 py-2 flex items-center gap-3"
                                                 >
                                                     <button
-                                                        disabled={loading || orderLoading || fetchError}
+                                                        disabled={loading || orderLoading || fetchError || soldOut}
                                                         onClick={() => addToCart(product)}
                                                         className="flex items-center gap-3 flex-1 min-w-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
                                                     >
-                                                        <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
+                                                        <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 shrink-0">
                                                             {image ? (
                                                                 <img
                                                                     src={getProductImage(image)}
@@ -1269,6 +1274,7 @@ export default function POSPanel({
                                                                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=No+Img'; }}
                                                                 />
                                                             ) : renderImageFallback(product.name, true)}
+                                                            {soldOut && <span className="absolute inset-x-0 bottom-0 bg-slate-900/85 py-0.5 text-center text-[9px] font-black text-white">{uiText(language, 'Sold Out')}</span>}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-start justify-between gap-2">
@@ -1316,12 +1322,13 @@ export default function POSPanel({
                                                     className="festival-product bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all group flex flex-col p-0 relative hover:border-pink-200"
                                                 >
                                                     <button
-                                                    disabled={loading || orderLoading || fetchError}
+                                                    disabled={loading || orderLoading || fetchError || soldOut}
                                                     onClick={() => addToCart(product)}
                                                     className="cursor-pointer transition-all active:scale-[0.98] text-left h-full flex flex-col disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                     <div className="w-full aspect-[4/3] bg-gray-100 relative overflow-hidden shrink-0">
                                                         <ProductMedia product={product} getImageUrl={getProductImage} />
+                                                        {soldOut && <span className="absolute inset-0 grid place-items-center bg-slate-950/45 text-sm font-black text-white">{uiText(language, 'Sold Out')}</span>}
                                                     </div>
                                                     <div className="flex flex-col px-3 pb-3 pt-2.5 justify-between flex-1 min-w-0">
                                                         <div>
@@ -1527,7 +1534,7 @@ export default function POSPanel({
                                     <button
                                         key={filter.id}
                                         onClick={() => setSelectedQuickFilter(filter.id)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap inline-flex items-center gap-1.5 ${selectedQuickFilter === filter.id ? 'bg-gray-900 text-white shadow-md' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${filter.id === 'sold_out' ? 'hidden md:inline-flex' : 'inline-flex'} items-center gap-1.5 ${selectedQuickFilter === filter.id ? 'bg-gray-900 text-white shadow-md' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
                                     >
                                         <Icon size={12} />
                                         <span>{filter.label}</span>
@@ -1537,6 +1544,7 @@ export default function POSPanel({
                             })}
                         </div>
                         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                            <button type="button" aria-pressed={selectedQuickFilter === 'sold_out'} onClick={() => setSelectedQuickFilter(selectedQuickFilter === 'sold_out' ? 'all' : 'sold_out')} className={`md:hidden shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${selectedQuickFilter === 'sold_out' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700'}`}>{language === 'th' ? 'สินค้าหมด' : 'Sold out'} {highlightedCounts.soldOut}</button>
                             {categories.map((cat) => (
                                 <button
                                     key={cat.label}
@@ -1597,7 +1605,7 @@ export default function POSPanel({
                                     const prices = getProductPriceRange(entry.products);
                                     return <details key={entry.key} className="col-span-full rounded-xl border border-pink-100 bg-white" data-pos-family={entry.key}>
                                         <summary className="flex min-h-11 cursor-pointer items-center gap-3 p-3">
-                                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg"><ProductMedia product={representative} getImageUrl={getProductImage} /></div>
+                                            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg"><ProductMedia product={representative} getImageUrl={getProductImage} />{entry.products.every(isPosSoldOut) && <span className="absolute inset-x-0 bottom-0 bg-slate-900/85 py-0.5 text-center text-[9px] font-black text-white">{uiText(language, 'Sold Out')}</span>}</div>
                                             <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-black">{entry.label}</h3><p className="text-xs text-pink-700">{representative.category} · {entry.products.length} {language === 'th' ? 'รายการสินค้า' : 'items'}</p><p className="text-xs text-gray-500">{representative.tags?.join(' · ')}</p></div>
                                             <span className="text-sm font-bold text-pink-700">{prices.min === prices.max ? formatPrice(prices.min, representative.currency) : `${formatPrice(prices.min, representative.currency)}–${formatPrice(prices.max, representative.currency)}`}</span>
                                         </summary>

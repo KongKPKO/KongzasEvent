@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n';
 import { listPromotionDefinitions, PromotionSaveConflict, saveEventPromotionSelection, toPromotionError, type SaveEventPromotionSelectionInput } from '../../lib/promotions';
 import { promotionLocalDateTime } from '../../lib/promotionDateTime';
 import type { PromotionCombinationPolicy, PromotionDefinition, PromotionEventPhase } from '../../types/promotion';
-import { promotionV1RuleText, type PromotionEditorProduct } from './PromotionV1Editor';
+import { PromotionV1Rule, type PromotionEditorProduct } from './PromotionV1Editor';
 import './promotion-workspace.css';
 
 const phases: PromotionEventPhase[] = ['preorder', 'live', 'postorder'];
@@ -101,7 +101,7 @@ export default function EventPromotionPicker({ artistId, eventId, eventName, pro
         const selected = definition.assignments.filter(item => item.event_id === eventId && !item.is_paused);
         return <article className="promotion-saved" key={definition.id}>
           <div className="promotion-toolbar"><div><p className="promotion-help">{selected.length ? (th ? 'เลือกใช้ในอีเวนต์นี้แล้ว' : 'Selected for this event') : (th ? 'ยังไม่ได้เลือกใช้' : 'Not selected')}</p><h4>{definition.name}</h4></div><button id={`event-promotion-${definition.id}`} className="promotion-button" disabled={saving || definition.lifecycle_status !== 'ready'} onClick={() => open(definition)}><Settings2 size={16} />{selected.length ? (th ? 'ตั้งค่าการใช้งาน' : 'Usage settings') : (th ? 'เลือกใช้' : 'Select promotion')}</button></div>
-          <p className="promotion-saved-rule">{definition.v1_config ? promotionV1RuleText(definition.v1_config, products, th) : definition.promotion_type === 'quantity_discount' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น ลด ฿${definition.reward_value}` : `Every ${definition.buy_quantity} items, save ฿${definition.reward_value}`) : definition.promotion_type === 'quantity_gift' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น รับฟรี ${definition.reward_quantity} ชิ้น` : `Every ${definition.buy_quantity} items, get ${definition.reward_quantity} free`) : definition.promotion_type === 'spend_tier_gift' ? (th ? 'รับของแถมตามยอดซื้อ' : 'Gifts by spending tier') : ''}</p>
+          {definition.v1_config ? <PromotionV1Rule config={definition.v1_config} products={products} th={th} /> : <p className="promotion-saved-rule">{definition.promotion_type === 'quantity_discount' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น ลด ฿${definition.reward_value}` : `Every ${definition.buy_quantity} items, save ฿${definition.reward_value}`) : definition.promotion_type === 'quantity_gift' ? (th ? `ทุก ${definition.buy_quantity} ชิ้น รับฟรี ${definition.reward_quantity} ชิ้น` : `Every ${definition.buy_quantity} items, get ${definition.reward_quantity} free`) : definition.promotion_type === 'spend_tier_gift' ? (th ? 'รับของแถมตามยอดซื้อ' : 'Gifts by spending tier') : ''}</p>}
           <p className="promotion-help">{selected.map(item => phaseName(item.event_phase!)).join(' · ')}</p>
           {definition.lifecycle_status !== 'ready' && <p className="promotion-help">{th ? 'บันทึกรายละเอียดที่เมนูโปรโมชั่นของร้านให้เรียบร้อยก่อนเลือกใช้' : 'Complete this offer in Store promotions before selecting it.'}</p>}
           {editing?.id === definition.id && <form onSubmit={save} aria-label={th ? `เลือกใช้ ${definition.name}` : `Assign ${definition.name}`}>

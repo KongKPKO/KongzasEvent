@@ -63,6 +63,18 @@ const productLabel = (product: PromotionEditorProduct) => [
 
 const money = (value: number) => new Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 
+function promotionV1RewardsText(config: PromotionV1Config, products: PromotionEditorProduct[], th: boolean) {
+  const name = (id: string) => productLabel(products.find((product) => product.id === id) || { id, name: th ? 'สินค้าที่ไม่อยู่ในคลัง' : 'Product no longer in catalog' });
+  return [
+    config.discount ? config.discount.kind === 'fixed'
+      ? (th ? `ลด ฿${money(config.discount.value)}` : `save ฿${money(config.discount.value)}`)
+      : (th ? `ลด ${money(config.discount.value)}%` : `save ${money(config.discount.value)}%`) : '',
+    config.gift ? `${th ? 'รับ' : 'get'} ${config.gift.selection_mode === 'customer_choice' ? (config.gift.product_ids || []).map(name).join(th ? ' หรือ ' : ' or ') : name(config.gift.product_id)} ×${config.gift.quantity}${config.gift.limit === null ? '' : ` (${th ? 'จำกัด' : 'limit'} ${config.gift.limit})`}` : '',
+    config.activity ? `${th ? 'รับสิทธิ์กิจกรรม' : 'get activity rights'} ${config.activity.name} ×${config.activity.quantity}${th ? (config.condition.kind === 'spend' ? ' ทุกยอดที่ครบ' : ' ทุกครั้งที่ครบเงื่อนไข') : ' per completed condition'}` : '',
+  ].filter(Boolean).join(th ? ' พร้อม ' : ' and ');
+
+}
+
 export function promotionV1RuleText(config: PromotionV1Config, products: PromotionEditorProduct[], th: boolean) {
   const name = (id: string) => productLabel(products.find((product) => product.id === id) || { id, name: th ? 'สินค้าที่ไม่อยู่ในคลัง' : 'Product no longer in catalog' });
   const condition = config.condition.kind === 'quantity'
@@ -72,14 +84,14 @@ export function promotionV1RuleText(config: PromotionV1Config, products: Promoti
       : config.condition.kind === 'product'
         ? (th ? `ซื้อรายการใดก็ได้: ${config.condition.items.map(item => `${name(item.product_id)} ×${item.quantity}`).join(' หรือ ')}` : `Buy any: ${config.condition.items.map(item => `${name(item.product_id)} ×${item.quantity}`).join(' or ')}`)
         : `${th ? 'ซื้อครบชุด' : 'Complete the set'} ${config.condition.items.map((item) => `${name(item.product_id)} ×${item.quantity}`).join(' + ')}`;
-  const rewards = [
-    config.discount ? config.discount.kind === 'fixed'
-      ? (th ? `ลด ฿${money(config.discount.value)}` : `save ฿${money(config.discount.value)}`)
-      : (th ? `ลด ${money(config.discount.value)}%` : `save ${money(config.discount.value)}%`) : '',
-    config.gift ? `${th ? 'รับ' : 'get'} ${config.gift.selection_mode === 'customer_choice' ? (config.gift.product_ids || []).map(name).join(th ? ' หรือ ' : ' or ') : name(config.gift.product_id)} ×${config.gift.quantity}${config.gift.limit === null ? '' : ` (${th ? 'จำกัด' : 'limit'} ${config.gift.limit})`}` : '',
-    config.activity ? `${th ? 'รับสิทธิ์กิจกรรม' : 'get activity rights'} ${config.activity.name} ×${config.activity.quantity}${th ? (config.condition.kind === 'spend' ? ' ทุกยอดที่ครบ' : ' ทุกครั้งที่ครบเงื่อนไข') : ' per completed condition'}` : '',
-  ].filter(Boolean).join(th ? ' พร้อม ' : ' and ');
-  return `${condition} ${th ? 'รับ' : '—'} ${rewards}`;
+  return `${condition} ${th ? '' : '— '}${promotionV1RewardsText(config, products, th)}`;
+}
+
+export function PromotionV1Rule({ config, products, th }: { config: PromotionV1Config; products: PromotionEditorProduct[]; th: boolean }) {
+  if (config.condition.kind !== 'product' && config.condition.kind !== 'recipe') return <p className="promotion-saved-rule">{promotionV1RuleText(config, products, th)}</p>;
+  const condition = config.condition;
+  const rewards = promotionV1RewardsText(config, products, th);
+  return <div className="promotion-saved-rule"><p>{condition.kind === 'product' ? (th ? 'ซื้อรายการใดก็ได้:' : 'Buy any:') : (th ? 'ซื้อครบชุด:' : 'Complete the set:')}</p><ul className="my-2 list-disc pl-5">{condition.items.map(item => <li key={item.product_id}>{productLabel(products.find(product => product.id === item.product_id) || { id: item.product_id, name: th ? 'สินค้าที่ไม่อยู่ในคลัง' : 'Product no longer in catalog' })} ×{item.quantity}</li>)}</ul>{rewards && <p>{rewards}</p>}</div>;
 }
 
 function ExactSkuPicker({ products, onPick, th, disabledIds = [], gift = false }: { products: PromotionEditorProduct[]; onPick: (id: string) => void; th: boolean; disabledIds?: string[]; gift?: boolean }) {
@@ -112,8 +124,6 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
   const [discountKind, setDiscountKind] = useState<'fixed' | 'percentage'>(saved?.discount?.kind || 'fixed');
   const [discountValue, setDiscountValue] = useState(String(saved?.discount?.value || 50));
   const [giftEnabled, setGiftEnabled] = useState(Boolean(saved?.gift));
-  const [giftProductId, setGiftProductId] = useState(saved?.gift?.product_id || '');
-  const [giftMode, setGiftMode] = useState<'fixed' | 'customer_choice'>(saved?.gift?.selection_mode || 'fixed');
   const [giftProductIds, setGiftProductIds] = useState<string[]>(saved?.gift?.product_ids || (saved?.gift?.product_id ? [saved.gift.product_id] : []));
   const [giftQuantity, setGiftQuantity] = useState(String(saved?.gift?.quantity || 1));
   const [giftLimit, setGiftLimit] = useState(saved?.gift?.limit === null || saved?.gift?.limit === undefined ? '' : String(saved.gift.limit));
@@ -144,10 +154,10 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
         : conditionKind === 'product' ? { kind: 'product', items: exactItems }
           : { kind: 'recipe', items: exactItems },
     discount: discountEnabled ? { kind: discountKind, value: Number(discountValue) } : null,
-    gift: giftEnabled ? { product_id: giftMode === 'customer_choice' ? (giftProductIds[0] || '') : giftProductId, quantity: Number(giftQuantity), limit: giftLimit.trim() ? Number(giftLimit) : null, ...(giftMode === 'customer_choice' ? { selection_mode: 'customer_choice' as const, product_ids: giftProductIds } : {}) } : null,
+    gift: giftEnabled ? { product_id: giftProductIds[0] || '', quantity: Number(giftQuantity), limit: giftLimit.trim() ? Number(giftLimit) : null, ...(giftProductIds.length > 1 ? { selection_mode: 'customer_choice' as const, product_ids: giftProductIds } : {}) } : null,
     activity: activityEnabled ? { name: activityName.trim(), instructions: activityInstructions.trim(), quantity: Number(activityQuantity) } : null,
   };
-  const draftSnapshot = JSON.stringify({ name, conditionKind, conditionValue, conditionItems, targetType, productLine, category, tag, targetProductIds, discountEnabled, discountKind, discountValue, giftEnabled, giftProductId, giftMode, giftProductIds, giftQuantity, giftLimit, activityEnabled, activityName, activityInstructions, activityQuantity, assignmentKeys, startsAt, endsAt, combinationPolicy });
+  const draftSnapshot = JSON.stringify({ name, conditionKind, conditionValue, conditionItems, targetType, productLine, category, tag, targetProductIds, discountEnabled, discountKind, discountValue, giftEnabled, giftProductIds, giftQuantity, giftLimit, activityEnabled, activityName, activityInstructions, activityQuantity, assignmentKeys, startsAt, endsAt, combinationPolicy });
   const initialDraft = useRef(draftSnapshot);
   const dirty = draftSnapshot !== initialDraft.current;
   const leaveMessage = th ? 'มีการแก้ไขโปรโมชั่นที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved promotion changes. Leave?';
@@ -194,7 +204,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
     setPreviewError('');
     setPreviewing(false);
     return () => { previewRequest.current += 1; };
-  }, [name, conditionKind, conditionValue, conditionItems, targetType, productLine, category, tag, targetProductIds, discountEnabled, discountKind, discountValue, giftEnabled, giftProductId, giftMode, giftProductIds, giftQuantity, giftLimit, activityEnabled, activityName, activityInstructions, activityQuantity, startsAt, endsAt, assignmentKeys, combinationPolicy, cart, previewChannel]);
+  }, [name, conditionKind, conditionValue, conditionItems, targetType, productLine, category, tag, targetProductIds, discountEnabled, discountKind, discountValue, giftEnabled, giftProductIds, giftQuantity, giftLimit, activityEnabled, activityName, activityInstructions, activityQuantity, startsAt, endsAt, assignmentKeys, combinationPolicy, cart, previewChannel]);
 
   const failureMessage = (error: unknown, previewFailure = false) => {
     const code = toPromotionError(error).code;
@@ -219,7 +229,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
     if (conditionKind !== 'product' && conditionKind !== 'recipe' && (targetType === 'tag' || targetType === 'category_tag') && !tag.trim()) return th ? 'เลือกแท็ก' : 'Choose a tag.';
     if (!discountEnabled && !giftEnabled && !activityEnabled) return th ? 'เลือกสิทธิประโยชน์อย่างน้อย 1 อย่าง' : 'Choose at least one benefit.';
     if (discountEnabled && (!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || (discountKind === 'percentage' && Number(discountValue) > 100))) return th ? 'กรอกส่วนลดให้ถูกต้อง (เปอร์เซ็นต์ไม่เกิน 100)' : 'Enter a valid discount (percentage up to 100).';
-    if (giftEnabled && ((giftMode === 'fixed' ? !giftProductId : giftProductIds.length < 2) || !Number.isInteger(Number(giftQuantity)) || Number(giftQuantity) < 1)) return th ? 'เลือกสินค้าของแถมและจำนวนให้ครบ (หากให้ลูกค้าเลือก ต้องมีอย่างน้อย 2 แบบ)' : 'Choose a gift and quantity (customer choice needs at least two options).';
+    if (giftEnabled && (giftProductIds.length === 0 || !Number.isInteger(Number(giftQuantity)) || Number(giftQuantity) < 1)) return th ? 'เลือกสินค้าของแถมและจำนวนให้ครบ' : 'Choose a gift and quantity.';
     if (giftEnabled && giftLimit && (!Number.isInteger(Number(giftLimit)) || Number(giftLimit) < 1)) return th ? 'จำนวนสิทธิ์ต้องเป็นเลขจำนวนเต็มมากกว่า 0' : 'Gift limit must be a positive integer.';
     if (activityEnabled && !activityName.trim()) return th ? 'กรอกชื่อกิจกรรม' : 'Enter the activity name.';
     if (activityEnabled && (!Number.isInteger(Number(activityQuantity)) || Number(activityQuantity) < 1)) return th ? 'จำนวนสิทธิ์กิจกรรมต้องเป็นเลขจำนวนเต็มมากกว่า 0' : 'Activity rights must be a positive integer.';
@@ -309,7 +319,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
   };
   const benefitSummary = [
     discountEnabled ? (discountKind === 'fixed' ? `${th ? 'ลด' : 'Save'} ฿${discountValue || '—'}` : `${th ? 'ลด' : 'Save'} ${discountValue || '—'}%`) : '',
-    giftEnabled ? `${th ? 'ของแถม' : 'Gift'} ${giftMode === 'customer_choice' ? giftProductIds.map(targetProductName).join(th ? ' หรือ ' : ' or ') || '—' : giftProductId ? targetProductName(giftProductId) : '—'} ×${giftQuantity || '—'}` : '',
+    giftEnabled ? `${th ? 'ของแถม' : 'Gift'} ${giftProductIds.map(targetProductName).join(th ? ' หรือ ' : ' or ') || '—'} ×${giftQuantity || '—'}` : '',
     activityEnabled ? `${th ? 'สิทธิ์กิจกรรม' : 'Activity rights'} ${activityName.trim() || '—'} ×${activityQuantity || '—'} ${th ? (conditionKind === 'spend' ? 'ต่อยอดที่ครบ' : 'ต่อเงื่อนไขที่ครบ') : 'per completed condition'}` : '',
   ].filter(Boolean).join(' + ');
 
@@ -329,7 +339,7 @@ export default function PromotionV1Editor({ artistId, products, events, campaign
           </div>
 
           <div className="promotion-section"><h4><span className="promotion-step">3</span>{th ? 'สิทธิประโยชน์' : 'Benefits'}</h4><label className="promotion-reward-toggle"><input type="checkbox" checked={discountEnabled} onChange={(event) => setDiscountEnabled(event.target.checked)} /><span><strong>{th ? 'ส่วนลด' : 'Discount'}</strong><small>{th ? 'เลือกได้ 1 แบบ' : 'One discount type'}</small></span></label>{discountEnabled && <><div className="grid gap-3 md:grid-cols-2"><label><span className={labelClass}>{th ? 'รูปแบบส่วนลด' : 'Discount type'}</span><select className={inputClass} value={discountKind} onChange={(event) => setDiscountKind(event.target.value as 'fixed' | 'percentage')}><option value="fixed">{th ? 'ลดเป็นบาท' : 'Fixed amount'}</option><option value="percentage">{th ? 'ลดเป็นเปอร์เซ็นต์' : 'Percentage'}</option></select></label><label><span className={labelClass}>{discountKind === 'fixed' ? (th ? 'จำนวนเงิน (บาท)' : 'Amount (THB)') : (th ? 'เปอร์เซ็นต์' : 'Percent')}</span><input type="number" min="0.01" max={discountKind === 'percentage' ? 100 : undefined} step="0.01" value={discountValue} onChange={(event) => setDiscountValue(event.target.value)} className={inputClass} /></label></div>{discountKind === 'percentage' && <p className="promotion-help">{th ? 'คิดเปอร์เซ็นต์จากสินค้าที่ครบแต่ละกลุ่ม และปัดผลรวมเป็น 2 ตำแหน่ง' : 'Percentage applies to each complete group and the total is rounded to 2 decimals.'}</p>}</>}
-            <label className="promotion-reward-toggle"><input type="checkbox" checked={giftEnabled} onChange={(event) => setGiftEnabled(event.target.checked)} /><span><strong>{th ? 'ของแถมจากสินค้าที่มีอยู่' : 'Gift from an existing product'}</strong><small>{th ? 'ใช้สต็อกจริงของสินค้า' : 'Uses the product’s real stock'}</small></span></label>{giftEnabled && <><label><span className={labelClass}>{th ? 'การเลือกของแถม' : 'Gift selection'}</span><select className={inputClass} value={giftMode} onChange={event => { const mode = event.target.value as 'fixed' | 'customer_choice'; setGiftMode(mode); if (mode === 'customer_choice' && giftProductId) setGiftProductIds(ids => ids.includes(giftProductId) ? ids : [...ids, giftProductId]); if (mode === 'fixed' && !giftProductId && giftProductIds.length) setGiftProductId(giftProductIds[0]); }}><option value="fixed">{th ? 'ร้านกำหนด 1 แบบ' : 'One fixed gift'}</option><option value="customer_choice">{th ? 'ลูกค้าเลือกจากหลายแบบ' : 'Customer chooses'}</option></select></label><ExactSkuPicker products={products} th={th} gift disabledIds={giftMode === 'customer_choice' ? giftProductIds : []} onPick={id => giftMode === 'fixed' ? setGiftProductId(id) : setGiftProductIds(ids => [...ids, id])} />{(giftMode === 'fixed' ? (giftProductId ? [giftProductId] : []) : giftProductIds).map(id => <div key={id} className="promotion-selected-gift"><Gift size={17} /><span>{targetProductName(id)}</span><button type="button" onClick={() => giftMode === 'fixed' ? setGiftProductId('') : setGiftProductIds(ids => ids.filter(item => item !== id))}>{th ? 'นำออก' : 'Remove'}</button></div>)}<div className="grid gap-3 md:grid-cols-2"><label><span className={labelClass}>{th ? 'ของแถมต่อสิทธิ์ (ชิ้น)' : 'Gift quantity per reward'}</span><input type="number" min="1" step="1" value={giftQuantity} onChange={(event) => setGiftQuantity(event.target.value)} className={inputClass} /></label><label><span className={labelClass}>{th ? 'จำกัดจำนวนสิทธิ์ทั้งหมด' : 'Total gift limit'}</span><input type="number" min="1" step="1" value={giftLimit} onChange={(event) => setGiftLimit(event.target.value)} placeholder={th ? 'ไม่จำกัด' : 'Unlimited'} className={inputClass} /></label></div><p className="promotion-help">{th ? 'เพิ่มสินค้าของแถมเข้าทุกช่องทางที่เลือกและเปิดใช้งานก่อนบันทึก โควตานับจำนวนของแถมเป็นชิ้นรวมทุกช่องทาง ระบบตรวจสต็อกอีกครั้งตอนสั่งซื้อ' : 'Add and enable the gift product in every selected channel before saving. The limit counts gift units across all channels; stock is rechecked at checkout.'}</p></>}
+            <label className="promotion-reward-toggle"><input type="checkbox" checked={giftEnabled} onChange={(event) => setGiftEnabled(event.target.checked)} /><span><strong>{th ? 'ของแถมจากสินค้าที่มีอยู่' : 'Gift from an existing product'}</strong><small>{th ? 'ใช้สต็อกจริงของสินค้า' : 'Uses the product’s real stock'}</small></span></label>{giftEnabled && <><ExactSkuPicker products={products} th={th} gift disabledIds={giftProductIds} onPick={id => setGiftProductIds(ids => [...ids, id])} />{giftProductIds.map(id => <div key={id} className="promotion-selected-gift"><Gift size={17} /><span>{targetProductName(id)}</span><button type="button" onClick={() => setGiftProductIds(ids => ids.filter(item => item !== id))}>{th ? 'นำออก' : 'Remove'}</button></div>)}<p className="promotion-help">{giftProductIds.length > 1 ? (th ? 'ลูกค้าเลือกของแถมจากรายการที่เพิ่ม' : 'Customers choose a gift from these options.') : (th ? 'เพิ่มของแถมได้หลายแบบ หากมีหลายแบบลูกค้าจะเป็นผู้เลือก' : 'Add multiple gifts to let customers choose.')}</p><div className="grid gap-3 md:grid-cols-2"><label><span className={labelClass}>{th ? 'ของแถมต่อสิทธิ์ (ชิ้น)' : 'Gift quantity per reward'}</span><input type="number" min="1" step="1" value={giftQuantity} onChange={(event) => setGiftQuantity(event.target.value)} className={inputClass} /></label><label><span className={labelClass}>{th ? 'จำกัดจำนวนสิทธิ์ทั้งหมด' : 'Total gift limit'}</span><input type="number" min="1" step="1" value={giftLimit} onChange={(event) => setGiftLimit(event.target.value)} placeholder={th ? 'ไม่จำกัด' : 'Unlimited'} className={inputClass} /></label></div><p className="promotion-help">{th ? 'เพิ่มสินค้าของแถมเข้าทุกช่องทางที่เลือกและเปิดใช้งานก่อนบันทึก โควตานับจำนวนของแถมเป็นชิ้นรวมทุกช่องทาง ระบบตรวจสต็อกอีกครั้งตอนสั่งซื้อ' : 'Add and enable the gift product in every selected channel before saving. The limit counts gift units across all channels; stock is rechecked at checkout.'}</p></>}
             <label className="promotion-reward-toggle"><input type="checkbox" checked={activityEnabled} onChange={(event) => setActivityEnabled(event.target.checked)} /><span><strong>{th ? 'สิทธิ์เข้าร่วมกิจกรรม' : 'Activity participation rights'}</strong><small>{conditionKind === 'spend' ? (th ? 'ให้สิทธิ์ซ้ำทุกยอดสุทธิที่ครบ' : 'Repeats for every completed net-spend threshold') : (th ? 'ให้สิทธิ์ซ้ำทุกครั้งที่ครบเงื่อนไขซื้อ' : 'Repeats for each completed purchase condition')}</small></span></label>{activityEnabled && <div className="promotion-subsection promotion-activity-fields"><div className="grid gap-3 md:grid-cols-2"><label><span className={labelClass}>{th ? 'ชื่อกิจกรรม' : 'Activity name'}</span><input value={activityName} onChange={(event) => setActivityName(event.target.value)} className={inputClass} placeholder={th ? 'เช่น จับฉลากของรางวัล' : 'e.g. Prize draw'} /></label><label><span className={labelClass}>{th ? (conditionKind === 'spend' ? 'จำนวนสิทธิ์ต่อยอดที่ครบ' : 'จำนวนสิทธิ์ต่อเงื่อนไขที่ครบ') : 'Rights per completed condition'}</span><input type="number" min="1" step="1" value={activityQuantity} onChange={(event) => setActivityQuantity(event.target.value)} className={inputClass} /></label></div><label><span className={labelClass}>{th ? 'วิธีใช้สิทธิ์ (ไม่บังคับ)' : 'Participation instructions (optional)'}</span><textarea rows={3} value={activityInstructions} onChange={(event) => setActivityInstructions(event.target.value)} className={inputClass} placeholder={th ? 'เช่น แสดงเลขออเดอร์ที่บูธหลังยืนยันการชำระเงิน' : 'e.g. Show the confirmed order number at the booth'} /></label><p className="promotion-help">{th ? 'รับสิทธิ์ซ้ำตามจำนวนครั้งที่ครบเงื่อนไขในออเดอร์นี้ เงื่อนไขยอดซื้อคิดหลังส่วนลดทั้งหมด เศษยอดและจำนวนไม่สะสมไปออเดอร์ถัดไป ของแถมไม่นับรวม ยืนยันสิทธิ์หลังชำระเงินสำเร็จ โดยไม่จองสต็อกหรือเก็บชื่อผู้เข้าร่วม' : 'Rights repeat for each completed condition in this order. Spend thresholds use merchandise net of all discounts. Remainders do not carry over and gifts do not count. Confirmed only after successful payment; no stock or participant names are reserved.'}</p></div>}
           </div>
 

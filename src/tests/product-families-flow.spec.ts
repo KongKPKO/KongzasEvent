@@ -53,7 +53,7 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
   test.setTimeout(90_000);
   const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
   must(product);
-  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 1, stock_reserved: 1, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
   await new LoginPage(page).goto();
   await new LoginPage(page).login(email, password);
   await expect(page).toHaveURL(/manage-events/);
@@ -86,6 +86,14 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     const eventTable = page.getByRole('region', { name: 'Event products and stock table' });
     const eventRow = eventTable.locator('.event-stock-grid').filter({ hasText: 'Simple service' });
     await expect(eventRow).toBeVisible();
+    const bar = eventRow.getByTestId('event-stock-bar');
+    await expect(bar).toBeVisible();
+    await expect(eventRow.getByText('3', { exact: true }).first()).toBeVisible();
+    const eventColorsMatch = await bar.evaluate(element => {
+      const numbers = [...element.previousElementSibling!.querySelectorAll('.font-black')];
+      return [...element.children].every((segment, index) => getComputedStyle(segment).backgroundColor === getComputedStyle(numbers[index]).color);
+    });
+    expect(eventColorsMatch).toBe(true);
     if (width === 390) {
       const left = (await eventTable.boundingBox())!.x + 1;
       await eventTable.evaluate(element => { element.scrollLeft = 500; });
@@ -98,6 +106,7 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`event-table-${width}.png`) });
   }
+  must(await service.from('event_products').update({ stock_sold: 0, stock_reserved: 0 }).eq('event_id', eventId).eq('product_id', product.data!.id));
 });
 
 test('catalog table shows each item image and respects cleared photo galleries', async ({ page }) => {

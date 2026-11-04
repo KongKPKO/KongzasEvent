@@ -138,12 +138,26 @@ test.describe('online campaign', () => {
     await expect(cards).toHaveAttribute('aria-pressed', 'true');
     const stock = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
     await expect(stock).toBeVisible();
+    const card = stock.locator('xpath=ancestor::tr');
+    const stockSummary = card.locator('.campaign-stock-summary');
+    const stockBar = card.getByTestId('campaign-stock-bar');
+    await expect(stockSummary).toBeVisible();
+    await expect(stockBar).toBeVisible();
+    await expect(card.locator('.campaign-card-redundant:visible')).toHaveCount(0);
+    const matchingColors = await stockSummary.evaluate(element => {
+      const numbers = [...element.querySelectorAll('strong')];
+      const segments = [...element.querySelectorAll('[data-testid="campaign-stock-bar"] > div')];
+      return numbers.every((number, index) => getComputedStyle(number).color === getComputedStyle(segments[index]).backgroundColor);
+    });
+    expect(matchingColors).toBe(true);
+    const initialAvailable = await stockSummary.locator('strong').nth(1).innerText();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const saved = await fixture.service.from('online_campaign_products').select('stock_total,price_override,max_quantity_per_order').eq('campaign_id', campaignId).eq('product_id', productId).single();
     if (saved.error) throw saved.error;
     try {
       const next = Number(saved.data.stock_total) - 1;
       await stock.fill(String(next));
+      await expect(stockSummary.locator('strong').nth(1)).toHaveText(String(Number(initialAvailable) - 1));
       await stock.blur();
       page.once('dialog', dialog => void dialog.dismiss());
       await page.getByRole('button', { name: /Orders|คำสั่งซื้อ/, exact: true }).click();
@@ -160,6 +174,7 @@ test.describe('online campaign', () => {
       await table.click();
       await expect(table).toHaveAttribute('aria-pressed', 'true');
       await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
+      await expect(stockSummary).toBeHidden();
       await cards.click();
       await expect(stock).toHaveValue(String(next));
     } finally {

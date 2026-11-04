@@ -68,12 +68,13 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     const giftSearch = form.getByLabel('ค้นหาสินค้าของแถม');
     await giftSearch.fill('GIFT-HAIR');
     await form.getByRole('button', { name: /Hairclip Tamon.*80/ }).click();
-    await form.getByLabel('การเลือกของแถม').selectOption('customer_choice');
     await giftSearch.fill('GIFT-HSIN');
     await form.getByRole('button', { name: /Hairclip Hsin.*80/ }).click();
     await expect(review).toContainText('Hairclip Hsin');
     await expect(review).toContainText('Hairclip Tamon');
-    await form.getByLabel('การเลือกของแถม').selectOption('fixed');
+    await expect(form.getByLabel('การเลือกของแถม')).toHaveCount(0);
+    await form.locator('.promotion-selected-gift').filter({ hasText: 'Hairclip Hsin' }).getByRole('button', { name: 'นำออก' }).click();
+    await expect(form.locator('.promotion-selected-gift')).toHaveCount(1);
     await form.getByLabel('จำกัดจำนวนสิทธิ์ทั้งหมด').fill('20');
 
     await expect(review).toContainText('Mavuika A3');
@@ -172,6 +173,22 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
       gift: { product_id: giftId, quantity: 1, limit: 20 },
       activity: null,
     });
+    const originalPromotion = page.locator('article').filter({ has: page.getByRole('heading', { name: 'ซื้อครบชุด Mavuika รับส่วนลดและของแถม', exact: true }) });
+    await originalPromotion.getByRole('button', { name: 'แก้ไขโปรโมชัน' }).click();
+    await expect(form.locator('.promotion-selected-gift')).toHaveCount(1);
+    await form.getByLabel('ค้นหาสินค้าของแถม').fill('GIFT-HSIN');
+    await form.getByRole('button', { name: /Hairclip Hsin.*80/ }).click();
+    await form.getByRole('button', { name: 'บันทึกการแก้ไข', exact: true }).click();
+    await expect(page.locator('.promotion-notice')).toContainText('บันทึกโปรโมชันแล้ว');
+    const multiple = await service.from('artist_promotions').select('v1_config').eq('id', saved.data?.id).single();
+    must(multiple);
+    expect(multiple.data?.v1_config.gift).toMatchObject({ product_id: giftId, product_ids: [giftId, secondGiftId], selection_mode: 'customer_choice' });
+    must(await service.from('artist_promotions').update({ v1_config: { ...multiple.data!.v1_config, condition: { kind: 'product', items: [{ product_id: firstProductId, quantity: 1 }, { product_id: secondProductId, quantity: 1 }] } } }).eq('id', saved.data?.id));
+    await page.reload();
+    const itemized = page.locator('article').filter({ has: page.getByRole('heading', { name: 'ซื้อครบชุด Mavuika รับส่วนลดและของแถม', exact: true }) }).locator('.promotion-saved-rule li');
+    await expect(itemized).toHaveCount(2);
+    await expect(itemized.nth(0)).toContainText('Mavuika A3');
+    await expect(itemized.nth(1)).toContainText('Mavuika A4');
     must(await service.from('artist_promotions').update({
       v1_config: {
         version: 1,

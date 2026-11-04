@@ -616,9 +616,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          ? Math.max(stockLimit - eventAllocated, 0)
          : Math.max((product.stock_total || 0) - eventAllocated, 0);
       const reservedSold = Math.max((draft.stock_reserved || 0) + (draft.stock_sold || 0), 0);
-      const pool = Math.max(product.stock_total || 0, centralAvailable + eventAllocated + reservedSold, 1);
+      const eventAvailable = Math.max(eventAllocated - reservedSold, 0);
+      const pool = Math.max(product.stock_total || 0, centralAvailable + eventAllocated, 1);
       const centralPct = Math.max(0, Math.min(100, (centralAvailable / pool) * 100));
-      const eventPct = Math.max(0, Math.min(100, (eventAllocated / pool) * 100));
+      const eventPct = Math.max(0, Math.min(100, (eventAvailable / pool) * 100));
       const reservedPct = Math.max(0, Math.min(100, (reservedSold / pool) * 100));
 
       return (
@@ -629,18 +630,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Central')}</div>
                </div>
                <div>
-                  <div className="font-black text-pink-700">{eventAllocated}</div>
-                  <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Event')}</div>
+                  <div className="font-black text-blue-700">{eventAvailable}</div>
+                  <div className="font-bold uppercase tracking-wide text-gray-400">{language === 'th' ? 'เหลือขาย' : 'Available'}</div>
                </div>
                <div>
                   <div className="font-black text-amber-700">{reservedSold}</div>
                   <div className="font-bold uppercase tracking-wide text-gray-400">{uiText(language, 'Sold/held')}</div>
                </div>
             </div>
-            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
-               <div className="bg-emerald-400" style={{ width: `${centralPct}%` }} />
-               <div className="bg-pink-400" style={{ width: `${eventPct}%` }} />
-               {reservedSold > 0 && <div className="bg-amber-400" style={{ width: `${reservedPct}%` }} />}
+            <div data-testid="event-stock-bar" className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-gray-200">
+               <div className="bg-emerald-700" style={{ width: `${centralPct}%` }} />
+               <div className="bg-blue-700" style={{ width: `${eventPct}%` }} />
+               {reservedSold > 0 && <div className="bg-amber-700" style={{ width: `${reservedPct}%` }} />}
             </div>
             <div className={compact ? 'mt-1 text-[10px] font-bold text-gray-400' : 'mt-1 text-[11px] font-bold text-gray-600'}>
                {uiText(language, 'Pool')} {pool} · {uiText(language, 'Move central stock into this event')}

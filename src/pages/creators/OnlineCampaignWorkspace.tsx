@@ -213,7 +213,8 @@ export default function OnlineCampaignWorkspace() {
         || (canManage && ['payment_submitted', 'payment_submitted_late', 'refund_pending'].includes(order.payment_status));
       const matchesFilter = orderFilter === 'all'
         || (orderFilter === 'needs_action' && needsAction)
-        || (orderFilter === 'payment' && ['payment_submitted', 'payment_submitted_late', 'refund_pending'].includes(order.payment_status))
+        || (orderFilter === 'review' && order.payment_status === 'payment_submitted')
+        || (orderFilter === 'payment' && ['payment_submitted_late', 'refund_pending'].includes(order.payment_status))
         || (orderFilter === 'shipping' && order.fulfillment_status === 'awaiting_shipment')
         || (orderFilter === 'pickup' && order.fulfillment_status === 'awaiting_pickup')
         || (orderFilter === 'cancelled' && (order.status === 'cancelled' || ['payment_expired', 'payment_cancelled', 'payment_rejected', 'refunded'].includes(order.payment_status)))
@@ -867,7 +868,12 @@ export default function OnlineCampaignWorkspace() {
                               <td data-label={t('campaignAvailableStock')} className="px-2 py-2 text-center text-sm font-black text-emerald-700">{summary.available}</td>
                               <td data-label={t('campaignCurrentStock')} className="px-2 py-2 text-center">
                                 {allocated && isIncluded ? (
-                                  <input key={`stock-${allocated.stock_total}`} aria-label={`${t('campaignAllocatedStock')} ${product.name}`} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} max={maxCampaignStock} defaultValue={campaignStock} onBlur={(event) => void updateAllocation(productId, Number(event.target.value), allocated.price_override ?? null)} className="h-11 w-20 rounded-xl border border-gray-200 px-3 text-center text-sm font-black" />
+                                  <div>
+                                    <input key={`stock-${allocated.stock_total}`} aria-label={`${t('campaignAllocatedStock')} ${product.name}`} type="number" min={Number(allocated.stock_reserved || 0) + Number(allocated.stock_sold || 0)} max={maxCampaignStock} defaultValue={campaignStock} onBlur={(event) => void updateAllocation(productId, Number(event.target.value), allocated.price_override ?? null)} className="h-11 w-20 rounded-xl border border-gray-200 px-3 text-center text-sm font-black" />
+                                    {allocated.supply_mode !== 'production' && !allocated.is_unlimited && (
+                                      <div className="mt-1 text-xs font-bold text-emerald-700">{t('campaignStockRemaining')}: {allocated.available_quantity ?? Math.max(campaignStock - Number(allocated.stock_reserved || 0) - Number(allocated.stock_sold || 0), 0)}</div>
+                                    )}
+                                  </div>
                                 ) : <span className="text-sm font-black text-pink-700">0</span>}
                               </td>
                             </>
@@ -926,13 +932,15 @@ export default function OnlineCampaignWorkspace() {
           <section className="merchant-orders">
             <div className="merchant-orders-heading"><h2>{t('campaignAllOrders')}</h2><span>{filteredOrders.length} / {workspace.orders.length}</span></div>
             <div className="merchant-order-filters">
-              {canManage && <button aria-pressed={orderFilter === 'payment'} onClick={() => setOrderFilter('payment')}>{t('campaignPaymentIssues')} <b>{workspace.orders.filter(order => ['payment_submitted', 'payment_submitted_late', 'refund_pending'].includes(order.payment_status)).length}</b></button>}
+              {canManage && <button aria-pressed={orderFilter === 'review'} onClick={() => setOrderFilter('review')}>{t('campaignReviewPayments')} <b>{workspace.orders.filter(order => order.payment_status === 'payment_submitted').length}</b></button>}
+              {canManage && <button aria-pressed={orderFilter === 'payment'} onClick={() => setOrderFilter('payment')}>{t('campaignPaymentIssues')} <b>{workspace.orders.filter(order => ['payment_submitted_late', 'refund_pending'].includes(order.payment_status)).length}</b></button>}
               <button aria-pressed={orderFilter === 'shipping'} onClick={() => setOrderFilter('shipping')}>{t('campaignAwaitingShipment')} <b>{workspace.orders.filter(order => order.fulfillment_status === 'awaiting_shipment').length}</b></button>
               <button aria-pressed={orderFilter === 'pickup'} onClick={() => setOrderFilter('pickup')}>{t('campaignAwaitingPickup')} <b>{workspace.orders.filter(order => order.fulfillment_status === 'awaiting_pickup').length}</b></button>
             </div>
             <div className="mb-3 grid gap-2 sm:grid-cols-2">
               <select aria-label={t('campaignAllOrders')} value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold">
                 <option value="needs_action">{t('campaignNeedsAction')}</option>
+                {canManage && <option value="review">{t('campaignReviewPayments')}</option>}
                 <option value="payment">{t('campaignPaymentIssues')}</option>
                 <option value="shipping">{t('campaignAwaitingShipment')}</option>
                 <option value="pickup">{t('campaignAwaitingPickup')}</option>
@@ -951,7 +959,7 @@ export default function OnlineCampaignWorkspace() {
                     <div>
                       <div className="font-mono text-sm font-black">{order.order_code}</div>
                       <div className="text-sm font-bold text-gray-700">{order.customer_name} · {t(order.fulfillment_method === 'shipping' ? 'campaignShipping' : 'campaignPickup')}</div>
-                      <div className="text-xs font-semibold text-gray-500">{order.items.map((item) => item.name + ' ×' + item.quantity).join(', ')}</div>
+                      <ul className="mt-1 space-y-1 text-xs font-semibold text-gray-500">{order.items.map((item, index) => <li key={index} className="break-words">{item.name} ×{item.quantity}</li>)}</ul>
                       <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
                     <div className="text-right"><div className="font-black">{formatPrice(order.total_price, order.currency)}</div><div className="text-xs font-bold text-gray-500">{t(({ awaiting_payment: 'campaignOrderAwaitingPayment', payment_submitted: 'campaignOrderReview', payment_submitted_late: 'campaignOrderLateReview', payment_confirmed: 'campaignOrderConfirmed', payment_expired: 'campaignOrderExpired', payment_rejected: 'orderStatusRejectedTitle', payment_cancelled: 'orderStatusCancelledTitle', refund_pending: 'campaignOrderRefundPending', refunded: 'campaignOrderRefunded' } as const)[order.payment_status])}</div><div className="text-xs font-bold text-gray-500">{order.fulfillment_status !== 'not_required' && t(({ awaiting_shipment: 'campaignAwaitingShipment', shipped: 'orderStatusShippedTitle', awaiting_pickup: 'campaignAwaitingPickup', picked_up: 'orderStatusPickedUpTitle', cancelled: 'orderStatusCancelledTitle', expired: 'campaignOrderExpired' } as const)[order.fulfillment_status])}</div></div>

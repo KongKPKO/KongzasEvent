@@ -299,7 +299,7 @@ export default function OnlineCampaignStorefront() {
               const prices = getProductPriceRange(variants);
               const expanded = Boolean(expandedGroups[entry.key]);
               return (
-              <article key={entry.key} className="overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm sm:col-span-2 lg:col-span-3">
+              <article key={entry.key} className="col-span-full overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-sm">
                 <button type="button" onClick={() => setExpandedGroups((current) => ({ ...current, [entry.key]: !expanded }))} aria-expanded={expanded} className="flex min-h-32 w-full text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-pink-200">
                   <div className="relative w-32 shrink-0 overflow-hidden bg-pink-50 sm:w-40"><ProductMedia product={representative} getImageUrl={getMenuImageUrl} /></div>
                   <div className="flex min-w-0 flex-1 items-center justify-between gap-3 p-4">

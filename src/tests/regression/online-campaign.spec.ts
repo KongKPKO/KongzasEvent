@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
+import { resolveSupabaseTestEnv } from '../helpers/localSupabaseEnv';
 
 const EMAIL = 'online-campaign-e2e@nireq.local';
 const PASSWORD = 'LocalOnlyOnlineCampaign123!';
@@ -196,6 +197,19 @@ test.describe('online campaign', () => {
         .select('status').eq('order_id', order.data.id).eq('delivery_key', 'campaign:created').maybeSingle();
       return delivery.data?.status || null;
     }, { timeout: 15_000 }).toBe('delivered');
+    const mailpit = resolveSupabaseTestEnv().mailpitUrl;
+    expect(mailpit).toBeTruthy();
+    let messageId = '';
+    await expect.poll(async () => {
+      const response = await fetch(`${mailpit}/api/v1/search?query=${encodeURIComponent(orderCode)}`);
+      const result = await response.json();
+      messageId = result.messages?.[0]?.ID || '';
+      return messageId;
+    }, { timeout: 15_000 }).not.toBe('');
+    const email = await fetch(`${mailpit}/api/v1/message/${messageId}`).then(response => response.json());
+    expect(email.HTML).toContain('Paimon');
+    expect(email.HTML).toContain('<li>1x E2E Cheki</li>');
+    expect(email.HTML).toContain('Check order status');
   });
 
   test('storefront search preserves quantity and filters can be cleared', async ({ page }) => {
@@ -394,6 +408,14 @@ test.describe('online campaign', () => {
       await page.goto(`/manage-online-sales/${campaignId}`);
       await page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ }).click();
       const orderCard = page.locator('article').filter({ hasText: order.order_code });
+      const reviewFilter = page.getByRole('button', { name: /Review payments|รอตรวจสลิป/ });
+      const issuesFilter = page.getByRole('button', { name: /Payment issues|ปัญหาการชำระเงิน/ });
+      await expect(reviewFilter).toContainText('1');
+      await expect(issuesFilter).toContainText('0');
+      await issuesFilter.click();
+      await expect(orderCard).toHaveCount(0);
+      await reviewFilter.click();
+      await expect(orderCard.locator('ul li').filter({ hasText: 'E2E Cheki' })).toHaveCount(1);
       await orderCard.getByRole('button', { name: /View payment evidence|ดูหลักฐานการชำระเงิน/ }).click();
       const preview = page.getByRole('dialog', { name: /Payment evidence|หลักฐานการชำระเงิน/ });
       await expect(preview).toBeVisible();
@@ -414,6 +436,14 @@ test.describe('online campaign', () => {
       await page.locator('article').filter({ hasText: order.order_code }).getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
       await page.getByRole('dialog').getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
       await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status).toBe('payment_confirmed');
+      const campaignStock = await fixture.service.from('online_campaign_products').select('stock_total,stock_reserved,stock_sold').eq('campaign_id', campaignId).eq('product_id', productId).single();
+      if (campaignStock.error) throw campaignStock.error;
+      await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+      const allocation = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
+      await expect(allocation).toHaveValue(String(campaignStock.data.stock_total));
+      await expect(allocation.locator('..')).toContainText(new RegExp(`(?:Available to sell|เหลือขาย): ${Number(campaignStock.data.stock_total) - Number(campaignStock.data.stock_reserved) - Number(campaignStock.data.stock_sold)}`));
+      await page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ }).click();
+      await page.getByLabel(/All orders|คำสั่งซื้อทั้งหมด/).selectOption('needs_action');
       const row = page.locator('article').filter({ hasText: order.order_code });
       await row.getByRole('button', { name: /Add tracking & ship|ใส่เลขพัสดุและจัดส่ง/ }).click();
       const shippingDialog = page.getByRole('dialog');
@@ -602,7 +632,19 @@ test.describe('online campaign', () => {
         await expect(override.locator('img')).toHaveAttribute('src', gallery[2]);
         await expect(page.getByRole('row').filter({ hasText: 'Campaign photo cleared' }).getByTestId('campaign-product-image-fallback')).toBeVisible();
       }
+      const allocations = await fixture.service.from('online_campaign_products').insert(items.data.map(item => ({ campaign_id: campaignId, product_id: item.id, artist_id: fixture.userId, is_enabled: true, is_unlimited: true, stock_total: null })));
+      if (allocations.error) throw allocations.error;
+      await page.setViewportSize({ width: 375, height: 850 });
+      await page.goto(`/${ARTIST_SLUG}/campaign/${CAMPAIGN_SLUG}`);
+      const group = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Campaign photo cleared' }) });
+      await expect(group).toBeVisible();
+      const widths = await group.evaluate(element => ({ card: element.getBoundingClientRect().width, grid: element.parentElement!.getBoundingClientRect().width }));
+      expect(widths.card).toBeGreaterThan(widths.grid - 2);
+      await group.getByRole('button', { expanded: false }).click();
+      await expect(group.getByText('Inherited', { exact: true })).toBeVisible();
     } finally {
+      const removedAllocations = await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).in('product_id', (await fixture.service.from('products').select('id').eq('parent_product_id', parent.data.id)).data?.map(item => item.id) || []);
+      if (removedAllocations.error) throw removedAllocations.error;
       const removedItems = await fixture.service.from('products').delete().eq('parent_product_id', parent.data.id);
       if (removedItems.error) throw removedItems.error;
       const removedParent = await fixture.service.from('product_parents').delete().eq('id', parent.data.id);
@@ -676,7 +718,7 @@ test.describe('online campaign', () => {
       await expect(campaignRow.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
       await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
       await expect(page.getByRole('columnheader', { name: /Ready to allocate|พร้อมจัดสรร/ })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: /This campaign|แคมเปญนี้/ })).toBeVisible();
+      await expect(page.getByRole('columnheader', { name: /Allocated to campaign|จัดสรรให้แคมเปญ/ })).toBeVisible();
       await expect(campaignRow.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
       await page.getByLabel(/Campaign membership|สถานะในแคมเปญ/).selectOption('not_added');
       await expect(campaignRow).toHaveCount(0);

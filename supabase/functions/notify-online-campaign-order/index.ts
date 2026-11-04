@@ -1,13 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withPaimonSenderName } from "../_shared/paimon-email-sender.ts";
+import { buildCampaignEmail, type NotificationEvent } from "./campaign-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type NotificationEvent = "created" | "ready_for_pickup" | "shipped" | "payment_rejected" | "refund_required";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
         .from("order_items")
         .select("quantity, price_per_unit, product_name_snapshot, products(name)")
         .eq("order_id", order_id);
-      const message = buildEmail(order, campaign, artist, payment, Array.isArray(items) ? items : [], event);
+      const message = buildCampaignEmail(order, campaign, artist, payment, Array.isArray(items) ? items : [], event, Deno.env.get("PUBLIC_SITE_URL") || "");
       const delivery = await deliverEmail(customerEmail, String(order.customer_name || customerEmail), message);
       await finishDelivery(supabase, claim.id, "delivered");
       return json({ ok: true, delivered: true, ...delivery });
@@ -164,41 +164,6 @@ async function finishDelivery(
   if (error) throw error;
 }
 
-function buildEmail(
-  order: Record<string, unknown>,
-  campaign: Record<string, unknown>,
-  artist: Record<string, unknown>,
-  payment: Record<string, unknown>,
-  items: Array<Record<string, unknown>>,
-  event: NotificationEvent,
-) {
-  const orderCode = String(order.pickup_code || "");
-  const artistName = String(artist.display_name || "Paimon creator");
-  const campaignName = String(campaign.name || "Online campaign");
-  const siteUrl = String(Deno.env.get("PUBLIC_SITE_URL") || "").replace(/\/$/, "");
-  const orderUrl = siteUrl && artist.slug ? `${siteUrl}/${artist.slug}/order/${encodeURIComponent(orderCode)}` : "";
-  const itemLines = items.map((item) => {
-    const product = one(item.products);
-    return `${Number(item.quantity || 0)}x ${String(item.product_name_snapshot || product?.name || "Item")}`;
-  });
-  const amount = formatPrice(Number(payment.amount_expected || order.total_price || 0), String(payment.currency || order.currency || "THB"));
-  const content = eventContent(event, order, payment, artistName);
-  const tracking = event === "shipped"
-    ? `\nCarrier: ${String(order.shipping_carrier || "-")}\nTracking number: ${String(order.tracking_number || "")}`
-    : "";
-  const text = `${content.heading}\n\n${content.intro}\n\nCampaign: ${campaignName}\nOrder: ${orderCode}\nItems: ${itemLines.join(", ")}\nTotal: ${amount}${tracking}${orderUrl ? `\n\nCheck status: ${orderUrl}` : ""}`;
-  const html = `<h1>${escapeHtml(content.heading)}</h1><p>${escapeHtml(content.intro)}</p><p><strong>Campaign:</strong> ${escapeHtml(campaignName)}<br><strong>Order:</strong> ${escapeHtml(orderCode)}<br><strong>Items:</strong> ${escapeHtml(itemLines.join(", "))}<br><strong>Total:</strong> ${escapeHtml(amount)}</p>${event === "shipped" ? `<p><strong>Carrier:</strong> ${escapeHtml(String(order.shipping_carrier || "-"))}<br><strong>Tracking number:</strong> ${escapeHtml(String(order.tracking_number || ""))}</p>` : ""}${orderUrl ? `<p><a href="${escapeHtml(orderUrl)}">Check order status</a></p>` : ""}`;
-  return { subject: `${content.subject}: ${orderCode}`, text, html };
-}
-
-function eventContent(event: NotificationEvent, order: Record<string, unknown>, payment: Record<string, unknown>, artistName: string) {
-  if (event === "created") return { subject: "Order received", heading: "Your order is reserved", intro: `${artistName} received your order. Complete payment before the countdown ends.` };
-  if (event === "ready_for_pickup") return { subject: "Ready for pickup", heading: "Your order is ready for pickup", intro: `${artistName} confirmed your payment. Follow the pickup details on your order status page.` };
-  if (event === "shipped") return { subject: "Order shipped", heading: "Your order has shipped", intro: `${artistName} shipped your order.` };
-  if (event === "payment_rejected") return { subject: "Payment needs attention", heading: "Payment was not accepted", intro: String(payment.review_note || "Open your order status page for details.") };
-  return { subject: "Refund required", heading: "The seller will arrange a refund", intro: String(payment.review_note || "Open your order status page for details.") };
-}
-
 async function deliverEmail(to: string, toName: string, message: { subject: string; html: string; text: string }) {
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
   if (!resendApiKey) {
@@ -241,14 +206,6 @@ async function deliverEmail(to: string, toName: string, message: { subject: stri
 
 function one<T extends Record<string, unknown>>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] || null : value || null;
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character] || character));
-}
-
-function formatPrice(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
 }
 
 function isUuid(value: unknown) {

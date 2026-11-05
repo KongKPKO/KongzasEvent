@@ -1,11 +1,12 @@
-import PromotionQuoteNotices, { promotionGiftLabel } from '../../components/promotions/PromotionQuoteNotices';
+import PromotionQuoteNotices from '../../components/promotions/PromotionQuoteNotices';
+import CustomerPromotionBenefits from '../../components/promotions/CustomerPromotionBenefits';
 import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
 import StorefrontHeader from '../../components/menu/StorefrontHeader';
 import { useEffect, useState, useMemo, useRef, Suspense, lazy } from 'react';
 import PromotionChoicePicker from '../../components/promotions/PromotionChoicePicker';
 import { Link, useOutletContext, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag, Sparkles } from 'lucide-react';
+import { Search, ArrowUpDown, ChevronDown, ChevronUp, CheckCircle, X, XCircle, Trash2, Ticket, ShoppingBag } from 'lucide-react';
 import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { getMenuImageUrl } from '../../utils/imageUtils';
 import ProductSkeleton from '../../components/menu/ProductSkeleton';
@@ -1231,8 +1232,7 @@ const MenuView = () => {
               {displayedDiscount > 0 && <div><span>{uiText(language, 'Discount')}</span><strong>−{formatPrice(displayedDiscount, cartCurrency)}</strong></div>}
               <div><span>{t('menuTotal')} · {totalItems} {t('menuItems')}</span><strong>{displayedTotalLabel}</strong></div>
             </div>
-            {promotionQuote?.applied_promotions.map(promotion => <p className="checkout-help" key={promotion.id}><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <> · −{formatPrice(promotion.discount_amount, cartCurrency)}</>}</p>)}
-            {promotionQuote?.reward_lines.map(reward => <p className="checkout-help" key={`${reward.promotion_id}-${reward.product_id}`}>{promotionGiftLabel(promotionQuote, reward, language)}</p>)}
+            <CustomerPromotionBenefits quote={promotionQuote} language={language} currency={cartCurrency} />
             <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />
             {quoteStatusNotice}
             <p className="checkout-hold-note">{isAdvanceOrderFlow ? (language === 'th' ? 'หลังยืนยัน ระบบจะจองสต็อกให้ 15 นาทีเพื่อชำระเงิน' : 'After confirmation, stock is held for 15 minutes while you pay.') : orderGuidance}</p>
@@ -1489,15 +1489,7 @@ const MenuView = () => {
                                 })}
                             </div>
 
-                            {promotionQuote && promotionQuote.applied_promotions.length > 0 && (
-                                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-                                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-800 mb-2"><Sparkles size={12} /> {t('menuAppliedPromotions')}</div>
-                                    <div className="space-y-1.5">
-                                      {promotionQuote.applied_promotions.map((promotion) => <div key={promotion.id} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px]"><div className="flex justify-between gap-2"><strong>{promotion.name}</strong>{promotion.discount_amount > 0 && <strong className="text-emerald-700">- {formatPrice(promotion.discount_amount, cartCurrency)}</strong>}</div></div>)}
-                                      {promotionQuote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="rounded-lg border border-emerald-100 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-emerald-800">{promotionGiftLabel(promotionQuote, reward, language)}</div>)}
-                                    </div>
-                                </div>
-                            )}
+                            <CustomerPromotionBenefits quote={promotionQuote} language={language} currency={cartCurrency} />
 
             <PromotionQuoteNotices quote={promotionQuote} language={language} currency={cartCurrency} />
             {quoteStatusNotice}

@@ -2,9 +2,9 @@ import type { PromotionQuote, PromotionRewardLine } from '../../types/promotion'
 import { formatPrice } from '../../utils/currency';
 import ActivityRewardsCard from './ActivityRewardsCard';
 
-export const promotionGiftLabel = (quote: PromotionQuote | null, reward: PromotionRewardLine, language: string) => [
+export const promotionGiftLabel = (quote: PromotionQuote | null, reward: PromotionRewardLine, language: string, includeSku = true) => [
   `${language === 'th' ? 'ของแถม' : 'Free gift'}: ${reward.name} × ${reward.quantity}`,
-  reward.sku ? `${language === 'th' ? 'รหัสสินค้า' : 'Product code'} ${reward.sku}` : '',
+  includeSku && reward.sku ? `${language === 'th' ? 'รหัสสินค้า' : 'Product code'} ${reward.sku}` : '',
   quote?.applied_promotions.find(item => item.id === reward.promotion_id)?.name || '',
 ].filter(Boolean).join(' · ');
 

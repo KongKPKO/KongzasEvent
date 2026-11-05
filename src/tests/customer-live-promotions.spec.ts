@@ -204,7 +204,7 @@ test('live cart uses server pricing, invalidates stale quotes, and reviews a cha
   const receipt = dialog.getByRole('complementary');
   await expect(dialog).toContainText(productName);
   await expect(receipt.getByText('฿250', { exact: true })).toBeVisible();
-  await expect(receipt.getByText('−฿50', { exact: true })).toBeVisible();
+  await expect(receipt.locator('.checkout-totals').getByText('−฿50', { exact: true })).toBeVisible();
   await expect(receipt.getByText('฿200', { exact: true })).toBeVisible();
 
   let returnChangedQuote = true;

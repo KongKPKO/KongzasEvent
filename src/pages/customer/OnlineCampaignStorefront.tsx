@@ -1,4 +1,5 @@
-import PromotionQuoteNotices, { promotionGiftLabel } from '../../components/promotions/PromotionQuoteNotices';
+import PromotionQuoteNotices from '../../components/promotions/PromotionQuoteNotices';
+import CustomerPromotionBenefits from '../../components/promotions/CustomerPromotionBenefits';
 import { CheckoutDialog, CheckoutItems } from '../../components/menu/Checkout';
 import CustomerBrandHeader from '../../components/CustomerBrandHeader';
 import { useEffect, useMemo, useState } from 'react';
@@ -396,18 +397,7 @@ export default function OnlineCampaignStorefront() {
             <aside className="checkout-receipt">
               <CheckoutItems currency={campaign.currency} items={cartItems.map(({ product, quantity }) => ({ ...asDisplayProduct(product), quantity }))} />
               <button type="button" className="checkout-edit" disabled={submitting} onClick={() => setCheckoutOpen(false)}>{language === 'th' ? 'กลับไปแก้รายการสินค้า' : 'Edit your items'}</button>
-            {quote?.applied_promotions.length ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                <div className="font-black text-emerald-900">{uiText(language, 'Applied promotions')}</div>
-                {quote.applied_promotions.map((promotion) => (
-                  <div key={promotion.id} className="mt-1 flex justify-between gap-3 text-emerald-800">
-                    <span>{promotion.name}</span>
-                    {promotion.discount_amount > 0 && <strong>-{formatPrice(promotion.discount_amount, campaign.currency)}</strong>}
-                  </div>
-                ))}
-                {quote.reward_lines.map((reward) => <div key={`${reward.promotion_id}-${reward.tier_id || ''}-${reward.product_id}`} className="mt-1 text-emerald-800">{promotionGiftLabel(quote, reward, language)}</div>)}
-              </div>
-            ) : null}
+            <CustomerPromotionBenefits quote={quote} language={language} currency={campaign.currency} />
             <PromotionQuoteNotices quote={quote} language={language} currency={campaign.currency} />
             {unresolvedChoices.map((choice) => <div className="mt-3" key={`${choice.kind}-${choice.promotion_id}-${choice.tier_id || ''}`}>
               <PromotionChoicePicker choice={choice} onConfirm={(selection) => {

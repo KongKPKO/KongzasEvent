@@ -1,4 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { promotionGiftLabel } from '../components/promotions/PromotionQuoteNotices';
+import type { PromotionRewardLine } from '../types/promotion';
+
+test('product codes remain visible to POS and hidden from customer gift labels', () => {
+  const reward: PromotionRewardLine = { product_id: 'gift', promotion_id: 'offer', assignment_id: 'assignment', tier_id: null, name: 'Gift', quantity: 1, sku: 'PRIVATE-SKU', is_unlimited: false };
+  expect(promotionGiftLabel(null, reward, 'en')).toContain('PRIVATE-SKU');
+  expect(promotionGiftLabel(null, reward, 'en', false)).not.toContain('PRIVATE-SKU');
+  expect(promotionGiftLabel(null, reward, 'th', false)).not.toContain('PRIVATE-SKU');
+});
 
 // Exercise the real storefront with controlled RPC stock changes; SQL tests cover transactions.
 test('mixed gifts require complete selection and fresh partial acceptance', async ({ page }) => {
@@ -20,7 +29,7 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
         rule_text: 'Spend 100', bundle_count: 1, discount_amount: 0,
         reached_tier_ids: [], rewards: [],
         activity_reward: { name: 'Prize draw', instructions: 'Show the confirmed order at the booth.', quantity: 2 },
-      }], reward_lines: [],
+      }, { id: 'discount', assignment_id: 'discount-assignment', revision: 1, name: 'Second offer', rule_text: 'Save 10', bundle_count: 1, discount_amount: 10, reached_tier_ids: [], rewards: [] }], reward_lines: [{ promotion_id: 'promo', product_id: 'fixed', tier_id: null, assignment_id: 'assignment', name: 'Fixed gift', sku: 'INTERNAL-123', quantity: 1, is_unlimited: false }],
       required_choices: resolved ? [] : [{ kind: 'reward', promotion_id: 'promo',
         earned_quantity: 2, available_quantity: available, exhausted: available === 0,
         options: available === 0 ? [] : [
@@ -38,6 +47,12 @@ test('mixed gifts require complete selection and fresh partial acceptance', asyn
   await page.goto('/test/campaign/gifts');
   await page.locator('article').getByRole('button').last().click();
   await page.getByRole('button', { name: /Checkout|ชำระเงิน/ }).click();
+  const benefits = page.getByRole('region', { name: /Applied promotions|โปรโมชั่นที่ได้รับ/ });
+  await expect(benefits.locator(':scope > div > div')).toHaveCount(3);
+  await expect(benefits).toContainText('Prize draw');
+  await expect(benefits).toContainText('Second offer');
+  await expect(benefits).toContainText('Fixed gift');
+  await expect(benefits).not.toContainText('INTERNAL-123');
   await expect(page.getByTestId('activity-rewards')).toContainText(/Activity rewards after payment confirmation|สิทธิ์กิจกรรมหลังยืนยันการชำระเงิน/);
   await expect(page.getByTestId('activity-rewards')).toContainText(/rewards are provisional.*confirms payment|สิทธิ์ที่รอยืนยัน.*ร้านยืนยันการชำระเงิน/);
   const confirm = page.getByRole('button', { name: /Confirm selected gifts|ยืนยันของแถมที่เลือก/ });

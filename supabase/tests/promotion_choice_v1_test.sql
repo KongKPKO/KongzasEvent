@@ -34,6 +34,21 @@ insert into public.event_products(event_id,product_id,artist_id,stock_total,is_u
 values('e1800000-0000-4000-8000-000000000003','e1800000-0000-4000-8000-000000000015','e1800000-0000-4000-8000-000000000002',40,false,true,true);
 insert into public.online_campaign_products(campaign_id,product_id,artist_id,stock_total,is_unlimited,is_enabled,is_sellable)
 values('e1800000-0000-4000-8000-000000000004','e1800000-0000-4000-8000-000000000015','e1800000-0000-4000-8000-000000000002',40,false,true,true);
+-- A normal product can be reserved as a gift in one event without changing
+-- its catalog setting or its availability in a different event.
+insert into public.events(id,artist_id,event_name,start_date,end_date,status,is_booth_open)
+values('e1800000-0000-4000-8000-000000000005','e1800000-0000-4000-8000-000000000002','Other event',now()-interval '1 day',now()+interval '1 day','Confirmed',true);
+insert into public.event_products(event_id,product_id,artist_id,stock_total,is_unlimited,is_enabled,is_sellable)
+values('e1800000-0000-4000-8000-000000000005','e1800000-0000-4000-8000-000000000015','e1800000-0000-4000-8000-000000000002',10,false,true,true);
+update public.products set gift_only=false where id='e1800000-0000-4000-8000-000000000015';
+select lives_ok($$select public.save_event_catalog('e1800000-0000-4000-8000-000000000003','[{"product_id":"e1800000-0000-4000-8000-000000000015","is_enabled":true,"is_sellable":false}]',null,false)$$,'event gift-only setting saves');
+select ok(not (select is_sellable from public.event_products where event_id='e1800000-0000-4000-8000-000000000003' and product_id='e1800000-0000-4000-8000-000000000015'),'event excludes product from sale');
+select ok((select is_sellable from public.event_products where event_id='e1800000-0000-4000-8000-000000000005' and product_id='e1800000-0000-4000-8000-000000000015'),'other event stays sellable');
+select ok(not (select gift_only from public.products where id='e1800000-0000-4000-8000-000000000015'),'global product stays sellable');
+select lives_ok($$select public.save_event_catalog('e1800000-0000-4000-8000-000000000003','[{"product_id":"e1800000-0000-4000-8000-000000000015","is_enabled":true}]',null,false)$$,'older clients can save without changing gift mode');
+select ok(not (select is_sellable from public.event_products where event_id='e1800000-0000-4000-8000-000000000003' and product_id='e1800000-0000-4000-8000-000000000015'),'omitted gift mode is preserved');
+select throws_ok($$select public.save_event_catalog('e1800000-0000-4000-8000-000000000003','[{"product_id":"e1800000-0000-4000-8000-000000000015","is_enabled":true,"is_sellable":"false"}]',null,false)$$,'invalid_event_sellable','invalid gift setting rejected');
+select is((select count(*) from public.list_event_products('e1800000-0000-4000-8000-000000000005') where id='e1800000-0000-4000-8000-000000000015'),1::bigint,'ordinary item remains visible in other event');
 create temp table choice_promo as select public.save_promotion_definition(jsonb_build_object(
  'artist_id','e1800000-0000-4000-8000-000000000002','name','Choice gift','promotion_type','condition_reward','target_type','all',
  'v1_config',jsonb_build_object('version',1,'condition',jsonb_build_object('kind','quantity','quantity',1),'discount',null,'gift',jsonb_build_object('product_id','e1800000-0000-4000-8000-000000000014','product_ids',jsonb_build_array('e1800000-0000-4000-8000-000000000014','e1800000-0000-4000-8000-000000000015'),'selection_mode','customer_choice','quantity',1,'limit',null)),
@@ -46,6 +61,9 @@ select is(private.resolve_v1_gift_choices((select id from choice_promo),2,2,'[{"
 select is(private.resolve_v1_gift_choices((select id from choice_promo),2,1,'[{"product_id":"A","available":1},{"product_id":"B","available":1}]',jsonb_build_array(jsonb_build_object('promotion_id',(select id from choice_promo),'product_ids',jsonb_build_array('B'),'accepted_quantity',1,'accepted_earned_quantity',2)))->>'resolved','true','quota partial acceptance permits either option');
 select is(jsonb_array_length(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004',pg_temp.choice_cart(),'[]','[]')->'required_choices'),1,'campaign requires a choice');
 select is(jsonb_array_length(public.quote_sale_promotions('e1800000-0000-4000-8000-000000000003','live',null,pg_temp.choice_cart(),'[]','[]')->'required_choices'),1,'POS requires a choice');
+select is(public.quote_sale_promotions('e1800000-0000-4000-8000-000000000003','live',null,pg_temp.choice_cart(),pg_temp.choice_input('e1800000-0000-4000-8000-000000000015'),'[]')#>>'{reward_lines,0,product_id}','e1800000-0000-4000-8000-000000000015','event gift-only product remains available as reward');
+select throws_ok($$select public.quote_sale_promotions('e1800000-0000-4000-8000-000000000003','live',null,'[{"product_id":"e1800000-0000-4000-8000-000000000015","quantity":1}]','[]','[]')$$,'sale_product_unavailable','event gift-only product cannot be purchased directly');
+update public.products set gift_only=true where id='e1800000-0000-4000-8000-000000000015';
 update public.artist_promotions set v1_config=jsonb_set(v1_config,'{condition}','{"kind":"product","items":[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":1},{"product_id":"e1800000-0000-4000-8000-000000000012","quantity":1}]}'::jsonb) where id=(select id from choice_promo);
 select is(jsonb_array_length(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004',pg_temp.choice_cart(),'[]','[]')->'required_choices'),1,'buy-any-specific-product promotion offers choices');
 select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004',pg_temp.choice_cart(),pg_temp.choice_input('e1800000-0000-4000-8000-000000000015'),'[]')#>>'{reward_lines,0,product_id}','e1800000-0000-4000-8000-000000000015','selected gift appears in quote');

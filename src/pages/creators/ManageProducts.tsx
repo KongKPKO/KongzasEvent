@@ -48,6 +48,7 @@ import {
 interface Product {
   artist_id: string;
   product_kind?: ProductParent['product_kind'];
+  gift_only?: boolean;
   bundle_items?: ProductParent['bundle_items'];
   gallery_images?: string[] | null;
   variant_gallery_images?: string[] | null;
@@ -119,6 +120,7 @@ interface EventProductRecord extends SupplySettings {
   product_id: string;
   artist_id: string;
   is_enabled: boolean;
+  is_sellable: boolean;
   price_override?: number | null;
   stock_total?: number | null;
   stock_reserved?: number;
@@ -129,6 +131,7 @@ interface EventProductRecord extends SupplySettings {
 type EventCatalogDraft = Record<string, {
   id?: string;
   is_enabled: boolean;
+  is_sellable: boolean;
   price_override: string;
   is_unlimited: boolean;
   stock_total: string;
@@ -675,6 +678,18 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       </>}
    </div>;
 
+   const renderEventGiftOnlyControl = (product: Product, draft: EventCatalogDraft[string]) => (
+      <label className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-xs font-bold text-blue-900">
+         <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={Boolean(product.gift_only) || !draft.is_sellable}
+            disabled={Boolean(product.gift_only)}
+            onChange={(event) => updateEventCatalogDraft(product.id, { is_sellable: !event.target.checked })}
+            aria-label={`${language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในอีเวนต์นี้' : 'Gift only in this event'}: ${product.name}`} />
+         <span>{language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในอีเวนต์นี้' : 'Gift only in this event'}
+            {product.gift_only && <span className="mt-1 block font-normal">{language === 'th' ? 'สินค้านี้ตั้งเป็นของแถมเท่านั้นในคลังสินค้า' : 'This product is gift-only in the catalog.'}</span>}
+         </span>
+      </label>
+   );
+
    const showToast = (message: { tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string }) => {
       setToast(message);
    };
@@ -886,6 +901,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
    const buildEventCatalogFallback = (product: Product) => ({
       is_enabled: getEffectiveStatus(product) === 'enable',
+      is_sellable: true,
       price_override: '',
       is_unlimited: product.is_unlimited ?? true,
       stock_total: product.stock_total != null ? String(product.stock_total) : '',
@@ -909,6 +925,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          nextDraft[product.id] = {
             id: row?.id,
             is_enabled: row?.is_enabled ?? (!initialized && getEffectiveStatus(product) === 'enable'),
+            is_sellable: row?.is_sellable ?? true,
             price_override: row?.price_override != null ? String(row.price_override) : '',
             is_unlimited: row?.is_unlimited ?? Boolean(product.is_unlimited),
             stock_total: row?.stock_total != null ? String(row.stock_total) : initialized ? '0' : defaultStockTotal,
@@ -983,7 +1000,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       try {
          const { data, error } = await supabase
             .from('event_products')
-            .select('id, event_id, product_id, artist_id, is_enabled, price_override, stock_total, stock_reserved, stock_sold, is_unlimited, preorder_supply_mode, preorder_production_limit, postorder_supply_mode, postorder_production_limit')
+            .select('id, event_id, product_id, artist_id, is_enabled, is_sellable, price_override, stock_total, stock_reserved, stock_sold, is_unlimited, preorder_supply_mode, preorder_production_limit, postorder_supply_mode, postorder_production_limit')
             .eq('event_id', eventId);
 
          if (error) throw error;
@@ -1111,6 +1128,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             const shouldCreateMissingRow = !savedDraft?.id && draft.is_enabled;
             const rowChanged =
                draft.is_enabled !== comparison.is_enabled ||
+               draft.is_sellable !== comparison.is_sellable ||
                draft.price_override !== comparison.price_override ||
                draft.is_unlimited !== comparison.is_unlimited ||
                draft.stock_total !== comparison.stock_total;
@@ -1128,6 +1146,10 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                is_enabled: draft.is_enabled,
                price_override: draft.price_override.trim() === '' ? null : Number(draft.price_override),
             };
+
+            if (!savedDraft?.id || draft.is_sellable !== savedDraft.is_sellable) {
+               item.is_sellable = draft.is_sellable;
+            }
 
             if (!savedDraft?.id || draft.is_unlimited !== savedDraft.is_unlimited) {
                item.is_unlimited = draft.is_unlimited;
@@ -3403,7 +3425,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                         : 'bg-white/90 text-gray-500 ring-1 ring-gray-200'
 	                                                   }`}
 	                                                >
-	                                                   {draft.is_enabled ? eventText("Selling") : eventText("Hidden")}
+	                                                   {draft.is_enabled ? (product.gift_only || !draft.is_sellable ? (language === 'th' ? 'เปิดแถม' : 'Gift enabled') : eventText("Selling")) : eventText("Hidden")}
 	                                                </button>
 	                                                {hasCustomSetup && (
 	                                                   <span className="rounded-full bg-amber-50/95 px-3 py-1.5 text-[11px] font-black text-amber-700 shadow-sm ring-1 ring-amber-100 backdrop-blur">
@@ -3430,6 +3452,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 	                                                   <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{product.category || eventText("Other")}</span>
 	                                                </div>
 	                                             </div>
+
+                                             {renderEventGiftOnlyControl(product, draft)}
 
 	                                             <div className={`rounded-xl p-3 ${stockOverLimit ? 'bg-red-50 ring-1 ring-red-100' : 'bg-gray-50 ring-1 ring-gray-100'}`}>
 	                                                {renderEventCatalogStockFlow(product, draft, stockLimit, true)}
@@ -3546,7 +3570,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
                                                          draft.is_enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
                                                       }`}>
-                                                         {draft.is_enabled ? eventText("Selling") : eventText("Hidden")}
+                                                         {draft.is_enabled ? (product.gift_only || !draft.is_sellable ? (language === 'th' ? 'เปิดแถม' : 'Gift enabled') : eventText("Selling")) : eventText("Hidden")}
                                                       </span>
                                                       {product.category && (
                                                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-black text-gray-600">{product.category}</span>
@@ -3577,9 +3601,12 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                                 />
                                              </div> : <div />}
 
+                                             <div className="space-y-2">{renderEventGiftOnlyControl(product, draft)}
                                              <div className={stockOverLimit ? 'rounded-lg bg-red-50 p-2' : 'rounded-lg bg-gray-50 p-2'}>
                                                 {renderEventCatalogStockFlow(product, draft, stockLimit, true, true)}
                                                 {stockOverLimit && <p className="mt-1 text-xs font-bold text-red-700">{eventText("Max")}{stockLimit} {eventText("available for this event.")}</p>}
+                                             </div>
+
                                              </div>
 
                                              <div className="space-y-2">

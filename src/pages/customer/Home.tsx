@@ -9,64 +9,12 @@ import { resolveAvatarUrl } from '../../utils/avatarUrl';
 import { uiText, useI18n } from '../../i18n';
 import type { CustomerOutletContext } from '../../types/customerContext';
 import type { EventAppearance } from '../../types/eventAppearance';
-import type { SellerType } from '../../utils/sellerType';
 import type { RealtimeEvent } from '../../hooks/useArtistRealtime';
 import { getEventSalesPhase, getStoredTicketId } from '../../utils/customerEvents';
 
 // Lazy Load Components to reduce bundle size
 const EventsList = lazy(() => import('../../components/home/EventsList'));
 const SocialFooter = lazy(() => import('../../components/home/SocialFooter'));
-const CreatorDirectory = lazy(() => import('../../components/home/CreatorDirectory'));
-
-interface NearbyCreatorEventRecord {
-  artist_id: string;
-  event_name: string;
-  location?: string | null;
-  booth_detail?: string | null;
-  location_name?: string | null;
-  location_detail?: string | null;
-  booth_number?: string | null;
-  start_date: string;
-  end_date: string;
-  is_booth_open: boolean;
-  status: string;
-}
-
-interface NearbyCreator {
-  id: string;
-  slug: string;
-  display_name: string;
-  bio?: string | null;
-  image_url?: string | null;
-  event_name: string;
-  location?: string | null;
-  booth_detail?: string | null;
-  is_booth_open: boolean;
-  seller_type?: SellerType;
-}
-
-const normalizeEventLocation = (event?: NearbyCreatorEventRecord | null) => {
-  if (!event) return null;
-  if (event.location && event.location.trim().length > 0) return event.location;
-  return [event.location_name, event.location_detail]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join(', ') || null;
-};
-
-const normalizeEventBooth = (event?: NearbyCreatorEventRecord | null) => {
-  if (!event) return null;
-  if (event.booth_detail && event.booth_detail.trim().length > 0) return event.booth_detail;
-  return event.booth_number || null;
-};
-
-const shuffleNearbyCreatorIds = (artistIds: string[]) => {
-  const shuffled = [...artistIds];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  return shuffled;
-};
 
 const getVisibleHomeEvents = (events: RealtimeEvent[], nowIso = new Date().toISOString()) => events.filter((event) => {
   const isUpcomingOrLive = event.end_date >= nowIso && (event.status === 'Confirmed' || event.status === 'Cancelled');
@@ -88,7 +36,6 @@ const Home = () => {
     refresh,
     setSelectedEventId,
   } = useOutletContext<CustomerOutletContext>();
-  const [nearbyCreators, setNearbyCreators] = useState<NearbyCreator[]>([]);
   const [eventAppearances, setEventAppearances] = useState<EventAppearance[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   
@@ -160,77 +107,6 @@ const Home = () => {
     return () => { cancelled = true; };
   }, [displayArtist?.id, visibleEventIdsKey]);
 
-  useEffect(() => {
-    const loadNearbyCreators = async () => {
-      if (!displayArtist?.id) return;
-
-      const nowIso = new Date().toISOString();
-      const { data: upcomingEvents, error } = await supabase
-        .from('events')
-        .select('*')
-        .in('status', ['Confirmed', 'confirmed'])
-        .gte('end_date', nowIso)
-        .order('start_date', { ascending: true })
-        .limit(24);
-
-      if (error || !upcomingEvents) {
-        setNearbyCreators([]);
-        return;
-      }
-
-      const groupedByArtist = new Map<string, NearbyCreatorEventRecord>();
-
-      for (const event of upcomingEvents as NearbyCreatorEventRecord[]) {
-        if (event.artist_id === displayArtist.id) continue;
-        if (!groupedByArtist.has(event.artist_id)) groupedByArtist.set(event.artist_id, event);
-      }
-
-      const prioritizedArtistIds = shuffleNearbyCreatorIds(Array.from(groupedByArtist.keys())).slice(0, 8);
-
-      if (prioritizedArtistIds.length === 0) {
-        setNearbyCreators([]);
-        return;
-      }
-
-      const { data: artistsData, error: artistsError } = await supabase
-        .from('artists')
-        .select('id, slug, display_name, bio, image_url, seller_type')
-        .in('id', prioritizedArtistIds)
-        .eq('is_public', true)
-        .not('published_at', 'is', null);
-
-      if (artistsError || !artistsData) {
-        setNearbyCreators([]);
-        return;
-      }
-
-      const creators = prioritizedArtistIds
-        .map((artistId) => {
-          const creator = artistsData.find((artistItem) => artistItem.id === artistId);
-          const event = groupedByArtist.get(artistId);
-          if (!creator || !event) return null;
-          return {
-            id: creator.id,
-            slug: creator.slug,
-            display_name: creator.display_name,
-            bio: creator.bio,
-            image_url: resolveAvatarUrl(creator.image_url),
-            event_name: event.event_name,
-            location: normalizeEventLocation(event),
-            booth_detail: normalizeEventBooth(event),
-            is_booth_open: event.is_booth_open,
-            seller_type: creator.seller_type,
-          };
-        })
-        .filter(Boolean)
-        .slice(0, 2) as NearbyCreator[];
-
-      setNearbyCreators(creators);
-    };
-
-    void loadNearbyCreators();
-  }, [displayArtist?.id]);
-
   // Early return after hooks so React receives the same hook order every render.
   if (!displayArtist) return <div className="p-10 text-center text-gray-400">{t('customerLoadingArtist')}</div>;
 
@@ -301,9 +177,6 @@ const Home = () => {
          <SocialFooter artist={displayArtist} />
       </Suspense>
 
-      <Suspense fallback={<div className="h-20 flex items-center justify-center text-xs text-gray-400">{t('homeLoadingCreators')}</div>}>
-         <CreatorDirectory creators={nearbyCreators} />
-      </Suspense>
 
     </main>
   );

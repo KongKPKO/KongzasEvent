@@ -182,15 +182,12 @@ test.describe('Public Nireq fixture smoke', () => {
       const url = new URL(request.url());
       return url.pathname.endsWith('/rest/v1/events') && url.searchParams.has('or');
     });
-    const nearbyEventsRequest = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      return url.pathname.endsWith('/rest/v1/events') && url.searchParams.has('end_date');
-    });
     await page.goto(`/${publicSlug}/home`);
     await expect(page.getByRole('heading', { name: 'Public Smoke Artist' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Anonymous Booth Smoke Event' })).toBeVisible();
     expect(new URL((await currentEventsRequest).url()).searchParams.get('or')).toMatch(/end_date\.gte\.\d{4}-\d{2}-\d{2}T/);
-    expect(new URL((await nearbyEventsRequest).url()).searchParams.get('end_date')).toMatch(/^gte\.\d{4}-\d{2}-\d{2}T/);
+    await expect(page.getByRole('link', { name: 'Help & feedback' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Explore more shops' })).toHaveCount(0);
 
     await page.goto(`/${publicSlug}/menu`);
 

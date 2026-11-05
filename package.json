@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:lan": "node scripts/validate-env.mjs lan && vite --host 0.0.0.0 --port 5173 --mode lan",
-    "build": "tsc && vite build",
-    "build:staging": "node scripts/validate-env.mjs staging && tsc && vite build --mode staging",
-    "build:prod": "node scripts/validate-env.mjs production && tsc && vite build --mode production",
+    "build": "tsc && vite build && NODE_ENV=production node scripts/prerender-seller.mjs && node --test scripts/prerender-seller.test.mjs",
+    "build:staging": "node scripts/validate-env.mjs staging && tsc && vite build --mode staging && NODE_ENV=production node scripts/prerender-seller.mjs && node --test scripts/prerender-seller.test.mjs",
+    "build:prod": "node scripts/validate-env.mjs production && tsc && vite build --mode production && NODE_ENV=production node scripts/prerender-seller.mjs && node --test scripts/prerender-seller.test.mjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "verify": "npm run lint && npm run test:regression:unit && npm run test:regression",
     "check:public": "node scripts/release-check.mjs",
@@ -37,7 +37,7 @@
     "test:regression:lightweight": "node scripts/release-check.mjs local --suite lightweight",
     "test:regression:full": "node scripts/release-check.mjs local --suite full",
     "test:regression:plan": "node scripts/release-check.mjs local --suite affected --list",
-    "test:regression:unit": "node --test scripts/regression-selection.test.mjs"
+    "test:regression:unit": "node --test scripts/regression-selection.test.mjs scripts/hosting-routes.test.mjs"
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",

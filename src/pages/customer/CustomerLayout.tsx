@@ -37,10 +37,11 @@ const CustomerLayout = () => {
    });
    const displayArtist = artist && realtimeArtist ? { ...artist, ...realtimeArtist, slug: artist.slug } : artist;
    useEffect(() => {
-      if (loading) return;
-      const details = getSeoDetails(location.pathname, language, window.location.hostname, displayArtist?.display_name || undefined);
-      applySeoDetails(displayArtist ? details : { ...details, canonical: null, noindex: true });
-   }, [displayArtist?.display_name, language, loading, location.pathname]);
+      const publiclyVisible = Boolean(!loading && artist && artist.slug === slug && artist.is_public && artist.is_verified && artist.published_at);
+      const isHome = /\/(home)?\/?$/.test(location.pathname) || location.pathname === `/${slug}`;
+      const details = getSeoDetails(location.pathname, language, window.location.hostname, displayArtist?.display_name || undefined, isHome && publiclyVisible ? displayArtist?.bio : undefined);
+      applySeoDetails(publiclyVisible ? details : { ...details, canonical: null, noindex: true });
+   }, [artist?.is_public, artist?.is_verified, artist?.published_at, displayArtist?.display_name, displayArtist?.bio, language, loading, location.pathname, slug]);
    const [selectedEventId, setSelectedEventIdState] = useState<string | null>(null);
    const availableEvents = useMemo(() => getCurrentCustomerEvents(events), [events]);
    const selectedEvent = availableEvents.find((event) => event.id === selectedEventId) || availableEvents[0] || null;

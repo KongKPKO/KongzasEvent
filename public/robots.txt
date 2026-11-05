@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /live/
-Disallow: /admin/
-
 Sitemap: https://paimonq.com/sitemap.xml
+Sitemap: https://fnutmjnzugpayccscvgr.supabase.co/functions/v1/public-sitemap

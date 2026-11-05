@@ -66,10 +66,16 @@ test('management report expands historical variants, filters, exports Thai-safe 
   await new LoginPage(page).login(email, password);
   await expect(page).toHaveURL(/manage-events/, { timeout: 20_000 });
   await page.route('**/rest/v1/orders?**', route => route.abort());
+  await page.route('**/rest/v1/rpc/get_event_sales_analytics', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json: { ...data, avgOrderValue: 12.345 } });
+  });
   await page.goto(`/manage-events/${eventId}/dashboard?from=2026-10-17&to=2026-10-17`);
 
   const metrics = page.locator('.report-metrics').first().locator(':scope > div');
   await expect(metrics).toHaveCount(4);
+  await expect(metrics.nth(2)).toContainText('Average order ฿12.35');
   const metricAppearance = () => metrics.first().evaluate(element => {
     const css = getComputedStyle(element);
     return { padding: css.paddingLeft, background: css.backgroundColor, border: css.borderTopColor, accent: css.borderTopWidth };

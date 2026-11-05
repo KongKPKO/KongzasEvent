@@ -455,3 +455,6 @@ verify_jwt = false
 # Reauthorizes the caller and order on every private evidence download.
 [functions.payment-evidence]
 verify_jwt = false
+
+[functions.public-sitemap]
+verify_jwt = false

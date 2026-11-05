@@ -1,0 +1,9 @@
+# Public sitemap and Hosting routes
+
+The static sitemap contains public landing and information pages with fixed paths. The separate `public-sitemap` Edge Function emits published shop home/menu URLs and discoverable online campaigns using only the anonymous Supabase role. It never forwards request credentials, returns `503` on data errors, uses `no-store`, and fails closed above 50,000 URLs. Its campaign source is the existing public discovery RPC: closed, cancelled, archived, and suspended campaigns are excluded. Individual product and event URLs are not generated because this application does not expose stable public pages for them.
+
+The function selects DEV or PROD URLs from the Supabase project URL and refuses unknown projects. DEV emits only the DEV preview hostname; PROD emits only `paimonq.com` URLs.
+
+Google supports a cross-host sitemap referenced by the site's `robots.txt`; other search engines may have different policies. A sitemap is only a discovery hint. Pages that match shop or campaign URL patterns still return the SPA shell with HTTP 200 when that particular record does not exist; server-side record lookup is required for a true 404 in those cases. Hosting returns a real 404 for URL patterns that do not match the routes in `App.tsx`. Keep the Hosting rewrite and `scripts/hosting-routes.test.mjs` updated when routes change.
+
+For an explicitly approved release, deploy and test the `public-sitemap` function on the matching Supabase project before publishing the Hosting `robots.txt` which references it. The production robots file references the production Supabase project, not DEV. Check that the anonymous endpoint returns XML and that published, unpublished, and draft fixtures behave as expected in a disposable environment. Verify the Search Console sitemap report after release; do not submit or deploy without the target authorization required by the project. No service-role key is needed by this function.

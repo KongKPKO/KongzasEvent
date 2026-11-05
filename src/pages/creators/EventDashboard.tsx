@@ -217,7 +217,7 @@ export default function EventDashboard() {
         <div className="report-metrics grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <MetricCard icon={<DollarSign size={18} />} title={copy("Net Revenue")} value={formatPrice(analytics.revenue, analytics.currency)} helper={`${analytics.completedOrderCount} ${copy('completed orders')}`} tone="pink" />
           <MetricCard icon={<TrendingUp size={18} />} title={copy("Discount Given")} value={formatPrice(analytics.discountTotal, analytics.currency)} helper={`${th ? 'ยอดก่อนส่วนลด' : 'Before discounts'} ${formatPrice(analytics.subtotal, analytics.currency)}`} tone="emerald" />
-          <MetricCard icon={<ShoppingBag size={18} />} title={th ? "ชิ้นสินค้า รวมของแถม" : "Units including gifts"} value={String(analytics.itemCount)} helper={`${th ? 'เฉลี่ยต่อออเดอร์' : 'Average order'} ${formatPrice(analytics.avgOrderValue, analytics.currency)}`} tone="blue" />
+          <MetricCard icon={<ShoppingBag size={18} />} title={th ? "ชิ้นสินค้า รวมของแถม" : "Units including gifts"} value={String(analytics.itemCount)} helper={`${th ? 'เฉลี่ยต่อออเดอร์' : 'Average order'} ${formatPrice(Number(analytics.avgOrderValue.toFixed(2)), analytics.currency)}`} tone="blue" />
           <MetricCard icon={<Ticket size={18} />} title={th ? "ออเดอร์สำเร็จ" : "Completed orders"} value={String(analytics.completedOrderCount)} helper={th ? "ตามช่วงวันที่เลือก" : "In the selected period"} tone="slate" />
         </div>
 

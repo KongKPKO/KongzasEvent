@@ -688,7 +688,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <h2 className="text-lg font-black text-gray-900">{copy("Production Summary")}</h2>
           </div>
           {summary.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-600">{copy("No submitted or confirmed pre-orders yet.")}</div>
+            <div className="p-6 text-sm font-bold text-gray-600">{language === 'th' ? 'ยังไม่มีออเดอร์ที่ส่งสลิปหรือยืนยันแล้ว' : 'No submitted or confirmed orders yet.'}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">

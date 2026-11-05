@@ -16,7 +16,7 @@ const shopCopy: Record<string, Copy> = {
   menu: { title: ['สินค้า', 'Products'], description: ['ดูสินค้าของร้านบน Paimon', 'Browse products from this shop on Paimon.'] },
   campaign: { title: ['ร้านค้าออนไลน์', 'Online shop'], description: ['ดูสินค้าและรายละเอียดร้านค้าออนไลน์บน Paimon', 'Explore products and details for this online shop on Paimon.'] },
 };
-export function getSeoDetails(pathname: string, language: SeoLanguage, hostname: string, shopName?: string): SeoDetails {
+export function getSeoDetails(pathname: string, language: SeoLanguage, hostname: string, shopName?: string, publicDescription?: string | null): SeoDetails {
   const path = pathname.replace(/\/+$/, '') || '/';
   const canonicalPath = path === '/discover' ? '/' : path;
   let copy = pages[canonicalPath];
@@ -36,7 +36,8 @@ export function getSeoDetails(pathname: string, language: SeoLanguage, hostname:
   const preview = hostname.endsWith('.web.app') || hostname.endsWith('.firebaseapp.com');
   const noindex = !copy || preview || canonicalPath === '/creator/register';
   const selected = language === 'th' ? 0 : 1;
-  return { title: copy ? `${titlePrefix}${copy.title[selected]}${titlePrefix ? ' | Paimon' : ''}` : (language === 'th' ? 'Paimon | จัดการร้านและออเดอร์' : 'Paimon | Shop and order management'), description: copy?.description[selected] || (language === 'th' ? 'จัดการร้าน คิว และออเดอร์บน Paimon' : 'Manage your shop, queues and orders on Paimon.'), canonical: noindex ? null : canonical, noindex };
+  const description = publicDescription?.replace(/\s+/g, ' ').trim().slice(0, 160);
+  return { title: copy ? `${titlePrefix}${copy.title[selected]}${titlePrefix ? ' | Paimon' : ''}` : (language === 'th' ? 'Paimon | จัดการร้านและออเดอร์' : 'Paimon | Shop and order management'), description: (copy && !noindex && description) || copy?.description[selected] || (language === 'th' ? 'จัดการร้าน คิว และออเดอร์บน Paimon' : 'Manage your shop, queues and orders on Paimon.'), canonical: noindex ? null : canonical, noindex };
 }
 export function applySeoDetails(details: SeoDetails) {
   document.title = details.title;
@@ -49,12 +50,22 @@ export function applySeoDetails(details: SeoDetails) {
   setMeta('meta[name="robots"]', 'name', 'robots', details.noindex ? 'noindex, nofollow' : 'index, follow');
   setMeta('meta[property="og:title"]', 'property', 'og:title', details.title);
   setMeta('meta[property="og:description"]', 'property', 'og:description', details.description);
+  setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', details.title);
+  setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', details.description);
   let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
   let ogUrl = document.head.querySelector<HTMLMetaElement>('meta[property="og:url"]');
   if (details.canonical) {
+    setMeta('meta[property="og:image"]', 'property', 'og:image', `${origin}/pwa-512x512.png`);
+    setMeta('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary');
+    setMeta('meta[name="twitter:image"]', 'name', 'twitter:image', `${origin}/pwa-512x512.png`);
     if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.appendChild(canonical); }
     canonical.href = details.canonical;
     if (!ogUrl) { ogUrl = document.createElement('meta'); ogUrl.setAttribute('property', 'og:url'); document.head.appendChild(ogUrl); }
     ogUrl.content = details.canonical;
-  } else { canonical?.remove(); ogUrl?.remove(); }
+  } else {
+    canonical?.remove(); ogUrl?.remove();
+    document.head.querySelector('meta[property="og:image"]')?.remove();
+    document.head.querySelector('meta[name="twitter:card"]')?.remove();
+    document.head.querySelector('meta[name="twitter:image"]')?.remove();
+  }
 }

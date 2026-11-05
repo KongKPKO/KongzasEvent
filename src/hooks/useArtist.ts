@@ -8,6 +8,9 @@ export interface Artist {
   slug: string;
   display_name?: string;
   bio?: string;
+  is_public?: boolean;
+  is_verified?: boolean;
+  published_at?: string | null;
 
   x_url?: string;
   ig_url?: string;
@@ -38,7 +41,7 @@ export const useArtist = (slug: string | undefined) => {
       try {
         const { data, error } = await supabase
           .from('artists')
-          .select('id, slug, seller_type, display_name, bio, x_url, ig_url, facebook_url, tiktok_url, email, broadcast_message')
+          .select('id, slug, seller_type, display_name, bio, is_public, is_verified, published_at, x_url, ig_url, facebook_url, tiktok_url, email, broadcast_message')
           .eq('slug', slug)
           .maybeSingle();
 

@@ -12,6 +12,15 @@
         "source": "**",
         "headers": [
           {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          {
             "key": "Cache-Control",
             "value": "no-cache, must-revalidate"
           }
@@ -50,8 +59,12 @@
     ],
     "rewrites": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "regex": "^/for-sellers/?$",
+        "destination": "/seller-landing.html"
+      },
+      {
+        "destination": "/index.html",
+        "regex": "^/(?:|discover|offline|manage-login|manage-workspaces|for-sellers|creator/register|staff-signup|reset-password|help(?:/guide)?|privacy|terms|cookies|admin(?:/.*)?|invitations|manage-products|manage-promotions|manage-order-problems|manage-events(?:/[^/]+(?:/(?:workspace|history|dashboard|catalog|promotion|preorder|preorder-dashboard|postorder-dashboard|pickup))?)?|manage-profile|manage-online-sales(?:/[^/]+)?|manage-team|manage-pos-queues|live(?:/(?:queue|pos))?|[^/]+(?:/(?:home|menu|queue|campaign/[^/]+|order/[^/]+))?)/?$"
       }
     ]
   }

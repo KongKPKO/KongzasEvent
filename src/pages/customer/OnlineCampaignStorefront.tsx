@@ -62,10 +62,9 @@ export default function OnlineCampaignStorefront() {
   const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(selectedProduct), () => setSelectedProduct(null));
 
   useEffect(() => {
-    if (loading) return;
-    const details = getSeoDetails(location.pathname, language, window.location.hostname, campaign?.name);
-    applySeoDetails(campaign ? details : { ...details, canonical: null, noindex: true });
-  }, [campaign, language, loading, location.pathname]);
+    const details = getSeoDetails(location.pathname, language, window.location.hostname, campaign?.name, campaign?.description);
+    applySeoDetails(!loading && campaign && campaign.artist_slug === slug && campaign.slug === campaignSlug ? details : { ...details, canonical: null, noindex: true });
+  }, [campaign, campaignSlug, language, loading, location.pathname, slug]);
 
   useEffect(() => {
     if (!slug || !campaignSlug) return;

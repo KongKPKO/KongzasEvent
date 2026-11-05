@@ -77,7 +77,7 @@ test('creator registers, confirms email, resets password and signs in again', as
   expect(Boolean(userId)).toBe(true);
   await expect(page.getByRole('heading', { name: 'Check your email or sign in' })).toBeVisible();
 
-  await page.goto(await emailLink(request, /confirm/i));
+  await page.goto(await emailLink(request, /confirm|ยืนยันอีเมล/i));
   await expectSignedInAccount(page);
   const artist = await service.from('artists').select('id, slug, is_public, seller_type').eq('id', userId).single().throwOnError();
   expect(artist.data).toMatchObject({ id: userId, slug, is_public: false, seller_type: 'cosplayer' });
@@ -108,7 +108,7 @@ test('creator registers, confirms email, resets password and signs in again', as
   await page.getByRole('button', { name: 'Forgot password?' }).click();
   await page.getByLabel('Reset email').fill(email);
   await page.getByRole('button', { name: 'Send reset link' }).click();
-  await page.goto(await emailLink(request, /reset/i));
+  await page.goto(await emailLink(request, /reset|ตั้งรหัสผ่านใหม่/i));
   await expect(page).toHaveURL(/\/reset-password/);
   await page.locator('#new-password').fill(newPassword);
   await page.locator('#confirm-password').fill(newPassword);

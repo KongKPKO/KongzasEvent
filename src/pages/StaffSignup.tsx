@@ -57,7 +57,7 @@ export default function StaffSignup() {
 
   return (
     <PublicShell><main className="public-single-auth">
-        <Link to="/manage-login" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900">
+        <Link to="/manage-login" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-gray-900">
           <ArrowLeft size={16} />
           {th ? 'กลับไปเข้าสู่ระบบ' : 'Back to sign in'}
         </Link>

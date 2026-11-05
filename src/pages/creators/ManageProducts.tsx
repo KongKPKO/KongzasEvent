@@ -2507,7 +2507,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                     : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                               }`}
                            >
-                              <span className="font-black text-gray-900">{item.value}</span>
+                              <span className="font-black text-gray-900">{loading || catalogLoadError ? '—' : item.value}</span>
                               <span>{item.label}</span>
                            </button>
                         ))}
@@ -3758,7 +3758,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      </div>
                      <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600">
                         <Filter size={12} />
-                        {t('catalogResultCount', { shown: displayedProductCount, total: products.length })}
+                        {loading ? uiText(language, 'Loading products...') : catalogLoadError ? uiText(language, 'Could not load products. Please retry.') : t('catalogResultCount', { shown: displayedProductCount, total: products.length })}
                      </div>
                      {hasActiveFilters && (
                         <button
@@ -3900,7 +3900,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             {/* PRODUCT LIST */}
             <div className="mb-4 flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
                <div>
-                  <h2 className="text-lg font-bold text-gray-800">{catalogDisplayMode === 'visual' ? (language === 'th' ? 'สินค้าหลัก' : 'Main products') : (language === 'th' ? 'รายการสินค้า' : 'Product items')} ({catalogDisplayMode === 'visual' ? filteredProductFamilies.length : displayedProductCount})</h2>
+                  <h2 className="text-lg font-bold text-gray-800">{catalogDisplayMode === 'visual' ? (language === 'th' ? 'สินค้าหลัก' : 'Main products') : (language === 'th' ? 'รายการสินค้า' : 'Product items')} ({loading || catalogLoadError ? '—' : catalogDisplayMode === 'visual' ? filteredProductFamilies.length : displayedProductCount})</h2>
                   <p className="text-xs font-semibold text-gray-500">
                      {catalogDisplayMode === 'visual'
                         ? (language === 'th' ? 'เลือกสินค้าหลักเพื่อดูรูป ราคา และสต็อกของแต่ละรายการ' : 'Open a main product to review photos, prices, and stock for each item.')
@@ -3911,7 +3911,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
             
             {loading ? (
                <div className="text-center py-12 text-gray-400">{uiText(language, 'Loading products...')}</div>
-            ) : filteredProductFamilies.length > 0 ? (
+            ) : catalogLoadError ? null : filteredProductFamilies.length > 0 ? (
                <ProductFamilyCatalog
                   families={filteredProductFamilies}
                   displayMode={catalogDisplayMode}

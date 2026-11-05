@@ -191,6 +191,10 @@ export default function POSPanel({
 }: POSPanelProps) {
     const { language } = useI18n();
     const [products, setProducts] = useState<Product[]>([]);
+    const [catalogLoading, setCatalogLoading] = useState(true);
+    const [catalogError, setCatalogError] = useState(false);
+    const [catalogEventId, setCatalogEventId] = useState<string | null>(null);
+    const catalogPending = catalogLoading || Boolean(activeEvent?.id && catalogEventId !== activeEvent.id);
     const [promotions, setPromotions] = useState<PromotionRule[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [promotionQuote, setPromotionQuote] = useState<PromotionQuote | null>(null);
@@ -305,21 +309,33 @@ export default function POSPanel({
         const request = ++catalogRequestRef.current;
         if (!canUsePos || !activeEvent?.id) {
             setProducts([]);
+            setCatalogLoading(false);
+            setCatalogEventId(null);
+            setCatalogError(false);
             return;
         }
 
-        const { data, error } = currentOrderId
-            ? await supabase.rpc('get_pos_catalog_for_order', { p_event_id: activeEvent.id, p_order_id: currentOrderId })
-            : await supabase.rpc('list_event_products_for_phase', { p_phase: 'live', p_event_id: activeEvent.id });
-        if (request !== catalogRequestRef.current) return;
-
-        if (error) {
+        setCatalogLoading(true);
+        setCatalogError(false);
+        try {
+            const { data, error } = currentOrderId
+                ? await supabase.rpc('get_pos_catalog_for_order', { p_event_id: activeEvent.id, p_order_id: currentOrderId })
+                : await supabase.rpc('list_event_products_for_phase', { p_phase: 'live', p_event_id: activeEvent.id });
+            if (request !== catalogRequestRef.current) return;
+            if (error) throw error;
+            if (!Array.isArray(data)) throw new Error('Invalid event catalog response');
+            setProducts((data as Product[]).map(product => normalizeProductRecord(product)));
+        } catch (error) {
+            if (request !== catalogRequestRef.current) return;
             console.error('[POS] Error fetching event catalog:', error);
             setProducts([]);
-            return;
+            setCatalogError(true);
+        } finally {
+            if (request === catalogRequestRef.current) {
+                setCatalogEventId(activeEvent.id);
+                setCatalogLoading(false);
+            }
         }
-
-        if (data) setProducts((data as Product[]).map((product) => normalizeProductRecord(product)));
     }, [activeEvent?.id, canUsePos, currentOrderId]);
 
     const fetchPromotions = useCallback(async () => {
@@ -1447,7 +1463,7 @@ export default function POSPanel({
                                 <h1 className="festival-title">{uiText(language, 'Sell')}</h1>
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                                        {filteredProducts.length} / {products.length}
+                                        {loading || orderLoading || fetchError || catalogPending || catalogError ? '—' : `${filteredProducts.length} / ${products.length}`}
                                     </span>
                                     <div className="hidden md:block text-xs text-gray-500">{uiText(language, 'Search by name or tag, then narrow with quick filters, category, and tags.')}</div>
                                 </div>
@@ -1538,20 +1554,20 @@ export default function POSPanel({
                                     >
                                         <Icon size={12} />
                                         <span>{filter.label}</span>
-                                        <span className={`${filter.count === 0 ? "hidden md:inline" : ""} rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{filter.count}</span>
+                                        <span className={`${filter.count === 0 ? "hidden md:inline" : ""} rounded-full px-1.5 py-0.5 text-[10px] ${selectedQuickFilter === filter.id ? 'bg-white/20 text-white' : 'bg-white text-slate-600'}`}>{loading || orderLoading || fetchError || catalogPending || catalogError ? '—' : filter.count}</span>
                                     </button>
                                 );
                             })}
                         </div>
                         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                            <button type="button" aria-pressed={selectedQuickFilter === 'sold_out'} onClick={() => setSelectedQuickFilter(selectedQuickFilter === 'sold_out' ? 'all' : 'sold_out')} className={`md:hidden shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${selectedQuickFilter === 'sold_out' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700'}`}>{language === 'th' ? 'สินค้าหมด' : 'Sold out'} {highlightedCounts.soldOut}</button>
+                            <button type="button" aria-pressed={selectedQuickFilter === 'sold_out'} onClick={() => setSelectedQuickFilter(selectedQuickFilter === 'sold_out' ? 'all' : 'sold_out')} className={`md:hidden shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${selectedQuickFilter === 'sold_out' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700'}`}>{language === 'th' ? 'สินค้าหมด' : 'Sold out'} {loading || orderLoading || fetchError || catalogPending || catalogError ? '—' : highlightedCounts.soldOut}</button>
                             {categories.map((cat) => (
                                 <button
                                     key={cat.label}
                                     onClick={() => setSelectedCategory(cat.label)}
                                     className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedCategory === cat.label ? 'bg-pink-600 text-white shadow-md' : 'bg-gray-100 text-pink-900 hover:bg-gray-200'}`}
                                 >
-                                    {cat.label === 'All' ? uiText(language, 'All') : cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-slate-500'}`}>{cat.count}</span>
+                                    {cat.label === 'All' ? uiText(language, 'All') : cat.label} <span className={`ml-1 ${selectedCategory === cat.label ? 'text-pink-100' : 'text-slate-500'}`}>{loading || orderLoading || fetchError || catalogPending || catalogError ? '—' : cat.count}</span>
                                 </button>
                             ))}
                         </div>
@@ -1563,7 +1579,7 @@ export default function POSPanel({
                                         onClick={() => setSelectedTag(tag.label)}
                                         className={`px-3 py-1 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${selectedTag === tag.label ? 'bg-sky-600 text-white shadow-md' : 'bg-sky-50 text-sky-700 hover:bg-sky-100'}`}
                                     >
-                                        {tag.label === 'All' ? uiText(language, 'All') : tag.label} <span className={`ml-1 ${selectedTag === tag.label ? 'text-sky-100' : 'text-sky-400'}`}>{tag.count}</span>
+                                        {tag.label === 'All' ? uiText(language, 'All') : tag.label} <span className={`ml-1 ${selectedTag === tag.label ? 'text-sky-100' : 'text-sky-400'}`}>{loading || orderLoading || fetchError || catalogPending || catalogError ? '—' : tag.count}</span>
                                     </button>
                                 ))}
                             </div>
@@ -1594,8 +1610,8 @@ export default function POSPanel({
                         )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'} aria-busy={loading || orderLoading}>
-                        {filteredProducts.length === 0 ? (
+                    <div className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0" tabIndex={0} role="region" aria-label={isVisualProductGrid ? 'Product grid' : 'Product list'} aria-busy={loading || orderLoading || catalogPending}>
+                        {catalogPending ? <div role="status" className="p-4 text-gray-500">{uiText(language, 'Loading...')}</div> : fetchError ? <div role="alert" className="p-4 text-red-700">{uiText(language, 'Failed to load order')} {uiText(language, 'Select this queue again or wait for an update.')}</div> : catalogError ? <div role="alert" className="p-4 text-red-700">{uiText(language, 'Could not load products. Please retry.')} <button type="button" className="underline" onClick={() => void fetchProducts()}>{uiText(language, 'Retry')}</button></div> : filteredProducts.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-60"><p>{uiText(language, 'No products found.')}</p></div>
                         ) : (
                             <div className={effectiveViewMode === 'compact' ? 'space-y-2' : 'festival-product-grid grid gap-3'}>

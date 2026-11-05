@@ -50,7 +50,7 @@ test('creator discovery recovers from failures and preserves useful filters', as
 });
 
 test('public entry pages fit small screens and retain accessible form controls', async ({ page }) => {
-  for (const path of ['/', '/manage-login', '/creator/register', '/staff-signup']) {
+  for (const path of ['/', '/for-sellers', '/manage-login', '/creator/register', '/staff-signup']) {
     await page.goto(path);
     await expect(page.locator('.public-entry')).toBeVisible();
     for (const width of [320, 375, 414, 768, 1280]) {
@@ -70,4 +70,17 @@ test('public entry pages fit small screens and retain accessible form controls',
   await expect(page.locator('#creator-website')).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
   await page.screenshot({ path: '/tmp/nireq-entry-register-mobile.png', fullPage: true });
+});
+
+test('seller landing links to registration', async ({ page }) => {
+  await page.goto('/for-sellers');
+  await expect(page.getByRole('heading', { name: 'Manage your shop and events with Paimon' })).toBeVisible();
+  for (const width of [320, 375, 1280]) {
+    await page.setViewportSize({ width, height: 812 });
+    expect(await page.locator('.public-entry').evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+  expect((await new AxeBuilder({ page }).include('.public-entry').withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([]);
+  await page.getByRole('link', { name: 'Register your shop' }).click();
+  await expect(page).toHaveURL(/\/creator\/register$/);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
 });

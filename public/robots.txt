@@ -1,6 +1,5 @@
 User-agent: *
 Allow: /
-Disallow: /manage-
 Disallow: /live/
 Disallow: /admin/
 

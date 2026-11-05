@@ -114,11 +114,9 @@ const Home = () => {
     <main className="creator-home w-full max-w-6xl mx-auto flex flex-col relative">
       
       {/* Offline Indicator */}
-      {!isConnected && (
-         <div className="bg-red-500 text-white text-[10px] uppercase font-bold text-center py-1 tracking-widest sticky top-0 z-[60]">
-            {t('customerOffline')}
-         </div>
-      )}
+      <div className="min-h-6" role="status">
+        {!isConnected && <div className="bg-red-700 text-white text-xs uppercase font-bold text-center py-1 tracking-widest">{t('customerOffline')}</div>}
+      </div>
 
       <StorefrontHeader name={displayArtist.display_name || uiText(language, 'Shop')} bio={displayArtist.bio} avatar={resolveAvatarUrl(displayArtist.image_url)} sellerType={displayArtist.seller_type} homeHref={`/${displayArtist.slug}/home`}>
         {/* Status Badge */}

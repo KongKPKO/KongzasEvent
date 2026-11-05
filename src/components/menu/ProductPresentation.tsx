@@ -70,6 +70,7 @@ export function ProductMedia({
                 src={getImageUrl(image, 360)}
                 alt={`${product.name}${images.length > 1 ? ` ${index + 1}` : ''}`}
                 loading={eager && index === 0 ? 'eager' : 'lazy'}
+                decoding="async"
                 className="h-full w-full object-cover"
                 onError={() => setFailedImages((current) => ({ ...current, [image]: true }))}
               />

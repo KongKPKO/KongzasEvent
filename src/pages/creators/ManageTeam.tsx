@@ -105,6 +105,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   const [inviteEventIds, setInviteEventIds] = useState<string[]>([]);
   const [eventAccessSearch, setEventAccessSearch] = useState('');
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
   const [inviteResult, setInviteResult] = useState<InviteResult>(null);
   const [inviteResultMsg, setInviteResultMsg] = useState<string>('');
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -181,6 +182,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
   };
 
   const fetchPendingInvitations = async () => {
+    setInvitationsLoading(true);
     try {
       const { data, error } = await withTimeout(
         supabase.rpc('list_team_invitations', { p_artist_id: actorContext.artist_id })
@@ -191,6 +193,8 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
     } catch (err) {
       console.error('[ManageTeam] fetch pending invitations failed:', err);
       setLoadErrors(current => ({ ...current, invitations: true }));
+    } finally {
+      setInvitationsLoading(false);
     }
   };
 
@@ -490,7 +494,9 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                     {tr('เลือกทั้งหมดที่แสดง', 'Select all listed')}
                   </button>
                 </div>
-                {events.filter(event => event.status === 'Confirmed').length === 0 ? (
+                {!accessReady ? (
+                  <p role="status" className="text-xs text-gray-600">{loadErrors.access ? tr('โหลดอีเวนต์ไม่สำเร็จ', 'Could not load events') : tr('กำลังโหลดอีเวนต์…', 'Loading events…')}</p>
+                ) : events.filter(event => event.status === 'Confirmed').length === 0 ? (
                   <p className="text-xs font-semibold text-amber-700">{tr('สร้างอีเวนต์ที่ยืนยันแล้วก่อนเชิญทีมงาน', 'Create a confirmed event before inviting event-limited staff.')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -511,7 +517,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
                     })}
                   </div>
                 )}
-                {inviteEventIds.length === 0 && (
+                {accessReady && inviteEventIds.length === 0 && (
                   <p className="mt-2 text-[11px] font-semibold text-red-700">{tr('เลือกอย่างน้อย 1 อีเวนต์สำหรับบทบาทนี้', 'Select at least one event for this role.')}</p>
                 )}
               </div>
@@ -536,7 +542,7 @@ export default function ManageTeam({ actorContext }: ManageTeamProps) {
             <Clock size={14} className="text-gray-500" />
             <h2 className="text-sm font-bold text-gray-800">{tr('คำเชิญที่รอตอบรับ', 'Pending Invitations')}</h2>
           </div>
-          {pendingInvitations.length === 0 ? (
+          {invitationsLoading ? <p role="status" className="px-4 py-5 text-sm text-gray-600">{tr('กำลังโหลดคำเชิญ…', 'Loading invitations…')}</p> : loadErrors.invitations ? null : pendingInvitations.length === 0 ? (
             <p className="px-4 py-5 text-sm text-gray-600">{tr('ไม่มีคำเชิญที่รอตอบรับ', 'No pending invitations.')}</p>
           ) : (
             <div className="divide-y divide-gray-100">

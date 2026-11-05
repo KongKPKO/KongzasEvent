@@ -4,6 +4,12 @@ import { getSeoDetails } from '../lib/seo';
 test('public canonical URLs use Paimon and private or preview pages are not indexed', () => {
   expect(getSeoDetails('/discover', 'en', 'paimonq.com')).toMatchObject({ canonical: 'https://paimonq.com/', noindex: false });
   expect(getSeoDetails('/a-shop', 'th', 'paimonq.com', 'ร้านตัวอย่าง')).toMatchObject({ canonical: 'https://paimonq.com/a-shop/home', noindex: false, title: 'ร้านตัวอย่าง · หน้าร้าน | Paimon' });
+  expect(getSeoDetails('/manage-art', 'en', 'paimonq.com')).toMatchObject({ canonical: 'https://paimonq.com/manage-art/home', noindex: false });
+  expect(getSeoDetails('/manage-art/home', 'en', 'paimonq.com')).toMatchObject({ canonical: 'https://paimonq.com/manage-art/home', noindex: false });
+  expect(getSeoDetails('/manage-products', 'en', 'paimonq.com').noindex).toBe(true);
+  expect(getSeoDetails('/manage-events/home', 'en', 'paimonq.com').noindex).toBe(true);
+  expect(getSeoDetails('/creator/register', 'en', 'paimonq.com').noindex).toBe(true);
+  expect(getSeoDetails('/for-sellers', 'en', 'paimonq.com').noindex).toBe(false);
   expect(getSeoDetails('/a-shop/menu', 'en', 'paimonq.com').canonical).toBe('https://paimonq.com/a-shop/menu');
   expect(getSeoDetails('/a-shop/campaign/sale', 'en', 'paimonq.com').canonical).toBe('https://paimonq.com/a-shop/campaign/sale');
   for (const path of ['/manage-products', '/live/queue', '/admin/support', '/a-shop/order/private-code', '/a-shop/queue']) {
@@ -27,4 +33,12 @@ test('rendered metadata follows navigation and missing shops are not indexed', a
   await page.goto('/nonexistent-seo-fixture-23841/campaign/unknown');
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
   await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+});
+
+test('sitemap and robots allow public manage-prefixed shops while excluding signup', async ({ request }) => {
+  const robots = await (await request.get('/robots.txt')).text();
+  const sitemap = await (await request.get('/sitemap.xml')).text();
+  expect(robots).not.toContain('Disallow: /manage-');
+  expect(sitemap).toContain('https://paimonq.com/for-sellers');
+  expect(sitemap).not.toContain('/creator/register');
 });

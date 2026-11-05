@@ -64,7 +64,7 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
   const stockLabel = (product: Product) => product.status === 'soldout' || product.status === 'disable' || availableUnits(product) === 0 ? t('productSoldOut') : product.is_unlimited ? t('productUnlimited') : `${t('productLeft')} ${availableUnits(product)}`;
   const card = (product: Product, index: number) => <article key={product.id} className={`shop-product ${cart[product.id] ? 'shop-product-selected' : ''}`} aria-label={product.name}>
     <button type="button" className="shop-product-picture" aria-label={detailLabel(product.name)} onClick={() => setSelectedId(product.id)}>
-      <ProductMedia product={product} getImageUrl={getMenuImageUrl} eager={index < 3} />
+      <ProductMedia product={product} getImageUrl={getMenuImageUrl} eager={index === 0} />
       {(product.status === 'soldout' || availableUnits(product) === 0) && <span className="shop-sold-out">{t('productSoldOut')}</span>}
     </button>
     <div className="shop-product-copy">
@@ -88,7 +88,7 @@ export default function ProductList({ products, promotions = [], cart, isOrderSe
           const representative = entry.products[0];
           const price = getProductPriceRange(entry.products);
           return <article className="shop-product" key={entry.key} aria-label={entry.label}>
-            <button type="button" className="shop-product-picture" aria-label={detailLabel(entry.label)} onClick={() => setSelectedId(representative.id)}><ProductMedia product={representative} getImageUrl={getMenuImageUrl} eager={index < 3} /></button>
+            <button type="button" className="shop-product-picture" aria-label={detailLabel(entry.label)} onClick={() => setSelectedId(representative.id)}><ProductMedia product={representative} getImageUrl={getMenuImageUrl} eager={index === 0} /></button>
             <div className="shop-product-copy">
               <h3 className="break-words font-bold leading-6 text-gray-950">{entry.label}</h3>
               <div className="mt-1 flex flex-wrap gap-1">{(representative.tags || []).map(tag => <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{tag}</span>)}</div>

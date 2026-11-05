@@ -34,6 +34,7 @@ const OnlineCampaignStorefront = lazy(() => import('./pages/customer/OnlineCampa
 const QueueView = lazy(() => import('./pages/customer/QueueView'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const CreatorRegister = lazy(() => import('./pages/CreatorRegister'));
+const SellerLanding = lazy(() => import('./pages/SellerLanding'));
 const AdminApplications = lazy(() => import('./pages/AdminApplications'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
 
@@ -315,7 +316,7 @@ function App() {
   };
 
   const isCustomerRoute = /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(currentPath);
-  const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/offline', '/help/guide', '/discover', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+  const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/for-sellers', '/offline', '/help/guide', '/discover', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
   const isManagementPath = isManagementLocation(currentPath);
   if (session && managementSuspended && isManagementPath) {
@@ -342,7 +343,7 @@ function App() {
     </main>;
   }
 
-  const isPublicLanding = currentPath === '/' || currentPath === '/discover';
+  const isPublicLanding = currentPath === '/' || currentPath === '/discover' || currentPath === '/for-sellers';
   if (currentPath !== '/offline' && ((loading && !isPublicLanding) || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
     return <ConnectingScreen />;
   }
@@ -422,6 +423,7 @@ function App() {
                     : <Navigate to="/manage-login" replace />
                 : <Navigate to="/manage-login" replace />}
             />
+            <Route path="/for-sellers" element={<SellerLanding />} />
             <Route path="/creator/register" element={<CreatorRegister />} />
             <Route path="/staff-signup" element={<StaffSignup />} />
             <Route path="/reset-password" element={<ResetPassword />} />

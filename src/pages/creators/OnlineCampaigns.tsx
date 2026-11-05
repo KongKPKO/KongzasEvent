@@ -89,9 +89,9 @@ export default function OnlineCampaigns() {
     }
   };
 
-  const renderGroup = (title: string, items: OnlineCampaignSummary[]) => (
+  const renderGroup = (title: string, items: OnlineCampaignSummary[], tone: 'active' | 'scheduled' | 'past') => (
     <section className="space-y-3">
-      <h2 className="text-sm font-black uppercase tracking-wide text-gray-500">{title}</h2>
+      <h2 className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-black ${tone === 'active' ? 'bg-emerald-100 text-emerald-800' : tone === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'}`}><span aria-hidden="true" className={`h-2 w-2 rounded-full ${tone === 'active' ? 'bg-emerald-600' : tone === 'scheduled' ? 'bg-blue-600' : 'bg-slate-500'}`} />{title} <span>{items.length}</span></h2>
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-sm font-semibold text-gray-600">
           {t('campaignEmptyGroup')}
@@ -112,7 +112,7 @@ export default function OnlineCampaigns() {
                     {new Date(campaign.opens_at).toLocaleString(dateLocale)} – {new Date(campaign.closes_at).toLocaleString(dateLocale)}
                   </div>
                 </div>
-                <span className="rounded-full bg-pink-50 px-2.5 py-1 text-xs font-black text-pink-700">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${tone === 'active' ? 'bg-emerald-100 text-emerald-800' : tone === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'}`}>
                   {t(('campaignState_' + campaign.state) as Parameters<typeof t>[0])}
                 </span>
               </div>
@@ -179,9 +179,9 @@ export default function OnlineCampaigns() {
           <div className="flex items-center gap-2 text-sm font-bold text-gray-500"><Loader2 className="animate-spin" size={16} />{t('loading')}</div>
         ) : (
           <>
-            {renderGroup(t('campaignGroupActive'), groups.active)}
-            {renderGroup(t('campaignGroupScheduled'), groups.scheduled)}
-            {renderGroup(t('campaignGroupPast'), groups.past)}
+            {renderGroup(t('campaignGroupActive'), groups.active, 'active')}
+            {renderGroup(t('campaignGroupScheduled'), groups.scheduled, 'scheduled')}
+            {renderGroup(t('campaignGroupPast'), groups.past, 'past')}
           </>
         )}
       </main>

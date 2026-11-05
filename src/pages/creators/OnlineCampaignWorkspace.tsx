@@ -39,12 +39,13 @@ import {
   normalizePaymentBankAccounts,
   type PaymentBankAccount,
 } from '../../utils/paymentBanks';
+import CampaignPromotionPicker from '../../components/promotions/CampaignPromotionPicker';
 import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
 import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
-type Tab = 'overview' | 'products' | 'orders' | 'settings';
+type Tab = 'overview' | 'products' | 'promotions' | 'orders' | 'settings';
 type ProductMembership = 'all' | 'included' | 'not_added';
-type ProductEdit = { stock: string; price: string; limit: string; expected: { stock_total: number | null; price_override: number | null; max_quantity_per_order: number | null; is_unlimited: boolean } };
+type ProductEdit = { stock: string; price: string; limit: string; gift: boolean; expected: { stock_total: number | null; price_override: number | null; max_quantity_per_order: number | null; is_unlimited: boolean; is_sellable: boolean } };
 type CampaignSettingsDraft = {
   campaignId: string;
   name: string;
@@ -98,7 +99,8 @@ export default function OnlineCampaignWorkspace() {
   const [search, setSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productEdits, setProductEdits] = useState<Record<string, ProductEdit>>({});
-  useUnsavedChanges(Object.keys(productEdits).length > 0, language === 'th' ? 'มีการแก้ไขสินค้าที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved product changes. Leave?');
+  const [promotionEditing, setPromotionEditing] = useState(false);
+  useUnsavedChanges(Object.keys(productEdits).length > 0 || promotionEditing, language === 'th' ? 'มีการแก้ไขสินค้าที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved product changes. Leave?');
   const [productCategory, setProductCategory] = useState('all');
   const [productMembership, setProductMembership] = useState<ProductMembership>('all');
   const [productSort, setProductSort] = useState<'name_asc' | 'name_desc'>('name_asc');
@@ -266,16 +268,16 @@ export default function OnlineCampaignWorkspace() {
     }
   };
 
-  const editProduct = (productId: string, field: 'stock' | 'price' | 'limit', value: string) => {
+  const editProduct = (productId: string, field: 'stock' | 'price' | 'limit' | 'gift', value: string | boolean) => {
     const current = workspace?.products.find(item => item.product_id === productId);
     if (!current) return;
     setProductEdits(previous => {
-      const expected = previous[productId]?.expected || { stock_total: current.stock_total ?? null, price_override: current.price_override ?? null, max_quantity_per_order: current.max_quantity_per_order ?? null, is_unlimited: current.is_unlimited };
-      const original = { stock: String(expected.stock_total ?? ''), price: String(expected.price_override ?? ''), limit: String(expected.max_quantity_per_order ?? '') };
+      const expected = previous[productId]?.expected || { stock_total: current.stock_total ?? null, price_override: current.price_override ?? null, max_quantity_per_order: current.max_quantity_per_order ?? null, is_unlimited: current.is_unlimited, is_sellable: current.is_sellable ?? true };
+      const original = { stock: String(expected.stock_total ?? ''), price: String(expected.price_override ?? ''), limit: String(expected.max_quantity_per_order ?? ''), gift: !expected.is_sellable };
       const existing = previous[productId] || { ...original, expected };
       const next = { ...existing, [field]: value };
       const updated = { ...previous };
-      if (next.stock === original.stock && next.price === original.price && next.limit === original.limit) delete updated[productId];
+      if (next.stock === original.stock && next.price === original.price && next.limit === original.limit && next.gift === original.gift) delete updated[productId];
       else updated[productId] = next;
       return updated;
     });
@@ -287,7 +289,7 @@ export default function OnlineCampaignWorkspace() {
       product_id: productId, is_enabled: true, is_unlimited: edit.expected.is_unlimited,
       stock_total: edit.expected.is_unlimited ? null : Number(edit.stock),
       price_override: edit.price.trim() === '' ? null : Number(edit.price),
-      max_quantity_per_order: edit.limit.trim() === '' ? null : Number(edit.limit), expected: edit.expected,
+      max_quantity_per_order: edit.limit.trim() === '' ? null : Number(edit.limit), is_sellable: !edit.gift, expected: edit.expected,
     }));
     if (Object.values(productEdits).some(edit => !edit.expected.is_unlimited && !edit.stock.trim()) || items.some(item => (!item.is_unlimited && (!Number.isSafeInteger(item.stock_total) || item.stock_total! < 0)) || (item.price_override !== null && (!Number.isFinite(item.price_override) || item.price_override < 0)) || (item.max_quantity_per_order !== null && (!Number.isSafeInteger(item.max_quantity_per_order) || item.max_quantity_per_order < 1)))) {
       setFeedback(language === 'th' ? 'กรุณาตรวจสอบจำนวนสต็อก ราคา และจำนวนสูงสุด' : 'Check stock, price, and order limit.'); return;
@@ -685,9 +687,9 @@ export default function OnlineCampaignWorkspace() {
         </div>
 
         <nav className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1">
-          {((canManage ? ['overview', 'products', 'orders', 'settings'] : ['overview', 'orders']) as Tab[]).map((item) => (
-            <button key={item} onClick={() => { if (tab === 'products' && item !== tab && Object.keys(productEdits).length && !window.confirm(language === 'th' ? 'มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved changes. Leave this page?')) return; if (item !== 'products') setProductEdits({}); setTab(item); }} className={'min-h-11 flex-1 rounded-xl px-4 text-sm font-black ' + (tab === item ? 'bg-pink-600 text-white' : 'text-gray-600 hover:bg-gray-50')}>
-              {t(('campaignTab_' + item) as Parameters<typeof t>[0])}
+          {((canManage ? ['overview', 'products', 'promotions', 'orders', 'settings'] : ['overview', 'orders']) as Tab[]).map((item) => (
+            <button key={item} onClick={() => { if (((tab === 'products' && Object.keys(productEdits).length > 0) || (tab === 'promotions' && promotionEditing)) && item !== tab && !window.confirm(language === 'th' ? 'มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved changes. Leave this page?')) return; if (item !== 'products') setProductEdits({}); setTab(item); }} className={'min-h-11 shrink-0 flex-1 whitespace-nowrap rounded-xl px-3 text-sm font-black ' + (tab === item ? 'bg-pink-600 text-white' : 'text-gray-600 hover:bg-gray-50')}>
+              {item === 'promotions' ? (language === 'th' ? 'โปรโมชั่น' : 'Promotions') : t(('campaignTab_' + item) as Parameters<typeof t>[0])}
               {item === 'orders' && actionCount > 0 && <span className="ml-1 rounded-full bg-white/20 px-1.5">{actionCount}</span>}
             </button>
           ))}
@@ -697,29 +699,21 @@ export default function OnlineCampaignWorkspace() {
 
         {tab === 'overview' && (
           <>
+          <div className="grid grid-cols-3 gap-2" aria-label={language === 'th' ? 'สรุปแคมเปญ' : 'Campaign summary'}>
+            <button type="button" disabled={!canManage} onClick={() => { setProductSearch(''); setProductCategory('all'); setProductMembership('included'); setProductPage(1); setTab('products'); }} className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-left text-blue-900"><ShoppingBag size={17} /><strong className="mt-1 block text-lg">{workspace.products.filter(item => item.is_enabled).length}</strong><span className="text-xs font-bold">{t('campaignProducts')} →</span></button>
+            <button type="button" onClick={() => { setSearch(''); setOrderFilter('needs_action'); setTab('orders'); }} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-amber-900"><PackageCheck size={17} /><strong className="mt-1 block text-lg">{actionCount}</strong><span className="text-xs font-bold">{t('campaignNeedsAction')} →</span></button>
+            <button type="button" onClick={() => { setSearch(''); setOrderFilter('payment_confirmed'); setTab('orders'); }} className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-left text-emerald-900"><span aria-hidden="true" className="text-sm font-black">฿</span><strong className="mt-1 block break-words text-lg">{formatPrice(workspace.orders.filter(order => order.payment_status === 'payment_confirmed').reduce((sum, order) => sum + Number(order.total_price), 0), campaign.currency)}</strong><span className="text-xs font-bold">{t('campaignRevenue')} →</span></button>
+          </div>
           {canManage && <section className="sales-readiness" aria-label={language === 'th' ? 'ตรวจความพร้อมก่อนเปิดขาย' : 'Before sales open'}>
             <header><div><h2>{language === 'th' ? 'ตรวจความพร้อมก่อนเปิดขาย' : 'Before sales open'}</h2><p>{language === 'th' ? 'ตรวจจากข้อมูลที่บันทึกแล้ว รายการนี้ไม่ใช่สถานะเปิดขาย' : 'Based on saved settings. This checklist is not the publication status.'}</p></div><strong>{readinessChecks.filter(item => item.ready).length}/{readinessChecks.length}</strong></header>
             <ul>{[...readinessChecks].sort((a, b) => Number(a.ready) - Number(b.ready)).map(item => <li key={item.label}><span>{item.label}</span><b>{item.ready ? (language === 'th' ? 'พร้อม' : 'Ready') : (language === 'th' ? 'ตรวจสอบ' : 'Check')}</b><button onClick={() => setTab(item.tab)}>{language === 'th' ? 'ตั้งค่า' : 'Configure'}</button></li>)}</ul>
             <button onClick={() => setTab('settings')}>{language === 'th' ? 'ตรวจการตั้งค่าและเผยแพร่' : 'Review settings & publish'}</button>
           </section>}
-          <div className="grid gap-4 md:grid-cols-3">
-            <section className="rounded-2xl border border-gray-200 bg-white p-5">
-              <ShoppingBag className="text-pink-600" />
-              <div className="mt-3 text-2xl font-black">{workspace.products.filter((item) => item.is_enabled).length}</div>
-              <div className="text-sm font-bold text-gray-500">{t('campaignProducts')}</div>
-            </section>
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <PackageCheck className="text-amber-700" />
-              <div className="mt-3 text-2xl font-black text-amber-950">{actionCount}</div>
-              <div className="text-sm font-bold text-amber-700">{t('campaignNeedsAction')}</div>
-            </section>
-            <section className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="text-xs font-black uppercase text-gray-500">{t('campaignRevenue')}</div>
-              <div className="mt-3 text-2xl font-black">{formatPrice(workspace.orders.filter((order) => order.payment_status === 'payment_confirmed').reduce((sum, order) => sum + Number(order.total_price), 0), campaign.currency)}</div>
-            </section>
-          </div>
+
           </>
         )}
+
+        {tab === 'promotions' && canManage && <CampaignPromotionPicker artistId={workspace.campaign.artist_id} campaignId={campaignId!} campaignName={campaign.name} onEditingChange={setPromotionEditing} products={workspace.catalog.map(product => ({ ...product, id: product.product_id || product.id || '', category: product.category || undefined }))} />}
 
         {tab === 'products' && (
           <section>
@@ -851,6 +845,7 @@ export default function OnlineCampaignWorkspace() {
                                 {product.gift_only && <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{language === 'th' ? 'ของแถมเท่านั้น' : 'Gift only'}</span>}
                               </div>
                             </div>
+                            {isIncluded && allocated && <label className="mt-3 flex items-start gap-2 rounded-xl bg-blue-50 p-3 text-xs font-bold text-blue-900"><input type="checkbox" checked={Boolean(product.gift_only) || (productEdits[productId]?.gift ?? !(allocated.is_sellable ?? true))} disabled={Boolean(product.gift_only)} onChange={event => editProduct(productId, 'gift', event.target.checked)} aria-label={`${language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในแคมเปญนี้' : 'Gift only in this campaign'}: ${product.name}`} />{language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในแคมเปญนี้' : 'Gift only in this campaign'}</label>}
                             {!isIncluded && !product.is_unlimited && product.product_kind !== 'bundle' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><strong className="text-emerald-700">{summary.available}</strong> {language === 'th' ? 'สต็อกกลางพร้อมจัดสรร' : 'Central stock available to allocate'}</div>}
                             {allocated && isIncluded && product.product_kind !== 'bundle' && !product.is_unlimited && !allocated.is_unlimited && allocated.supply_mode !== 'production' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600">
                               <div className="grid grid-cols-3 gap-2">
@@ -955,6 +950,7 @@ export default function OnlineCampaignWorkspace() {
                 <option value="shipping">{t('campaignAwaitingShipment')}</option>
                 <option value="pickup">{t('campaignAwaitingPickup')}</option>
                 <option value="awaiting_payment">{t('campaignOrderAwaitingPayment')}</option>
+                <option value="payment_confirmed">{language === 'th' ? 'ยืนยันการชำระเงินแล้ว' : 'Payment confirmed'}</option>
                 <option value="completed">{t('campaignCompleted')}</option>
                 <option value="cancelled">{t('campaignCancelledExpiredRefunded')}</option>
                 <option value="all">{t('campaignAllOrders')}</option>

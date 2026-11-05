@@ -41,6 +41,7 @@ export interface CampaignProduct extends ProductPresentationFields, ProductVaria
   currency?: string;
   is_unlimited: boolean;
   is_enabled?: boolean;
+  is_sellable?: boolean;
   stock_total?: number | null;
   stock_reserved?: number;
   stock_sold?: number;

@@ -177,3 +177,13 @@ export const saveEventPromotionSelection = async (input: SaveEventPromotionSelec
   if (error) throw toPromotionError(error);
   return data as string;
 };
+
+export const saveCampaignPromotionSelection = async (input: { campaignId: string; promotionId: string; expectedRevision: number; assignment: Pick<PromotionAssignment, 'starts_at' | 'ends_at' | 'combination_policy'> | null; confirmationToken?: string }) => {
+  const { data, error } = await supabase.rpc('save_campaign_promotion_selection', { p_campaign_id: input.campaignId, p_promotion_id: input.promotionId, p_expected_revision: input.expectedRevision, p_assignment: input.assignment, p_confirmation_token: input.confirmationToken || null });
+  if (error?.message.includes('promotion_conflict_confirmation_required')) {
+    const detail = JSON.parse(error.details);
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+  }
+  if (error) throw toPromotionError(error);
+  return data as string;
+};

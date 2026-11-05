@@ -892,4 +892,43 @@ test.describe('online campaign', () => {
     const paymentCount = await fixture.service.from('campaign_payment_methods').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('promptpay_id', '0899994321');
     expect(paymentCount.count).toBe(1);
   });
+  test('mobile overview shortcuts and campaign gift-only setting', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 850 });
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    const summary = page.locator('[aria-label="Campaign summary"], [aria-label="สรุปแคมเปญ"]');
+    await expect(summary).toBeVisible();
+    await summary.getByRole('button', { name: /Confirmed revenue|ยอดที่ยืนยันแล้ว/i }).click();
+    await expect(page.getByRole('combobox', { name: /All orders|คำสั่งซื้อทั้งหมด/i })).toHaveValue('payment_confirmed');
+    await page.getByRole('button', { name: /Overview|ภาพรวม/, exact: true }).click();
+    await summary.getByRole('button', { name: /products|สินค้าในแคมเปญ/i }).click();
+    const gift = page.getByRole('checkbox', { name: /Gift only in this campaign: E2E Cheki|ใช้เป็นของแถมเท่านั้นในแคมเปญนี้: E2E Cheki/ });
+    await gift.check();
+    await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
+    await expect.poll(async () => (await fixture.service.from('online_campaign_products').select('is_sellable').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.is_sellable).toBe(false);
+    await page.reload();
+    await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+    await expect(gift).toBeChecked();
+    await gift.uncheck();
+    await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
+    await expect.poll(async () => (await fixture.service.from('online_campaign_products').select('is_sellable').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.is_sellable).toBe(true);
+    const offer = await fixture.service.from('artist_promotions').insert({ artist_id: fixture.userId, name: 'Campaign offer test', target_type: 'all', rule_type: 'discount', promotion_type: 'quantity_discount', buy_quantity: 2, reward_value: 10, lifecycle_status: 'ready' }).select('id').single();
+    if (offer.error) throw offer.error;
+    try {
+      await page.getByRole('button', { name: /Promotions|โปรโมชั่น/, exact: true }).click();
+      const promotions = page.getByRole('region', { name: /Campaign promotions|โปรโมชั่นในแคมเปญ/ });
+      await expect(promotions).toBeVisible();
+      const row = promotions.locator('article').filter({ hasText: 'Campaign offer test' });
+      await row.getByRole('button', { name: /Select promotion|เลือกใช้/ }).click();
+      await row.getByRole('checkbox', { name: /Use in this campaign|ใช้ในแคมเปญนี้/ }).check();
+      await row.getByRole('button', { name: /Save selection|บันทึกการเลือกใช้/ }).click();
+      await expect(row.getByText(/Selected for this campaign|เลือกใช้ในแคมเปญนี้แล้ว/)).toBeVisible();
+      const assignment = await fixture.service.from('promotion_assignments').select('is_paused').eq('campaign_id', campaignId).eq('promotion_id', offer.data.id).single();
+      expect(assignment.data?.is_paused).toBe(false);
+    } finally {
+      await fixture.service.from('promotion_assignments').delete().eq('promotion_id', offer.data.id);
+      await fixture.service.from('artist_promotions').delete().eq('id', offer.data.id);
+    }
+  });
+
 });

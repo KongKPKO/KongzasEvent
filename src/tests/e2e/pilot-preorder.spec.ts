@@ -1,6 +1,8 @@
 import { expectSignedInAccount } from '../helpers/accountMenu';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import Papa from 'papaparse';
 import { expect, test } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
@@ -264,6 +266,24 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     must(await service.from('products').insert({ id: extraProductId, artist_id: artistId, name: 'Additional pickup item', price: 0, currency: 'THB', status: 'enable', is_unlimited: true }), 'seed extra pickup item');
     must(await service.from('order_items').insert({ order_id: orderId, product_id: extraProductId, quantity: 1, price_per_unit: 0 }), 'seed second pickup line');
     must(await service.from('orders').insert({ id: postOrderId, event_id: eventId, order_type: 'post_event', pickup_code: postOrderCode, customer_name: 'Post-order only', customer_email: 'postorder@example.test', status: 'confirmed', pickup_status: 'awaiting_shipment', total_price: 120 }), 'seed post-event order');
+    must(await service.from('order_items').insert({ order_id: postOrderId, product_id: extraProductId, quantity: 2, price_per_unit: 30 }), 'seed post-event items');
+    must(await service.from('order_payments').insert({ order_id: postOrderId, event_id: eventId, artist_id: artistId, amount_expected: 60, payment_status: 'payment_confirmed' }), 'seed post-event payment');
+    await adminPage.evaluate(() => window.localStorage.setItem('nireq-language', 'th'));
+    for (const [path, expectedQuantity] of [['preorder-dashboard', '1'], ['postorder-dashboard', '2']] as const) {
+      await adminPage.goto(`/manage-events/${eventId}/${path}`);
+      const button = adminPage.getByRole('button', { name: /CSV/ });
+      await expect(button).toBeEnabled();
+      const [download] = await Promise.all([adminPage.waitForEvent('download'), button.click()]);
+      const csv = await readFile(await download.path(), 'utf8');
+      expect(csv.startsWith('\uFEFF')).toBe(true);
+      const parsed = Papa.parse<string[]>(csv.replace(/^\uFEFF/, ''), { skipEmptyLines: true });
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.data[0]).toEqual(['สินค้า', 'หมวดหมู่', 'รอตรวจสลิป (ชิ้น)', 'ยืนยันชำระแล้ว (ชิ้น)', 'สลิปไม่ผ่าน / หมดเวลา (ชิ้น)', 'ต้องเตรียม (ชิ้น)', 'มูลค่าสินค้า รอตรวจและยืนยัน (ราคา × จำนวน)', 'มูลค่าสินค้า ยืนยันแล้ว (ราคา × จำนวน)']);
+      const item = parsed.data.find(row => row[0] === 'Additional pickup item');
+      expect(item?.[3]).toBe(expectedQuantity);
+      expect(item?.[7]).toBe(path === 'postorder-dashboard' ? '60' : '0');
+    }
+    await adminPage.evaluate(() => window.localStorage.setItem('nireq-language', 'en'));
     const sequence = dataOrThrow(await service.from('orders').select('order_sequence').eq('id', orderId).single(), 'read stable sequence').order_sequence;
     const staffContext = await browser.newContext({ viewport: { width: 375, height: 800 } });
     const staffPage = await staffContext.newPage();

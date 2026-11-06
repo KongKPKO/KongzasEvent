@@ -224,7 +224,9 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   };
   const exportCsv = () => {
     const rows = [
-      ['Product', 'Category', 'Submitted', 'Confirmed', 'Rejected', 'To prepare', 'Expected amount', 'Confirmed amount'].map((heading) => uiText(language, heading)),
+      language === 'th'
+        ? ['สินค้า', 'หมวดหมู่', 'รอตรวจสลิป (ชิ้น)', 'ยืนยันชำระแล้ว (ชิ้น)', 'สลิปไม่ผ่าน / หมดเวลา (ชิ้น)', 'ต้องเตรียม (ชิ้น)', 'มูลค่าสินค้า รอตรวจและยืนยัน (ราคา × จำนวน)', 'มูลค่าสินค้า ยืนยันแล้ว (ราคา × จำนวน)']
+        : ['Product', 'Category', 'Awaiting slip review (units)', 'Payment confirmed (units)', 'Rejected / expired (units)', 'To prepare (units)', 'Product value, awaiting review and confirmed (price × quantity)', 'Product value, confirmed (price × quantity)'],
       ...summary.map((row) => [
         row.product_name,
         row.category || '',
@@ -236,7 +238,11 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         String(row.confirmed_amount),
       ]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csv = '\uFEFF' + rows.map((row) => row.map((cell, index) => {
+      const text = String(cell);
+      const safe = index < 2 && /^[=+@\-\t\r]/.test(text) ? `'${text}` : text;
+      return `"${safe.replace(/"/g, '""')}"`;
+    }).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

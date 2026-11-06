@@ -74,13 +74,22 @@ test('public entry pages fit small screens and retain accessible form controls',
 
 test('seller landing links to registration', async ({ page }) => {
   await page.goto('/for-sellers');
-  await expect(page.getByRole('heading', { name: 'Manage your shop and events with Paimon' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Prepare your shop for every stage of the event' })).toBeVisible();
   for (const width of [320, 375, 1280]) {
     await page.setViewportSize({ width, height: 812 });
     expect(await page.locator('.public-entry').evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(width);
   }
   expect((await new AxeBuilder({ page }).include('.public-entry').withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([]);
-  await page.getByRole('link', { name: 'Register your shop' }).click();
+  await expect(page.getByRole('heading', { name: 'Run an online sale between events' })).toBeVisible();
+  await selectLanguage(page, 'th');
+  await expect(page.getByRole('heading', { name: 'ไม่มีอีเวนต์ ก็เปิดรอบขายได้' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'ทำ QR สำหรับติดที่บูธ' })).toBeVisible();
+  await expect(page.getByText(/QR ของหน้าร้านไม่ได้ล็อกอีเวนต์/)).toBeVisible();
+  const image = page.getByRole('img', { name: 'ตัวอย่างหน้าจัดการแคมเปญออนไลน์ของร้านจำลอง' });
+  await image.scrollIntoViewIfNeeded();
+  await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  await selectLanguage(page, 'en');
+  await page.getByRole('link', { name: 'Register your shop' }).first().click();
   await expect(page).toHaveURL(/\/creator\/register$/);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
 });

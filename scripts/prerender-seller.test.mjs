@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 test('seller landing build contains public content and metadata in the initial HTML', async () => {
   const html = await readFile('dist/seller-landing.html', 'utf8');
-  assert.match(html, /<h1[^>]*>Manage your shop and events with Paimon<\/h1>/);
+  assert.match(html, /<h1[^>]*>Prepare your shop for every stage of the event<\/h1>/);
   assert.match(html, /href="\/creator\/register"/);
   assert.match(html, /<title>Manage your shop and events \| Paimon<\/title>/);
   assert.match(html, /rel="canonical" href="https:\/\/paimonq\.com\/for-sellers"/);

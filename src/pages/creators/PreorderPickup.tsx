@@ -82,6 +82,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
 
   const canCancelPreorders = ['owner', 'manager', 'seller'].includes(actorContext.role);
@@ -174,7 +175,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       await load();
       setConfirmAction(null);
     } catch (error) {
-      setToast({ tone: 'error', title: uiText(language, 'Pickup failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
+      setConfirmError(uiText(language, getPreorderErrorMessage(error)));
     } finally {
       actionInFlight.current = false;
       setActionLoading(false);
@@ -191,7 +192,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       await load();
       setConfirmAction(null);
     } catch (error) {
-      setToast({ tone: 'error', title: uiText(language, 'Cancel failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
+      setConfirmError(uiText(language, getPreorderErrorMessage(error)));
     } finally {
       actionInFlight.current = false;
       setActionLoading(false);
@@ -213,7 +214,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       await load();
       setConfirmAction(null);
     } catch (error) {
-      setToast({ tone: 'error', title: uiText(language, 'Expiry failed'), detail: uiText(language, getPreorderErrorMessage(error)) });
+      setConfirmError(uiText(language, getPreorderErrorMessage(error)));
     } finally {
       actionInFlight.current = false;
       setActionLoading(false);
@@ -222,6 +223,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
 
   const handleConfirm = () => {
     if (!confirmAction) return;
+    setConfirmError(null);
     if (confirmAction.type === 'pickup') void runPickup(confirmAction.order);
     if (confirmAction.type === 'cancel') void runCancel(confirmAction.order);
     if (confirmAction.type === 'expire') void runExpire();
@@ -270,8 +272,10 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
         tone={confirmAction?.type === 'pickup' ? 'default' : 'danger'}
         loading={actionLoading}
         onConfirm={handleConfirm}
-        onCancel={() => { if (!actionInFlight.current) setConfirmAction(null); }}
-      />
+        onCancel={() => { if (!actionInFlight.current) { setConfirmAction(null); setConfirmError(null); } }}
+      >
+        {confirmError && <p role="alert" className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-700">{confirmError}</p>}
+      </ConfirmDialog>
 
       <main className="mx-auto max-w-6xl p-4 md:p-6">
         {eventId && <EventNavTabs eventName={eventInfo?.event_name || uiText(language, 'Event')} eventId={eventId} active="pickup" actorRole={actorContext.role} sellingMode={eventInfo?.selling_mode} />}

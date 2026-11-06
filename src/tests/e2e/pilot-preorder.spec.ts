@@ -292,6 +292,10 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await adminPage.getByLabel('Search pickup orders').fill('');
     await pickupCard.getByRole('button', { name: 'Picked up', exact: true }).click();
     await expect(adminPage.getByRole('dialog')).toContainText(`Order #${sequence}`);
+    await adminPage.route('**/rest/v1/rpc/mark_preorder_picked_up', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ message: 'production_stock_not_ready' }) }), { times: 1 });
+    await adminPage.getByRole('dialog').getByRole('button', { name: 'Picked up', exact: true }).click();
+    await expect(adminPage.getByRole('dialog').getByRole('alert')).toContainText('Receive the missing production stock before fulfillment.');
+    await expect(adminPage.getByRole('dialog')).toBeVisible();
     await adminPage.getByRole('dialog').getByRole('button', { name: 'Picked up', exact: true }).click();
     await expect.poll(async () => dataOrThrow(await service
       .from('orders')

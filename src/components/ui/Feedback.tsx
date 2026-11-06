@@ -105,7 +105,7 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="max-h-full w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
         <h2 id={titleId} className="text-lg font-black text-gray-900">{uiText(language, title)}</h2>
         {detail && <p className="mt-2 whitespace-pre-line text-sm font-medium text-gray-600">{detail}</p>}
         {children}

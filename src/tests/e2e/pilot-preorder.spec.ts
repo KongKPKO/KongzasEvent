@@ -9,9 +9,15 @@ import { LoginPage } from './pages/LoginPage';
 const runId = randomUUID();
 const adminEmail = `pilot-preorder-${runId}@example.test`;
 const adminPassword = 'LocalOnlyTestPassword123!';
+const staffEmail = `pilot-pickup-staff-${runId}@example.test`;
+const staffMemberId = randomUUID();
+let staffUserId = '';
 const artistSlug = `po-${runId.slice(0, 8)}`;
 const eventId = randomUUID();
 const productId = randomUUID();
+const extraProductId = randomUUID();
+const postOrderId = randomUUID();
+const postOrderCode = randomUUID().replace(/-/g, '').toUpperCase();
 const productName = `Pilot Preorder Item ${runId}`;
 const customerName = `Pilot Customer ${runId.slice(0, 8)}`;
 const customerEmail = `pilot-customer-${runId}@example.test`;
@@ -46,6 +52,10 @@ test.beforeAll(async () => {
   artistId = fixture.userId;
 
   const now = Date.now();
+  const staff = await service.auth.admin.createUser({ email: staffEmail, password: adminPassword, email_confirm: true });
+  if (staff.error || !staff.data.user) throw new Error(`create pickup staff: ${staff.error?.message || 'user missing'}`);
+  staffUserId = staff.data.user.id;
+  must(await service.from('artist_members').insert({ id: staffMemberId, artist_id: artistId, member_email: staffEmail, role: 'queue_staff', status: 'active' }), 'seed pickup staff');
   must(await service.from('events').insert({
     id: eventId,
     artist_id: artistId,
@@ -60,6 +70,7 @@ test.beforeAll(async () => {
     preorder_closes_at: new Date(now + 12 * 60 * 60 * 1000).toISOString(),
     preorder_pickup_instructions: 'Show the pickup code at the pilot booth.',
   }), 'seed preorder event');
+  must(await service.from('event_member_assignments').insert({ artist_id: artistId, event_id: eventId, member_id: staffMemberId }), 'assign pickup staff');
   must(await service.from('products').insert({
     id: productId,
     artist_id: artistId,
@@ -103,8 +114,11 @@ test.afterAll(async () => {
   must(await service.from('orders').delete().eq('event_id', eventId), 'delete fixture orders');
   must(await service.from('event_payment_methods').delete().eq('event_id', eventId), 'delete fixture payment method');
   must(await service.from('event_products').delete().eq('event_id', eventId), 'delete fixture event product');
-  must(await service.from('products').delete().eq('id', productId), 'delete fixture product');
+  must(await service.from('products').delete().in('id', [productId, extraProductId]), 'delete fixture products');
+  must(await service.from('event_member_assignments').delete().eq('event_id', eventId), 'delete staff assignment');
   must(await service.from('events').delete().eq('id', eventId), 'delete fixture event');
+  must(await service.from('artist_members').delete().eq('id', staffMemberId), 'delete pickup staff membership');
+  if (staffUserId) must(await service.auth.admin.deleteUser(staffUserId), 'delete pickup staff user');
   must(await service.from('artists').delete().eq('id', artistId), 'delete fixture artist');
   const deletedUser = await service.auth.admin.deleteUser(artistId);
   if (deletedUser.error) throw new Error(`delete fixture user: ${deletedUser.error.message}`);
@@ -144,6 +158,7 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await expect(customerPage.getByText('Pre-order now. No queue ticket needed.').first()).toBeVisible({ timeout: 20_000 });
     await customerPage.getByRole('button', { name: `Add: ${productName}`, exact: true }).click();
     await customerPage.getByRole('button').filter({ hasText: /฿120|Total/i }).last().click();
+    await expect(customerPage.getByText(`This pre-order is for pickup at Pilot Preorder ${runId} on the event day only.`)).toBeVisible();
     await customerPage.getByPlaceholder('Name for pickup').fill(customerName);
     await customerPage.getByPlaceholder('Email').fill(customerEmail);
     await customerPage.getByRole('button', { name: /^Pre-order$/ }).click();
@@ -246,9 +261,37 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
       .single(), 'read confirmed preorder');
     expect(confirmedOrder.pickup_status).toBe('awaiting_pickup');
 
+    must(await service.from('products').insert({ id: extraProductId, artist_id: artistId, name: 'Additional pickup item', price: 0, currency: 'THB', status: 'enable', is_unlimited: true }), 'seed extra pickup item');
+    must(await service.from('order_items').insert({ order_id: orderId, product_id: extraProductId, quantity: 1, price_per_unit: 0 }), 'seed second pickup line');
+    must(await service.from('orders').insert({ id: postOrderId, event_id: eventId, order_type: 'post_event', pickup_code: postOrderCode, customer_name: 'Post-order only', customer_email: 'postorder@example.test', status: 'confirmed', pickup_status: 'awaiting_shipment', total_price: 120 }), 'seed post-event order');
+    const sequence = dataOrThrow(await service.from('orders').select('order_sequence').eq('id', orderId).single(), 'read stable sequence').order_sequence;
+    const staffContext = await browser.newContext({ viewport: { width: 375, height: 800 } });
+    const staffPage = await staffContext.newPage();
+    const staffLogin = new LoginPage(staffPage);
+    await staffLogin.goto();
+    await staffLogin.login(staffEmail, adminPassword);
+    await expect(staffPage).not.toHaveURL(/manage-login/, { timeout: 20_000 });
+    await staffPage.goto(`/manage-events/${eventId}/pickup`);
+    const staffCard = staffPage.getByText(pickupCode, { exact: true }).locator('..').locator('..');
+    await expect(staffCard).toContainText(`Order #${sequence}`, { timeout: 20_000 });
+    await expect(staffPage.getByText(postOrderCode, { exact: true })).toHaveCount(0);
+    await staffContext.close();
     await adminPage.goto(`/manage-events/${eventId}/pickup`);
-    await expect(adminPage.getByText(pickupCode, { exact: true })).toBeVisible({ timeout: 20_000 });
-    await adminPage.getByRole('button', { name: 'Picked up', exact: true }).click();
+    const pickupCard = adminPage.getByText(pickupCode, { exact: true }).locator('..').locator('..');
+    await expect(pickupCard).toBeVisible({ timeout: 20_000 });
+    await expect(pickupCard).toContainText(`Order #${sequence}`);
+    await expect(pickupCard.locator('li')).toHaveCount(2);
+    await expect(pickupCard).toContainText(productName);
+    await expect(pickupCard).toContainText('Additional pickup item');
+    await expect(adminPage.getByText('Post-order only')).toHaveCount(0);
+    await expect(adminPage.getByText('Awaiting', { exact: true }).locator('..')).toContainText('1');
+    await adminPage.getByLabel('Pickup status').selectOption('all');
+    await expect(adminPage.getByText(postOrderCode, { exact: true })).toHaveCount(0);
+    await adminPage.getByLabel('Search pickup orders').fill('Post-order only');
+    await expect(adminPage.getByText('No pickup orders found.')).toBeVisible();
+    await adminPage.getByLabel('Search pickup orders').fill('');
+    await pickupCard.getByRole('button', { name: 'Picked up', exact: true }).click();
+    await expect(adminPage.getByRole('dialog')).toContainText(`Order #${sequence}`);
     await adminPage.getByRole('dialog').getByRole('button', { name: 'Picked up', exact: true }).click();
     await expect.poll(async () => dataOrThrow(await service
       .from('orders')

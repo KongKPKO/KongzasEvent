@@ -30,6 +30,7 @@ interface EventInfo {
 interface PickupOrderRow {
   id: string;
   created_at: string;
+  order_sequence: number | null;
   status: string;
   pickup_status: PickupStatus;
   order_payments: { payment_status: PaymentStatus } | Array<{ payment_status: PaymentStatus }> | null;
@@ -102,6 +103,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
           .select(`
             id,
             created_at,
+            order_sequence,
             status,
             pickup_status,
             order_payments (payment_status),
@@ -125,10 +127,10 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
       if (orderError) throw orderError;
 
       setEventInfo((eventData || null) as EventInfo | null);
+      const rows = (orderData || []) as unknown as PickupOrderRow[];
       const { data: contents, error: contentsError } = await supabase.rpc('event_bundle_contents', { p_event_id: eventId });
       if (contentsError) throw contentsError;
       const snapshots = new Map((contents as Array<{order_item_id: string; components: Array<{name: string; quantity: number}>}> || []).map(row => [row.order_item_id, row.components]));
-      const rows = (orderData || []) as unknown as PickupOrderRow[];
       setOrders(rows.map(order => ({ ...order, order_items: order.order_items.map(item => ({ ...item, components: snapshots.get(item.id) })) })));
     } catch (error) {
       setToast({
@@ -225,12 +227,14 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
     if (confirmAction.type === 'expire') void runExpire();
   };
 
+  const orderLabel = (order: PickupOrderRow) => order.order_sequence != null ? `${language === 'th' ? 'ออเดอร์' : 'Order'} #${order.order_sequence}` : (language === 'th' ? 'ออเดอร์' : 'Order');
+
   const confirmDetail = (() => {
     if (!confirmAction) return '';
-    if (confirmAction.type === 'pickup') return `${confirmAction.order.pickup_code} · ${confirmAction.order.customer_name}\n${confirmAction.order.order_items.map(item => `${item.products?.name || '—'} ×${item.quantity}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}\n\n${language === 'th' ? 'เทียบรหัสกับลูกค้า และยืนยันหลังส่งมอบสินค้าครบแล้วเท่านั้น' : 'Match the code with the customer. Confirm only after handing over all items.'}`;
+    if (confirmAction.type === 'pickup') return `${orderLabel(confirmAction.order)} · ${confirmAction.order.pickup_code} · ${confirmAction.order.customer_name}\n${confirmAction.order.order_items.map(item => `${item.products?.name || '—'} ×${item.quantity}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}\n\n${language === 'th' ? 'เทียบรหัสกับลูกค้า และยืนยันหลังส่งมอบสินค้าครบแล้วเท่านั้น' : 'Match the code with the customer. Confirm only after handing over all items.'}`;
     if (confirmAction.type === 'cancel') return language === 'th'
-      ? `รหัสรับสินค้า ${confirmAction.order.pickup_code}\nสต็อกที่จองไว้จะคืนกลับเข้าสต็อก`
-      : `Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be released back to inventory.`;
+      ? `${orderLabel(confirmAction.order)} · รหัสรับสินค้า ${confirmAction.order.pickup_code}\nสต็อกที่จองไว้จะคืนกลับเข้าสต็อก`
+      : `${orderLabel(confirmAction.order)} · Pickup code ${confirmAction.order.pickup_code}\nReserved stock will be released back to inventory.`;
     return uiText(language, 'All awaiting pre-orders for this event will be expired and reserved stock will be released.');
   })();
 
@@ -343,6 +347,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
               {filteredOrders.map((order) => (
                 <div key={order.id} className="grid gap-4 p-4 md:grid-cols-[240px_minmax(0,1fr)_auto] md:items-center">
                   <div className="min-w-0">
+                    <div className="text-sm font-black text-gray-900">{orderLabel(order)}</div>
                     <div className="text-xs font-black uppercase tracking-[0.14em] text-gray-400">{uiText(language, 'Code')}</div>
                     <div className="break-all font-mono text-2xl font-black tracking-[0.08em] text-pink-700 md:text-[1.65rem]">{order.pickup_code}</div>
                     <div className="mt-1 text-[11px] font-bold text-gray-400">{new Date(order.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</div>
@@ -358,7 +363,7 @@ export default function PreorderPickup({ actorContext }: PreorderPickupProps) {
                       {formatPrice(order.total_price, order.currency)}
                     </div>
                     <div className="mt-1 whitespace-pre-line text-sm font-semibold text-gray-600">
-                      {order.order_items.map((item) => `${item.quantity}x ${item.products?.name || uiText(language, 'Unknown product')}${item.components?.length ? '\n  ' + item.components.map(c => `${c.name} ×${c.quantity}`).join('\n  ') : ''}`).join('\n')}
+                      <ul>{order.order_items.map((item) => <li key={item.id} className="break-words [overflow-wrap:anywhere]">{item.quantity}x {item.products?.name || uiText(language, 'Unknown product')}{item.components?.length ? <ul className="pl-4">{item.components.map((component, index) => <li key={`${component.name}-${index}`}>{component.name} ×{component.quantity}</li>)}</ul> : null}</li>)}</ul>
                       <OrderProductionStock value={productionStock.rows[order.id]} error={productionStock.error} />
                     </div>
                     <ActivityRewardsCard

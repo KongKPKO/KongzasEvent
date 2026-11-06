@@ -1604,6 +1604,12 @@ const MenuView = () => {
                                 </div>
                             )}
 
+                            {isPreorderMode && selectedEvent?.event_name && (
+                                <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold leading-relaxed text-sky-900">
+                                    {language === 'th' ? `พรีออเดอร์นี้สำหรับรับสินค้าที่งาน ${selectedEvent.event_name} ในวันงานเท่านั้น` : `This pre-order is for pickup at ${selectedEvent.event_name} on the event day only.`}
+                                </div>
+                            )}
+
                             <div className={`mt-3 rounded-lg border px-2.5 py-2 ${orderStatusClasses.box}`}>
                                 <div className={`text-[11px] font-black uppercase tracking-wide ${orderStatusClasses.title}`}>
                                     {orderStatus.label}

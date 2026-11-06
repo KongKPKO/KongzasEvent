@@ -23,6 +23,7 @@ import { getOrderSequences } from '../../lib/orderSequences';
 import type { ActorContext } from '../../types/access';
 import type { PaymentStatus, PreorderPaymentReviewRow, PreorderProductionSummaryRow } from '../../types/preorder';
 import { formatPrice } from '../../utils/currency';
+import { getMenuImageUrl } from '../../utils/imageUtils';
 import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
 import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
@@ -699,7 +700,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
             <ul className="divide-y divide-gray-100">
               {summary.filter((row) => Number(row.total_to_prepare) > 0).map((row) => (
                 <li key={row.product_id} className="flex items-center gap-3 p-4">
-                  {row.image_url ? <img src={row.image_url} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg bg-gray-100" />}
+                  {row.image_url ? <img src={getMenuImageUrl(row.image_url)} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg bg-gray-100 object-cover" onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} /> : <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg bg-gray-100" />}
                   <span className="min-w-0 flex-1 break-words font-bold text-gray-900 [overflow-wrap:anywhere]">{row.product_name}</span>
                   <span className="shrink-0 font-black text-gray-950">× {row.total_to_prepare}</span>
                 </li>

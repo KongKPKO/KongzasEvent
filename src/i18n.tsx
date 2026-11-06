@@ -1487,7 +1487,7 @@ const translations = {
     menuQueueGuidanceWaiting: 'เลือกสินค้าไว้ก่อนได้ ปุ่มยืนยันจะเปิดเมื่อถึงคิว.',
     menuQueueGuidanceNeedTicket: 'เลือกสินค้าไว้ก่อนได้ รับหมายเลขคิวก่อนจึงจะยืนยันได้.',
     menuPreorderMode: 'พรีออเดอร์',
-    menuPreorderGuidanceOpen: 'พรีออเดอร์ได้เลย ไม่ต้องมีบัตรคิว.',
+    menuPreorderGuidanceOpen: 'พรีออเดอร์ได้เลย',
     menuPreorderGuidanceNotOpen: 'ตอนนี้ยังไม่เปิดรับพรีออเดอร์.',
     menuPreorderReady: 'พร้อมพรีออเดอร์',
     menuPreorderClosed: 'ยังพรีออเดอร์ไม่ได้',

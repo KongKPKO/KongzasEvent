@@ -17,6 +17,7 @@ const customerName = `Pilot Customer ${runId.slice(0, 8)}`;
 const customerEmail = `pilot-customer-${runId}@example.test`;
 const rejectReason = `Wrong slip ${runId.slice(0, 8)}`;
 const slipPath = resolve('public/pwa-192x192.png');
+const productImagePath = `public/preorder-test-${runId}.png`;
 const validatedUploadTimeoutMs = 30_000;
 const notificationDeliveryTimeoutMs = 30_000;
 
@@ -63,6 +64,7 @@ test.beforeAll(async () => {
     id: productId,
     artist_id: artistId,
     name: productName,
+    image_url: productImagePath,
     price: 120,
     status: 'enable',
     category: 'Browser fixture',
@@ -108,6 +110,27 @@ test.afterAll(async () => {
   if (deletedUser.error) throw new Error(`delete fixture user: ${deletedUser.error.message}`);
 });
 
+test('preorder tells customers to choose their gift before ordering', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.addInitScript(() => window.localStorage.setItem('nireq-language', 'en'));
+  await page.route('**/rest/v1/rpc/quote_sale_promotions', route => {
+    const choices = route.request().postDataJSON().p_reward_choices || [];
+    return route.fulfill({ json: {
+      subtotal: 120, total: 120, merchandise_total: 120, discount_total: 0,
+      applied_promotions: [], reward_lines: [], pricing_hash: 'gift-fixture',
+      required_choices: choices.length ? [] : [{ kind: 'reward', promotion_id: 'gift-promo', earned_quantity: 1, available_quantity: 1, exhausted: false, options: [{ product_id: 'gift', name: 'Gift A', available: 1 }] }],
+    } });
+  });
+  await page.goto(`/${artistSlug}/menu`);
+  await page.getByRole('button', { name: `Add: ${productName}`, exact: true }).click();
+  await expect(page.getByText('Choose your gift before ordering.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Pre-order$/i })).toBeDisabled();
+  await page.getByRole('button').filter({ hasText: /฿120|Total/i }).last().click();
+  await page.getByRole('button', { name: /Increase Gift A/i }).click();
+  await page.getByRole('button', { name: /Confirm selected gifts/i }).click();
+  await expect(page.getByText('Choose your gift before ordering.')).toHaveCount(0);
+});
+
 test('preorder slip rejection, resubmission, confirmation, and pickup', async ({ browser }) => {
   test.setTimeout(120_000);
   const customerContext = await browser.newContext({ viewport: { width: 320, height: 800 } });
@@ -137,6 +160,16 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
       .single(), 'read created preorder');
     orderId = created.id;
     const pickupCode = created.pickup_code as string;
+    await customerPage.goto(`/${artistSlug}/menu`);
+    const banner = customerPage.getByRole('link', { name: new RegExp(pickupCode) }).first();
+    await expect(banner).toBeVisible();
+    expect(await customerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const bannerCode = banner.getByText(pickupCode, { exact: true });
+    const codeBox = await bannerCode.boundingBox();
+    const statusBox = await banner.getByText('View status', { exact: true }).boundingBox();
+    expect(codeBox!.x + codeBox!.width).toBeLessThanOrEqual(statusBox!.x);
+    await banner.click();
+    await expect(customerPage.getByText('Order code', { exact: true })).toBeVisible();
 
     const readPaymentStatus = async () => dataOrThrow(await service
       .from('order_payments')
@@ -158,6 +191,7 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     }).toBe('payment_submitted');
 
     const adminPage = await adminContext.newPage();
+    await adminPage.route(`**/storage/v1/object/public/Menu/${productImagePath}`, route => route.fulfill({ path: slipPath, contentType: 'image/png' }));
     adminPage.setDefaultTimeout(15_000);
     const login = new LoginPage(adminPage);
     await login.goto();
@@ -181,6 +215,9 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await expect.poll(async () => dataOrThrow(await service.from('event_payment_methods').select('payment_deadline_at').eq('event_id', eventId).single(), 'read saved payment policy').payment_deadline_at).toBeNull();
     await adminPage.goto(`/manage-events/${eventId}/preorder-dashboard`);
     await expect(adminPage.getByText(pickupCode, { exact: true })).toBeVisible({ timeout: 20_000 });
+    const summaryImage = adminPage.getByRole('heading', { name: 'Production Summary' }).locator('..').locator('..').locator('img').first();
+    await expect(summaryImage).toHaveAttribute('src', new RegExp('/storage/v1/object/public/Menu/public/preorder-test-'));
+    await expect.poll(() => summaryImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     await adminPage.getByRole('button', { name: 'Reject', exact: true }).click();
     await adminPage.getByPlaceholder(/Transfer amount does not match/i).fill(rejectReason);
     await adminPage.getByRole('button', { name: 'Reject payment', exact: true }).click();

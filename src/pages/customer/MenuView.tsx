@@ -1624,7 +1624,7 @@ const MenuView = () => {
                                     <CheckCircle size={16} className="shrink-0 text-pink-600" />
                                     <div className="min-w-0 flex-1">
                                         <div className="truncate text-xs font-bold text-pink-900">{t('menuPreorderActiveBanner')}</div>
-                                        <div className="font-mono text-sm font-black tracking-[0.14em] text-gray-950">{activePreorderEntries[0].pickupCode}</div>
+                                        <div className="break-all font-mono text-xs font-black tracking-[0.06em] text-gray-950">{activePreorderEntries[0].pickupCode}</div>
                                     </div>
                                     <span className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-pink-600 px-3 text-xs font-black text-white">
                                         {t('menuPreorderViewStatus')}
@@ -1646,7 +1646,7 @@ const MenuView = () => {
                                         <Link
                                             key={entry.pickupCode}
                                             to={`/${displayArtist?.slug || slug}/order/${entry.pickupCode}`}
-                                            className="inline-flex min-h-9 items-center rounded-lg border border-pink-200 bg-white px-2 font-mono text-xs font-black tracking-[0.1em] text-pink-700 hover:bg-pink-50"
+                                            className="inline-flex min-h-9 max-w-full items-center break-all rounded-lg border border-pink-200 bg-white px-2 font-mono text-xs font-black tracking-[0.06em] text-pink-700 hover:bg-pink-50"
                                         >
                                             {entry.pickupCode}
                                         </Link>
@@ -1699,7 +1699,7 @@ const MenuView = () => {
                                     {displayedDiscount > 0 && (
                                         <div className="text-[11px] font-bold text-emerald-700">{t('menuSaved')} {formatPrice(displayedDiscount, cartCurrency)}</div>
                                     )}
-                                    <div className={`mt-0.5 text-[11px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{orderGuidance}</div>
+                                    <div className={`mt-0.5 text-[11px] font-medium ${canSubmitSelection ? 'text-emerald-700' : 'text-amber-700'}`}>{isAdvanceOrderFlow && requiredPromotionChoices.some((choice) => choice.kind === 'reward') ? (language === 'th' ? (isPostOrderMode ? 'เลือกของแถมก่อนสั่งซื้อ' : 'เลือกของแถมก่อนพรีออเดอร์') : 'Choose your gift before ordering.') : orderGuidance}</div>
                                 </button>
                                 {!noQueueWalkIn && <button
                                     onClick={handleConfirmOrder}

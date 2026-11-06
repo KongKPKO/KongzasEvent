@@ -76,7 +76,18 @@ export default function EventPromotionPicker({ artistId, eventId, eventName, pro
       try { await saveEventPromotionSelection(payload); }
       catch (failure) {
         if (!(failure instanceof PromotionSaveConflict)) throw failure;
-        if (!window.confirm(th ? `โปรนี้ชนกับ ${failure.promotionNames.join(', ')}\nยืนยันใช้กติกาการใช้ร่วมกันที่เลือกไว้?` : `This overlaps ${failure.promotionNames.join(', ')}. Confirm the selected combination rules?`)) {
+        const latest = await listPromotionDefinitions(artistId);
+        const assignmentsById = new Map(latest.flatMap((definition) => definition.assignments.map((assignment) => [assignment.id, assignment] as const)));
+        const grouped = phases.flatMap((phase) => {
+          const names = Array.from(new Set(failure.conflicts.filter((conflict) => {
+            const assignment = assignmentsById.get(conflict.assignment_id);
+            return assignment?.event_id === eventId && assignment.event_phase === phase;
+          }).map((conflict) => conflict.promotion_name)));
+          return names.length ? [`${phaseName(phase)}: ${names.join(', ')}`] : [];
+        });
+        const unknown = Array.from(new Set(failure.conflicts.filter((conflict) => !assignmentsById.has(conflict.assignment_id)).map((conflict) => conflict.promotion_name)));
+        if (unknown.length) grouped.push(`${th ? 'ไม่ทราบช่วง' : 'Unknown phase'}: ${unknown.join(', ')}`);
+        if (!window.confirm(`${th ? 'โปรนี้ชนกับ:' : 'This overlaps:'}\n${grouped.join('\n')}\n\n${th ? 'ยืนยันใช้กติกาการใช้ร่วมกันที่เลือกไว้?' : 'Confirm the selected combination rules?'}`)) {
           setError(th ? 'ยังไม่ได้บันทึก การใช้งานเดิมไม่เปลี่ยน' : 'Not saved. Existing assignments are unchanged.'); return;
         }
         await saveEventPromotionSelection({ ...payload, confirmationToken: failure.token });

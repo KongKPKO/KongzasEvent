@@ -137,16 +137,18 @@ export const savePromotionDefinition = async (definition: SavePromotionDefinitio
   const { data, error } = await supabase.rpc('save_promotion_definition', { p_definition: definition });
   if (error?.message.includes('promotion_conflict_confirmation_required')) {
     const detail = JSON.parse(error.details);
-    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts);
   }
   if (error) throw toPromotionError(error);
   return data as string;
 };
 
 export class PromotionSaveConflict extends Error {
-  constructor(public token: string, public promotionNames: string[]) {
+  constructor(public token: string, public conflicts: Array<{ assignment_id: string; promotion_name: string }>) {
     super('promotion_conflict_confirmation_required');
   }
+
+  get promotionNames() { return this.conflicts.map((conflict) => conflict.promotion_name); }
 }
 
 export const archivePromotionDefinition = async (promotionId: string) => {
@@ -172,7 +174,7 @@ export const saveEventPromotionSelection = async (input: SaveEventPromotionSelec
   });
   if (error?.message.includes('promotion_conflict_confirmation_required')) {
     const detail = JSON.parse(error.details);
-    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts);
   }
   if (error) throw toPromotionError(error);
   return data as string;
@@ -182,7 +184,7 @@ export const saveCampaignPromotionSelection = async (input: { campaignId: string
   const { data, error } = await supabase.rpc('save_campaign_promotion_selection', { p_campaign_id: input.campaignId, p_promotion_id: input.promotionId, p_expected_revision: input.expectedRevision, p_assignment: input.assignment, p_confirmation_token: input.confirmationToken || null });
   if (error?.message.includes('promotion_conflict_confirmation_required')) {
     const detail = JSON.parse(error.details);
-    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts.map((conflict: { promotion_name: string }) => conflict.promotion_name));
+    throw new PromotionSaveConflict(detail.confirmation_token, detail.conflicts);
   }
   if (error) throw toPromotionError(error);
   return data as string;

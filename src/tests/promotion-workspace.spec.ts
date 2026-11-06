@@ -263,7 +263,7 @@ test('store creates offers; event selection preserves other channels and cancell
       { promotion_id: promotionId, artist_id: userId, campaign_id: campaign, starts_at: start, ends_at: end, is_paused: false, combination_policy: 'exclusive' },
     ]));
     must(await service.from('artist_promotions').insert({ id: competitor, artist_id: userId, name: 'Competing offer', target_type: 'all', rule_type: 'discount', promotion_type: 'quantity_discount', buy_quantity: 3, reward_value: 5, lifecycle_status: 'ready' }));
-    must(await service.from('promotion_assignments').insert({ promotion_id: competitor, artist_id: userId, event_id: eventA, event_phase: 'live', is_paused: false, combination_policy: 'exclusive' }));
+    must(await service.from('promotion_assignments').insert(['preorder', 'live', 'postorder'].map(event_phase => ({ promotion_id: competitor, artist_id: userId, event_id: eventA, event_phase, is_paused: false, combination_policy: 'exclusive' }))));
     must(await service.from('orders').insert({ id: order, event_id: eventA, status: 'confirmed', total_price: 90, subtotal_price: 100, discount_total: 10, pricing_breakdown: [{ id: promotionId, name, discount_amount: 10 }] }));
     const assignmentFields = 'id,event_id,event_phase,campaign_id,starts_at,ends_at,is_paused,combination_policy';
     const before = (await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id').throwOnError()).data!;
@@ -282,6 +282,18 @@ test('store creates offers; event selection preserves other channels and cancell
     await expect(selection.getByLabel('Combining offers')).toHaveValue('exclusive');
     const accessibility = await new AxeBuilder({ page }).include('.promotion-workspace').withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(accessibility.violations).toEqual([]);
+    await selection.getByRole('checkbox', { name: 'Pre-order', exact: true }).check();
+    await selection.getByRole('checkbox', { name: 'Post-order', exact: true }).check();
+    page.once('dialog', dialog => {
+      expect(dialog.message()).toContain('Pre-order: Competing offer');
+      expect(dialog.message()).toContain('Live event: Competing offer');
+      expect(dialog.message()).toContain('Post-order: Competing offer');
+      void dialog.dismiss();
+    });
+    await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
+    await expect(selection.getByRole('alert')).toContainText('Not saved');
+    await selection.getByRole('checkbox', { name: 'Pre-order', exact: true }).uncheck();
+    await selection.getByRole('checkbox', { name: 'Post-order', exact: true }).uncheck();
     page.once('dialog', dialog => dialog.dismiss());
     await selection.getByRole('button', { name: 'Save event selection', exact: true }).click();
     await expect(selection.getByRole('alert')).toContainText('Not saved');

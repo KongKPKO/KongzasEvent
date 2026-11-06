@@ -53,6 +53,7 @@ export interface CampaignProduct extends ProductPresentationFields, ProductVaria
 
 export interface CampaignPickupPoint {
   id: string;
+  updated_at?: string;
   name: string;
   address: string;
   starts_at: string;
@@ -64,6 +65,7 @@ export interface CampaignPickupPoint {
 export interface CampaignPaymentMethod {
   bank_accounts?: PaymentBankAccount[] | null;
   id: string;
+  updated_at?: string;
   method_type: 'promptpay' | 'bank_transfer' | 'qr_image' | 'other';
   display_name?: string | null;
   account_name?: string | null;

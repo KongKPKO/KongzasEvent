@@ -176,13 +176,14 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     const originalPromotion = page.locator('article').filter({ has: page.getByRole('heading', { name: 'ซื้อครบชุด Mavuika รับส่วนลดและของแถม', exact: true }) });
     await originalPromotion.getByRole('button', { name: 'แก้ไขโปรโมชัน' }).click();
     await expect(form.locator('.promotion-selected-gift')).toHaveCount(1);
+    await form.getByLabel('จำกัดของแถมต่อออเดอร์ (ชิ้น)').fill('1');
     await form.getByLabel('ค้นหาสินค้าของแถม').fill('GIFT-HSIN');
     await form.getByRole('button', { name: /Hairclip Hsin.*80/ }).click();
     await form.getByRole('button', { name: 'บันทึกการแก้ไข', exact: true }).click();
     await expect(page.locator('.promotion-notice')).toContainText('บันทึกโปรโมชันแล้ว');
     const multiple = await service.from('artist_promotions').select('v1_config').eq('id', saved.data?.id).single();
     must(multiple);
-    expect(multiple.data?.v1_config.gift).toMatchObject({ product_id: giftId, product_ids: [giftId, secondGiftId], selection_mode: 'customer_choice' });
+    expect(multiple.data?.v1_config.gift).toMatchObject({ product_id: giftId, product_ids: [giftId, secondGiftId], selection_mode: 'customer_choice', max_quantity_per_order: 1 });
     must(await service.from('artist_promotions').update({ v1_config: { ...multiple.data!.v1_config, condition: { kind: 'product', items: [{ product_id: firstProductId, quantity: 1 }, { product_id: secondProductId, quantity: 1 }] } } }).eq('id', saved.data?.id));
     await page.reload();
     const itemized = page.locator('article').filter({ has: page.getByRole('heading', { name: 'ซื้อครบชุด Mavuika รับส่วนลดและของแถม', exact: true }) }).locator('.promotion-saved-rule li');

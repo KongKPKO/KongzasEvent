@@ -387,7 +387,8 @@ body {
 .order-amount { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px dashed #7483a0; }
 .order-amount > span { font-size: 14px; font-weight: 650; }
 .order-amount > strong { font-size: clamp(28px,4vw,38px); color: #202641; letter-spacing: -.03em; }
-.order-actions, .order-receipt { display: grid; gap: 16px; }
+.order-actions, .order-receipt { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.order-code, .order-receipt li { min-width: 0; overflow-wrap: anywhere; }
 .order-actions:empty { display: none; }
 .order-actions:empty + .order-receipt { grid-column: 1 / -1; }
 .order-actions > section, .order-receipt { border-color: #e2edf4; border-radius: 20px; }
@@ -554,6 +555,8 @@ body {
 
 @media (max-width: 639px) { .customer-brand-inner .customer-brand-language { width: 112px; } }
 @media (max-width: 380px) {
+  .order-page .customer-brand-inner { flex-wrap: wrap; }
+  .order-page .customer-brand-inner > div { min-width: max-content; margin-left: auto; }
   .customer-brand-header .customer-brand-inner { gap: 8px; padding-inline: 12px; }
   .customer-brand-header .customer-brand-inner .customer-brand-logo { font-size: 22px; padding: 2px 0; }
   .customer-brand-logo .paimon-brand-mark { width: 26px; height: 26px; }

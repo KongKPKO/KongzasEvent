@@ -24,7 +24,7 @@ export interface PromotionV1Config {
   version: 1;
   condition: PromotionV1Condition;
   discount: { kind: 'fixed' | 'percentage'; value: number } | null;
-  gift: { product_id: string; quantity: number; limit: number | null; selection_mode?: 'fixed' | 'customer_choice'; product_ids?: string[] } | null;
+  gift: { product_id: string; quantity: number; limit: number | null; max_quantity_per_order?: number | null; selection_mode?: 'fixed' | 'customer_choice'; product_ids?: string[] } | null;
   activity?: ActivityReward | null;
 }
 

@@ -110,7 +110,7 @@ test.afterAll(async () => {
 
 test('preorder slip rejection, resubmission, confirmation, and pickup', async ({ browser }) => {
   test.setTimeout(120_000);
-  const customerContext = await browser.newContext();
+  const customerContext = await browser.newContext({ viewport: { width: 320, height: 800 } });
   const adminContext = await browser.newContext();
 
   try {
@@ -127,6 +127,8 @@ test('preorder slip rejection, resubmission, confirmation, and pickup', async ({
     await customerPage.getByRole('button', { name: /Place Pre-order/i }).click();
 
     await expect(customerPage.getByText('Order code', { exact: true })).toBeVisible({ timeout: 20_000 });
+    expect(await customerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await customerPage.getByText(productName).last().evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
     const created = dataOrThrow(await service
       .from('orders')
       .select('id, pickup_code')

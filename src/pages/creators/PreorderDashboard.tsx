@@ -19,6 +19,7 @@ import {
   rejectPreorderPayment,
 } from '../../lib/preorders';
 import { supabase } from '../../supabaseClient';
+import { getOrderSequences } from '../../lib/orderSequences';
 import type { ActorContext } from '../../types/access';
 import type { PaymentStatus, PreorderPaymentReviewRow, PreorderProductionSummaryRow } from '../../types/preorder';
 import { formatPrice } from '../../utils/currency';
@@ -76,6 +77,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
   const { eventId } = useParams();
   const [eventInfo, setEventInfo] = useState<EventInfo | null>(null);
   const [summary, setSummary] = useState<PreorderProductionSummaryRow[]>([]);
+  const [sequences, setSequences] = useState<Record<string, number>>({});
   const [orders, setOrders] = useState<PreorderPaymentReviewRow[]>([]);
   const productionStock = useProductionOrderStock(eventId, undefined, orders.map(order => [order.order_id, order.pickup_status, order.payment_status].join(':')).join('|'));
   const evidenceRequest = useRef(0);
@@ -105,7 +107,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           .eq('id', eventId)
           .eq('artist_id', actorContext.artist_id)
           .maybeSingle(),
-        listPreorderProductionSummary(eventId),
+        listPreorderProductionSummary(eventId, scope),
         listPreorderPaymentReview(eventId, null),
         supabase.rpc('has_shipping_access', { p_artist_id: actorContext.artist_id }),
       ]);
@@ -115,7 +117,9 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       setCanShip(shippingAccess.data === true);
       setEventInfo((eventData || null) as EventInfo | null);
       setSummary(summaryData);
-      setOrders(reviewData.filter((order) => (scope === 'post_event' ? order.order_type === 'post_event' : order.order_type !== 'post_event')));
+      const scopedOrders = reviewData.filter((order) => order.order_type === scope);
+      setOrders(scopedOrders);
+      setSequences(await getOrderSequences(scopedOrders.map((order) => order.order_id)));
     } catch (error) {
       setToast({ tone: 'error', title: uiText(language, 'Could not load pre-order dashboard'), detail: uiText(language, getPreorderErrorMessage(error)) });
     } finally {
@@ -164,6 +168,8 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
       currency,
     };
   }, [orders, summary]);
+
+  const orderLabel = (order: PreorderPaymentReviewRow) => sequences[order.order_id] != null ? `${language === 'th' ? 'ออเดอร์' : 'Order'} #${sequences[order.order_id]}` : (language === 'th' ? 'ออเดอร์' : 'Order');
 
   const visibleOrders = useMemo(() => {
     let rows = orders;
@@ -409,12 +415,12 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
         detail={
           reviewAction
             ? language === 'th'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\n${reviewAction.type === 'confirm' ? 'ยืนยันว่าตรวจหลักฐานและได้รับเงินโอนแล้ว Paimon ไม่ได้ตรวจบัญชีธนาคารให้ ออเดอร์จะเข้าสู่รายการเตรียมส่งมอบ' : reviewAction.type === 'ship' ? 'กรอกเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์' : 'การไม่รับสลิปจะยกเลิกออเดอร์และคืนสต็อกที่จอง หากลูกค้าโอนแล้วแต่แนบสลิปผิด ควรติดต่อให้ชัดเจนก่อน'}`
+              ? `${orderLabel(reviewAction.order)} · ${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\n${reviewAction.type === 'confirm' ? 'ยืนยันว่าตรวจหลักฐานและได้รับเงินโอนแล้ว Paimon ไม่ได้ตรวจบัญชีธนาคารให้ ออเดอร์จะเข้าสู่รายการเตรียมส่งมอบ' : reviewAction.type === 'ship' ? 'กรอกเลขติดตามพัสดุที่ลูกค้าจะเห็นในหน้าออเดอร์' : 'การไม่รับสลิปจะยกเลิกออเดอร์และคืนสต็อกที่จอง หากลูกค้าโอนแล้วแต่แนบสลิปผิด ควรติดต่อให้ชัดเจนก่อน'}`
               : reviewAction.type === 'confirm'
-              ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Paimon does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
+              ? `${orderLabel(reviewAction.order)} · ${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nYou are confirming that you checked the evidence and received the transfer. Paimon does not verify the bank transaction. The order will move to ${reviewAction.order.order_type === 'post_event' ? 'the shipment list.' : 'the pickup list.'}`
               : reviewAction.type === 'ship'
-                ? `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
-                : `${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
+                ? `${orderLabel(reviewAction.order)} · ${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nAdd the tracking number customers will see on their order page.`
+                : `${orderLabel(reviewAction.order)} · ${reviewAction.order.pickup_code} · ${reviewAction.order.customer_name}\nRejecting cancels this order and releases the reserved stock. If the customer actually paid (for example, a wrong slip was attached), contact them first instead of rejecting.`
             : ''
         }
         confirmLabel={
@@ -473,7 +479,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           </div>
         )}
       </ConfirmDialog>
-      {slipPreview && <EvidenceReview title={`Payment slip for ${slipPreview.order.pickup_code}`} closeLabel="Close slip preview" code={slipPreview.order.pickup_code} customer={slipPreview.order.customer_name} amount={slipPreview.order.total_price} currency={slipPreview.order.currency} url={slipPreview.url} items={slipPreview.order.items} onClose={() => setSlipPreview(null)}>
+      {slipPreview && <EvidenceReview title={`${language === 'th' ? 'สลิป' : 'Payment slip'} · ${orderLabel(slipPreview.order)}`} closeLabel="Close slip preview" code={slipPreview.order.pickup_code} customer={slipPreview.order.customer_name} amount={slipPreview.order.total_price} currency={slipPreview.order.currency} url={slipPreview.url} items={slipPreview.order.items} onClose={() => setSlipPreview(null)}>
             {slipPreview.order.payment_status === 'payment_submitted' && (
               <div className="grid grid-cols-2 gap-2 border-t border-gray-100 px-4 py-3">
                 <button
@@ -584,7 +590,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                 <div key={order.order_id} className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-lg font-black tracking-[0.12em] text-gray-950">{order.pickup_code}</span>
+                      <span className="font-black text-gray-950">{orderLabel(order)}</span><span className="break-all font-mono text-sm font-bold text-gray-700">{order.pickup_code}</span>
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-black ${statusClasses[order.payment_status]}`}>
                         {copy(statusLabels[order.payment_status])}
                       </span>
@@ -606,7 +612,7 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
                       </div>
                     )}
                     <div className="mt-2 text-xs font-semibold text-gray-600">
-                      {order.items.map((item) => `${item.quantity}x ${item.name}`).join(', ')}
+                      <ul>{order.items.map((item, index) => <li key={`${item.name}-${index}`} className="break-words [overflow-wrap:anywhere]">{item.quantity}x {item.name}</li>)}</ul>
                       <OrderProductionStock value={productionStock.rows[order.order_id]} error={productionStock.error} />
                     </div>
                     {order.order_type === 'post_event' && order.pickup_status === 'shipped' && order.tracking_number && (
@@ -687,36 +693,18 @@ export default function PreorderDashboard({ actorContext, scope = 'preorder' }: 
           <div className="border-b border-gray-100 px-4 py-3">
             <h2 className="text-lg font-black text-gray-900">{copy("Production Summary")}</h2>
           </div>
-          {summary.length === 0 ? (
-            <div className="p-6 text-sm font-bold text-gray-600">{language === 'th' ? 'ยังไม่มีออเดอร์ที่ส่งสลิปหรือยืนยันแล้ว' : 'No submitted or confirmed orders yet.'}</div>
+          {summary.filter((row) => Number(row.total_to_prepare) > 0).length === 0 ? (
+            <div className="p-6 text-sm font-bold text-gray-600">{language === 'th' ? 'ยังไม่มีสินค้าที่ต้องเตรียม' : 'No products to prepare yet.'}</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs font-black uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="px-4 py-3">{copy("Product")}</th>
-                    <th className="px-4 py-3">{copy("Needs review")}</th>
-                    <th className="px-4 py-3">{copy("Confirmed")}</th>
-                    <th className="px-4 py-3">{copy("To prepare")}</th>
-                    <th className="px-4 py-3">{copy("Expected")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {summary.map((row) => (
-                    <tr key={row.product_id}>
-                      <td className="px-4 py-3">
-                        <div className="font-black text-gray-900">{row.product_name}</div>
-                        <div className="text-xs font-semibold text-gray-500">{row.category || uiText(language, 'Uncategorized')}</div>
-                      </td>
-                      <td className="px-4 py-3 font-bold text-amber-700">{row.submitted_quantity}</td>
-                      <td className="px-4 py-3 font-bold text-emerald-700">{row.confirmed_quantity}</td>
-                      <td className="px-4 py-3 text-lg font-black text-gray-950">{row.total_to_prepare}</td>
-                      <td className="px-4 py-3 font-bold text-gray-700">{formatPrice(row.expected_amount, totals.currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y divide-gray-100">
+              {summary.filter((row) => Number(row.total_to_prepare) > 0).map((row) => (
+                <li key={row.product_id} className="flex items-center gap-3 p-4">
+                  {row.image_url ? <img src={row.image_url} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg bg-gray-100" />}
+                  <span className="min-w-0 flex-1 break-words font-bold text-gray-900 [overflow-wrap:anywhere]">{row.product_name}</span>
+                  <span className="shrink-0 font-black text-gray-950">× {row.total_to_prepare}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       </main>

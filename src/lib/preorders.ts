@@ -169,9 +169,10 @@ export const notifyPreorderPayment = async (input: {
   },
 });
 
-export const listPreorderProductionSummary = async (eventId: string) => {
-  const { data, error } = await supabase.rpc('list_preorder_production_summary', {
+export const listPreorderProductionSummary = async (eventId: string, orderType: 'preorder' | 'post_event') => {
+  const { data, error } = await supabase.rpc('list_preorder_production_summary_scoped', {
     p_event_id: eventId,
+    p_order_type: orderType,
   });
 
   if (error) throw error;

@@ -28,7 +28,7 @@ import { downloadPaymentEvidencePreview } from '../../lib/preorders';
 import { fetchProductStockSummaries, type ProductStockSummary } from '../../lib/stockAdjustments';
 import { supabase } from '../../supabaseClient';
 import type { ActorContext } from '../../types/access';
-import type { CampaignOrder, CampaignWorkspace } from '../../types/onlineCampaign';
+import type { CampaignOrder, CampaignWorkspace, CampaignPickupPoint, CampaignPaymentMethod } from '../../types/onlineCampaign';
 import { fetchActorContext } from '../../utils/access';
 import { formatPrice } from '../../utils/currency';
 import { getBrowserTimeZone } from '../../utils/timezone';
@@ -66,6 +66,12 @@ const maskPaymentId = (value?: string | null) => {
 
 const normalizePaymentNumber = (value?: string | null) =>
   normalizeSetting(value).replace(/[\s-]+/g, '');
+
+const localDateTime = (value: string) => {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+  return local.endsWith(':00') ? local.slice(0, 16) : local;
+};
 
 const paymentDetailsKey = (method: {
   promptpay_id?: string | null;
@@ -115,6 +121,9 @@ export default function OnlineCampaignWorkspace() {
   const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
   const [addingPickup, setAddingPickup] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
+  const [editingPickup, setEditingPickup] = useState<CampaignPickupPoint | null>(null);
+  const [editingPayment, setEditingPayment] = useState<CampaignPaymentMethod | null>(null);
+  const settingInFlight = useRef(false);
   const [paymentQrUrl, setPaymentQrUrl] = useState('');
   const [paymentQrUploading, setPaymentQrUploading] = useState(false);
   const [paymentBankAccounts, setPaymentBankAccounts] = useState<PaymentBankAccount[]>([createEmptyBankAccount()]);
@@ -338,15 +347,17 @@ export default function OnlineCampaignWorkspace() {
 
   const addPickupPoint = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!workspace) return;
+    if (!workspace || settingInFlight.current) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const name = String(form.get('name') || '').trim();
     const address = String(form.get('address') || '').trim();
-    const startsAt = new Date(String(form.get('starts_at'))).toISOString();
-    const endsAt = new Date(String(form.get('ends_at'))).toISOString();
+    const startsInput = String(form.get('starts_at'));
+    const endsInput = String(form.get('ends_at'));
+    const startsAt = editingPickup && startsInput === localDateTime(editingPickup.starts_at) ? editingPickup.starts_at : new Date(startsInput).toISOString();
+    const endsAt = editingPickup && endsInput === localDateTime(editingPickup.ends_at) ? editingPickup.ends_at : new Date(endsInput).toISOString();
     const duplicate = workspace.pickup_points.some((point) =>
-      normalizeSetting(point.name) === normalizeSetting(name)
+      point.id !== editingPickup?.id && normalizeSetting(point.name) === normalizeSetting(name)
       && normalizeSetting(point.address) === normalizeSetting(address)
       && new Date(point.starts_at).getTime() === new Date(startsAt).getTime()
       && new Date(point.ends_at).getTime() === new Date(endsAt).getTime()
@@ -355,29 +366,36 @@ export default function OnlineCampaignWorkspace() {
       setToast({ tone: 'warning', title: t('campaignDuplicateSetting') });
       return;
     }
+    settingInFlight.current = true;
     setSaving(true);
-    const { error } = await supabase.from('campaign_pickup_points').insert({
-      campaign_id: workspace.campaign.id,
-      artist_id: workspace.campaign.artist_id,
-      name,
-      address,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      instructions: String(form.get('instructions') || '').trim(),
-    });
-    if (error) setToast({ tone: 'error', title: t('campaignSaveFailed') });
-    else {
+    try {
+      const values = { name, address, starts_at: startsAt, ends_at: endsAt, instructions: String(form.get('instructions') || '').trim() };
+      if (editingPickup) {
+        if (!editingPickup.updated_at) throw new Error('Missing version');
+        const { data, error } = await supabase.from('campaign_pickup_points').update(values).eq('id', editingPickup.id).eq('campaign_id', workspace.campaign.id).eq('updated_at', editingPickup.updated_at).select('id').maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Pickup point changed or access was revoked');
+      } else {
+        const { error } = await supabase.from('campaign_pickup_points').insert({ campaign_id: workspace.campaign.id, artist_id: workspace.campaign.artist_id, ...values });
+        if (error) throw error;
+      }
       formElement.reset();
       setAddingPickup(false);
+      setEditingPickup(null);
       await load();
-      setToast({ tone: 'success', title: t('campaignPickupAdded'), detail: name });
+      setToast({ tone: 'success', title: editingPickup ? t('campaignSaved') : t('campaignPickupAdded'), detail: name });
+    } catch (error) {
+      console.error(error);
+      setToast({ tone: 'error', title: t('campaignSaveFailed'), detail: editingPickup ? (language === 'th' ? 'ข้อมูลอาจถูกเปลี่ยนหรือสิทธิ์ของคุณเปลี่ยนไป กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง' : 'The data or your access may have changed. Reload and try again.') : undefined });
+    } finally {
+      settingInFlight.current = false;
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const addPaymentMethod = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!workspace) return;
+    if (!workspace || settingInFlight.current) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const promptPayId = String(form.get('promptpay_id') || '').trim();
@@ -403,20 +421,19 @@ export default function OnlineCampaignWorkspace() {
       qr_image_url: qrImageUrl,
     });
     const duplicate = workspace.payment_methods.some((method) =>
-      hasPaymentDetails
+      method.id !== editingPayment?.id && (hasPaymentDetails
         ? paymentDetailsKey(method) === nextDetailsKey
-        : !paymentDetailsKey(method).replace(/\|/g, '') && normalizeSetting(method.instructions) === normalizeSetting(instructions)
+        : !paymentDetailsKey(method).replace(/\|/g, '') && normalizeSetting(method.instructions) === normalizeSetting(instructions))
     );
     if (duplicate) {
       setToast({ tone: 'warning', title: t('campaignDuplicateSetting') });
       return;
     }
+    settingInFlight.current = true;
     setSaving(true);
-    const { error } = await supabase.from('campaign_payment_methods').insert({
-      campaign_id: workspace.campaign.id,
-      artist_id: workspace.campaign.artist_id,
+    try {
+      const values = {
       method_type: promptPayId ? 'promptpay' : bankAccounts.length ? 'bank_transfer' : qrImageUrl ? 'qr_image' : 'other',
-      display_name: null,
       promptpay_id: promptPayId || null,
       bank_accounts: bankAccounts,
       bank_name: firstBankAccount?.bank_name || null,
@@ -424,17 +441,30 @@ export default function OnlineCampaignWorkspace() {
       account_number: firstBankAccount?.account_number || null,
       qr_image_url: qrImageUrl || null,
       instructions: instructions || null,
-    });
-    if (error) setToast({ tone: 'error', title: t('campaignSaveFailed') });
-    else {
+      };
+      if (editingPayment) {
+        if (!editingPayment.updated_at) throw new Error('Missing version');
+        const { data, error } = await supabase.from('campaign_payment_methods').update(values).eq('id', editingPayment.id).eq('campaign_id', workspace.campaign.id).eq('updated_at', editingPayment.updated_at).select('id').maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Payment method changed or access was revoked');
+      } else {
+        const { error } = await supabase.from('campaign_payment_methods').insert({ campaign_id: workspace.campaign.id, artist_id: workspace.campaign.artist_id, display_name: null, ...values });
+        if (error) throw error;
+      }
       formElement.reset();
       setPaymentQrUrl('');
       setPaymentBankAccounts([createEmptyBankAccount()]);
       setAddingPayment(false);
+      setEditingPayment(null);
       await load();
-      setToast({ tone: 'success', title: t('campaignPaymentAdded') });
+      setToast({ tone: 'success', title: editingPayment ? t('campaignSaved') : t('campaignPaymentAdded') });
+    } catch (error) {
+      console.error(error);
+      setToast({ tone: 'error', title: t('campaignSaveFailed'), detail: editingPayment ? (language === 'th' ? 'ข้อมูลอาจถูกเปลี่ยนหรือสิทธิ์ของคุณเปลี่ยนไป กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง' : 'The data or your access may have changed. Reload and try again.') : undefined });
+    } finally {
+      settingInFlight.current = false;
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const savePaymentBankAccounts = async () => {
@@ -1020,7 +1050,7 @@ export default function OnlineCampaignWorkspace() {
             <section className="rounded-2xl border border-gray-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-black">{t('campaignPickupPoints')} <span className="text-pink-700">({workspace.pickup_points.length})</span></h2>
-                {!addingPickup && <button type="button" onClick={() => setAddingPickup(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPickupPoint')}</button>}
+                {!addingPickup && !editingPickup && <button type="button" onClick={() => setAddingPickup(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPickupPoint')}</button>}
               </div>
               <div className="mt-3 space-y-2">
                 {workspace.pickup_points.map((point) => (
@@ -1031,25 +1061,29 @@ export default function OnlineCampaignWorkspace() {
                       <p className="mt-1 text-xs font-semibold text-gray-500">{language === 'th' ? 'นัดรับสินค้า: ' : 'Pickup appointment: '}{new Date(point.starts_at).toLocaleString(dateLocale, { timeZoneName: 'short' })} – {new Date(point.ends_at).toLocaleString(dateLocale, { timeZoneName: 'short' })}</p>
                       {point.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{point.instructions}</p>}
                     </div>
-                    <button type="button" aria-label={t('campaignRemovePickupPoint', { name: point.name })} onClick={() => setRemoveTarget({ kind: 'pickup', id: point.id, name: point.name })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" disabled={saving || addingPickup || Boolean(editingPickup)} aria-label={`${language === 'th' ? 'แก้ไขจุดรับสินค้า' : 'Edit pickup point'} ${point.name}`} onClick={() => setEditingPickup(point)} className="min-h-11 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 disabled:opacity-50">{language === 'th' ? 'แก้ไข' : 'Edit'}</button>
+                      <button type="button" disabled={saving || Boolean(editingPickup)} aria-label={t('campaignRemovePickupPoint', { name: point.name })} onClick={() => setRemoveTarget({ kind: 'pickup', id: point.id, name: point.name })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700 disabled:opacity-50"><X size={15} />{t('campaignRemove')}</button>
+                    </div>
                   </article>
                 ))}
               </div>
-              {addingPickup && (
-                <form onSubmit={addPickupPoint} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
-                  <h3 className="font-black">{t('campaignAddPickupPoint')}</h3>
+              {(addingPickup || editingPickup) && (
+                <form key={editingPickup?.id || 'new-pickup'} onSubmit={addPickupPoint} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
+                  <h3 className="font-black">{editingPickup ? (language === 'th' ? 'แก้ไขจุดรับสินค้า' : 'Edit pickup point') : t('campaignAddPickupPoint')}</h3>
+                  {editingPickup && <p className="mt-2 text-sm text-gray-600">{language === 'th' ? 'ออเดอร์ที่สั่งไปแล้วเก็บข้อมูลจุดรับเดิมไว้ กรุณาติดต่อลูกค้าหากนัดหมายเปลี่ยน' : 'Existing orders keep their original pickup details. Contact customers if the appointment changes.'}</p>}
                   <p className="mt-2 text-sm text-gray-600">{language === 'th' ? 'ช่วงเวลาที่ลูกค้าต้องไปรับสินค้า ลูกค้าเลือกจุดรับล่วงหน้าได้ ไม่ต้องรอถึงเวลานัดรับ' : 'When customers should collect their items. They can choose this point in advance without waiting for the appointment.'}</p>
                   <p className="mt-1 text-xs text-gray-500">{language === 'th' ? 'เวลาตามอุปกรณ์นี้' : 'Time zone on this device'}: {getBrowserTimeZone()}</p>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <input name="name" required placeholder={t('campaignPickupName')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                    <input name="address" aria-label={t('campaignPickupAddress')} placeholder={`${t('campaignPickupAddress')} (${language === 'th' ? 'ไม่บังคับ' : 'optional'})`} className="min-h-11 rounded-xl border border-gray-200 px-3" />
-                    <label className="text-xs font-bold">{language === 'th' ? 'เริ่มนัดรับสินค้าวันที่ / เวลา' : 'Pickup appointment starts'}<input name="starts_at" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
-                    <label className="text-xs font-bold">{language === 'th' ? 'รับสินค้าได้ถึงวันที่ / เวลา' : 'Pickup appointment ends'}<input name="ends_at" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
-                    <input name="instructions" placeholder={t('campaignPickupInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
+                    <input name="name" defaultValue={editingPickup?.name || ''} required placeholder={t('campaignPickupName')} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <input name="address" defaultValue={editingPickup?.address || ''} aria-label={t('campaignPickupAddress')} placeholder={`${t('campaignPickupAddress')} (${language === 'th' ? 'ไม่บังคับ' : 'optional'})`} className="min-h-11 rounded-xl border border-gray-200 px-3" />
+                    <label className="text-xs font-bold">{language === 'th' ? 'เริ่มนัดรับสินค้าวันที่ / เวลา' : 'Pickup appointment starts'}<input name="starts_at" defaultValue={editingPickup ? localDateTime(editingPickup.starts_at) : ''} step="1" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                    <label className="text-xs font-bold">{language === 'th' ? 'รับสินค้าได้ถึงวันที่ / เวลา' : 'Pickup appointment ends'}<input name="ends_at" defaultValue={editingPickup ? localDateTime(editingPickup.ends_at) : ''} step="1" required type="datetime-local" className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                    <input name="instructions" defaultValue={editingPickup?.instructions || ''} placeholder={t('campaignPickupInstructions')} className="min-h-11 rounded-xl border border-gray-200 px-3 md:col-span-2" />
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button disabled={saving} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{t('campaignSavePickupPoint')}</button>
-                    <button type="button" onClick={() => setAddingPickup(false)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600">{t('commonCancel')}</button>
+                    <button type="button" disabled={saving} onClick={() => { setAddingPickup(false); setEditingPickup(null); }} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600">{t('commonCancel')}</button>
                   </div>
                 </form>
               )}
@@ -1058,7 +1092,7 @@ export default function OnlineCampaignWorkspace() {
             <section className="rounded-2xl border border-gray-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-black">{t('campaignPaymentMethods')} <span className="text-pink-700">({workspace.payment_methods.length})</span></h2>
-                {!addingPayment && !editingPaymentBanks && <button type="button" onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPaymentMethod')}</button>}
+                {!addingPayment && !editingPayment && !editingPaymentBanks && <button type="button" onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(true); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white"><Plus size={16} />{t('campaignAddPaymentMethod')}</button>}
               </div>
               <div className="mt-3 space-y-2">
                 {workspace.payment_methods.map((method, index) => {
@@ -1080,8 +1114,9 @@ export default function OnlineCampaignWorkspace() {
                       {method.instructions && <p className="mt-1 text-xs font-medium text-gray-500">{method.instructions}</p>}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {!editingPaymentBanks && <button type="button" onClick={() => setEditingPaymentBanks({ methodId: method.id, accounts: [...bankAccounts, createEmptyBankAccount()] })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700"><Plus size={15} />{language === 'th' ? 'เพิ่มบัญชีธนาคาร' : 'Add bank account'}</button>}
-                      <button type="button" aria-label={t('campaignRemovePaymentMethod', { name: methodName })} onClick={() => setRemoveTarget({ kind: 'payment', id: method.id, name: methodName })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700"><X size={15} />{t('campaignRemove')}</button>
+                      {!editingPaymentBanks && <button type="button" disabled={saving || addingPayment || Boolean(editingPayment)} aria-label={`${language === 'th' ? 'แก้ไข' : 'Edit'} ${methodName}`} onClick={() => { setEditingPayment(method); setPaymentQrUrl(method.qr_image_url || ''); setPaymentBankAccounts(bankAccounts.length ? bankAccounts : [createEmptyBankAccount()]); }} className="min-h-11 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700 disabled:opacity-50">{language === 'th' ? 'แก้ไข' : 'Edit'}</button>}
+                      {!editingPaymentBanks && !editingPayment && <button type="button" onClick={() => setEditingPaymentBanks({ methodId: method.id, accounts: [...bankAccounts, createEmptyBankAccount()] })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 bg-white px-3 text-xs font-black text-pink-700"><Plus size={15} />{language === 'th' ? 'เพิ่มบัญชีธนาคาร' : 'Add bank account'}</button>}
+                      <button type="button" disabled={saving || Boolean(editingPayment)} aria-label={t('campaignRemovePaymentMethod', { name: methodName })} onClick={() => setRemoveTarget({ kind: 'payment', id: method.id, name: methodName })} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700 disabled:opacity-50"><X size={15} />{t('campaignRemove')}</button>
                     </div>
                     {isEditingBanks && (
                       <div className="w-full rounded-xl border border-pink-100 bg-pink-50/40 p-3">
@@ -1096,14 +1131,15 @@ export default function OnlineCampaignWorkspace() {
                   );
                 })}
               </div>
-              {addingPayment && (
-                <form data-testid="campaign-payment-form" onSubmit={addPaymentMethod} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
-                  <h3 className="font-black">{t('campaignAddPaymentMethod')}</h3>
+              {(addingPayment || editingPayment) && (
+                <form key={editingPayment?.id || 'new-payment'} data-testid="campaign-payment-form" onSubmit={addPaymentMethod} className="mt-4 rounded-xl border border-pink-100 bg-pink-50/40 p-3">
+                  <h3 className="font-black">{editingPayment ? (language === 'th' ? 'แก้ไขช่องทางชำระเงิน' : 'Edit payment method') : t('campaignAddPaymentMethod')}</h3>
+                  {editingPayment && <p className="mt-2 text-sm text-gray-600">{language === 'th' ? 'ข้อมูลใหม่อาจแสดงในออเดอร์ที่กำลังรอชำระเงิน กรุณาตรวจสอบก่อนบันทึก' : 'Updated details may be shown on orders awaiting payment. Check them before saving.'}</p>}
                   <p className="mt-1 text-sm font-medium text-gray-600">{language === 'th' ? 'หนึ่งช่องทางคือผู้รับเงินหนึ่งคน ใส่พร้อมเพย์ รูป QR และบัญชีธนาคารหลายบัญชีของผู้รับคนนี้ได้ หากเป็นผู้รับคนอื่นให้สร้างช่องทางชำระเงินใหม่' : 'One payment method is one recipient. Add this recipient’s PromptPay, QR image, and bank accounts here. Create another payment method for another recipient.'}</p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1 text-xs font-bold text-gray-700 md:col-span-2">
                       {t('campaignPromptPayId')}
-                      <input data-testid="payment-promptpay-id" name="promptpay_id" placeholder={t('campaignPromptPayId')} inputMode="numeric" className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
+                      <input data-testid="payment-promptpay-id" name="promptpay_id" defaultValue={editingPayment?.promptpay_id || ''} placeholder={t('campaignPromptPayId')} inputMode="numeric" className="min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-semibold" />
                     </label>
                     <div className="md:col-span-2"><PaymentBankAccountsEditor accounts={paymentBankAccounts} onChange={setPaymentBankAccounts} disabled={saving || paymentQrUploading} /></div>
                     <div className="grid gap-2 md:col-span-2">
@@ -1128,12 +1164,12 @@ export default function OnlineCampaignWorkspace() {
                     </div>
                     <label className="grid gap-1 text-xs font-bold text-gray-700 md:col-span-2">
                       {t('campaignPaymentInstructions')}
-                      <textarea data-testid="payment-instructions" name="instructions" rows={3} placeholder={language === 'th' ? 'เช่น โอนยอดให้ตรง อัปโหลดสลิป แล้วรอร้านยืนยัน' : 'Example: Transfer the exact amount, upload the slip, then wait for confirmation.'} className="rounded-xl border border-gray-200 px-3 py-3 text-sm font-semibold" />
+                      <textarea data-testid="payment-instructions" name="instructions" defaultValue={editingPayment?.instructions || ''} rows={3} placeholder={language === 'th' ? 'เช่น โอนยอดให้ตรง อัปโหลดสลิป แล้วรอร้านยืนยัน' : 'Example: Transfer the exact amount, upload the slip, then wait for confirmation.'} className="rounded-xl border border-gray-200 px-3 py-3 text-sm font-semibold" />
                     </label>
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button disabled={saving || paymentQrUploading} className="min-h-11 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-50">{t('campaignSavePaymentMethod')}</button>
-                    <button type="button" disabled={paymentQrUploading || saving} onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(false); }} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600 disabled:opacity-50">{t('commonCancel')}</button>
+                    <button type="button" disabled={paymentQrUploading || saving} onClick={() => { setPaymentQrUrl(''); setPaymentBankAccounts([createEmptyBankAccount()]); setAddingPayment(false); setEditingPayment(null); }} className="min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-black text-gray-600 disabled:opacity-50">{t('commonCancel')}</button>
                   </div>
                 </form>
               )}

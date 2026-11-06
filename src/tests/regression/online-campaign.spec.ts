@@ -791,6 +791,60 @@ test.describe('online campaign', () => {
     }
   });
 
+  test('merchant edits pickup and payment details without replacing records', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 850 });
+    const now = Date.now();
+    const point = await fixture.service.from('campaign_pickup_points').insert({ campaign_id: campaignId, artist_id: fixture.userId, name: 'Edit pickup', address: '', starts_at: new Date(now + 86400000).toISOString(), ends_at: new Date(now + 90000000).toISOString(), instructions: 'Original pickup' }).select('*').single();
+    if (point.error) throw point.error;
+    const method = await fixture.service.from('campaign_payment_methods').insert({ campaign_id: campaignId, artist_id: fixture.userId, method_type: 'promptpay', display_name: 'Existing recipient', promptpay_id: '0801112222', bank_accounts: [{ bank_name: 'Existing bank', account_name: 'Test recipient', account_number: '1112223333' }], qr_image_url: 'https://example.test/payment.png', instructions: 'Original instructions' }).select('*').single();
+    if (method.error) throw method.error;
+    try {
+      await login(page);
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Settings|ตั้งค่า/, exact: true }).click();
+      const pickup = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Edit pickup', exact: true }) });
+      await pickup.getByRole('button', { name: /Edit pickup point Edit pickup|แก้ไขจุดรับสินค้า Edit pickup/ }).click();
+      const pickupForm = page.locator('form').filter({ has: page.getByPlaceholder(/Pickup point name|ชื่อจุดรับ/) });
+      await expect(pickupForm).toContainText(/Existing orders keep|ออเดอร์ที่สั่งไปแล้ว/);
+      await expect(pickupForm.locator('[name="starts_at"]')).not.toHaveValue('');
+      await pickupForm.locator('[name="name"]').fill('Edited pickup');
+      await pickupForm.locator('[name="address"]').fill('Second floor');
+      await pickupForm.getByRole('button', { name: /Save pickup point|บันทึกจุดรับ/ }).click();
+      await expect(page.getByRole('heading', { name: 'Edited pickup', exact: true })).toBeVisible();
+      const savedPoint = await fixture.service.from('campaign_pickup_points').select('*').eq('id', point.data.id).single();
+      if (savedPoint.error) throw savedPoint.error;
+      expect(savedPoint.data).toMatchObject({ name: 'Edited pickup', address: 'Second floor', instructions: 'Original pickup', starts_at: point.data.starts_at, ends_at: point.data.ends_at });
+
+      const payment = page.getByTestId('campaign-payment-method').filter({ hasText: '2222' });
+      await payment.getByRole('button', { name: /Edit Payment method|แก้ไข ช่องทางชำระเงิน/ }).click();
+      const paymentForm = page.getByTestId('campaign-payment-form');
+      await expect(paymentForm).toContainText(/orders awaiting payment|ออเดอร์ที่กำลังรอชำระเงิน/);
+      await paymentForm.getByTestId('payment-promptpay-id').fill('0809998888');
+      await paymentForm.getByTestId('payment-instructions').fill('Updated instructions');
+      await expect(paymentForm.locator('img')).toHaveAttribute('src', 'https://example.test/payment.png');
+      await paymentForm.getByLabel(/Bank name|ธนาคาร/, { exact: true }).fill('Updated bank');
+      await paymentForm.getByRole('button', { name: /Save payment method|บันทึกช่องทางชำระเงิน/ }).click();
+      await expect(page.getByText(/•••• 8888/)).toBeVisible();
+      const savedMethod = await fixture.service.from('campaign_payment_methods').select('*').eq('id', method.data.id).single();
+      if (savedMethod.error) throw savedMethod.error;
+      expect(savedMethod.data).toMatchObject({ promptpay_id: '0809998888', display_name: 'Existing recipient', qr_image_url: 'https://example.test/payment.png', instructions: 'Updated instructions', bank_accounts: [{ bank_name: 'Updated bank', account_name: 'Test recipient', account_number: '1112223333' }] });
+
+      const editedPickup = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Edited pickup', exact: true }) });
+      await editedPickup.getByRole('button', { name: /Edit pickup point Edited pickup|แก้ไขจุดรับสินค้า Edited pickup/ }).click();
+      await pickupForm.locator('[name="name"]').fill('Stale edit');
+      const concurrent = await fixture.service.from('campaign_pickup_points').update({ name: 'Changed elsewhere' }).eq('id', point.data.id);
+      if (concurrent.error) throw concurrent.error;
+      await pickupForm.getByRole('button', { name: /Save pickup point|บันทึกจุดรับ/ }).click();
+      await expect(page.getByRole('status')).toContainText(/changed|เปลี่ยน/);
+      await expect(pickupForm.locator('[name="name"]')).toHaveValue('Stale edit');
+      const latest = await fixture.service.from('campaign_pickup_points').select('name').eq('id', point.data.id).single();
+      expect(latest.data?.name).toBe('Changed elsewhere');
+    } finally {
+      await fixture.service.from('campaign_pickup_points').delete().eq('id', point.data.id);
+      await fixture.service.from('campaign_payment_methods').delete().eq('id', method.data.id);
+    }
+  });
+
   test('merchant types and saves a decimal shipping fee without spinner controls', async ({ page }) => {
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);

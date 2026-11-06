@@ -80,7 +80,7 @@ test('management suspension denies an existing JWT while teammates fulfill order
     await managerPage.goto(`/manage-events/${eventId}/preorder-dashboard`);
     await managerPage.getByRole('button', { name: /Confirmed/ }).first().click();
     await managerPage.getByRole('button', { name: 'Slip', exact: true }).click();
-    const preview = managerPage.getByRole('dialog', { name: `Payment slip for ${code}` });
+    const preview = managerPage.getByRole('dialog', { name: /Payment slip · Order #\d+/ });
     await expect(preview).toBeVisible();
     await expect.poll(() => preview.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     const previewUrl = await preview.locator('img').getAttribute('src');

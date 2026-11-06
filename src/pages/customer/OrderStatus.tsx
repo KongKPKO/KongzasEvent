@@ -444,7 +444,7 @@ const OrderStatus: React.FC = () => {
                 <div className="text-xs font-black uppercase tracking-wide text-gray-500">
                   {codeShowableAtBooth ? t('orderCodeLabel') : t('orderCodePendingLabel')}
                 </div>
-                <div className="mt-1 font-mono text-3xl font-black tracking-[0.18em] text-gray-950">{detail.pickup_code}</div>
+                <div className="mt-1 break-all font-mono text-2xl font-black tracking-[0.08em] text-gray-950">{detail.pickup_code}</div>
                 <p className="mt-1 text-sm font-medium text-gray-600">
                   {isPostOrder ? t('orderCodePostHint') : codeShowableAtBooth ? t('orderShowCodeHint') : t('orderCodePendingHint')}
                 </p>
@@ -576,7 +576,7 @@ const OrderStatus: React.FC = () => {
                 {detail.items.map((item) => (
                   <li key={item.product_id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-bold text-gray-900">{item.name}</div>
+                      <div className="break-words text-sm font-bold text-gray-900 [overflow-wrap:anywhere]">{item.name}</div>
                       <div className="text-xs font-medium text-gray-500">x {item.quantity}{item.line_type === 'promotion_reward' && <span className="ml-2 rounded-full bg-pink-50 px-2 py-0.5 font-bold text-pink-700">{uiText(language, 'Free gift')}</span>}</div>
                     </div>
                     <div className="shrink-0 text-sm font-black text-gray-900">

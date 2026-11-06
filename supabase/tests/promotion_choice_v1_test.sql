@@ -91,6 +91,19 @@ select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000
 select throws_ok($$select public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004','[{"product_id":"e1800000-0000-4000-8000-000000000015","quantity":1}]','[]','[]')$$,'sale_product_unavailable','campaign gift-only product cannot be bought directly');
 update public.products set gift_only=true where id='e1800000-0000-4000-8000-000000000015';
 update public.artist_promotions set v1_config=jsonb_set(v1_config,'{condition}','{"kind":"product","items":[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":1},{"product_id":"e1800000-0000-4000-8000-000000000012","quantity":1}]}'::jsonb) where id=(select id from choice_promo);
+
+-- The per-order cap is separate from the shared gift quota and defaults to unlimited.
+select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004','[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":2}]','[]','[]')#>>'{required_choices,0,earned_quantity}','2','existing promotions grant repeated gifts');
+update public.artist_promotions set v1_config=jsonb_set(v1_config,'{gift,max_quantity_per_order}','1'::jsonb) where id=(select id from choice_promo);
+select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004','[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":2}]','[]','[]')#>>'{required_choices,0,earned_quantity}','1','campaign caps gifts per order');
+select is(public.quote_sale_promotions('e1800000-0000-4000-8000-000000000003','live',null,'[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":2}]','[]','[]')#>>'{required_choices,0,earned_quantity}','1','POS caps gifts per order');
+select is(jsonb_array_length(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004','[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":2}]',jsonb_build_array(jsonb_build_object('promotion_id',(select id from choice_promo),'product_ids',jsonb_build_array('e1800000-0000-4000-8000-000000000014','e1800000-0000-4000-8000-000000000015'))),'[]')->'required_choices'),1,'forged extra gift is rejected');
+update public.artist_promotions set v1_config=jsonb_set(v1_config,'{gift,selection_mode}','"fixed"'::jsonb) where id=(select id from choice_promo);
+select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004','[{"product_id":"e1800000-0000-4000-8000-000000000011","quantity":2}]','[]','[]')#>>'{reward_lines,0,quantity}','1','fixed gift is capped too');
+update public.artist_promotions set v1_config=jsonb_set(v1_config,'{gift,selection_mode}','"customer_choice"'::jsonb) where id=(select id from choice_promo);
+select throws_ok($$update public.artist_promotions set v1_config=jsonb_set(v1_config,'{gift,max_quantity_per_order}','0'::jsonb) where id=(select id from choice_promo)$$,'promotion_gift_limit_invalid','invalid per-order gift cap rejected');
+update public.artist_promotions set v1_config=jsonb_set(v1_config,'{gift,max_quantity_per_order}','null'::jsonb) where id=(select id from choice_promo);
+
 select is(jsonb_array_length(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004',pg_temp.choice_cart(),'[]','[]')->'required_choices'),1,'buy-any-specific-product promotion offers choices');
 select is(public.quote_sale_promotions(null,null,'e1800000-0000-4000-8000-000000000004',pg_temp.choice_cart(),pg_temp.choice_input('e1800000-0000-4000-8000-000000000015'),'[]')#>>'{reward_lines,0,product_id}','e1800000-0000-4000-8000-000000000015','selected gift appears in quote');
 create temp table choice_pos_order as select public.create_walkin_order_with_stock('e1800000-0000-4000-8000-000000000003',pg_temp.choice_cart(),'cash',gen_random_uuid(),pg_temp.choice_input('e1800000-0000-4000-8000-000000000014'),'[]',null,false) order_id;

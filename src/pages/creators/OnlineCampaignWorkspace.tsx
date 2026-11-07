@@ -3,6 +3,7 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { getOrderSequences } from '../../lib/orderSequences';
 import { SupplyPolicyEditor } from '../../components/products/SupplyPolicyEditor';
 import './sales-readiness.css';
+import CampaignSalesReport from '../../components/reports/CampaignSalesReport';
 import './online-campaign-products.css';
 import { ProductMedia } from '../../components/menu/ProductPresentation';
 import EvidenceReview from '../../components/EvidenceReview';
@@ -43,7 +44,7 @@ import CampaignPromotionPicker from '../../components/promotions/CampaignPromoti
 import ActivityRewardsCard from '../../components/promotions/ActivityRewardsCard';
 import { activityRewardStateForOrder } from '../../utils/activityRewards';
 
-type Tab = 'overview' | 'products' | 'promotions' | 'orders' | 'settings';
+type Tab = 'overview' | 'products' | 'promotions' | 'orders' | 'sales' | 'settings';
 type ProductMembership = 'all' | 'included' | 'not_added';
 type ProductEdit = { stock: string; price: string; limit: string; gift: boolean; expected: { stock_total: number | null; price_override: number | null; max_quantity_per_order: number | null; is_unlimited: boolean; is_sellable: boolean } };
 type CampaignSettingsDraft = {
@@ -717,9 +718,9 @@ export default function OnlineCampaignWorkspace() {
         </div>
 
         <nav className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1">
-          {((canManage ? ['overview', 'products', 'promotions', 'orders', 'settings'] : ['overview', 'orders']) as Tab[]).map((item) => (
+          {((canManage ? ['overview', 'products', 'promotions', 'orders', 'sales', 'settings'] : ['overview', 'orders']) as Tab[]).map((item) => (
             <button key={item} onClick={() => { if (((tab === 'products' && Object.keys(productEdits).length > 0) || (tab === 'promotions' && promotionEditing)) && item !== tab && !window.confirm(language === 'th' ? 'มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved changes. Leave this page?')) return; if (item !== 'products') setProductEdits({}); setTab(item); }} className={'min-h-11 shrink-0 flex-1 whitespace-nowrap rounded-xl px-3 text-sm font-black ' + (tab === item ? 'bg-pink-600 text-white' : 'text-gray-600 hover:bg-gray-50')}>
-              {item === 'promotions' ? (language === 'th' ? 'โปรโมชั่น' : 'Promotions') : t(('campaignTab_' + item) as Parameters<typeof t>[0])}
+              {item === 'sales' ? (language === 'th' ? 'ยอดขาย' : 'Sales') : item === 'promotions' ? (language === 'th' ? 'โปรโมชั่น' : 'Promotions') : t(('campaignTab_' + item) as Parameters<typeof t>[0])}
               {item === 'orders' && actionCount > 0 && <span className="ml-1 rounded-full bg-white/20 px-1.5">{actionCount}</span>}
             </button>
           ))}
@@ -742,6 +743,8 @@ export default function OnlineCampaignWorkspace() {
 
           </>
         )}
+
+        {tab === 'sales' && canManage && <CampaignSalesReport campaignId={campaign.id} name={campaign.name} timeZone={campaign.campaign_timezone || 'Asia/Bangkok'} catalog={workspace.catalog} />}
 
         {tab === 'promotions' && canManage && <CampaignPromotionPicker artistId={workspace.campaign.artist_id} campaignId={campaignId!} campaignName={campaign.name} onEditingChange={setPromotionEditing} products={workspace.catalog.map(product => ({ ...product, id: product.product_id || product.id || '', category: product.category || undefined }))} />}
 

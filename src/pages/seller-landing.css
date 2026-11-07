@@ -40,3 +40,7 @@
 .seller-customer-grid figcaption { margin-top: .65rem; color: #e4edf5; font-size: .75rem; font-weight: 700; }
 .seller-screens-note { margin-top: .75rem; color: #e4edf5; font-size: .75rem; }
 @media (max-width: 520px) { .seller-customer-grid img { height: 360px; } }
+.seller-fate { grid-column: 1 / -1; margin: 0; color: #355e7e; font-size: 1rem; font-weight: 700; line-height: 1.8; text-align: center; }
+.seller-report-pictures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; align-items: start; min-width: 0; }
+.seller-report-pictures figure { min-width: 0; }
+@media (max-width: 520px) { .seller-report-pictures { grid-template-columns: minmax(0, 1fr); } }

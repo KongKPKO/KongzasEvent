@@ -117,7 +117,7 @@ const CustomerLayout = () => {
                </p>
                <div className="mt-7 grid gap-3 sm:grid-cols-2">
                   <Link
-                     to="/discover"
+                     to="/discover/shops"
                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-500 px-4 py-3 text-sm font-black text-white shadow-lg shadow-pink-200 transition-colors hover:bg-pink-600"
                   >
                      <Compass size={17} aria-hidden="true" />
@@ -284,7 +284,7 @@ const CustomerLayout = () => {
 
                <motion.div className="h-full flex-1" whileTap={{ scale: 0.94 }}>
                   <Link
-                     to="/discover"
+                     to="/discover/shops"
                      className={`flex h-full min-h-14 flex-col items-center justify-center gap-1 transition-colors ${location.pathname.startsWith('/discover') ? 'text-pink-700' : 'text-slate-600'}`}
                      aria-label={t('customerNavDiscover')}
                   >

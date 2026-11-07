@@ -245,13 +245,11 @@ test('discovery previews resolve stored images, include photosets and show disti
   await page.route('**/preview-art.svg*', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60" fill="pink"/></svg>' }));
   await page.route('**/rest/v1/**', route => {
     const path = new URL(route.request().url()).pathname;
-    const rows = path.endsWith('/artists') ? [{ id: artistId, slug: 'preview-shop', display_name: 'Preview Shop', published_at: new Date().toISOString() }]
-      : path.endsWith('/products') ? [
-        { id: 'photo-a', parent_product_id: 'photos', name: 'Photoset A', product_kind: 'photo', image_url: null, variant_gallery_images: ['preview-art.svg', 'preview-art.svg?two'] },
-        { id: 'photo-b', parent_product_id: 'photos', name: 'Photoset B', product_kind: 'photo', image_url: null, gallery_images: ['preview-art.svg'] },
-        ...[1, 2, 3, 4].map(index => ({ id: `single-${index}`, name: `Single ${index}`, image_url: 'preview-art.svg' })),
-      ].map(product => ({ ...product, artist_id: artistId, price: 100 })) : [];
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(rows) });
+    if (path.endsWith('/rpc/get_public_shop_directory')) return route.fulfill({ json: { total: 1, rows: [{ artist_id: artistId, slug: 'preview-shop', display_name: 'Preview Shop', published_at: new Date().toISOString(), products: [
+      { id: 'photo-a', parent_product_id: 'photos', name: 'Photoset A', product_kind: 'photo', image_url: null, variant_gallery_images: ['preview-art.svg', 'preview-art.svg?two'] },
+      ...[1, 2, 3].map(index => ({ id: `single-${index}`, name: `Single ${index}`, image_url: 'preview-art.svg' })),
+    ].map(product => ({ ...product, artist_id: artistId, price: 100 })) }] } });
+    return route.continue();
   });
   await page.goto('/');
   const card = page.getByTestId('creator-card').filter({ hasText: 'Preview Shop' });

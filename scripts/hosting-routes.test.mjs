@@ -14,7 +14,7 @@ test('hosting keeps known deep links while unknown route shapes reach the 404 pa
     const config = JSON.parse(await readFile(configPath, 'utf8'));
     const fallback = config.hosting.rewrites.find(rule => rule.destination === '/index.html');
     const matches = new RegExp(fallback.regex);
-    for (const path of ['/', '/discover', '/for-sellers', '/creator/register', '/manage-products', '/manage-products/home', '/manage-events/id/catalog', '/manage-events/id/postorder-dashboard', '/manage-online-sales/id', '/live/pos', '/admin/support', '/shop', '/shop/home', '/shop/menu', '/shop/queue', '/shop/campaign/sale', '/shop/order/code', '/help/guide']) assert.match(path, matches, `${configPath}: ${path}`);
+    for (const path of ['/', '/discover', '/discover/shops', '/for-sellers', '/creator/register', '/manage-products', '/manage-products/home', '/manage-events/id/catalog', '/manage-events/id/postorder-dashboard', '/manage-online-sales/id', '/live/pos', '/admin/support', '/shop', '/shop/home', '/shop/menu', '/shop/queue', '/shop/campaign/sale', '/shop/order/code', '/help/guide']) assert.match(path, matches, `${configPath}: ${path}`);
     for (const path of ['/shop/unknown', '/shop/campaign/sale/extra', '/a/b/c/d/e', '/help/guide/unknown']) assert.doesNotMatch(path, matches, `${configPath}: ${path}`);
   }
   assert.match(await readFile('public/404.html', 'utf8'), /noindex, nofollow/);

@@ -225,3 +225,6 @@
 .showcase-orders .public-button { display: inline-flex; gap: .5rem; margin-top: 1rem; }
 .showcase-orders img { width: 100%; height: auto; border: 1px solid #d6e5ef; border-radius: .75rem; }
 @media (max-width: 760px) { .showcase-orders { grid-template-columns: minmax(0, 1fr); } }
+
+.discovery-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+.discovery-pagination :is(button:disabled, [aria-disabled="true"]) { opacity: .5; cursor: not-allowed; }

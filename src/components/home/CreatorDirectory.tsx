@@ -30,7 +30,7 @@ const CreatorDirectory = ({ creators }: CreatorDirectoryProps) => {
       <div className="flex items-center gap-2 px-1 mb-3">
         <Compass size={16} className="text-pink-700" />
         <h2 className="font-bold text-gray-900 text-xl">{t('creatorsExplore')}</h2>
-        <Link to="/discover" className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-black text-pink-700 hover:bg-pink-50">
+        <Link to="/discover/shops" className="ml-auto inline-flex min-h-11 items-center rounded-full px-3 text-xs font-black text-pink-700 hover:bg-pink-50">
           {t('creatorsViewAll')}
         </Link>
       </div>

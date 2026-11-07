@@ -24,7 +24,7 @@ const CustomerLayout = lazy(() => import('./pages/customer/CustomerLayout'));
 const CustomerHome = lazy(() => import('./pages/customer/Home'));
 // Start downloading the public landing page while the saved session is restored.
 // Other routes keep it lazy so staff and customers do not download it unnecessarily.
-const initialDiscovery = typeof window !== 'undefined' && ['/', '/discover'].includes(window.location.pathname)
+const initialDiscovery = typeof window !== 'undefined' && ['/', '/discover', '/discover/shops'].includes(window.location.pathname)
   ? import('./pages/customer/DiscoveryHome')
   : null;
 const DiscoveryHome = lazy(() => initialDiscovery ?? import('./pages/customer/DiscoveryHome'));
@@ -316,7 +316,7 @@ function App() {
   };
 
   const isCustomerRoute = /^\/[^/]+\/(home|join|queue-position|queue|menu|pos|order|campaign)/.test(currentPath);
-  const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/for-sellers', '/offline', '/help/guide', '/discover', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
+  const isWorkspaceOptionalPath = currentPath === '/admin' || currentPath.startsWith('/admin/') || currentPath === '/help' || ['/', '/for-sellers', '/offline', '/help/guide', '/discover', '/discover/shops', '/manage-login', '/manage-workspaces', '/creator/register', '/staff-signup', '/reset-password', '/admin/applications', '/admin/support', '/invitations', '/privacy', '/terms', '/cookies'].includes(currentPath);
 
   const isManagementPath = isManagementLocation(currentPath);
   if (session && managementSuspended && isManagementPath) {
@@ -343,7 +343,7 @@ function App() {
     </main>;
   }
 
-  const isPublicLanding = currentPath === '/' || currentPath === '/discover' || currentPath === '/for-sellers';
+  const isPublicLanding = currentPath === '/' || currentPath === '/discover' || currentPath === '/discover/shops' || currentPath === '/for-sellers';
   if (currentPath !== '/offline' && ((loading && !isPublicLanding) || (session && contextSyncing && !actorContext && !isWorkspaceOptionalPath && !isCustomerRoute))) {
     return <ConnectingScreen />;
   }
@@ -575,6 +575,7 @@ function App() {
 
             <Route path="/" element={<DiscoveryHome />} />
             <Route path="/discover" element={<DiscoveryHome />} />
+            <Route path="/discover/shops" element={<DiscoveryHome />} />
 
             <Route path="/:slug/order/:code" element={<CampaignAwareOrderStatus />} />
             <Route path="/:slug/campaign/:campaignSlug" element={<OnlineCampaignStorefront />} />

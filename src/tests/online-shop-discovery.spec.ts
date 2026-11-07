@@ -74,7 +74,7 @@ test('customers discover available online shops and open a campaign', async ({ p
     if (allocations.error) throw allocations.error;
 
     await page.addInitScript(() => localStorage.setItem('nireq-language', 'en'));
-    await page.goto('/');
+    await page.goto('/discover/shops');
 
     const shopCard = page.getByTestId('creator-card').filter({ hasText: shopName });
     const quietCard = page.getByTestId('creator-card').filter({ hasText: quietName });
@@ -85,7 +85,7 @@ test('customers discover available online shops and open a campaign', async ({ p
     await quietCard.getByRole('link', { name: 'View booth' }).click();
     await expect(page.getByRole('heading', { name: quietName, exact: true })).toBeVisible();
     await expect(page.getByTestId('online-shop-section')).toHaveCount(0);
-    await page.goto('/');
+    await page.goto('/discover/shops');
 
     await page.getByRole('button', { name: 'Online shop', exact: true }).click();
     await expect(page).toHaveURL(/(?:\?|&)online=1(?:&|$)/);

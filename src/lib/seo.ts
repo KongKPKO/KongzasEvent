@@ -4,6 +4,7 @@ export type SeoDetails = { title: string; description: string; canonical: string
 const origin = 'https://paimonq.com';
 const pages: Record<string, Copy> = {
   '/': { title: ['ค้นหาร้านค้าและอีเวนต์ | Paimon', 'Discover shops and events | Paimon'], description: ['ค้นหาร้านค้า ผลงาน และอีเวนต์ พร้อมติดตามคิวและออเดอร์บน Paimon', 'Discover shops, creative work and events, and follow your queues and orders on Paimon.'] },
+  '/discover/shops': { title: ['ค้นหาร้านค้า | Paimon', 'Explore shops | Paimon'], description: ['ค้นหาร้านค้า ผลงาน และบูธบน Paimon', 'Explore shops, creators and booths on Paimon.'] },
   '/creator/register': { title: ['สมัครร้านค้าบน Paimon', 'Join Paimon as a seller'], description: ['สมัครร้านค้าเพื่อจัดการสินค้า อีเวนต์ คิว และออเดอร์บน Paimon', 'Create a seller account to manage products, events, queues and orders on Paimon.'] },
   '/for-sellers': { title: ['จัดการร้านและอีเวนต์ | Paimon', 'Manage your shop and events | Paimon'], description: ['จัดการสินค้า อีเวนต์ คิว และออเดอร์สำหรับร้านครีเอเตอร์บน Paimon', 'Manage products, events, queues and orders for your creator shop with Paimon.'] },
   '/privacy': { title: ['นโยบายความเป็นส่วนตัว | Paimon', 'Privacy policy | Paimon'], description: ['อ่านนโยบายความเป็นส่วนตัวและการจัดการข้อมูลของ Paimon', 'Read the Paimon privacy policy and how personal information is handled.'] },

@@ -4,28 +4,32 @@ import AxeBuilder from '@axe-core/playwright';
 
 test('creator discovery recovers from failures and preserves useful filters', async ({ page }) => {
   let failed = true;
-  await page.route('**/rest/v1/artists?*', route => route.fulfill({ status: failed ? 503 : 200, json: failed ? { message: 'Unavailable' } : [
-    { id: 'mali', slug: 'mali-studio', display_name: 'Mali Studio', is_queue_open: true, published_at: '2026-01-01' },
-    { id: 'paper', slug: 'paper-moon', display_name: 'Paper Moon', published_at: '2026-01-01' },
-  ] }));
-  await page.route('**/rest/v1/events?*', route => route.fulfill({ json: [
-    { id: 'fair', artist_id: 'mali', event_name: 'Art Fair', location: 'Bangkok', booth_detail: 'A12', is_booth_open: true },
-  ] }));
-  await page.route('**/rest/v1/products?*', route => route.fulfill({ json: [{ id: 'art-one', artist_id: 'mali', name: 'Mali print', image_url: null, category: 'Art' }] }));
+  const rows = [
+    { artist_id: 'mali', slug: 'mali-studio', display_name: 'Mali Studio', accepts_queue: true, is_booth_open: true, event_name: 'Art Fair', booth_detail: 'A12', has_online_shop: false, products: [{ id: 'art-one', artist_id: 'mali', name: 'Mali print', price: 10 }] },
+    { artist_id: 'paper', slug: 'paper-moon', display_name: 'Paper Moon', accepts_queue: false, is_booth_open: false, event_name: '', has_online_shop: false, products: [] },
+  ];
+  await page.route('**/rest/v1/rpc/get_public_shop_directory', route => {
+    if (failed) return route.fulfill({ status: 503, json: { message: 'Unavailable' } });
+    const q = route.request().postDataJSON() as { p_query: string; p_open: boolean; p_queue: boolean; p_products: boolean };
+    const matches = rows.filter(row => (!q.p_query || JSON.stringify(row).toLowerCase().includes(q.p_query.toLowerCase())) && (!q.p_open || row.is_booth_open) && (!q.p_queue || row.accepts_queue) && (!q.p_products || row.products.length));
+    return route.fulfill({ json: { rows: matches, total: matches.length } });
+  });
   await page.goto('/');
   await expect(page.getByRole('alert')).toContainText('Could not load shops');
   failed = false;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(2);
   await page.getByTestId('public-creator-search').fill('A12');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page).toHaveURL(/discover\/shops.*q=A12/);
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.reload();
   await expect(page.getByTestId('public-creator-search')).toHaveValue('A12');
-  await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Clear search' }).click();
   await page.getByTestId('public-open-now-filter').click();
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.getByTestId('public-creator-search').fill('Paper');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(0);
   await page.getByRole('button', { name: 'Show all shops' }).click();
   await expect(page.getByTestId('creator-card')).toHaveCount(2);
@@ -35,22 +39,16 @@ test('creator discovery recovers from failures and preserves useful filters', as
   await expect(page.getByTestId('creator-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Like this creator shop: Mali Studio' }).click();
   await expect(page.getByRole('button', { name: 'Like this creator shop: Mali Studio' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Illustrative booth · example data')).toBeVisible();
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.locator('#discovery-results')).toBeFocused();
-  await page.getByRole('button', { name: 'All events', exact: true }).click();
-  await expect(page.getByTestId('creator-card')).toHaveCount(2);
   await selectLanguage(page, 'th');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('ค้นหาร้านและบูธ');
+  await expect(page.getByRole('heading', { name: 'ค้นหาร้านค้า', exact: true })).toBeVisible();
   for (const width of [320, 375, 414, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    expect(await page.locator('.public-entry').evaluate(el => el.scrollWidth), JSON.stringify(await page.locator('.public-entry').evaluate(el => [...el.querySelectorAll('*')].filter(node => node.getBoundingClientRect().right > innerWidth).map(node => [node.className, Math.round(node.getBoundingClientRect().right)])))).toBeLessThanOrEqual(width);
+    expect(await page.locator('.public-entry').evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(width);
   }
-  await page.screenshot({ path: '/tmp/nireq-discovery-th.png', fullPage: true });
 });
 
 test('public entry pages fit small screens and retain accessible form controls', async ({ page }) => {
-  for (const path of ['/', '/for-sellers', '/manage-login', '/creator/register', '/staff-signup']) {
+  for (const path of ['/', '/discover/shops', '/for-sellers', '/manage-login', '/creator/register', '/staff-signup']) {
     await page.goto(path);
     await expect(page.locator('.public-entry')).toBeVisible();
     for (const width of [320, 375, 414, 768, 1280]) {

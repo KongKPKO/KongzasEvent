@@ -83,6 +83,14 @@ test('seller landing links to registration', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Run an online sale between events' })).toBeVisible();
   await selectLanguage(page, 'th');
   await expect(page.getByRole('heading', { name: 'ไม่มีอีเวนต์ ก็เปิดรอบขายได้' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'จัดโปรโมชั่นให้เหมาะกับแต่ละรอบขาย' })).toBeVisible();
+  const customerCards = page.locator('.seller-customer-grid article');
+  await expect(customerCards).toHaveCount(5);
+  for (const card of await customerCards.all()) {
+    const screenshot = card.locator('img');
+    await screenshot.scrollIntoViewIfNeeded();
+    await expect.poll(() => screenshot.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  }
   await expect(page.getByRole('heading', { name: 'ทำ QR สำหรับติดที่บูธ' })).toBeVisible();
   await expect(page.getByText(/QR ของหน้าร้านไม่ได้ล็อกอีเวนต์/)).toBeVisible();
   const image = page.getByRole('img', { name: 'ตัวอย่างหน้าจัดการแคมเปญออนไลน์ของร้านจำลอง' });

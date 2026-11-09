@@ -5,7 +5,7 @@ import { Button } from '../ui';
 import { canUsePos } from '../../types/access';
 import type { ActorContext } from '../../types/access';
 import { 
-    LayoutDashboard, Bell, RotateCcw, Play, 
+    LayoutDashboard, Bell, RotateCcw,
     Coffee, AlertCircle, PauseCircle, X 
 } from 'lucide-react';
 import { Toast } from '../ui/Feedback';
@@ -16,6 +16,7 @@ interface QueueItem {
     id: string;
     artist_id: string;
     event_id?: string;
+    queue_service_date?: string | null;
     queue_number: number;
     status: 'waiting' | 'calling' | 'serving' | 'complete' | 'missed' | 'expired' | 'queued';
     called_at?: string;
@@ -165,6 +166,18 @@ export default function QueuePanel({
         boothToggleInFlightRef.current = true;
 
         const newStatus = !isBoothActive;
+        if (!newStatus) {
+            const { count: remaining, error } = await supabase.from('queues').select('id', { count: 'exact', head: true }).eq('event_id', activeEvent.id).in('status', ['waiting', 'queued', 'calling', 'serving', 'expired']);
+            if (error || remaining === null) {
+                setToast({ tone: 'warning', title: text('Could not check unfinished queues. Please retry.', 'ตรวจคิวที่ค้างไม่สำเร็จ กรุณาลองใหม่') });
+                boothToggleInFlightRef.current = false;
+                return;
+            }
+            if (remaining && !window.confirm(text(`There are ${remaining} unfinished queues. Close the booth?`, `ยังมีคิวที่ไม่เสร็จ ${remaining} คิว ต้องการปิดบูธหรือไม่?`))) {
+                boothToggleInFlightRef.current = false;
+                return;
+            }
+        }
         setIsBoothActive(newStatus);
 
         try {
@@ -186,18 +199,12 @@ export default function QueuePanel({
 
     const operations = useQueueOperations(activeEvent?.id, (id, updates) => onStatusUpdated?.(id, updates));
     useEffect(() => { if (operations.error) setToast({ tone: 'error', title: operations.error }); }, [operations.error]);
-    const updateStatus = async (id: string, newStatus: 'waiting' | 'serving' | 'arrive') => {
-        const ticket = queues.find(row => row.id === id);
-        return ticket ? operations.action(ticket, newStatus) : null;
-    };
-
-    const handleCallNext = () => { void operations.callBatch(1); };
     const handleConfirmArrival = (ticket: QueueItem) => { void operations.action(ticket, 'arrive'); };
 
     // --- DERIVED STATE from prop ---
     const waitingTickets = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
     const readyTickets = queues.filter(q => q.status === 'calling' && !q.arrived_at);
-    const arrivedTickets = queues.filter(q => q.status === 'calling' && q.arrived_at);
+    const arrivedTickets = queues.filter(q => q.status === 'calling' && q.arrived_at).sort((a, b) => (a.arrived_at || '').localeCompare(b.arrived_at || '') || a.queue_number - b.queue_number);
     const servingTickets = queues.filter(q => q.status === 'serving');
     const expiredTickets = queues.filter(q => q.status === 'missed' || q.status === 'expired');
 
@@ -312,24 +319,24 @@ export default function QueuePanel({
                 </div>
             </div>
 
-            {/* Call Next Button */}
-            <div className="p-3 border-b border-gray-100 bg-white shrink-0">
-                <Button
-                    onClick={handleCallNext}
-                    disabled={(!nextTicket && operations.retryBatchCount === null) || operations.pending}
-                    className={`w-full py-3 text-base rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                        !nextTicket
-                            ? '!bg-gray-200 !bg-none !text-gray-400 !shadow-none cursor-not-allowed hover:!bg-gray-200 hover:!shadow-none hover:!translate-y-0'
-                            : 'bg-pink-700 hover:bg-pink-800 text-white'
-                    }`}
-                >
-                    <Play size={18} fill="currentColor" />
-                    <span className="font-black">{uiText(language, 'Call Next')} {nextTicket ? `(#${nextTicket.queue_number})` : ''}</span>
-                </Button>
+            <div className="grid grid-cols-4 gap-2 border-b border-gray-100 bg-white p-3 shrink-0">
+                {[1, 3, 5, 10].map(count => <button key={count} type="button" disabled={operations.pending || (operations.retryBatchCount !== null ? operations.retryBatchCount !== count : !nextTicket)} onClick={() => void operations.callBatch(count)} className="min-h-11 rounded-xl bg-pink-700 px-2 text-sm font-bold text-white disabled:opacity-40">{text(`Call ${count}`, `เรียก ${count} คน`)}</button>)}
             </div>
 
             {/* Scrollable Content */}
             <div className="festival-queue-lists flex-1 overflow-y-auto p-3 space-y-3" tabIndex={0} role="region" aria-label={uiText(language, 'Queue list')}>
+                <section className="rounded-xl border border-pink-200 bg-pink-50 p-4">
+                    <h3 className="font-bold text-pink-800">{text('Serving', 'กำลังให้บริการ')} ({servingTickets.length})</h3>
+                    {servingTickets.length === 0 && <p className="mt-2 text-sm text-gray-600">{text('Service point is available', 'จุดบริการว่าง')}</p>}
+                    <div className="mt-3 flex flex-wrap gap-3">{servingTickets.map(ticket => <div key={ticket.id} className="rounded-xl border border-pink-200 bg-white p-4">
+                        <div className="text-4xl font-black">#{ticket.queue_number}</div><div className="text-xs text-gray-500">{ticket.queue_service_date}</div>
+                        <button type="button" disabled={operations.pending} className="mt-2 min-h-11 rounded-lg border border-pink-700 px-4 text-sm font-bold text-pink-700" onClick={() => void operations.action(ticket, 'complete')}>{text('Complete queue', 'จบคิว')}</button>
+                        {canUsePos(actorContext.role) && <button className="mt-2 rounded-lg bg-pink-700 px-4 text-sm font-bold text-white" onClick={() => onSelectQueue({id:ticket.id,queue_number:String(ticket.queue_number)})}>{text('Open sale', 'เปิดรายการขาย')}</button>}
+                    </div>)}</div>
+                </section>
+
+                {arrivedTickets.length > 0 && <section className="rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold">{text('Arrived', 'มาถึงแล้ว')} ({arrivedTickets.length})</h3><div className="mt-2 space-y-2">{arrivedTickets.map(ticket => <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"><strong>#{ticket.queue_number}</strong><span className="text-xs">{ticket.queue_service_date}</span><button type="button" disabled={operations.pending} className="min-h-11 rounded-lg bg-pink-700 px-3 font-bold text-white" onClick={() => void operations.action(ticket, 'serving').then(updated => { if (updated && canUsePos(actorContext.role)) onSelectQueue({ id: ticket.id, queue_number: String(ticket.queue_number) }); })}>{text('Start serving', 'เริ่มให้บริการ')}</button></div>)}</div></section>}
+
                 {/* Calling Section */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                     <div className="p-3">
@@ -344,7 +351,7 @@ export default function QueuePanel({
                                         key={ticket.id}
                                         className={`bg-yellow-50 border rounded-md p-4 flex flex-col items-center text-center ${selectedQueueId === ticket.id ? 'border-pink-400 ring-2 ring-pink-200' : 'border-yellow-100'}`}
                                     >
-                                        <div className="text-4xl font-black text-gray-900 leading-none">#{ticket.queue_number}</div>
+                                        <div className="text-4xl font-black text-gray-900 leading-none">#{ticket.queue_number}</div><div className="text-xs text-gray-500">{ticket.queue_service_date}</div>
                                         <div className="text-xs text-gray-500 mb-1.5">{formatElapsedTime(ticket.called_at || ticket.last_updated_at)} {uiText(language, 'ago')}</div>
                                         <Button
                                             disabled={operations.pending}
@@ -363,16 +370,6 @@ export default function QueuePanel({
                         )}
                     </div>
                 </div>
-
-                {arrivedTickets.length > 0 && <section className="rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold">{text('Arrived', 'มาถึงแล้ว')} ({arrivedTickets.length})</h3><div className="mt-2 space-y-2">{arrivedTickets.map(ticket => <div key={ticket.id} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"><strong>#{ticket.queue_number}</strong><button type="button" disabled={operations.pending} className="min-h-11 rounded-lg bg-pink-700 px-3 font-bold text-white" onClick={() => void operations.action(ticket, 'serving').then(updated => { if (updated && canUsePos(actorContext.role)) onSelectQueue({ id: ticket.id, queue_number: String(ticket.queue_number) }); })}>{text('Start serving', 'เริ่มให้บริการ')}</button></div>)}</div></section>}
-
-                {servingTickets.length > 0 && <section className="rounded-xl border border-pink-200 bg-pink-50 p-4">
-                    <h3 className="font-bold text-pink-800">{text('Serving', 'กำลังให้บริการ')} ({servingTickets.length})</h3>
-                    <div className="mt-3 flex flex-wrap gap-3">{servingTickets.map(ticket => <div key={ticket.id} className="rounded-xl border border-pink-200 bg-white p-4">
-                        <div className="text-4xl font-black">#{ticket.queue_number}</div>
-                        {canUsePos(actorContext.role) && <button className="mt-2 rounded-lg bg-pink-700 px-4 text-sm font-bold text-white" onClick={() => onSelectQueue({id:ticket.id,queue_number:String(ticket.queue_number)})}>{text('Open sale', 'เปิดรายการขาย')}</button>}
-                    </div>)}</div>
-                </section>}
 
                 {/* Waiting List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -422,7 +419,7 @@ export default function QueuePanel({
                                 {expiredTickets.map(t => (
                                     <li key={t.id} className="px-3 py-1 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-red-400">#{t.queue_number}</span>
+                                            <span className="text-xs font-bold text-red-400">#{t.queue_number}</span><span className="text-xs text-gray-500">{t.queue_service_date}</span>
                                             <span className="text-xs text-gray-500">
                                                 {t.status === 'expired' ? text('Expired', 'หมดเวลา') : text('Missed', 'ไม่ได้มา')}
                                             </span>
@@ -431,13 +428,13 @@ export default function QueuePanel({
                                             onClick={() => {
                                                 if (ticketActionInFlightRef.current.has(t.id)) return;
                                                 ticketActionInFlightRef.current.add(t.id);
-                                                updateStatus(t.id, 'waiting').finally(() => {
+                                                operations.action(t, t.status === 'expired' ? 'arrive' : 'waiting').finally(() => {
                                                     ticketActionInFlightRef.current.delete(t.id);
                                                 });
                                             }}
                                             className="text-xs text-pink-500 font-bold hover:underline"
                                         >
-                                            {uiText(language, 'Recall')}
+                                            {t.status === 'expired' ? text('Confirm arrival', 'ยืนยันมาถึง') : uiText(language, 'Recall')}
                                         </button>
                                     </li>
                                 ))}

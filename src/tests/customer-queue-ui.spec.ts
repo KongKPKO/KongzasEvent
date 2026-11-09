@@ -25,6 +25,8 @@ test('customer queue preserves a ticket across browsing and shows service comple
     await page.getByRole('button', { name: 'Refresh Status', exact: true }).click();
     await expect(ticket).toContainText('#1');
     await page.unroute('**/rest/v1/queues?*');
+    const arrived = await fixture.service.from('queues').update({ status: 'calling', arrived_at: new Date().toISOString() }).eq('event_id', eventId);
+    if (arrived.error) throw arrived.error;
     const serving = await fixture.service.from('queues').update({ status: 'serving' }).eq('event_id', eventId);
     if (serving.error) throw serving.error;
     await expect(ticket).toContainText(/Serving|In Service|Being served/i, { timeout: 12000 });

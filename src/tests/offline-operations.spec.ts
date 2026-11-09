@@ -95,14 +95,14 @@ test('new offline work is unavailable while existing receipts remain recoverable
     }).toBe(true);
 
     await page.route('**/rest/v1/rpc/call_queue_batch',async route=>{
-      const changed=await fixture.service.from('queues').update({status:'complete'}).eq('id',raceTicket.data.id);
+      const changed=await fixture.service.from('queues').update({status:'missed'}).eq('id',raceTicket.data.id);
       if(changed.error) throw changed.error;
       await route.continue();
     }, { times: 1 });
     const racedCall = page.waitForResponse(response => response.url().includes('/rpc/call_queue_batch'));
-    await page.getByRole('button',{name:/Call Next/i}).first().click();
+    await page.getByRole('button',{name:'Call 1',exact:true}).first().click();
     expect(await (await racedCall).json()).toEqual([]);
-    expect((await fixture.service.from('queues').select('status').eq('id',raceTicket.data.id).single()).data?.status).toBe('complete');
+    expect((await fixture.service.from('queues').select('status').eq('id',raceTicket.data.id).single()).data?.status).toBe('missed');
     await page.goto(`/live/pos?eventId=${eventId}`);
     await expect(page.getByTestId('booth-toggle')).toHaveText('Close Booth');
     await expect(page.getByText('Cart is empty', {exact:true})).toBeVisible();
@@ -122,7 +122,7 @@ test('new offline work is unavailable while existing receipts remain recoverable
     await page.getByRole('button',{name:/Offline item/}).first().click();
     await page.getByRole('button',{name:/Charge/i}).first().click();
     await page.getByRole('button',{name:/Cash/i}).click();
-    await expect(page.getByText('Payment completed',{exact:true})).toBeVisible();
+    await expect(page.getByText('Payment completed',{exact:true})).toBeVisible({ timeout: 15_000 });
     expect((await fixture.service.from('orders').select('id').eq('event_id',eventId)).data).toHaveLength(3);
     expect((await fixture.service.from('event_products').select('stock_sold').eq('product_id',productId).eq('event_id',eventId).single()).data?.stock_sold).toBe(4);
 

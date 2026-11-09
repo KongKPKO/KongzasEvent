@@ -15,7 +15,7 @@ export interface QueueTicket {
   served_at?: string;
   completed_at?: string;
 }
-export type QueueAction = 'arrive' | 'recall' | 'serving' | 'missed' | 'waiting';
+export type QueueAction = 'arrive' | 'recall' | 'serving' | 'complete' | 'missed' | 'waiting';
 
 export function useQueueOperations(eventId: string | undefined, onUpdated: (id: string, updates: Partial<QueueTicket>) => void) {
   const busy = useRef(false);

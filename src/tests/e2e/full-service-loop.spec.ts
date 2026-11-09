@@ -125,7 +125,7 @@ test.describe('full queue and POS service loop', () => {
       expect(ticket.status).toBe('waiting');
 
       await adminPage.reload();
-      const callNext = adminPage.getByRole('button', { name: new RegExp(`^Call Next \\(#${ticketNumber}\\)$`, 'i') });
+      const callNext = adminPage.getByRole('button', { name: 'Call 1', exact: true });
       await expect(callNext).toBeEnabled({ timeout: 20_000 });
       await callNext.click();
       await expect.poll(async () => {
@@ -178,8 +178,11 @@ test.describe('full queue and POS service loop', () => {
 
       await expect.poll(async () => {
         const result = await service.from('queues').select('status').eq('id', ticketId).single();
-        return dataOrThrow(result, 'read completed queue ticket').status;
-      }, { timeout: 20_000 }).toBe('complete');
+        return dataOrThrow(result, 'read queue after payment').status;
+      }, { timeout: 20_000 }).toBe('serving');
+      await adminPage.getByRole('button', { name: 'Full queue dashboard', exact: true }).click();
+      await adminPage.getByRole('button', { name: 'Complete queue', exact: true }).click();
+      await expect.poll(async () => (await service.from('queues').select('status').eq('id', ticketId).single()).data?.status).toBe('complete');
 
       const order = await service
         .from('orders')
@@ -224,7 +227,7 @@ test.describe('full queue and POS service loop', () => {
       await addAgain.click();
       await expect(customerPage.getByRole('button', { name: 'Wait', exact: true })).toBeDisabled();
       await adminPage.reload();
-      await adminPage.getByRole('button', { name: new RegExp(`^Call Next \\(#${secondNumber}\\)$`, 'i') }).click();
+      await adminPage.getByRole('button', { name: 'Call 1', exact: true }).click();
       await expect(customerPage.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled({ timeout: 15_000 });
       await customerPage.getByRole('button', { name: 'Confirm', exact: true }).click();
       await customerPage.getByRole('dialog', { name: 'Confirm Order?', exact: true }).getByRole('button', { name: 'Send Order', exact: true }).click();

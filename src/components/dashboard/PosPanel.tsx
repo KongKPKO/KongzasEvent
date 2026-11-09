@@ -170,7 +170,6 @@ interface POSPanelProps {
     isInitialLoading?: boolean;
     onSelectQueue: (queue: { id: string; queue_number: string }) => void;
     onClearQueue: () => void;
-    onQueueCompleted?: (queueId: string) => void;
 }
 
 export default function POSPanel({
@@ -187,7 +186,6 @@ export default function POSPanel({
     isInitialLoading: _isInitialLoading = false,
     onSelectQueue,
     onClearQueue,
-    onQueueCompleted,
 }: POSPanelProps) {
     const { language } = useI18n();
     const [products, setProducts] = useState<Product[]>([]);
@@ -901,9 +899,6 @@ export default function POSPanel({
             setCurrentOrderId(null);
             setPaymentUnknownEventId(null);
             setIsPaymentModalOpen(false);
-            if (selectedQueueId) {
-                onQueueCompleted?.(selectedQueueId);
-            }
             onClearQueue();
             await fetchProducts();
             if (getActivityRewards(pricingSnapshot.appliedPromotions).length > 0) {

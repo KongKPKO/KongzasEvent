@@ -8,7 +8,7 @@ update public.artists set published_at=now() where id='b1000000-0000-4000-8000-0
 insert into public.events(id,artist_id,event_name,start_date,end_date) values ('b2000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000002','Suspension Event',now(),now()+interval '1 day');
 insert into public.online_campaigns(id,artist_id,name,slug,opens_at,closes_at) values ('b4000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000002','Suspension Campaign','suspension',now(),now()+interval '1 day');
 insert into public.orders(id,event_id,order_type,total_price,customer_name,customer_email,pickup_code) values ('b3000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','preorder',100,'Test buyer','buyer@test.local','SUS123');
-insert into public.queues(id,artist_id,event_id,queue_number,status,queue_service_date) values ('b5000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000002','b2000000-0000-4000-8000-000000000001',1,'waiting',current_date);
+insert into public.queues(id,artist_id,event_id,queue_number,status,queue_service_date,arrived_at) values ('b5000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000002','b2000000-0000-4000-8000-000000000001',1,'calling',current_date,now());
 set local role anon;
 select throws_ok($$select public.set_store_suspension('b1000000-0000-4000-8000-000000000002',true,false,'Support reason')$$,'42501',null,'anonymous cannot suspend');
 reset role;

@@ -150,6 +150,7 @@ create temp table held_quote as select public.quote_pos_order(i.event,o.id,jsonb
 select is((select result->>'total' from held_quote),'80','existing loose holds remain available to the auto-set quote');
 select lives_ok($$select public.complete_order_with_stock(o.id,'cash',(select payment_idempotency_key from public.orders where id=o.id),'[]','[]',(select result->>'pricing_hash' from held_quote),false) from held_order o$$,'existing loose cart converts and pays using its own last units');
 select is((select product_id from public.order_items where order_id=(select id from held_order) and line_type='purchase'),(select id from winning_bundle),'converted held cart persists the canonical bundle');
+select is((select status from public.queues where id=(select id from held_q)),'serving','bundle payment does not complete the serving queue');
 
 select * from finish();
 rollback;

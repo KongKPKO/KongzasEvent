@@ -217,7 +217,7 @@ async function ensurePosPanelActive(page: Page) {
 
 async function ensureQueuePanelActive(page: Page) {
     const queueList = page.getByRole('region', { name: /Queue list/i }).first();
-    const callNext = page.getByRole('button', { name: /Call Next/i }).first();
+    const callNext = page.getByRole('button', { name: 'Call 1', exact: true }).first();
     if ((await queueList.isVisible().catch(() => false)) || (await callNext.isVisible().catch(() => false))) return;
 
     const queueToggle = page.getByRole('button', { name: /Expand queue control|Hide queue|Collapse queue control/i }).first();
@@ -363,7 +363,7 @@ test.describe('Regression Suite @regression', () => {
                 break;
             }
 
-            const callNextBtn = adminPage.getByRole('button', { name: new RegExp(`Call Next \(#${queueNum}\)|Call Next`, 'i') }).first();
+            const callNextBtn = adminPage.getByRole('button', { name: 'Call 1', exact: true }).first();
             await expect(callNextBtn).toBeVisible({ timeout: 10000 });
             if (await callNextBtn.isEnabled()) {
                 await callNextBtn.click();
@@ -375,6 +375,7 @@ test.describe('Regression Suite @regression', () => {
 
         expect(queueReady).toBeTruthy();
         await adminPage.locator('button', { hasText: 'ARRIVED' }).first().click();
+        await adminPage.getByRole('button', { name: 'Start serving', exact: true }).click();
 
         // 5. POS Payment
         await adminPage.waitForTimeout(2000);
@@ -395,6 +396,8 @@ test.describe('Regression Suite @regression', () => {
         await clickChargeButton(adminPage);
         await adminPage.getByRole('button', { name: /Cash/i }).click();
 
+        await adminPage.getByRole('button', { name: 'Full queue dashboard', exact: true }).click();
+        await adminPage.getByRole('button', { name: 'Complete queue', exact: true }).click();
         await expect(customerPage.getByText(/Completed/i).first()).toBeVisible({ timeout: 20000 });
         
         await adminContext.close();

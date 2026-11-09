@@ -38,6 +38,11 @@ export interface QueueItem {
     completed_at?: string;
 }
 
+function mergeQueue(current: QueueItem, updates: Partial<QueueItem>): QueueItem {
+    if (updates.last_updated_at && updates.last_updated_at < current.last_updated_at) return current;
+    return { ...current, ...updates };
+}
+
 interface ManageCombinedProps {
     actorContext: ActorContext;
     /** Optional override for initial tab — used by /live/queue and /live/pos routes */
@@ -126,12 +131,20 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
 
     const handleBoothToggle = useCallback(async (nextOpen: boolean) => {
         if (!hasPosPermission || !activeEvent?.id || boothToggleLoading) return;
-        if (!nextOpen && activeEvent.is_booth_open && !window.confirm(uiText(language, 'Close booth for {event}? Customers will see the booth as closed.').replace('{event}', activeEvent.event_name))) {
-            return;
+        setBoothToggleLoading(true);
+        if (!nextOpen && activeEvent.is_booth_open) {
+            const { count: remaining, error } = await supabase.from('queues').select('id', { count: 'exact', head: true }).eq('event_id', activeEvent.id).in('status', ['waiting', 'queued', 'calling', 'serving', 'expired']);
+            if (error || remaining === null) {
+                setToast({ tone: 'warning', title: language === 'th' ? 'ตรวจคิวที่ค้างไม่สำเร็จ กรุณาลองใหม่' : 'Could not check unfinished queues. Please retry.' });
+                setBoothToggleLoading(false);
+                return;
+            }
+            const message = uiText(language, 'Close booth for {event}? Customers will see the booth as closed.').replace('{event}', activeEvent.event_name);
+            const summary = language === 'th' ? `ยังมีคิวที่ไม่เสร็จ ${remaining} คิว` : `${remaining} queues are unfinished`;
+            if (!window.confirm(`${message}\n${summary}`)) { setBoothToggleLoading(false); return; }
         }
 
         try {
-            setBoothToggleLoading(true);
             const { error } = await supabase.rpc('set_booth_open_status', {
                 p_event_id: activeEvent.id,
                 p_is_open: nextOpen,
@@ -232,20 +245,30 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
             return;
         }
 
-        const { data, error } = await supabase
-            .from('queues')
-            .select('id, artist_id, event_id, queue_service_date, queue_number, status, called_at, arrived_at, last_updated_at, created_at, served_at, completed_at')
-            .eq('artist_id', actorContext.artist_id)
-            .eq('event_id', eventId)
-            .eq('queue_service_date', serviceDate)
-            .order('queue_number', { ascending: true });
-
-        if (error) {
-            console.error('[ManageCombined] Queue fetch failed:', error);
-            setToast({ tone: 'error', title: 'โหลดคิวไม่สำเร็จ กรุณาลองใหม่ / Could not load queues. Please retry.' });
+        const rows: QueueItem[] = [];
+        const pageSize = 500;
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await supabase
+                .from('queues')
+                .select('id, artist_id, event_id, queue_service_date, queue_number, status, called_at, arrived_at, last_updated_at, created_at, served_at, completed_at')
+                .eq('artist_id', actorContext.artist_id)
+                .eq('event_id', eventId)
+                .or(`queue_service_date.eq.${serviceDate},status.eq.serving`)
+                .order('queue_service_date').order('queue_number').order('id')
+                .range(offset, offset + pageSize - 1);
+            if (error) {
+                console.error('[ManageCombined] Queue fetch failed:', error);
+                setToast({ tone: 'error', title: 'โหลดคิวไม่สำเร็จ กรุณาลองใหม่ / Could not load queues. Please retry.' });
+                return;
+            }
+            rows.push(...data);
+            if (data.length < pageSize) break;
         }
-        if (!error && data && activeEventIdRef.current === eventId && activeServiceDateRef.current === serviceDate) {
-            setQueues(data);
+        if (activeEventIdRef.current === eventId && activeServiceDateRef.current === serviceDate) {
+            setQueues(previous => {
+                const current = new Map(previous.map(ticket => [ticket.id, ticket]));
+                return rows.map(row => current.has(row.id) ? mergeQueue(current.get(row.id)!, row) : row);
+            });
         }
     }, [actorContext.artist_id]);
 
@@ -263,46 +286,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
         tick(); const timer = window.setInterval(tick, 20000);
         return () => window.clearInterval(timer);
     }, [activeEvent?.id]);
-
-    const expireStaleCallingQueues = useCallback(async () => {
-        const eventId = activeEventIdRef.current;
-        const serviceDate = activeServiceDateRef.current;
-        if (!eventId) return;
-
-        const staleThresholdMs = Date.now() - (30 * 60 * 1000);
-        const { data, error } = await supabase
-            .from('queues')
-            .select('id, called_at, last_updated_at')
-            .eq('artist_id', actorContext.artist_id)
-            .eq('event_id', eventId)
-            .eq('queue_service_date', serviceDate)
-            .eq('status', 'calling').is('arrived_at', null);
-
-        if (error || !data || data.length === 0) return;
-
-        const staleIds = data
-            .filter((ticket) => {
-                const sourceTime = ticket.called_at || ticket.last_updated_at;
-                const sourceMs = new Date(sourceTime).getTime();
-                return Number.isFinite(sourceMs) && sourceMs <= staleThresholdMs;
-            })
-            .map((ticket) => ticket.id);
-
-        if (staleIds.length === 0) return;
-
-        const { error: updateError } = await supabase
-            .from('queues')
-            .update({
-                status: 'expired',
-                last_updated_at: new Date().toISOString(),
-            })
-            .in('id', staleIds)
-            .eq('status', 'calling');
-
-        if (updateError) {
-            console.error('[ManageCombined] Failed to expire stale calling queues:', updateError);
-        }
-    }, [actorContext.artist_id]);
 
     useEffect(() => {
         fetchActiveEvents();
@@ -362,17 +345,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     useEffect(() => {
         if (!activeEvent?.id) return;
 
-        expireStaleCallingQueues();
-        const timer = setInterval(() => {
-            expireStaleCallingQueues();
-        }, 30_000);
-
-        return () => clearInterval(timer);
-    }, [activeEvent?.id, expireStaleCallingQueues]);
-
-    useEffect(() => {
-        if (!activeEvent?.id) return;
-
         const channel = supabase
             .channel(`manage-combined-queues-${actorContext.artist_id}-${activeEvent.id}`)
             .on(
@@ -381,18 +353,18 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newTicket = payload.new as QueueItem;
-                        if (newTicket.queue_service_date !== activeServiceDateRef.current) return;
+                        if (newTicket.queue_service_date !== activeServiceDateRef.current && newTicket.status !== 'serving') return;
                         setQueues((prev) => {
                             if (prev.find(q => q.id === newTicket.id)) return prev;
                             return [...prev, newTicket];
                         });
                     } else if (payload.eventType === 'UPDATE') {
                         const updatedTicket = payload.new as QueueItem;
-                        if (updatedTicket.queue_service_date !== activeServiceDateRef.current) {
+                        if (updatedTicket.queue_service_date !== activeServiceDateRef.current && updatedTicket.status !== 'serving') {
                             setQueues((prev) => prev.filter(q => q.id !== updatedTicket.id));
                             return;
                         }
-                        setQueues((prev) => prev.map(q => q.id === updatedTicket.id ? { ...q, ...updatedTicket } : q));
+                        setQueues((prev) => prev.some(q => q.id === updatedTicket.id) ? prev.map(q => q.id === updatedTicket.id ? mergeQueue(q, updatedTicket) : q) : [...prev, updatedTicket]);
                     } else if (payload.eventType === 'DELETE') {
                         const deletedId = (payload.old as QueueItem | null)?.id;
                         if (!deletedId) return;
@@ -408,7 +380,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
     }, [actorContext.artist_id, activeEvent?.id, activeServiceDate]);
 
     const filteredQueues = activeEvent?.id
-        ? queues.filter(q => q.event_id === activeEvent.id && q.queue_service_date === activeServiceDate)
+        ? queues.filter(q => q.event_id === activeEvent.id && (q.queue_service_date === activeServiceDate || q.status === 'serving'))
         : queues;
 
     const servingQueues = filteredQueues.filter(q => q.status === 'serving');
@@ -570,7 +542,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                             if (hasPosPermission) setActiveTab('pos');
                         }}
                         onStatusUpdated={(id, updates) => {
-                            setQueues((prev) => prev.map((queue) => queue.id === id ? { ...queue, ...updates } : queue));
+                            setQueues((prev) => prev.map((queue) => queue.id === id ? mergeQueue(queue, updates) : queue));
                         }}
                     />
                 </div>
@@ -586,7 +558,7 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         servingQueues={servingQueues}
                         queues={filteredQueues}
                         onOpenQueueDashboard={() => setActiveTab('queue')}
-                        onQueueUpdated={(id, updates) => setQueues(previous => previous.map(queue => queue.id === id ? { ...queue, ...updates } : queue))}
+                        onQueueUpdated={(id, updates) => setQueues(previous => previous.map(queue => queue.id === id ? mergeQueue(queue, updates) : queue))}
                         selectedQueueId={selectedQueueId}
                         selectedQueueNumber={selectedQueueNumber}
                         actorContext={actorContext}
@@ -599,13 +571,6 @@ export default function ManageCombined({ actorContext, initialTab }: ManageCombi
                         onClearQueue={() => {
                             setSelectedQueueId(null);
                             setSelectedQueueNumber(null);
-                        }}
-                        onQueueCompleted={(queueId) => {
-                            setQueues((prev) => prev.map((queue) => (
-                                queue.id === queueId
-                                    ? { ...queue, status: 'complete', completed_at: new Date().toISOString(), last_updated_at: new Date().toISOString() }
-                                    : queue
-                            )));
                         }}
                     />
                 </div>

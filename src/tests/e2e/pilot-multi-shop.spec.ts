@@ -249,7 +249,7 @@ test.describe('four-shop concurrent service pilot', () => {
       await Promise.all(sessions.map(async (session) => {
         await session.adminPage.reload();
         const callNext = session.adminPage.getByRole('button', {
-          name: new RegExp(`^Call Next \\(#${session.ticketNumber}\\)$`, 'i'),
+          name: 'Call 1', exact: true,
         });
         await expectReadyOrRecover(session.adminPage, callNext, session);
         await expect(callNext).toBeEnabled({ timeout: 30_000 });
@@ -305,8 +305,12 @@ test.describe('four-shop concurrent service pilot', () => {
           .from('queues')
           .select('status')
           .eq('id', session.ticketId!)
-          .single(), `read completed ticket for shop ${session.index + 1}`).status, { timeout: 30_000 }).toBe('complete');
+          .single(), `read queue after payment for shop ${session.index + 1}`).status, { timeout: 30_000 }).toBe('serving');
 
+        await expect.poll(async () => {
+          const result = await db.from('orders').select('status').eq('event_id', session.eventId).eq('queue_id', session.ticketId!).maybeSingle();
+          return result.data?.status;
+        }, { timeout: 30_000 }).toBe('completed');
         const order = dataOrThrow(await db
           .from('orders')
           .select('id, event_id, queue_id, status, payment_method, total_price')
@@ -360,6 +364,8 @@ test.describe('four-shop concurrent service pilot', () => {
           stock_sold: 1,
         });
 
+        await session.adminPage.getByRole('button', { name: 'Full queue dashboard', exact: true }).click();
+        await session.adminPage.getByRole('button', { name: 'Complete queue', exact: true }).click();
         await expect(session.customerPage.getByText(/Completed|Order complete|Thank you/i).first()).toBeVisible({ timeout: 30_000 });
         return order;
       }));

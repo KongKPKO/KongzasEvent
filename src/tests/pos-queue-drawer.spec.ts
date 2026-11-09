@@ -342,6 +342,22 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     }
     await lists.evaluate(element => { element.scrollTop = element.scrollHeight; });
     await queueStaffPage.screenshot({ path: testInfo.outputPath('queue-mobile-missed-no-overlap.png') });
+    await lists.getByRole('listitem').filter({ hasText: '#8' }).getByRole('button', { name: 'ยืนยันมาถึง' }).click();
+    await expect.poll(async () => (await service.from('queues').select('status,arrived_at').eq('event_id', eventId).eq('queue_number', 8).single()).data).toMatchObject({ status: 'calling', arrived_at: expect.any(String) });
+
+    await drawer.getByRole('button', { name: 'Close queue management', exact: true }).click();
+    sellerPage.once('dialog', dialog => {
+      expect(dialog.message()).toMatch(/\d+ queues are unfinished/);
+      void dialog.dismiss();
+    });
+    await sellerPage.getByRole('button', { name: 'Close Booth', exact: true }).click();
+
+    must(await service.from('queues').insert(Array.from({ length: 501 }, (_, index) => ({
+      id: randomUUID(), artist_id: artistId, event_id: eventId, queue_number: 100 + index,
+      status: 'waiting', queue_service_date: serviceDate(),
+    }))), 'seed multiple queue pages');
+    await queueStaffPage.reload();
+    await expect(queueStaffPage.locator('.festival-queue-lists').getByText('#600', { exact: true })).toBeAttached({ timeout: 20_000 });
 
   } finally {
     await sellerContext.close();

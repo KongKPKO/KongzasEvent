@@ -497,7 +497,7 @@ test.describe('RLS and mutation security regressions', () => {
       artist_id: ids.artist,
       event_id: ids.event,
       queue_number: 178,
-      status: 'serving',
+      status: 'calling',
       queue_service_date: new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Bangkok',
         year: 'numeric',

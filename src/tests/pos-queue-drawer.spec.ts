@@ -234,6 +234,8 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     }).toBe(5);
 
     const queueTwo = rowFor(drawer, 2);
+    await expect(queueTwo.getByRole('button', { name: 'Recall', exact: true })).toHaveCount(0);
+    await expect(queueTwo.getByRole('button', { name: 'Mark missed', exact: true })).toHaveCount(0);
     await queueTwo.getByRole('button', { name: 'Mark arrived', exact: true }).click();
     await expect.poll(async () => {
       const result = await service.from('queues').select('status, arrived_at').eq('event_id', eventId).eq('queue_number', 2).single();
@@ -342,8 +344,12 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
     }
     await lists.evaluate(element => { element.scrollTop = element.scrollHeight; });
     await queueStaffPage.screenshot({ path: testInfo.outputPath('queue-mobile-missed-no-overlap.png') });
-    await lists.getByRole('listitem').filter({ hasText: '#8' }).getByRole('button', { name: 'ยืนยันมาถึง' }).click();
+    await lists.locator('.bg-yellow-50').filter({ hasText: '#8' }).getByRole('button', { name: 'มาถึงแล้ว' }).click();
     await expect.poll(async () => (await service.from('queues').select('status,arrived_at').eq('event_id', eventId).eq('queue_number', 8).single()).data).toMatchObject({ status: 'calling', arrived_at: expect.any(String) });
+    await rowFor(drawer, 2).getByRole('button', { name: 'Complete queue', exact: true }).click();
+    await expect(drawer.getByRole('region', { name: 'Completed' }).getByText('#2', { exact: true })).toBeVisible();
+    await expect(lists.getByRole('region', { name: 'จบแล้ว' }).getByText('#2', { exact: true })).toBeAttached();
+    await expect(drawer.getByRole('region', { name: 'Missed / expired' })).toHaveCount(0);
 
     await drawer.getByRole('button', { name: 'Close queue management', exact: true }).click();
     sellerPage.once('dialog', dialog => {

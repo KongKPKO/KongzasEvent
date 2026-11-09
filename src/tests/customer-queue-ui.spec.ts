@@ -14,6 +14,7 @@ test('customer queue preserves a ticket across browsing and shows service comple
     await page.getByRole('button', { name: 'Get Ticket', exact: true }).click();
     const ticket = page.getByRole('region', { name: 'Your queue ticket', exact: true });
     await expect(ticket).toContainText('#1');
+    await expect(ticket).toContainText('Estimated time to call: 14-52 min (0 waiting ahead)');
     const browse = page.getByRole('link', { name: /Browse this creator’s work/ });
     await expect(browse).toHaveAttribute('href', `/${slug}/menu`);
     await browse.click();

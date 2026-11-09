@@ -57,10 +57,12 @@ const QueueView = () => {
     const [myTicket, setMyTicket] = useState<Ticket | null>(null);
     const [nowServingNumber, setNowServingNumber] = useState<number | null>(null);
     const [etaWindow, setEtaWindow] = useState<{ min: number; max: number; peopleAhead: number } | null>(null);
+    const [queueRevision, setQueueRevision] = useState(0);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
     const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
     const nowServingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const etaRequestRef = useRef(0);
     // Guards handleGetTicket against double-tap / rapid duplicate RPCs.
     // React's disabled={loading} prop is a render-time guard, but a fast
     // second click can fire before the re-render lands.
@@ -164,6 +166,7 @@ const QueueView = () => {
     };
 
     const fetchEta = async (eventId: string, queueNumber: number, status: Ticket['status']) => {
+        const request = ++etaRequestRef.current;
         if (!['waiting', 'calling', 'serving'].includes(status)) {
             setEtaWindow(null);
             return;
@@ -174,20 +177,22 @@ const QueueView = () => {
             p_queue_number: queueNumber,
         });
 
+        if (request !== etaRequestRef.current) return;
         if (error) {
             console.error('ETA fetch error:', error);
+            setEtaWindow(null);
             return;
         }
 
         const result = Array.isArray(data) ? data[0] : data;
-        if (!result) {
+        if (!result || result.eta_min_minutes == null || result.eta_max_minutes == null) {
             setEtaWindow(null);
             return;
         }
 
         setEtaWindow({
-            min: result.eta_min_minutes ?? 0,
-            max: result.eta_max_minutes ?? 0,
+            min: result.eta_min_minutes,
+            max: result.eta_max_minutes,
             peopleAhead: result.people_ahead ?? 0,
         });
     };
@@ -285,6 +290,7 @@ const QueueView = () => {
                 }
                 nowServingTimerRef.current = setTimeout(() => {
                     fetchNowServing(activeEvent.id, activeServiceDate);
+                    setQueueRevision(value => value + 1);
                 }, 200);
 
                 // Handle ticket row deleted by admin (reset, retention). payload.new
@@ -349,11 +355,18 @@ const QueueView = () => {
 
     useEffect(() => {
         if (!activeEvent || !myTicket) {
+            etaRequestRef.current += 1;
             setEtaWindow(null);
             return;
         }
         fetchEta(activeEvent.id, myTicket.queue_number, myTicket.status);
-    }, [activeEvent?.id, myTicket?.queue_number, myTicket?.status, nowServingNumber]);
+    }, [activeEvent?.id, myTicket?.queue_number, myTicket?.status, nowServingNumber, queueRevision]);
+
+    useEffect(() => {
+        if (!myTicket || myTicket.status !== 'waiting') return;
+        const timer = window.setInterval(() => setQueueRevision(value => value + 1), 60_000);
+        return () => window.clearInterval(timer);
+    }, [myTicket?.id, myTicket?.status]);
 
     useEffect(() => {
         if (!myTicket?.id || !activeEvent?.id) return;
@@ -602,9 +615,11 @@ const QueueView = () => {
                     <h2 className={`queue-ticket-status ${theme.messageColor}`}>{theme.badge.text}</h2>
                     <p className="queue-ticket-message">{theme.message}</p>
                 </div>
-                {etaWindow && status === 'waiting' && !updatesDelayed && isConnected && <div className="queue-ticket-estimate">
+                {status === 'waiting' && !updatesDelayed && isConnected && <div className="queue-ticket-estimate">
+                    {etaWindow ? <>
                     <strong>{t('queueEstimatedWait', { min: etaWindow.min, max: etaWindow.max, people: etaWindow.peopleAhead })}</strong>
-                    <p>{language === 'th' ? 'เวลาโดยประมาณ อาจเปลี่ยนตามการให้บริการหน้าบูธ' : 'An estimate; timing may change with service at the booth.'}</p>
+                    <p>{language === 'th' ? 'เริ่มจากข้อมูลตัวอย่างและปรับตามการเรียกคิวจริง เวลาอาจเปลี่ยนตามสถานการณ์หน้าบูธ' : 'Starts from sample data and adapts to actual calls. Timing may change at the booth.'}</p>
+                    </> : <p>{language === 'th' ? 'เวลารออาจเปลี่ยนแปลง กรุณาติดตามสถานะคิว' : 'Wait time is uncertain. Please check your queue status.'}</p>}
                 </div>}
                 <div className="queue-ticket-stub"><span>{t('queueBookedAt', { time: formatTime(myTicket.created_at, dateLocale) })}</span><span>{activeEvent?.event_name}</span></div>
             </section>

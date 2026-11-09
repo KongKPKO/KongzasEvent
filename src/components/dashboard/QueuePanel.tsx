@@ -5,7 +5,7 @@ import { Button } from '../ui';
 import { canUsePos } from '../../types/access';
 import type { ActorContext } from '../../types/access';
 import { 
-    LayoutDashboard, Bell, RotateCcw,
+    LayoutDashboard, Bell,
     Coffee, AlertCircle, PauseCircle, X 
 } from 'lucide-react';
 import { Toast } from '../ui/Feedback';
@@ -81,7 +81,6 @@ export default function QueuePanel({
 
     const boothToggleInFlightRef = useRef(false);
     const broadcastInFlightRef = useRef(false);
-    const ticketActionInFlightRef = useRef<Set<string>>(new Set());
 
     // Sync booth status from activeEvent prop
     useEffect(() => {
@@ -203,10 +202,10 @@ export default function QueuePanel({
 
     // --- DERIVED STATE from prop ---
     const waitingTickets = queues.filter(q => q.status === 'waiting' || (q.status as string) === 'queued').sort((a, b) => a.queue_number - b.queue_number);
-    const readyTickets = queues.filter(q => q.status === 'calling' && !q.arrived_at);
+    const readyTickets = queues.filter(q => (q.status === 'calling' && !q.arrived_at) || q.status === 'expired');
     const arrivedTickets = queues.filter(q => q.status === 'calling' && q.arrived_at).sort((a, b) => (a.arrived_at || '').localeCompare(b.arrived_at || '') || a.queue_number - b.queue_number);
     const servingTickets = queues.filter(q => q.status === 'serving');
-    const expiredTickets = queues.filter(q => q.status === 'missed' || q.status === 'expired');
+    const completedTickets = queues.filter(q => q.status === 'complete').sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || '') || a.queue_number - b.queue_number);
 
     const nextTicket = waitingTickets[0];
     const totalInQueue = queues.length;
@@ -404,44 +403,10 @@ export default function QueuePanel({
                     </div>
                 </div>
 
-                {/* Missed Tickets */}
-                {expiredTickets.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden opacity-90">
-                        <div className="px-3 py-1.5 border-b border-gray-100 flex justify-between items-center bg-red-50/30">
-                            <h3 className="font-bold text-xs text-gray-900 flex items-center gap-1.5">
-                                <RotateCcw size={12} className="text-red-400" />
-                                {uiText(language, 'Missed')}
-                            </h3>
-                            <span className="bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full font-bold">{expiredTickets.length}</span>
-                        </div>
-                        <div className="max-h-[min(160px,25dvh)] overflow-y-auto overscroll-contain">
-                            <ul className="divide-y divide-gray-50">
-                                {expiredTickets.map(t => (
-                                    <li key={t.id} className="px-3 py-1 flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-red-400">#{t.queue_number}</span><span className="text-xs text-gray-500">{t.queue_service_date}</span>
-                                            <span className="text-xs text-gray-500">
-                                                {t.status === 'expired' ? text('Expired', 'หมดเวลา') : text('Missed', 'ไม่ได้มา')}
-                                            </span>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                if (ticketActionInFlightRef.current.has(t.id)) return;
-                                                ticketActionInFlightRef.current.add(t.id);
-                                                operations.action(t, t.status === 'expired' ? 'arrive' : 'waiting').finally(() => {
-                                                    ticketActionInFlightRef.current.delete(t.id);
-                                                });
-                                            }}
-                                            className="text-xs text-pink-500 font-bold hover:underline"
-                                        >
-                                            {t.status === 'expired' ? text('Confirm arrival', 'ยืนยันมาถึง') : uiText(language, 'Recall')}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-                )}
+                <section className="rounded-xl border border-gray-100 bg-white p-4" aria-label={text('Completed', 'จบแล้ว')}>
+                    <h3 className="font-bold">{text('Completed', 'จบแล้ว')} ({completedTickets.length})</h3>
+                    {completedTickets.length === 0 ? <p className="mt-2 text-sm text-gray-500">{text('No completed queues', 'ยังไม่มีคิวที่จบแล้ว')}</p> : <ul className="mt-2 flex flex-wrap gap-2">{completedTickets.map(ticket => <li key={ticket.id} className="rounded-lg bg-gray-50 px-3 py-2 font-bold">#{ticket.queue_number}</li>)}</ul>}
+                </section>
             </div>
         </div>
     );

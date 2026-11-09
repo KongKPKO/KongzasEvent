@@ -224,7 +224,26 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
 
     await activeSale.getByRole('button', { name: 'Manage queues', exact: true }).click();
     drawer = sellerPage.getByRole('dialog', { name: 'Manage queues', exact: true });
+    const otherBatch = drawer.getByRole('button', { name: 'Call 1', exact: true });
+    const batchOpacity = await otherBatch.evaluate(button => getComputedStyle(button).opacity);
+    let releaseBatch!: () => void;
+    let announceBatch!: () => void;
+    const batchStarted = new Promise<void>(resolve => { announceBatch = resolve; });
+    const batchGate = new Promise<void>(resolve => { releaseBatch = resolve; });
+    await sellerPage.route('**/rest/v1/rpc/call_queue_batch', async route => {
+      announceBatch();
+      await batchGate;
+      await route.continue();
+    }, { times: 1 });
     await drawer.getByRole('button', { name: 'Call 5', exact: true }).click();
+    await batchStarted;
+    try {
+      await expect(otherBatch).toBeDisabled();
+      await expect(drawer.getByRole('status')).toHaveText('Updating…');
+      expect(await otherBatch.evaluate(button => getComputedStyle(button).opacity)).toBe(batchOpacity);
+    } finally {
+      releaseBatch();
+    }
     await expect.poll(async () => {
       const result = await service.from('queues').select('id', { count: 'exact', head: true })
         .eq('event_id', eventId)
@@ -233,15 +252,44 @@ test('seller manages queues from a walk-in draft while queue staff updates sync 
       return result.count;
     }).toBe(5);
 
+    await sellerPage.setViewportSize({ width: 320, height: 700 });
+    await rowFor(drawer, 3).getByRole('button', { name: 'Mark arrived', exact: true }).click();
+    const otherSale = rowFor(drawer, 3).getByRole('button', { name: 'Open sale for this queue', exact: true });
+    await expect(otherSale).toBeVisible();
+    const originalOpacity = await otherSale.evaluate(button => getComputedStyle(button).opacity);
+    await drawer.evaluate(element => element.setAttribute('data-stability-check', 'open'));
+    let releaseRequest!: () => void;
+    let announceRequest!: () => void;
+    const requestStarted = new Promise<void>(resolve => { announceRequest = resolve; });
+    const requestGate = new Promise<void>(resolve => { releaseRequest = resolve; });
+    await sellerPage.route('**/rest/v1/rpc/update_queue_operation', async route => {
+      announceRequest();
+      await requestGate;
+      await route.continue();
+    }, { times: 1 });
+
     const queueTwo = rowFor(drawer, 2);
     await expect(queueTwo.getByRole('button', { name: 'Recall', exact: true })).toHaveCount(0);
     await expect(queueTwo.getByRole('button', { name: 'Mark missed', exact: true })).toHaveCount(0);
     await queueTwo.getByRole('button', { name: 'Mark arrived', exact: true }).click();
+    await requestStarted;
+    try {
+      await expect(otherSale).toBeDisabled();
+      await expect(drawer.getByRole('status')).toHaveText('Updating…');
+      expect(await otherSale.evaluate(button => getComputedStyle(button).opacity)).toBe(originalOpacity);
+      await expect(drawer).toHaveAttribute('data-stability-check', 'open');
+      expect(await sellerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    } finally {
+      releaseRequest();
+    }
     await expect.poll(async () => {
       const result = await service.from('queues').select('status, arrived_at').eq('event_id', eventId).eq('queue_number', 2).single();
       must(result, 'read queue 2 arrival');
       return result.data?.status === 'calling' && Boolean(result.data.arrived_at);
     }).toBe(true);
+    await expect(drawer).toHaveAttribute('data-stability-check', 'open');
+    await expect(otherSale).toBeEnabled();
+    await sellerPage.setViewportSize({ width: 1280, height: 800 });
     const arrivalState = await service.from('queues').select('arrived_at').eq('event_id', eventId).eq('queue_number', 2).single();
     expect(dataOrThrow(arrivalState, 'verify queue 2 arrival timestamp').arrived_at).not.toBeNull();
     const queueOneBefore = await service.from('queues').select('status, arrived_at').eq('event_id', eventId).eq('queue_number', 1).single();

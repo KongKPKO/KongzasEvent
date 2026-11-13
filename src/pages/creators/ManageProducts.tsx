@@ -320,7 +320,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
    const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
-   const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('visual');
+   const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('operations');
    const [catalogActionMenuKey, setCatalogActionMenuKey] = useState<string | null>(null);
    const [catalogMenuPosition, setCatalogMenuPosition] = useState({ left: 8, top: 8 });
    const catalogActionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -593,8 +593,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    };
 
    const renderCatalogStockFlow = (product: Product, compact = false, table = false) => product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{product.bundle_items?.some(item => item.product_id) ? (language === 'th' ? `พร้อมจัดชุด ${inventory[product.id]?.bundle_available ?? 'ไม่จำกัด'} · ใช้ของร่วมกับการขายแยก` : `${inventory[product.id]?.bundle_available ?? 'Unlimited'} bundles · shared component stock`) : (language === 'th' ? 'ชุดเดิม: แก้ไขเพื่อเลือกสินค้าส่วนประกอบ' : 'Legacy bundle: edit to select components')}</div> : <div className="space-y-2">
-      {renderCatalogStockNumbers(product, compact)}
-      {inventory[product.id] && (table ? <details className="stock-details"><summary>{language === 'th' ? 'จัดการสต็อกและดูรายละเอียด' : 'Manage stock and details'}</summary><InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} /></details> : <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />)}
+      {table && !product.is_unlimited ? <p className="text-xs font-bold text-gray-700">{t('catalogReadyToAllocate')}: <span className="text-emerald-700">{getCatalogStockValues(product).available}</span></p> : renderCatalogStockNumbers(product, compact)}
+      {table ? <details className="stock-details"><summary>{language === 'th' ? 'จัดการสต็อกและดูรายละเอียด' : 'Manage stock and details'}</summary>{!product.is_unlimited && renderCatalogStockNumbers(product, compact)}{inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}</details> : inventory[product.id] && <InventoryBreakdown value={inventory[product.id]} onChanged={async (message) => { await fetchProducts(); if (message) showToast({ tone: 'success', title: message }); }} />}
       {table && inventory[product.id]?.production_shortfall > 0 && <p className="text-xs font-bold text-amber-800">{inventory[product.id].tracking ? (language === 'th' ? 'ยอดรับสั่งผลิตยังขาด' : 'Production shortfall') : (language === 'th' ? 'ยอดยืนยันรอเตรียมของ' : 'Confirmed units to prepare')}: {inventory[product.id].production_shortfall}</p>}
    </div>;
 
@@ -750,6 +750,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       const matchesSearch =
          query.length === 0 ||
          product.name.toLowerCase().includes(query) ||
+         (product.sku || '').toLowerCase().includes(query) ||
          (product.category || '').toLowerCase().includes(query) ||
          (product.description || '').toLowerCase().includes(query) ||
          (product.variant_group_name || '').toLowerCase().includes(query) ||
@@ -2217,7 +2218,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const pageSubtitle = isEventScopedWorkspace ? selectedEventName : artistName;
 
    return (
-      <div className="catalog-workspace min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
+      <div className={`catalog-workspace ${!isEventScopedWorkspace && activeWorkspaceTab === 'catalog' ? 'catalog-redesign' : ''} min-h-screen bg-gray-50 font-sans text-gray-900 pb-20`}>
          <dialog ref={historyDialogRef} aria-label={language === 'th' ? 'ประวัติสต็อก' : 'Stock history'} className="catalog-history-dialog" onCancel={() => setHistoryProduct(null)}>
             <header><div><h2>{language === 'th' ? 'ประวัติสต็อก' : 'Stock history'}</h2><p>{historyProduct?.name} · {historyProduct?.sku}</p></div><button autoFocus type="button" onClick={() => setHistoryProduct(null)}>{language === 'th' ? 'ปิด' : 'Close'}</button></header>
             <p>{language === 'th' ? 'ประวัติยอดบันทึกสะสม (รวมขายแล้ว) 30 รายการล่าสุด ดูของที่มีอยู่จริงในรายละเอียดสต็อก' : 'Latest 30 recorded-total changes (including sold). See stock details for physical units.'}</p>
@@ -3917,13 +3918,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                   displayMode={catalogDisplayMode}
                   getImageUrl={(path) => getMenuImageUrl(path || '')}
                   renderVariantStock={(product, compact) => renderCatalogStockFlow(product, compact, catalogDisplayMode === 'operations')}
+                  getVariantStatus={getEffectiveStatus}
                   renderVariantActions={renderCatalogActions}
                   onEditFamily={openFamilyEditor}
                />
             ) : (
                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
                   <PackageSearch className="mx-auto mb-2 text-gray-300" size={36} />
-                  <p className="text-gray-500">{uiText(language, 'No items available. Use Add Product to create the first catalog item.')}</p>
+                  <p className="text-gray-500">{hasActiveFilters ? (language === 'th' ? 'ไม่พบสินค้าที่ตรงกับการค้นหาหรือตัวกรอง' : 'No products match your search or filters.') : uiText(language, 'No items available. Use Add Product to create the first catalog item.')}</p>
                </div>
             )}
             </>

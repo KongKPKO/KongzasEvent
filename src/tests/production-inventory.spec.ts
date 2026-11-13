@@ -27,17 +27,21 @@ test('opening count, production receipt preview, phase policy and mobile stock b
     await page.locator('input[type=email]').fill(email); await page.locator('input[type=password]').fill(password);
     await page.getByRole('button', { name: /Login/i }).click(); await expect(page).toHaveURL(/manage-events/);
     await page.goto('/manage-products');
+    await page.getByText('Manage stock and details', { exact: true }).click();
     await page.getByRole('button', { name: 'Track stock', exact: true }).click();
     await page.getByLabel('Physical units present now').fill('15');
     await expect(page.getByText(/Earmark 15 · available to allocate 0 · shortfall 5/)).toBeVisible();
     await page.getByRole('button', { name: 'Confirm opening count' }).click();
     await expect.poll(async () => must(await service.from('products').select('is_unlimited,stock_reserved').eq('id', product).single())).toEqual({ is_unlimited: false, stock_reserved: 15 });
+    await expect(page.getByTestId(`catalog-row-${product}`)).toBeVisible();
+    if (!await page.getByTestId(`catalog-row-${product}`).locator('details.stock-details').evaluate(element => (element as HTMLDetailsElement).open)) await page.getByText('Manage stock and details', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Do not track', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Adjust stock', exact: true }).first().click();
     await page.getByLabel('Quantity', { exact: true }).fill('35');
     await expect(page.getByText(/Receive 35 · earmark 5 · available 30 · shortfall 0/)).toBeVisible();
     await page.getByRole('button', { name: 'Save receipt', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    if (!await page.getByTestId(`catalog-row-${product}`).locator('details.stock-details').evaluate(element => (element as HTMLDetailsElement).open)) await page.getByText('Manage stock and details', { exact: true }).click();
     await page.getByText('Stock and production breakdown', { exact: true }).click();
     await expect(page.locator('dl').getByText('Physical on hand', { exact: true }).locator('..')).toContainText('50');
     await expect(page.getByText('Unallocated', { exact: true }).locator('..')).toContainText('30');
@@ -64,6 +68,7 @@ test('opening count, production receipt preview, phase policy and mobile stock b
     must(await service.from('orders').update({ status: 'confirmed', pickup_status: 'awaiting_pickup' }).eq('id', nextOrder.order_id));
     expect(must(await service.from('products').select('stock_reserved').eq('id',product).single())?.stock_reserved).toBe(20);
     await page.goto('/manage-products');
+    await page.getByText('Manage stock and details', { exact: true }).click();
     await page.getByRole('button', { name: 'Earmark existing ready stock', exact: true }).click();
     await expect(page.getByText(/Earmark up to 10 from 30 ready units; remaining 20/)).toBeVisible();
     await page.route('**/rest/v1/rpc/assign_production_stock', async route => {
@@ -72,6 +77,7 @@ test('opening count, production receipt preview, phase policy and mobile stock b
     await page.getByRole('button', { name: 'Confirm earmark', exact: true }).click();
     await expect.poll(async () => must(await service.from('products').select('stock_reserved').eq('id',product).single())?.stock_reserved).toBe(30);
     await page.reload(); await page.unroute('**/rest/v1/rpc/assign_production_stock');
+    await page.getByText('Manage stock and details', { exact: true }).click();
     await page.getByRole('button', { name: 'Retry pending earmark', exact: true }).click();
     await expect(page.getByLabel('Maximum ready units to earmark')).toHaveValue('10');
     await page.getByRole('button', { name: 'Confirm earmark', exact: true }).click();

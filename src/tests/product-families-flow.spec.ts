@@ -30,7 +30,7 @@ test.beforeAll(async () => {
   const many = await service.from('product_parents').insert({ artist_id: artistId, name: 'Many designs', base_price: 90 }).select('id').single();
   must(many);
   must(await service.from('products').insert(Array.from({ length: 30 }, (_, index) => ({ artist_id: artistId, parent_product_id: many.data!.id, name: `Design ${index + 1}`, variant_group_name: 'Many designs', variant_name: `Design ${index + 1}`, variant_sort_order: index, stock_total: 10, is_unlimited: false, price: 90, status: 'enable' }))));
-  must(await service.from('products').insert({ artist_id: artistId, name: 'Simple service', variant_name: 'Default', price: 200, stock_total: 20, is_unlimited: false, status: 'enable' }));
+  must(await service.from('products').insert({ artist_id: artistId, name: 'Simple service', sku: 'SERVICE-TEST-001', variant_name: 'Default', price: 200, stock_total: 20, is_unlimited: false, status: 'enable' }));
   must(await service.from('events').insert({ id: eventId, artist_id: artistId, event_name: 'Cosplay family event',
     start_date: new Date(Date.now() - 3600_000).toISOString(), end_date: new Date(Date.now() + 86_400_000).toISOString(),
     event_timezone: 'Asia/Bangkok', status: 'Confirmed', is_booth_open: true }));
@@ -57,23 +57,24 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
   await new LoginPage(page).goto();
   await new LoginPage(page).login(email, password);
   await expect(page).toHaveURL(/manage-events/);
-  for (const width of [1280, 390]) {
+  for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('/manage-products');
-    await expect(page.getByRole('heading', { name: 'Main products (2)', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Table', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Table', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('heading', { name: 'Product items (31)', exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Search products', exact: true }).fill('Design 30');
     await expect(page.getByRole('heading', { name: 'Product items (30)', exact: true })).toBeVisible();
     await expect(page.getByText('30 of 31 products', { exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Search products', exact: true }).clear();
+    await page.getByRole('textbox', { name: 'Search products', exact: true }).fill('SERVICE-TEST-001');
+    await expect(page.getByRole('heading', { name: 'Product items (1)', exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: 'Search products', exact: true }).clear();
     const catalog = page.getByRole('region', { name: 'Product catalog table' });
     const row = catalog.getByTestId(`catalog-row-${product.data!.id}`);
     await expect(row).toBeVisible();
-    if (width === 390) {
-      const left = (await catalog.boundingBox())!.x + 1;
-      await catalog.evaluate(element => { element.scrollLeft = 500; });
-      expect((await row.locator('.catalog-compact-grid > :first-child').boundingBox())!.x).toBeCloseTo(left, 0);
+    if (width <= 768) {
+      expect(await catalog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await expect(row.getByRole('button', { name: /Edit product/i })).toBeVisible();
     }
     await expect(row.locator('details.stock-details')).not.toHaveAttribute('open', '');
     await row.getByText('Manage stock and details').click();
@@ -81,6 +82,12 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     await expect(row.getByRole('button', { name: 'Adjust stock', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`catalog-table-${width}.png`) });
+    await row.getByRole('button', { name: 'Edit product', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: 'Edit Simple service', exact: true });
+    await expect(editor).toBeVisible();
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`product-editor-${width}.png`) });
+    await editor.getByRole('button', { name: 'Close product editor', exact: true }).click();
     await page.goto(`/manage-events/${eventId}/catalog`);
     await page.getByRole('button', { name: 'Operations', exact: true }).click();
     const eventTable = page.getByRole('region', { name: 'Event products and stock table' });
@@ -107,6 +114,18 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     await page.screenshot({ path: testInfo.outputPath(`event-table-${width}.png`) });
   }
   must(await service.from('event_products').update({ stock_sold: 0, stock_reserved: 0 }).eq('event_id', eventId).eq('product_id', product.data!.id));
+});
+
+test('catalog identifies a tracked item with zero available stock as sold out', async ({ page }) => {
+  const product = await service.from('products').insert({ artist_id: artistId, name: 'Zero stock item', price: 90, stock_total: 0, is_unlimited: false, status: 'enable' }).select('id').single();
+  must(product);
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto('/manage-products');
+  const row = page.getByTestId(`catalog-row-${product.data!.id}`);
+  await expect(row.getByText('Sold out', { exact: true })).toBeVisible();
+  await expect(row.getByText('Ready to allocate:', { exact: false })).toBeVisible();
 });
 
 test('catalog table shows each item image and respects cleared photo galleries', async ({ page }) => {
@@ -250,6 +269,7 @@ test('creator family editor saves and reorders variants, customer sees one famil
   expect(variantsResult.data?.map((row) => row.price)).toEqual([130, 120]);
   expect(variantsResult.data?.every((row) => row.stock_total === 10 && !row.is_unlimited)).toBe(true);
 
+  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
   const family = page.locator(`[data-testid="catalog-family-row-${parent.id}"], [data-testid="catalog-family-card-${parent.id}"]`);
   await expect(family).toHaveCount(1);
   await expect(family.getByText('Lumine', { exact: true })).toBeHidden();
@@ -403,6 +423,9 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await page.goto('/manage-events');
   await page.goto('/manage-products');
   await page.reload();
+  await expect(page.getByRole('heading', { name: /Product items/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Product cards', exact: true })).toHaveAttribute('aria-pressed', 'true');
   const card = page.locator('article').filter({ has: page.getByRole('heading', { name: photoName, exact: true }) });
   await expect(card.locator('img')).toHaveCount(photoCount);
   await card.scrollIntoViewIfNeeded();
@@ -415,6 +438,8 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await edit.getByRole('button', { name: 'Save family', exact: true }).click();
   await expect(edit).toBeHidden();
   await page.reload();
+  await expect(page.getByRole('heading', { name: /Product items/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
   await expect(card.locator('img')).toHaveCount(photoCount);
 });
 }
@@ -464,6 +489,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   expect(items.data!.map(item => item.variant_gallery_images)).toEqual(galleries);
   expect(items.data!.every(item => Boolean(item.sku))).toBe(true);
   await page.reload();
+  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
   const familyCard = page.getByTestId(`catalog-family-card-${parent.data!.id}`);
   await familyCard.getByRole('button', { name: `Edit ${familyName}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: `Edit ${familyName}`, exact: true });

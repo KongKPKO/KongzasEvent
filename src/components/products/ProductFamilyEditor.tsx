@@ -368,7 +368,7 @@ export default function ProductFamilyEditor({
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
-      <section role="dialog" aria-modal="true" aria-labelledby="family-editor-title" ref={dialogRef} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-gray-50 shadow-2xl">
+      <section role="dialog" aria-modal="true" aria-labelledby="family-editor-title" ref={dialogRef} className="product-family-editor flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-gray-50 shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-pink-600">{copy.product}</p>
@@ -384,7 +384,7 @@ export default function ProductFamilyEditor({
             <div className="space-y-4">
               <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-4">
-                  <h3 className="text-sm font-black text-gray-900">{copy.sharedDetails}</h3>
+                  <div className="flex items-center"><span aria-hidden="true" className="editor-step">1</span><h3 className="text-sm font-black text-gray-900">{copy.sharedDetails}</h3></div>
                   <p className="mt-1 text-xs font-semibold text-gray-500">{copy.sharedDetailsHint}</p>
                 </div>
                 <div className="space-y-3">
@@ -425,10 +425,11 @@ export default function ProductFamilyEditor({
 
             <section className="self-start rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div><h3 className="text-sm font-black text-gray-900">{hasMultipleVariants ? copy.variants : copy.inventoryItem}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.variantsHint}</p><p id="product-family-item-name-hint" className="mt-1 text-xs font-semibold text-gray-500">{copy.variantNameHint}</p></div>
+                <div><h3 className="text-sm font-black text-gray-900"><span aria-hidden="true" className="editor-step">2</span>{hasMultipleVariants ? copy.variants : copy.inventoryItem}</h3><p className="mt-1 text-xs font-semibold text-gray-500">{copy.variantsHint}</p><p id="product-family-item-name-hint" className="mt-1 text-xs font-semibold text-gray-500">{copy.variantNameHint}</p></div>
                 <button type="button" onClick={addVariant} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"><Plus size={14} /> {copy.addVariant}</button>
               </div>
 
+              <div className="editor-stock-note"><strong><span aria-hidden="true" className="editor-step">3</span>{language === 'th' ? 'สต็อกและช่องทางขาย' : 'Stock and sales channels'}</strong><p>{language === 'th' ? 'กำหนดสต็อกเริ่มต้นของรายการใหม่ด้านล่าง สำหรับรายการที่มีอยู่ ให้จัดการสต็อกและช่องทางขายจากคลังสินค้าหลังบันทึก' : 'Set opening stock for new items below. Manage stock and sales channels for existing items from the catalog after saving.'}</p></div>
               <div className="my-4 grid gap-2 rounded-xl bg-gray-50 p-3 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-end">
                 <div><label className={labelClass}>{copy.priceOverride}</label><input aria-label={copy.priceOverride} type="number" min="0" step="0.01" value={bulkPrice} onChange={(event) => setBulkPrice(event.target.value)} className={inputClass} placeholder={copy.basePlaceholder(effectivePriceLabel)} /></div>
                 <button type="button" onClick={() => setVariants((current) => current.map((variant) => ({ ...variant, priceOverride: bulkPrice })))} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-xs font-black text-gray-700 hover:border-pink-200">{copy.applyPrice}</button>
@@ -466,7 +467,7 @@ export default function ProductFamilyEditor({
           </div>
 
           <footer className="sticky bottom-0 flex flex-col gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-            <div>{error && <p role="alert" className="text-sm font-bold text-red-600">{error}</p>}</div>
+            <div><p className="text-xs font-bold text-gray-600"><span aria-hidden="true" className="editor-step">4</span>{language === 'th' ? 'ตรวจสอบข้อมูลก่อนบันทึก' : 'Review before saving'} · {variants.length} {language === 'th' ? 'รายการ' : 'items'}</p>{error && <p role="alert" className="text-sm font-bold text-red-600">{error}</p>}</div>
             <div className="flex gap-2"><button type="button" onClick={() => { if (!saving && !uploadingKey) onClose(); }} className="min-h-11 rounded-xl border border-gray-200 px-5 text-sm font-black text-gray-700 hover:bg-gray-50">{copy.cancel}</button><button type="submit" disabled={saving || Boolean(uploadingKey)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:bg-pink-300">{saving ? <Loader className="animate-spin" size={17} /> : <Save size={17} />}{parent ? copy.saveFamily : copy.createProduct}</button></div>
           </footer>
         </form>

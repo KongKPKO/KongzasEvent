@@ -52,12 +52,16 @@ test('opening count, production receipt preview, phase policy and mobile stock b
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/manage-events/${event}/catalog`);
-    await page.getByText('Supply / made to order', { exact: false }).first().click();
+    const eventItem = page.locator('details.event-assignment-item').filter({ hasText: 'Production photoset' });
+    await eventItem.locator(':scope > summary').click();
+    await eventItem.getByText('Supply and stock settings').click();
+    await eventItem.getByText('Supply / made to order', { exact: false }).first().click();
     await page.getByLabel('preorder supply policy').first().selectOption('production');
     await page.getByLabel('Unlimited production orders').first().uncheck();
     await page.getByLabel('preorder production cap').first().fill('30');
     await page.getByRole('button', { name: 'Save policy', exact: true }).first().click();
     await expect(page.getByText('Saved. Existing orders keep their original supply policy.')).toBeVisible();
+    await expect(eventItem.locator(':scope > summary')).toContainText('Pre-order: made to order');
     const policy = must(await service.from('event_products').select('preorder_supply_mode,preorder_production_limit,postorder_supply_mode').eq('event_id',event).single());
     expect(policy).toEqual({ preorder_supply_mode: 'production', preorder_production_limit: 30, postorder_supply_mode: 'stock' });
     await page.screenshot({ path: 'output/playwright/production-inventory-event.png', fullPage: true });
@@ -120,6 +124,8 @@ test('simultaneous production orders cannot exceed a channel cap and campaign po
     await page.getByRole('button', { name: /Login/i }).click(); await expect(page).toHaveURL(/manage-events/);
     await page.goto(`/manage-online-sales/${campaign}`);
     await page.getByRole('button', { name: 'Products', exact: true }).click();
+    await expect(page.getByText('Made to order · Production order cap: 5')).toBeVisible();
+    await page.getByRole('button', { name: 'Configure product Production race item' }).click();
     await page.locator('summary').filter({ hasText: 'Supply / made to order' }).click();
     await expect(page.getByLabel('campaign supply policy')).toHaveValue('production');
     await expect(page.getByLabel('campaign production cap')).toHaveValue('5');
@@ -128,6 +134,7 @@ test('simultaneous production orders cannot exceed a channel cap and campaign po
     await expect.poll(async () => must(await service.from('online_campaign_products').select('production_limit').eq('campaign_id',campaign).single())?.production_limit).toBe(6);
     await page.reload();
     await page.getByRole('button', { name: 'Products', exact: true }).click();
+    await page.getByRole('button', { name: 'Configure product Production race item' }).click();
     await page.locator('summary').filter({ hasText: 'Supply / made to order' }).click();
     await expect(page.getByLabel('campaign supply policy')).toHaveValue('production');
     await expect(page.getByLabel('campaign production cap')).toHaveValue('6');

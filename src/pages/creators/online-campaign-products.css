@@ -83,3 +83,32 @@
 .overflow-x-auto .campaign-stock-summary {
   display: none;
 }
+
+/* Keep configuration mounted so changing the overview never discards a draft. */
+.campaign-products-compact table, .campaign-products-compact tbody { display: block; min-width: 0; width: 100%; }
+.campaign-products-compact colgroup, .campaign-products-compact thead { display: none; }
+.campaign-products-compact tbody { display: block; padding: 0; }
+.campaign-products-compact tbody tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; padding: .75rem; border: 0; border-bottom: 1px solid var(--surface-border); border-radius: 0; }
+.campaign-products-compact tbody tr > td { display: none; min-width: 0; padding: .25rem; text-align: left; }
+.campaign-products-compact tbody tr > .campaign-card-product { display: block; grid-column: 1 / 4; }
+.campaign-products-compact tbody tr > .campaign-card-actions { display: block; grid-column: 4; align-self: center; text-align: right; }
+.campaign-products-compact tbody tr[data-expanded="true"] > td { display: block; }
+.campaign-products-compact tbody tr[data-expanded="true"] > .campaign-card-product { grid-column: 1 / -1; }
+.campaign-products-compact tbody tr[data-expanded="true"] > .campaign-card-wide { grid-column: span 3; }
+.campaign-products-compact tbody tr[data-expanded="true"] > td[data-label]::before { display: block; margin-bottom: .25rem; color: #596578; content: attr(data-label); font-size: .7rem; font-weight: 700; }
+.campaign-products-compact tbody tr[data-expanded="false"] .campaign-product-details { display: none; }
+.campaign-products-compact .campaign-product-heading { display: flex; }
+.campaign-products-compact .campaign-product-image { width: 3.5rem; height: 3.5rem; aspect-ratio: auto; margin: 0; }
+.campaign-products-compact .campaign-product-name, .campaign-products-compact td { overflow-wrap: anywhere; }
+.campaign-products-compact .campaign-product-category, .campaign-products-compact .campaign-stock-summary { display: block; }
+@media (max-width: 767px) {
+  .campaign-products-compact tbody tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .campaign-products-compact tbody tr > .campaign-card-product, .campaign-products-compact tbody tr[data-expanded="true"] > .campaign-card-product { grid-column: 1 / -1; }
+  .campaign-products-compact tbody tr > .campaign-card-actions { grid-column: 1 / -1; text-align: left; }
+  .campaign-products-compact tbody tr[data-expanded="true"] > .campaign-card-wide { grid-column: 1 / -1; }
+  .campaign-products-compact input[type="number"] { max-width: 100%; }
+}
+@media (min-width: 768px) {
+  .campaign-products-compact.campaign-products-cards tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: .75rem; }
+  .campaign-products-compact.campaign-products-cards tbody tr { border: 1px solid var(--surface-border); border-radius: .75rem; }
+}

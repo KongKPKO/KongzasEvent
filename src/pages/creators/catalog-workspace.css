@@ -119,3 +119,37 @@ html:has(.catalog-workspace), body:has(.catalog-workspace) { overflow-x: clip; }
   .catalog-redesign .catalog-table-actions > .relative { width: 100%; }
   .catalog-redesign .product-family-editor footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
+
+.event-assignment-list > .event-stock-grid { display: none; }
+.event-assignment-list > div { min-width: 0; }
+.event-assignment-item { border-bottom: 1px solid var(--surface-border); }
+.event-assignment-summary { display: flex; align-items: center; gap: .75rem; min-height: 4.5rem; padding: .75rem 1rem; cursor: pointer; list-style: none; }
+.event-assignment-summary::-webkit-details-marker { display: none; }
+.event-assignment-summary:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: -2px; }
+.event-assignment-overview { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
+.event-assignment-expand { color: var(--brand-primary); font-size: .75rem; font-weight: 700; }
+.event-assignment-item > .event-stock-grid { min-width: 0; border-top: 1px solid var(--surface-border); }
+.event-assignment-item > .event-stock-grid > * { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 1023px) {
+  .event-assignment-summary { flex-wrap: wrap; }
+  .event-assignment-summary > .event-assignment-overview { flex-basis: 100%; padding-left: 3.75rem; }
+  .event-assignment-item > .event-stock-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .event-assignment-item > .event-stock-grid > :first-child { position: static; grid-column: 1 / -1; }
+}
+@media (max-width: 599px) {
+  .event-assignment-summary { flex-wrap: wrap; }
+  .event-assignment-summary > .event-assignment-overview { flex-basis: 100%; padding-left: 3.75rem; }
+  .event-assignment-item > .event-stock-grid { grid-template-columns: minmax(0, 1fr); }
+  .event-assignment-item > .event-stock-grid > :first-child { grid-column: auto; }
+}
+
+.event-assignment-list input, .event-assignment-list button, .event-assignment-list summary { scroll-margin-bottom: 7rem; }
+.event-save-bar button { min-height: 44px; }
+@media (max-width: 1023px) { .event-save-bar { position: static; } }
+@media (max-width: 767px) {
+  .event-save-bar > div { flex-direction: row; align-items: center; }
+  .event-save-bar > div > div { min-width: 0; }
+  .event-save-bar > div > div p + p { display: none; }
+  .event-save-bar button { flex-shrink: 0; }
+}
+@media (max-height: 500px) { .event-save-bar { position: static; } }

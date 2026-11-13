@@ -79,7 +79,7 @@ test.describe('Extended Security Behaviors', () => {
     await expect(page.getByRole('dialog', { name: 'Reset password' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Send reset link' }).click();
-    await expect(page.getByText('Please enter your creator or manager email first.')).toBeVisible();
+    await expect(page.getByText('Please enter your seller or manager email first.')).toBeVisible();
 
     await page.getByLabel('Reset email').fill('unknown@example.com');
     await page.getByRole('button', { name: 'Send reset link' }).click();
@@ -192,7 +192,7 @@ test.describe('Extended Security Behaviors', () => {
       await expect(page).toHaveURL(/\/manage-events/);
 
       await page.goto(`${BASE_URL}/manage-events/${eventId}/catalog`);
-      const save = page.getByRole('button', { name: 'Save Changes', exact: true });
+      const save = page.getByRole('button', { name: 'Save Changes', exact: true }).first();
       await expect(save).toBeVisible({ timeout: 20000 });
       await save.click();
       await expect.poll(async () => {

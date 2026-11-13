@@ -136,6 +136,7 @@ test.describe('online campaign', () => {
     const cards = page.getByRole('button', { name: /Product cards|การ์ดสินค้า/ });
     const table = page.getByRole('button', { name: /^Table$|^ตาราง$/ });
     await expect(cards).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
     const stock = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
     await expect(stock).toBeVisible();
     const card = stock.locator('xpath=ancestor::tr');
@@ -143,7 +144,7 @@ test.describe('online campaign', () => {
     const stockBar = card.getByTestId('campaign-stock-bar');
     await expect(stockSummary).toBeVisible();
     await expect(stockBar).toBeVisible();
-    await expect(card.locator('.campaign-card-redundant:visible')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const matchingColors = await stockSummary.evaluate(element => {
       const numbers = [...element.querySelectorAll('strong')];
       const segments = [...element.querySelectorAll('[data-testid="campaign-stock-bar"] > div')];
@@ -173,12 +174,85 @@ test.describe('online campaign', () => {
       expect((await fixture.service.from('online_campaign_products').select('price_override').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.price_override).toBe(125);
       await table.click();
       await expect(table).toHaveAttribute('aria-pressed', 'true');
-      await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
-      await expect(stockSummary).toBeHidden();
+      await expect(stockSummary).toBeVisible();
       await cards.click();
       await expect(stock).toHaveValue(String(next));
     } finally {
       await fixture.service.from('online_campaign_products').update(saved.data).eq('campaign_id', campaignId).eq('product_id', productId);
+    }
+  });
+
+  test('campaign configuration remains available and preserves edits across responsive layouts', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await login(page);
+    for (const width of [390, 768, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+      const configure = page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ });
+      await expect(configure).toBeVisible();
+      await expect(configure).toHaveAttribute('aria-expanded', 'false');
+      await configure.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`campaign-default-${width}.png`) });
+      await configure.click();
+      const price = page.getByLabel(/Campaign price E2E Cheki|ราคาในแคมเปญ E2E Cheki/);
+      await expect(price).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`campaign-expanded-${width}.png`) });
+      await price.fill('123');
+      await price.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`campaign-editing-${width}.png`) });
+      await page.getByRole('button', { name: /Hide details E2E Cheki|ซ่อนรายละเอียด E2E Cheki/ }).click();
+      await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
+      await expect(price).toHaveValue('123');
+      await price.fill('');
+    }
+    await page.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+    for (const width of [390, 768, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: 'สินค้า', exact: true }).click();
+      const thaiConfigure = page.getByRole('button', { name: 'ตั้งค่าสินค้า E2E Cheki' });
+      await thaiConfigure.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`campaign-th-default-${width}.png`) });
+      await thaiConfigure.click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`campaign-th-expanded-${width}.png`) });
+    }
+  });
+
+  test('campaign save failure keeps the edited price and shows feedback', async ({ page }) => {
+    await login(page);
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+    await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
+    const price = page.getByLabel(/Campaign price E2E Cheki|ราคาในแคมเปญ E2E Cheki/);
+    await price.fill('123');
+    await page.route('**/rest/v1/rpc/save_campaign_product_edits', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"test failure"}' }));
+    await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
+    await expect(page.getByText(/Save failed\. Stock or settings may have changed|บันทึกไม่สำเร็จ สต็อกหรือข้อมูลอาจเปลี่ยน/)).toBeVisible();
+    await expect(price).toHaveValue('123');
+  });
+
+  test('long product names and SKU stay within campaign configuration', async ({ page }) => {
+    const longName = 'LongProductName'.repeat(9);
+    const added = await fixture.service.from('products').insert({ artist_id: fixture.userId, name: longName, sku: 'LONGSKU'.repeat(15), price: 50, stock_total: 10, is_unlimited: false, status: 'enable' }).select('id').single();
+    if (added.error) throw added.error;
+    try {
+      const assigned = await fixture.service.from('online_campaign_products').insert({ campaign_id: campaignId, product_id: added.data.id, artist_id: fixture.userId, stock_total: 3, is_unlimited: false, is_enabled: true });
+      if (assigned.error) throw assigned.error;
+      await page.setViewportSize({ width: 390, height: 800 });
+      await login(page);
+      await page.goto(`/manage-online-sales/${campaignId}`);
+      await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+      const row = page.locator('tr').filter({ hasText: longName });
+      await expect(row).toBeVisible();
+      await row.getByRole('button', { name: /Configure product|ตั้งค่าสินค้า/ }).click();
+      expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    } finally {
+      await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', added.data.id);
+      await fixture.service.from('products').delete().eq('id', added.data.id);
     }
   });
 
@@ -280,6 +354,7 @@ test.describe('online campaign', () => {
       await page.getByRole('button', { name: /Products|สินค้า/ }).click();
       await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill('E2E Cheki');
       const campaignRow = page.getByRole('row').filter({ hasText: 'E2E Cheki' });
+      await campaignRow.getByRole('button', { name: /Configure product|ตั้งค่าสินค้า/ }).click();
       const limitInput = campaignRow.getByLabel(/Maximum per order|จำกัดสูงสุด\/ออเดอร์/);
       await limitInput.fill('2');
       await limitInput.blur();
@@ -463,6 +538,7 @@ test.describe('online campaign', () => {
       const campaignStock = await fixture.service.from('online_campaign_products').select('stock_total,stock_reserved,stock_sold').eq('campaign_id', campaignId).eq('product_id', productId).single();
       if (campaignStock.error) throw campaignStock.error;
       await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+      await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
       const allocation = page.getByLabel(/Allocated stock E2E Cheki|สต็อกที่จัดสรร E2E Cheki/);
       await expect(allocation).toHaveValue(String(campaignStock.data.stock_total));
       await expect(allocation.locator('..')).toContainText(new RegExp(`(?:Available to sell|เหลือขาย): ${Number(campaignStock.data.stock_total) - Number(campaignStock.data.stock_reserved) - Number(campaignStock.data.stock_sold)}`));
@@ -740,9 +816,10 @@ test.describe('online campaign', () => {
       const campaignRow = page.getByRole('row').filter({ hasText: productName });
       await expect(campaignRow).toBeVisible();
       await expect(campaignRow.getByText(/Included|อยู่ในแคมเปญ/)).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: /Total stock|สต็อกทั้งหมด/ })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: /Ready to allocate|พร้อมจัดสรร/ })).toBeVisible();
-      await expect(page.getByRole('columnheader', { name: /Allocated to campaign|จัดสรรให้แคมเปญ/ })).toBeVisible();
+      await campaignRow.getByRole('button', { name: /Configure product|ตั้งค่าสินค้า/ }).click();
+      await expect(campaignRow.locator('td[data-label="Total stock"], td[data-label="สต็อกทั้งหมด"]')).toBeVisible();
+      await expect(campaignRow.locator('td[data-label="Ready to allocate"], td[data-label="พร้อมจัดสรร"]')).toBeVisible();
+      await expect(campaignRow.getByLabel(/Allocated stock|สต็อกที่จัดสรร/)).toBeVisible();
       await expect(campaignRow.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
       await page.getByLabel(/Campaign membership|สถานะในแคมเปญ/).selectOption('not_added');
       await expect(campaignRow).toHaveCount(0);
@@ -956,12 +1033,14 @@ test.describe('online campaign', () => {
     await expect(page.getByRole('combobox', { name: /All orders|คำสั่งซื้อทั้งหมด/i })).toHaveValue('payment_confirmed');
     await page.getByRole('button', { name: /Overview|ภาพรวม/, exact: true }).click();
     await summary.getByRole('button', { name: /products|สินค้าในแคมเปญ/i }).click();
+    await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
     const gift = page.getByRole('checkbox', { name: /Gift only in this campaign: E2E Cheki|ใช้เป็นของแถมเท่านั้นในแคมเปญนี้: E2E Cheki/ });
     await gift.check();
     await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();
     await expect.poll(async () => (await fixture.service.from('online_campaign_products').select('is_sellable').eq('campaign_id', campaignId).eq('product_id', productId).single()).data?.is_sellable).toBe(false);
     await page.reload();
     await page.getByRole('button', { name: /Products|สินค้า/, exact: true }).click();
+    await page.getByRole('button', { name: /Configure product E2E Cheki|ตั้งค่าสินค้า E2E Cheki/ }).click();
     await expect(gift).toBeChecked();
     await gift.uncheck();
     await page.getByRole('button', { name: /Save product changes|บันทึกการแก้ไขสินค้า/ }).click();

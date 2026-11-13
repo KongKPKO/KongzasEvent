@@ -77,9 +77,18 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
       await expect(row.getByRole('button', { name: /Edit product/i })).toBeVisible();
     }
     await expect(row.locator('details.stock-details')).not.toHaveAttribute('open', '');
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`catalog-default-${width}.png`) });
+    for (const button of await row.locator('.catalog-item-actions button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
     await row.getByText('Manage stock and details').click();
     await expect(row.getByRole('button', { name: 'Track stock', exact: true })).toBeVisible();
     await expect(row.getByRole('button', { name: 'Adjust stock', exact: true })).toBeVisible();
+    expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`catalog-table-${width}.png`) });
     await row.getByRole('button', { name: 'Edit product', exact: true }).click();
@@ -87,6 +96,12 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     await expect(editor).toBeVisible();
     expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`product-editor-${width}.png`) });
+    if (width === 390) {
+      await editor.getByRole('button', { name: 'Go to items / stock' }).click();
+      await expect(editor.getByRole('heading', { name: 'Item under this product' })).toBeInViewport();
+      await editor.locator('input[id^="item-name-"]').first().fill('LongVariantName'.repeat(12));
+      expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
     await editor.getByRole('button', { name: 'Close product editor', exact: true }).click();
     await page.goto(`/manage-events/${eventId}/catalog`);
     await page.getByRole('button', { name: 'Operations', exact: true }).click();
@@ -114,6 +129,47 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     await page.screenshot({ path: testInfo.outputPath(`event-table-${width}.png`) });
   }
   must(await service.from('event_products').update({ stock_sold: 0, stock_reserved: 0 }).eq('event_id', eventId).eq('product_id', product.data!.id));
+});
+
+test('Thai catalog and bundle fit the screen at each workspace size', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/manage-products');
+    const row = page.getByTestId(`catalog-row-${product.data!.id}`);
+    await expect(row).toBeVisible();
+    await row.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-th-default-${width}.png`) });
+    await row.locator('details.stock-details > summary').click();
+    expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    for (const button of await row.locator('.catalog-item-actions button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`catalog-th-expanded-${width}.png`) });
+    await row.getByRole('button', { name: 'แก้ไขสินค้า', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: /Simple service/ });
+    await expect(editor).toBeVisible();
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`editor-th-${width}.png`) });
+    await editor.getByRole('button', { name: 'ปิดหน้าต่างสินค้า' }).click();
+    await page.getByRole('button', { name: 'สร้างชุดสินค้า', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'สร้างชุดสินค้า' });
+    await dialog.getByLabel('ค้นหาสินค้าเพื่อเพิ่มในชุด').fill('SERVICE-TEST-001');
+    await dialog.getByRole('button', { name: 'Simple service' }).click();
+    await expect(dialog.getByText(/พร้อมจัดชุด/)).toBeVisible();
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`bundle-th-${width}.png`) });
+    await dialog.getByRole('button', { name: 'ยกเลิก' }).click();
+  }
 });
 
 test('catalog identifies a tracked item with zero available stock as sold out', async ({ page }) => {

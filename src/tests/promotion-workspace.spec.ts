@@ -365,6 +365,15 @@ test('store creates offers; event selection preserves other channels and cancell
     await expect(selection.getByRole('alert')).toContainText('The promotion changed');
     expect((await service.from('promotion_assignments').select(assignmentFields).eq('promotion_id', promotionId).order('id')).data).toEqual(before);
     for (const width of [390, 1280]) { await page.setViewportSize({ width, height: 900 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); }
+    await selection.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.goto('/manage-promotions');
+    const competitorRow = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Competing offer', exact: true }) });
+    page.once('dialog', dialog => void dialog.accept());
+    await competitorRow.getByRole('button', { name: 'Archive promotion' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Promotion archived.' })).toBeVisible();
+    await selectLanguage(page, 'th');
+    await expect(page.getByRole('status').filter({ hasText: 'เก็บโปรโมชันเข้าคลังแล้ว' })).toBeVisible();
+
   } finally {
     must(await service.from('orders').delete().eq('id', order));
     must(await service.from('artist_promotions').delete().eq('artist_id', userId));

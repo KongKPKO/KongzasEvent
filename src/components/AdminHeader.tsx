@@ -21,6 +21,8 @@ interface AdminHeaderProps {
     activeEvent?: ActiveEvent | null;
     actorRole?: ActorRole;
     userEmail?: string | null;
+    beforeNavigate?: () => boolean;
+    beforeReload?: () => void;
 }
 
 // Navigation Items Config
@@ -44,7 +46,7 @@ const getNavLabel = (page: Exclude<VisiblePage, 'promotion'>) => {
     return 'workspaceNavTeam';
 };
 
-export default function AdminHeader({ activePage, activeEvent, actorRole, userEmail: contextEmail = null }: AdminHeaderProps) {
+export default function AdminHeader({ activePage, activeEvent, actorRole, userEmail: contextEmail = null, beforeNavigate, beforeReload }: AdminHeaderProps) {
     const { t, language } = useI18n();
     const navigate = useNavigate();
     const location = useLocation();
@@ -100,7 +102,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                     return (
                         <button
                             key={item.path}
-                            onClick={() => navigate(item.path)}
+                            onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate(item.path); }}
                             className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                 isActive
                                     ? 'bg-pink-50 text-pink-700 border border-pink-200'
@@ -117,7 +119,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
 
                 {isPlatformAdmin && (
                     <button
-                        onClick={() => navigate('/admin/applications')}
+                        onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate('/admin/applications'); }}
                         className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                             location.pathname === '/admin/applications'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -135,7 +137,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                 <LanguageToggle className="workspace-action px-2 py-2" />
                 <div className="h-5 w-px bg-gray-200 mx-1"></div>
 
-                <AccountMenu actorRole={actorRole} userEmail={contextEmail} />
+                <AccountMenu actorRole={actorRole} userEmail={contextEmail} beforeNavigate={beforeNavigate} beforeReload={beforeReload} />
             </div>
 
             {/* Mobile Menu Button */}
@@ -150,7 +152,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
             {/* Mobile Dropdown Menu */}
             {isMenuOpen && (
                 <div id="workspace-menu" className="max-h-[calc(100dvh-4rem)] overflow-y-auto absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg xl:hidden flex flex-col p-4 gap-2 animate-in slide-in-from-top-2 duration-200">
-                    <AccountMenu actorRole={actorRole} userEmail={contextEmail} inline />
+                    <AccountMenu actorRole={actorRole} userEmail={contextEmail} beforeNavigate={beforeNavigate} beforeReload={beforeReload} inline />
                     <div className="h-px bg-gray-100 my-1"></div>
                     {filteredNavItems.map((item) => {
                         const Icon = item.icon;
@@ -165,8 +167,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                             <button
                                 key={item.path}
                                 onClick={() => {
-                                    navigate(item.path);
-                                    setIsMenuOpen(false);
+                                    if (!beforeNavigate || beforeNavigate()) { navigate(item.path); setIsMenuOpen(false); }
                                 }}
                                 className={`w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
                                     isActive
@@ -184,8 +185,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                     {isPlatformAdmin && (
                         <button
                             onClick={() => {
-                                navigate('/admin/applications');
-                                setIsMenuOpen(false);
+                                if (!beforeNavigate || beforeNavigate()) { navigate('/admin/applications'); setIsMenuOpen(false); }
                             }}
                             className={`w-full min-h-12 text-left px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-3 transition-all ${
                                 location.pathname === '/admin/applications'

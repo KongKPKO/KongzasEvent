@@ -106,6 +106,7 @@ export default function OnlineCampaignWorkspace() {
   const [search, setSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productEdits, setProductEdits] = useState<Record<string, ProductEdit>>({});
+  const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
   const [promotionEditing, setPromotionEditing] = useState(false);
   useUnsavedChanges(Object.keys(productEdits).length > 0 || promotionEditing, language === 'th' ? 'มีการแก้ไขสินค้าที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved product changes. Leave?');
   const [productCategory, setProductCategory] = useState('all');
@@ -308,7 +309,7 @@ export default function OnlineCampaignWorkspace() {
     try {
       const { error } = await supabase.rpc('save_campaign_product_edits', { p_campaign_id: campaignId, p_items: items });
       if (error) throw error;
-      setProductEdits({}); await load(); setFeedback(t('campaignSaved'));
+      setProductEdits({}); await load(); setFeedback('campaignSaved');
     } catch (error) {
       console.error(error);
       setFeedback(language === 'th' ? 'บันทึกไม่สำเร็จ สต็อกหรือข้อมูลอาจเปลี่ยนแล้ว กรุณาตรวจสอบอีกครั้ง' : 'Save failed. Stock or settings may have changed; review and try again.');
@@ -325,7 +326,7 @@ export default function OnlineCampaignWorkspace() {
       setFeedback(t('campaignSaveFailed'));
     } else {
       await load();
-      setFeedback(t('campaignSaved'));
+      setFeedback('campaignSaved');
     }
     setSaving(false);
   };
@@ -726,7 +727,7 @@ export default function OnlineCampaignWorkspace() {
           ))}
         </nav>
 
-        {feedback && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{feedback}</div>}
+        {feedback && !(tab === 'promotions' && feedback === 'campaignSaved') && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{feedback === 'campaignSaved' ? t('campaignSaved') : feedback}</div>}
 
         {tab === 'overview' && (
           <>
@@ -761,8 +762,8 @@ export default function OnlineCampaignWorkspace() {
             </div>
 
             <div className="mb-3 rounded-2xl border border-gray-200 bg-white p-3">
-              <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_180px_180px_160px_auto]">
-                <label className="relative">
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-[minmax(240px,1fr)_180px_180px_160px_auto]">
+                <label className="relative col-span-2 lg:col-span-1">
                   <span className="sr-only">{t('campaignProductSearch')}</span>
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
                   <input
@@ -777,7 +778,7 @@ export default function OnlineCampaignWorkspace() {
                   aria-label={t('campaignProductCategory')}
                   value={productCategory}
                   onChange={(event) => { setProductCategory(event.target.value); setProductPage(1); }}
-                  className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
+                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
                 >
                   <option value="all">{t('campaignAllCategories')}</option>
                   {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
@@ -786,7 +787,7 @@ export default function OnlineCampaignWorkspace() {
                   aria-label={t('campaignProductMembership')}
                   value={productMembership}
                   onChange={(event) => { setProductMembership(event.target.value as ProductMembership); setProductPage(1); }}
-                  className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
+                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
                 >
                   <option value="all">{t('campaignAllMemberships')}</option>
                   <option value="included">{t('campaignIncluded')}</option>
@@ -796,7 +797,7 @@ export default function OnlineCampaignWorkspace() {
                   aria-label={t('campaignProductSort')}
                   value={productSort}
                   onChange={(event) => { setProductSort(event.target.value as typeof productSort); setProductPage(1); }}
-                  className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
+                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
                 >
                   <option value="name_asc">{t('campaignNameAscending')}</option>
                   <option value="name_desc">{t('campaignNameDescending')}</option>
@@ -812,16 +813,17 @@ export default function OnlineCampaignWorkspace() {
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs font-bold text-gray-500">{t('campaignProductResults', { count: filteredCampaignCatalog.length })}</div>
-                <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1" role="group" aria-label={language === 'th' ? 'รูปแบบการแสดงสินค้า' : 'Product view'}>
+                <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1" role="group" aria-label={uiText(language, 'Product view')}>
                   <button type="button" aria-pressed={productView === 'cards'} onClick={() => setProductView('cards')} className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-black ${productView === 'cards' ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500'}`}><LayoutGrid size={16} />{t('catalogProductCards')}</button>
                   <button type="button" aria-pressed={productView === 'table'} onClick={() => setProductView('table')} className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-black ${productView === 'table' ? 'bg-white text-blue-800 shadow-sm' : 'text-gray-500'}`}><List size={16} />{t('catalogTable')}</button>
                 </div>
               </div>
             </div>
 
-            <div className="mb-3 flex items-center gap-3"><button type="button" disabled={saving || Object.keys(productEdits).length === 0} onClick={() => void saveProductEdits()} className="min-h-11 rounded-xl bg-blue-700 px-4 font-bold text-white disabled:opacity-40">{language === 'th' ? 'บันทึกการแก้ไขสินค้า' : 'Save product changes'}</button>{Object.keys(productEdits).length > 0 && <span className="text-sm font-bold text-amber-700">{language === 'th' ? 'มีการแก้ไขที่ยังไม่ได้บันทึก' : 'Unsaved changes'}</span>}</div>
+            <div className="mb-3 flex items-center gap-3"><button type="button" disabled={saving || Object.keys(productEdits).length === 0} onClick={() => void saveProductEdits()} className="min-h-11 rounded-xl bg-blue-700 px-4 font-bold text-white disabled:opacity-40">{uiText(language, 'Save product changes')}</button>{Object.keys(productEdits).length > 0 && <span className="text-sm font-bold text-amber-700">{uiText(language, 'Unsaved changes')}</span>}</div>
+            <p className="mb-3 text-sm leading-relaxed text-gray-700">{uiText(language, 'Central stock is available after existing allocations and commitments. Campaign allocation includes sold and reserved units.')}</p>
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className={productView === 'table' ? 'overflow-x-auto' : 'campaign-products-cards'}>
+              <div className={`campaign-products-compact ${productView === 'cards' ? 'campaign-products-cards' : ''}`}>
                 <table className="w-full min-w-[1080px] table-fixed border-collapse text-left">
                   <colgroup>
                     <col className="w-[300px]" />
@@ -833,7 +835,7 @@ export default function OnlineCampaignWorkspace() {
                     <col className="w-[130px]" />
                     <col className="w-[190px]" />
                   </colgroup>
-                  <thead className="bg-gray-50 text-[10px] font-black uppercase tracking-wide text-gray-500">
+                  <thead className="bg-gray-50 text-xs font-black uppercase tracking-wide text-gray-500">
                     <tr>
                       <th className="px-3 py-3">{t('campaignProduct')}</th>
                       <th className="px-2 py-3">{t('catalogCategory')}</th>
@@ -862,7 +864,7 @@ export default function OnlineCampaignWorkspace() {
                       const remainingStock = Math.max(shownStock - used, 0);
                       const stockPool = Math.max(summary.on_hand, centralStock + remainingStock + used, 1);
                       return (
-                        <tr key={productId} className={isIncluded ? 'bg-pink-50/50' : 'hover:bg-gray-50/70'}>
+                        <tr key={productId} data-expanded={Boolean(expandedProducts[productId])} className={isIncluded ? 'bg-pink-50/50' : 'hover:bg-gray-50/70'}>
                           <td className="campaign-card-product px-3 py-2">
                             <div className="campaign-product-heading flex items-center gap-3">
                               <div className="campaign-product-image grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-gray-100 text-gray-300">
@@ -871,33 +873,42 @@ export default function OnlineCampaignWorkspace() {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <div className="campaign-product-name text-sm font-black text-gray-950">{product.name}</div>
-                                  {isIncluded && <span className="shrink-0 rounded-full bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700">{t('campaignIncluded')}</span>}
+                                  {isIncluded && <span className="shrink-0 rounded-full bg-pink-100 px-2 py-0.5 text-xs font-black text-pink-700">{t('campaignIncluded')}</span>}
                                 </div>
-                                <div className="mt-0.5 font-mono text-[10px] font-bold text-gray-400">{product.sku || '—'}</div>
-                                <span className="campaign-product-category mt-2 inline-block rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-600">{product.category || '—'}</span>
-                                {product.gift_only && <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{language === 'th' ? 'ของแถมเท่านั้น' : 'Gift only'}</span>}
+                                {product.variant_group_name && <p className="mt-1 break-words text-xs text-gray-600">{uiText(language, 'Main product')}: {product.variant_group_name} {product.parent_product_id && `· ${workspace.catalog.filter(item => item.parent_product_id === product.parent_product_id).length} ${uiText(language, 'items')}`}</p>}
+                                <div className="mt-0.5 break-all font-mono text-xs font-bold text-gray-400">{product.sku || '—'}</div>
+                                <span className="campaign-product-category mt-2 inline-block rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{product.category || '—'}</span>
+                                {product.gift_only && <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold text-violet-700">{uiText(language, 'Gift only')}</span>}
                               </div>
                             </div>
-                            {isIncluded && allocated && <label className="mt-3 flex items-start gap-2 rounded-xl bg-blue-50 p-3 text-xs font-bold text-blue-900"><input type="checkbox" checked={Boolean(product.gift_only) || (productEdits[productId]?.gift ?? !(allocated.is_sellable ?? true))} disabled={Boolean(product.gift_only)} onChange={event => editProduct(productId, 'gift', event.target.checked)} aria-label={`${language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในแคมเปญนี้' : 'Gift only in this campaign'}: ${product.name}`} />{language === 'th' ? 'ใช้เป็นของแถมเท่านั้นในแคมเปญนี้' : 'Gift only in this campaign'}</label>}
-                            {!isIncluded && !product.is_unlimited && product.product_kind !== 'bundle' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><strong className="text-emerald-700">{summary.available}</strong> {language === 'th' ? 'สต็อกกลางพร้อมจัดสรร' : 'Central stock available to allocate'}</div>}
+                            <div className="campaign-product-overview mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold text-gray-600">
+                              <span>{(productEdits[productId]?.price ?? (allocated?.price_override == null ? '' : String(allocated.price_override))).trim() ? (uiText(language, 'Campaign price')) : (uiText(language, 'Base price'))}: {formatPrice(productEdits[productId] ? (productEdits[productId].price.trim() ? Number(productEdits[productId].price) : product.price) : allocated?.price_override ?? product.price, campaign.currency)}</span>
+                              <span>{product.product_kind === 'bundle' ? (uiText(language, 'Shared component stock')) : product.is_unlimited || allocated?.is_unlimited ? t('catalogUnlimited') : `${uiText(language, 'Ready to allocate')}: ${summary.available} · ${uiText(language, 'Campaign allocation')}: ${campaignStock}`}</span>
+                              {isIncluded && allocated?.supply_mode === 'production' && <span>{uiText(language, 'Made to order')} · {allocated.production_limit == null ? (uiText(language, 'No production order cap')) : `${uiText(language, 'Production order cap')}: ${allocated.production_limit}`}</span>}
+                            </div>
+                            <button type="button" aria-expanded={Boolean(expandedProducts[productId])} onClick={() => setExpandedProducts(current => ({ ...current, [productId]: !current[productId] }))} className="mt-2 min-h-11 rounded-lg border border-blue-200 px-3 text-xs font-bold text-blue-800">{expandedProducts[productId] ? (uiText(language, 'Hide details')) : (uiText(language, 'Configure product'))}<span className="sr-only"> {product.name}</span></button>
+                            <div className="campaign-product-details">
+                            {isIncluded && allocated && <label className="mt-3 flex items-start gap-2 rounded-xl bg-blue-50 p-3 text-xs font-bold text-blue-900"><input type="checkbox" checked={Boolean(product.gift_only) || (productEdits[productId]?.gift ?? !(allocated.is_sellable ?? true))} disabled={Boolean(product.gift_only)} onChange={event => editProduct(productId, 'gift', event.target.checked)} aria-label={`${uiText(language, 'Gift only in this campaign')}: ${product.name}`} />{uiText(language, 'Gift only in this campaign')}</label>}
+                            {!isIncluded && !product.is_unlimited && product.product_kind !== 'bundle' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><strong className="text-emerald-700">{summary.available}</strong> {uiText(language, 'Central stock available to allocate')}</div>}
                             {allocated && isIncluded && product.product_kind !== 'bundle' && !product.is_unlimited && !allocated.is_unlimited && allocated.supply_mode !== 'production' && <div className="campaign-stock-summary mt-3 rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600">
                               <div className="grid grid-cols-3 gap-2">
-                                <div><strong className="block text-emerald-700">{centralStock}</strong>{language === 'th' ? 'สต็อกกลาง' : 'Central stock'}</div>
-                                <div><strong className="block text-blue-700">{remainingStock}</strong>{language === 'th' ? 'เหลือขาย' : 'Available'}</div>
-                                <div><strong className="block text-amber-700">{used}</strong>{language === 'th' ? 'ขายแล้ว / จองไว้' : 'Sold / held'}</div>
+                                <div><strong className="block text-emerald-700">{centralStock}</strong>{uiText(language, 'Central stock')}</div>
+                                <div><strong className="block text-blue-700">{remainingStock}</strong>{uiText(language, 'Available')}</div>
+                                <div><strong className="block text-amber-700">{used}</strong>{uiText(language, 'Sold / held')}</div>
                               </div>
                               <div data-testid="campaign-stock-bar" className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-gray-200"><div className="bg-emerald-700" style={{ width: `${centralStock / stockPool * 100}%` }} /><div className="bg-blue-700" style={{ width: `${remainingStock / stockPool * 100}%` }} /><div className="bg-amber-700" style={{ width: `${used / stockPool * 100}%` }} /></div>
                             </div>}
                             {allocated && <fieldset className="mt-2" disabled={Object.keys(productEdits).length > 0}><SupplyPolicyEditor key={allocated.campaign_product_id || allocated.id} productId={productId} campaignId={campaignId} settings={allocated} onSaved={() => void load()} /></fieldset>}
                             {product.product_kind === 'bundle' && isIncluded && (() => {
                               const missing = (product.bundle_items || []).filter(item => item.product_id && !allocatedIds.has(item.product_id));
-                              return missing.length ? <p role="status" className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{language === 'th' ? 'ยังไม่ได้เพิ่มสินค้าในชุดเข้าแคมเปญ:' : 'Add these bundle components to the campaign:'} {missing.map(item => item.name || workspace.catalog.find(candidate => (candidate.product_id || candidate.id) === item.product_id)?.name || item.product_id).join(', ')}</p> : null;
+                              return missing.length ? <p role="status" className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{uiText(language, 'Add these bundle components to the campaign:')} {missing.map(item => item.name || workspace.catalog.find(candidate => (candidate.product_id || candidate.id) === item.product_id)?.name || item.product_id).join(', ')}</p> : null;
                             })()}
-                            {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-1 text-[10px] font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
+                            {!product.is_unlimited && committedElsewhere > 0 && <div className="mt-1 text-xs font-bold text-slate-500">{t('campaignStockElsewhere', { count: committedElsewhere })}</div>}
+                            </div>
                           </td>
                           <td data-label={t('catalogCategory')} className="campaign-card-redundant px-2 py-2 text-xs font-bold text-gray-600">{product.category || '—'}</td>
                           {product.product_kind === 'bundle' ? (
-                            <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-bold text-pink-800">{language === 'th' ? 'ใช้สต็อกส่วนประกอบในแคมเปญร่วมกับขายแยก' : 'Shares component stock in this campaign'}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${language === 'th' ? 'ชุดพร้อมขาย' : 'bundles available'}`}</div>}</td>
+                            <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-bold text-pink-800">{uiText(language, 'Shares component stock in this campaign')}{allocated && <div>{allocated.available_quantity == null ? t('catalogUnlimited') : `${allocated.available_quantity} ${uiText(language, 'bundles available')}`}</div>}</td>
                           ) : product.is_unlimited ? (
                             <td colSpan={3} data-label={t('campaignCurrentStock')} className="campaign-card-wide px-2 py-2 text-center text-xs font-black text-gray-600">{t('catalogUnlimited')}</td>
                           ) : (
@@ -942,7 +953,7 @@ export default function OnlineCampaignWorkspace() {
                             ) : (
                               <div>
                                 <button type="button" disabled={saving || Object.keys(productEdits).length > 0} onClick={() => void toggleProduct(productId, true)} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-pink-200 px-3 text-xs font-black text-pink-700 hover:bg-pink-50 disabled:opacity-50"><Plus size={14} />{t('campaignAddProduct')}</button>
-                                {!product.is_unlimited && summary.available === 0 && <div className="mt-1 max-w-40 text-[9px] font-bold leading-tight text-amber-700">{t('campaignAddZeroStock')}</div>}
+                                {!product.is_unlimited && summary.available === 0 && <div className="mt-1 max-w-40 text-xs font-bold leading-tight text-amber-700">{t('campaignAddZeroStock')}</div>}
                               </div>
                             )}
                           </td>

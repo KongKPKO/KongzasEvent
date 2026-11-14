@@ -57,7 +57,7 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
   await new LoginPage(page).goto();
   await new LoginPage(page).login(email, password);
   await expect(page).toHaveURL(/manage-events/);
-  for (const width of [1440, 768, 390]) {
+  for (const width of [1440, 1280, 768, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('/manage-products');
     await expect(page.getByRole('button', { name: 'Table', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -77,9 +77,18 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
       await expect(row.getByRole('button', { name: /Edit product/i })).toBeVisible();
     }
     await expect(row.locator('details.stock-details')).not.toHaveAttribute('open', '');
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`catalog-default-${width}.png`) });
+    for (const button of await row.locator('.catalog-item-actions button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
     await row.getByText('Manage stock and details').click();
     await expect(row.getByRole('button', { name: 'Track stock', exact: true })).toBeVisible();
     await expect(row.getByRole('button', { name: 'Adjust stock', exact: true })).toBeVisible();
+    expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`catalog-table-${width}.png`) });
     await row.getByRole('button', { name: 'Edit product', exact: true }).click();
@@ -87,11 +96,22 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     await expect(editor).toBeVisible();
     expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`product-editor-${width}.png`) });
+    if (width === 390) {
+      await editor.getByRole('button', { name: 'Go to items / stock' }).click();
+      await expect(editor.getByRole('heading', { name: 'Item under this product' })).toBeInViewport();
+      await editor.locator('input[id^="item-name-"]').first().fill('LongVariantName'.repeat(12));
+      expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
     await editor.getByRole('button', { name: 'Close product editor', exact: true }).click();
     await page.goto(`/manage-events/${eventId}/catalog`);
     await page.getByRole('button', { name: 'Operations', exact: true }).click();
     const eventTable = page.getByRole('region', { name: 'Event products and stock table' });
-    const eventRow = eventTable.locator('.event-stock-grid').filter({ hasText: 'Simple service' });
+    const eventItem = eventTable.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+    await expect(eventItem.locator(':scope > summary')).toBeVisible();
+    await eventItem.locator(':scope > summary').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`event-default-${width}.png`) });
+    await eventItem.locator(':scope > summary').click();
+    const eventRow = eventItem.locator('.event-stock-grid');
     await expect(eventRow).toBeVisible();
     const bar = eventRow.getByTestId('event-stock-bar');
     await expect(bar).toBeVisible();
@@ -101,19 +121,319 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
       return [...element.children].every((segment, index) => getComputedStyle(segment).backgroundColor === getComputedStyle(numbers[index]).color);
     });
     expect(eventColorsMatch).toBe(true);
-    if (width === 390) {
-      const left = (await eventTable.boundingBox())!.x + 1;
-      await eventTable.evaluate(element => { element.scrollLeft = 500; });
-      expect((await eventRow.locator(':scope > :first-child').boundingBox())!.x).toBeCloseTo(left, 0);
-    }
+    expect(await eventTable.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await expect(eventRow.locator('details.stock-details')).not.toHaveAttribute('open', '');
     await eventRow.getByText('Supply and stock settings').click();
     await expect(eventRow.getByText('Supply / made to order')).toBeVisible();
-    await expect(eventRow.getByLabel('Event price for Simple service')).toBeVisible();
+    const eventPrice = eventRow.getByLabel('Event price for Simple service');
+    await expect(eventPrice).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`event-table-${width}.png`) });
+    await eventPrice.fill('201');
+    await eventPrice.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`event-editing-${width}.png`) });
+    await eventPrice.fill('');
+  }
+  await page.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+  for (const width of [390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`/manage-events/${eventId}/catalog`);
+    const thaiEventItem = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+    await thaiEventItem.locator(':scope > summary').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`event-th-default-${width}.png`) });
+    await thaiEventItem.locator(':scope > summary').click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`event-th-expanded-${width}.png`) });
   }
   must(await service.from('event_products').update({ stock_sold: 0, stock_reserved: 0 }).eq('event_id', eventId).eq('product_id', product.data!.id));
+});
+
+test('event assignment retains its draft and saves price and stock changes', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 1, stock_reserved: 2, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  const summary = item.locator(':scope > summary');
+  await expect(summary).toBeVisible();
+  await summary.click();
+  const price = item.getByLabel('Event price for Simple service');
+  await price.fill('155');
+  await price.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('event-editing-390.png') });
+  await summary.click();
+  await summary.click();
+  await expect(price).toHaveValue('155');
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect.poll(async () => (await service.from('event_products').select('price_override').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.price_override).toBe(155);
+  await item.locator(':scope > summary').click();
+  await item.locator(':scope > summary').click();
+  await item.getByRole('button', { name: 'Allocate stock', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Allocate stock' });
+  await dialog.getByLabel('Quantity').fill('9999');
+  await dialog.getByRole('button', { name: 'Allocate stock' }).click();
+  await expect(dialog.getByText('Not enough central stock available.', { exact: false })).toBeVisible();
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(5);
+  await dialog.getByLabel('Quantity').fill('1');
+  await dialog.getByRole('button', { name: 'Allocate stock' }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(6);
+  await item.getByRole('button', { name: 'Return to central stock', exact: true }).click();
+  const remove = page.getByRole('dialog', { name: 'Return to central stock' });
+  await remove.getByLabel('Quantity').fill('4');
+  await remove.getByRole('button', { name: 'Return to central stock' }).click();
+  await expect(remove.getByText('You can only remove stock that is not reserved or sold.')).toBeVisible();
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(6);
+  await remove.getByLabel('Quantity').fill('1');
+  await remove.getByRole('button', { name: 'Return to central stock' }).click();
+  await expect(remove).toBeHidden();
+  await expect.poll(async () => (await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(5);
+});
+
+test('event save failure retains the draft and both save controls prevent duplicate requests', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => localStorage.removeItem('nireq-replay-consent-v1'));
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 0, stock_reserved: 0, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await item.locator(':scope > summary').click();
+  const price = item.getByLabel('Event price for Simple service');
+  await price.fill('167');
+  await expect(item.getByRole('button', { name: 'Allocate stock' })).toBeDisabled();
+  await expect(item.getByText('Save product changes before allocating or returning stock.')).toBeVisible();
+  const currency = page.getByRole('combobox', { name: 'Select event currency' });
+  await currency.selectOption('USD');
+  page.once('dialog', dialog => void dialog.dismiss());
+  await page.getByRole('button', { name: 'Manage shop products' }).click();
+  await expect(page).toHaveURL(new RegExp(`/manage-events/${eventId}/catalog`));
+  page.once('dialog', dialog => void dialog.dismiss());
+  await page.getByRole('navigation', { name: 'Event sections' }).getByRole('button', { name: 'Schedule & payment' }).click();
+  await expect(page).toHaveURL(new RegExp(`/manage-events/${eventId}/catalog`));
+  await expect(price).toHaveValue('167');
+  await page.getByRole('button', { name: 'Open workspace menu' }).click();
+  page.once('dialog', dialog => void dialog.dismiss());
+  await page.getByRole('button', { name: 'Online Sales', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/manage-events/${eventId}/catalog`));
+  await page.getByRole('button', { name: 'Close workspace menu' }).click();
+  for (const size of [{ width: 390, height: 800 }, { width: 390, height: 400 }, { width: 768, height: 900 }, { width: 844, height: 390 }, { width: 1280, height: 900 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(size);
+    await price.scrollIntoViewIfNeeded();
+    await price.focus();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const footer = page.locator('.event-save-bar');
+    if (size.width <= 1023 || size.height < 500) expect(await footer.evaluate(element => getComputedStyle(element).position)).toBe('static');
+    const fieldBox = await price.boundingBox();
+    const footerBox = await footer.boundingBox();
+    expect(fieldBox!.y + fieldBox!.height <= footerBox!.y || footerBox!.y + footerBox!.height <= fieldBox!.y).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`event-dirty-${size.width}x${size.height}.png`) });
+  }
+  await page.setViewportSize({ width: 390, height: 800 });
+  const consent = page.getByRole('region', { name: 'Privacy preferences' });
+  await consent.scrollIntoViewIfNeeded();
+  await expect(consent).toBeVisible();
+  const consentBox = await consent.boundingBox();
+  const barBox = await page.locator('.event-save-bar').boundingBox();
+  expect(barBox!.y + barBox!.height).toBeLessThanOrEqual(consentBox!.y + 1);
+  await page.screenshot({ path: testInfo.outputPath('event-consent-390.png') });
+  const saves = page.getByRole('button', { name: 'Save Changes', exact: true });
+  await expect(saves).toHaveCount(2);
+  let calls = 0;
+  await page.route('**/rest/v1/rpc/save_event_catalog', async route => {
+    calls++;
+    if (calls === 1) await route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"test failure"}' });
+    else { await new Promise(resolve => setTimeout(resolve, 300)); await route.continue(); }
+  });
+  await saves.first().click();
+  await expect(page.getByText('Failed to save event catalog', { exact: true })).toBeVisible();
+  await expect(page.getByText('Event catalog could not be saved. Please try again.')).toBeVisible();
+  await expect(page.getByText('[object Object]', { exact: false })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('event-save-error-390.png') });
+  await expect(price).toHaveValue('167');
+  await expect(saves).toHaveCount(2);
+  await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('button')].filter(button => button.textContent?.trim() === 'Save Changes');
+    buttons.forEach(button => button.click());
+  });
+  await expect.poll(() => calls).toBe(2);
+  await expect.poll(async () => (await service.from('event_products').select('price_override').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.price_override).toBe(167);
+  await expect(page.locator('.event-save-bar')).toHaveCount(0);
+  await expect(item.getByRole('button', { name: 'Allocate stock' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Saved', exact: true })).toBeDisabled();
+  await expect(currency).toHaveValue('USD');
+  await expect.poll(async () => (await service.from('events').select('currency_override').eq('id', eventId).single()).data?.currency_override).toBe('USD');
+  await page.screenshot({ path: testInfo.outputPath('event-save-retry-mobile.png') });
+  must(await service.from('events').update({ currency_override: null }).eq('id', eventId));
+});
+
+test('successful event save with a failed refresh requires reload rather than retrying the save', async ({ page }) => {
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 0, stock_reserved: 0, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 5');
+  await item.locator(':scope > summary').click();
+  await item.getByLabel('Event price for Simple service').fill('168');
+  await page.route('**/rest/v1/event_products?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"refresh unavailable"}' }));
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByRole('alert')).toContainText('Changes saved, but the latest values could not be loaded.');
+  await expect.poll(async () => (await service.from('event_products').select('price_override').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.price_override).toBe(168);
+  await expect(item.getByLabel('Event price for Simple service')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Reload page' })).toBeVisible();
+});
+
+test('signing out with an event draft asks before changing account and avoids a second unload prompt', async ({ page }) => {
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 0, stock_reserved: 0, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await page.setViewportSize({ width: 390, height: 800 });
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 5');
+  await item.locator(':scope > summary').click();
+  const price = item.getByLabel('Event price for Simple service');
+  await price.fill('169');
+  await page.getByRole('button', { name: 'Open workspace menu' }).click();
+  page.once('dialog', dialog => void dialog.dismiss());
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/manage-events/${eventId}/catalog`));
+  await expect(price).toHaveValue('169');
+  const dialogs: string[] = [];
+  page.on('dialog', dialog => { dialogs.push(dialog.type()); void dialog.accept(); });
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL(/manage-login/);
+  expect(dialogs).toEqual(['confirm']);
+});
+
+test('mobile bulk actions affect only filtered products and unsaved edits stay private', async ({ page }) => {
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').upsert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 0, stock_reserved: 0, is_enabled: true, is_unlimited: false }, { onConflict: 'event_id,product_id' }));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const loadedItem = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await expect(loadedItem.locator(':scope > summary')).toContainText('Event allocation: 5');
+  const { createClient } = await import('@supabase/supabase-js');
+  const environment = resolveSupabaseTestEnv();
+  const owner = createClient(environment.url, environment.anonKey, { auth: { persistSession: false } });
+  must(await owner.auth.signInWithPassword({ email, password }));
+  const beforeMenu = await owner.rpc('list_event_products', { p_event_id: eventId });
+  const beforePos = await owner.rpc('list_event_products_for_phase', { p_event_id: eventId, p_phase: 'live' });
+  must(beforeMenu); must(beforePos);
+  expect(beforeMenu.data.some((row: { id: string }) => row.id === product.data!.id)).toBe(true);
+  expect(beforePos.data.some((row: { id: string }) => row.id === product.data!.id)).toBe(true);
+  await page.getByPlaceholder('Search event products...').fill('Simple service');
+  const bulk = page.locator('details').filter({ has: page.getByText('Bulk actions for visible rows', { exact: true }) });
+  await expect(bulk).not.toHaveAttribute('open', '');
+  await bulk.locator(':scope > summary').click();
+  await bulk.getByRole('button', { name: 'Hide visible' }).click();
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await expect(item.locator(':scope > summary')).toContainText('Hidden');
+  expect((await service.from('event_products').select('is_enabled').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.is_enabled).toBe(true);
+  const afterMenu = await owner.rpc('list_event_products', { p_event_id: eventId });
+  const afterPos = await owner.rpc('list_event_products_for_phase', { p_event_id: eventId, p_phase: 'live' });
+  must(afterMenu); must(afterPos);
+  expect(afterMenu.data).toEqual(beforeMenu.data);
+  expect(afterPos.data).toEqual(beforePos.data);
+  await bulk.getByRole('button', { name: 'Sell visible' }).click();
+  await item.locator(':scope > summary').click();
+  const price = item.getByLabel('Event price for Simple service');
+  await price.fill('175');
+  await bulk.getByRole('button', { name: 'Reset visible prices' }).click();
+  await expect(price).toHaveValue('');
+  await page.getByPlaceholder('Search event products...').fill('Design 30');
+  await bulk.getByLabel('Stock quantity for visible products').fill('2');
+  await bulk.getByRole('button', { name: 'Allocate selling visible' }).click();
+  const target = page.locator('details.event-assignment-item').filter({ hasText: 'Design 30' });
+  await target.locator(':scope > summary').click();
+  await expect(target.getByLabel('Event stock for Design 30')).toHaveValue('2');
+  await page.getByPlaceholder('Search event products...').fill('Design 29');
+  const other = page.locator('details.event-assignment-item').filter({ hasText: 'Design 29' });
+  await other.locator(':scope > summary').click();
+  await expect(other.getByLabel('Event stock for Design 29')).toHaveValue('10');
+});
+
+test('event assignment handles long product names and SKU on mobile', async ({ page }) => {
+  const longName = 'LongVariantName'.repeat(9);
+  const created = await service.from('products').insert({ artist_id: artistId, name: longName, sku: 'LONGSKU'.repeat(15), price: 100, stock_total: 10, is_unlimited: false, status: 'enable' }).select('id').single();
+  must(created);
+  try {
+    must(await service.from('event_products').insert({ event_id: eventId, artist_id: artistId, product_id: created.data!.id, stock_total: 2, is_enabled: true, is_unlimited: false }));
+    await new LoginPage(page).goto();
+    await new LoginPage(page).login(email, password);
+    await expect(page).toHaveURL(/manage-events/);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto(`/manage-events/${eventId}/catalog`);
+    const item = page.locator('details.event-assignment-item').filter({ hasText: longName });
+    await item.locator(':scope > summary').click();
+    expect(await item.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect(item.getByLabel(`Event price for ${longName}`)).toBeVisible();
+  } finally {
+    must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', created.data!.id));
+    must(await service.from('products').delete().eq('id', created.data!.id));
+  }
+});
+
+test('Thai catalog and bundle fit the screen at each workspace size', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.evaluate(() => localStorage.setItem('nireq-language', 'th'));
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/manage-products');
+    const row = page.getByTestId(`catalog-row-${product.data!.id}`);
+    await expect(row).toBeVisible();
+    await row.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`catalog-th-default-${width}.png`) });
+    await row.locator('details.stock-details > summary').click();
+    expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    for (const button of await row.locator('.catalog-item-actions button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`catalog-th-expanded-${width}.png`) });
+    await row.getByRole('button', { name: 'แก้ไขสินค้า', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: /Simple service/ });
+    await expect(editor).toBeVisible();
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`editor-th-${width}.png`) });
+    await editor.getByRole('button', { name: 'ปิดหน้าต่างสินค้า' }).click();
+    await page.getByRole('button', { name: 'สร้างชุดสินค้า', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'สร้างชุดสินค้า' });
+    await dialog.getByLabel('ค้นหาสินค้าเพื่อเพิ่มในชุด').fill('SERVICE-TEST-001');
+    await dialog.getByRole('button', { name: 'Simple service' }).click();
+    await expect(dialog.getByText(/พร้อมจัดชุด/)).toBeVisible();
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`bundle-th-${width}.png`) });
+    await dialog.getByRole('button', { name: 'ยกเลิก' }).click();
+  }
 });
 
 test('catalog identifies a tracked item with zero available stock as sold out', async ({ page }) => {
@@ -510,6 +830,7 @@ test('photo items keep separate galleries through editor, Event, customer and PO
   await page.setViewportSize({ width: 1280, height: 900 });
   await service.from('event_products').insert(items.data!.map(item => ({ artist_id: artistId, event_id: eventId, product_id: item.id, is_enabled: true, is_unlimited: true }))).throwOnError();
   await page.goto(`/manage-events/${eventId}/catalog`);
+  await page.getByRole('button', { name: 'Visual', exact: true }).click();
   const eventFamily = page.locator(`[data-event-family="${parent.data!.id}"]`);
   await expect(eventFamily).toBeVisible();
   await eventFamily.locator(':scope > summary').click();
@@ -594,8 +915,36 @@ test('creates a component bundle separately with quantities and no item stock ed
   const parent = await service.from('product_parents').select('id,bundle_items').eq('artist_id', artistId).eq('name','Shared bundle test').single().throwOnError();
   expect(parent.data!.bundle_items).toHaveLength(1);
   expect(parent.data!.bundle_items[0]).toMatchObject({quantity:2,name:'Design 1'});
-  const item = await service.from('products').select('is_unlimited,stock_total').eq('parent_product_id',parent.data!.id).single().throwOnError();
+  const item = await service.from('products').select('id,is_unlimited,stock_total').eq('parent_product_id',parent.data!.id).single().throwOnError();
   expect(item.data).toMatchObject({is_unlimited:true,stock_total:null});
+  const componentId = parent.data!.bundle_items[0].product_id;
+  const campaignId = randomUUID();
+  try {
+    must(await service.from('event_products').upsert([
+      { event_id: eventId, artist_id: artistId, product_id: componentId, stock_total: 2, is_enabled: true, is_unlimited: false },
+      { event_id: eventId, artist_id: artistId, product_id: item.data!.id, stock_total: 0, is_enabled: true, is_unlimited: true },
+    ], { onConflict: 'event_id,product_id' }));
+    must(await service.from('online_campaigns').insert({ id: campaignId, artist_id: artistId, name: 'Bundle assignment', slug: `bundle-${runId.slice(0, 8)}`, opens_at: new Date().toISOString(), closes_at: new Date(Date.now() + 86400000).toISOString() }));
+    must(await service.from('online_campaign_products').insert([
+      { campaign_id: campaignId, artist_id: artistId, product_id: componentId, stock_total: 2, is_enabled: true, is_unlimited: false },
+      { campaign_id: campaignId, artist_id: artistId, product_id: item.data!.id, stock_total: null, is_enabled: true, is_unlimited: true },
+    ]));
+    await page.goto(`/manage-events/${eventId}/catalog`);
+    const eventBundle = page.locator('details.event-assignment-item').filter({ hasText: 'Shared bundle test' });
+    await eventBundle.locator(':scope > summary').click();
+    await expect(eventBundle.getByText('1 bundles · shared event component stock')).toBeVisible();
+    await page.goto(`/manage-online-sales/${campaignId}`);
+    await page.getByRole('button', { name: 'Products', exact: true }).click();
+    await page.getByRole('searchbox', { name: 'Search products' }).fill('Shared bundle test');
+    const campaignBundle = page.locator('tr').filter({ hasText: 'Shared bundle test' });
+    await campaignBundle.getByRole('button', { name: /Configure product/ }).click();
+    await expect(campaignBundle.getByText('Shares component stock in this campaign')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally {
+    must(await service.from('online_campaign_products').delete().eq('campaign_id', campaignId));
+    must(await service.from('online_campaigns').delete().eq('id', campaignId));
+    must(await service.from('event_products').delete().eq('event_id', eventId).in('product_id', [componentId, item.data!.id]));
+  }
 });
 
 // Competing cart checkouts must share a bundle's component allocation.

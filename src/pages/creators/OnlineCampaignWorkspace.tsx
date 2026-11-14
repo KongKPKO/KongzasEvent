@@ -309,7 +309,7 @@ export default function OnlineCampaignWorkspace() {
     try {
       const { error } = await supabase.rpc('save_campaign_product_edits', { p_campaign_id: campaignId, p_items: items });
       if (error) throw error;
-      setProductEdits({}); await load(); setFeedback(t('campaignSaved'));
+      setProductEdits({}); await load(); setFeedback('campaignSaved');
     } catch (error) {
       console.error(error);
       setFeedback(language === 'th' ? 'บันทึกไม่สำเร็จ สต็อกหรือข้อมูลอาจเปลี่ยนแล้ว กรุณาตรวจสอบอีกครั้ง' : 'Save failed. Stock or settings may have changed; review and try again.');
@@ -326,7 +326,7 @@ export default function OnlineCampaignWorkspace() {
       setFeedback(t('campaignSaveFailed'));
     } else {
       await load();
-      setFeedback(t('campaignSaved'));
+      setFeedback('campaignSaved');
     }
     setSaving(false);
   };
@@ -727,7 +727,7 @@ export default function OnlineCampaignWorkspace() {
           ))}
         </nav>
 
-        {feedback && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{feedback}</div>}
+        {feedback && !(tab === 'promotions' && feedback === 'campaignSaved') && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{feedback === 'campaignSaved' ? t('campaignSaved') : feedback}</div>}
 
         {tab === 'overview' && (
           <>

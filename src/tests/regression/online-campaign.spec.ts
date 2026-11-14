@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from '../helpers/adminFixture';
 import { resolveSupabaseTestEnv } from '../helpers/localSupabaseEnv';
+import { selectLanguage } from '../helpers/languageMenu';
 
 const EMAIL = 'online-campaign-e2e@nireq.local';
 const PASSWORD = 'LocalOnlyOnlineCampaign123!';
@@ -1024,6 +1025,7 @@ test.describe('online campaign', () => {
     expect(paymentCount.count).toBe(1);
   });
   test('mobile overview shortcuts and campaign gift-only setting', async ({ page }) => {
+    test.setTimeout(90_000);
     await page.setViewportSize({ width: 375, height: 850 });
     await login(page);
     await page.goto(`/manage-online-sales/${campaignId}`);
@@ -1051,6 +1053,12 @@ test.describe('online campaign', () => {
       await page.getByRole('button', { name: /Promotions|โปรโมชั่น/, exact: true }).click();
       const promotions = page.getByRole('region', { name: /Campaign promotions|โปรโมชั่นในแคมเปญ/ });
       await expect(promotions).toBeVisible();
+      await expect(page.getByText('Changes saved.', { exact: true })).toHaveCount(0);
+      const promotionSearch = promotions.getByRole('searchbox', { name: /Search promotions|ค้นหาโปรโมชัน/ });
+      await expect(promotionSearch).toHaveAttribute('placeholder', /Search promotions|ค้นหาชื่อโปรโมชั่น/);
+      await promotionSearch.fill('no-matching-offer');
+      await expect(promotions.getByText(/No matching promotions|ไม่พบโปรโมชันที่ค้นหา/)).toBeVisible();
+      await promotionSearch.fill('Campaign offer test');
       const row = promotions.locator('article').filter({ hasText: 'Campaign offer test' });
       await row.getByRole('button', { name: /Select promotion|เลือกใช้/ }).click();
       await row.getByRole('checkbox', { name: /Use in this campaign|ใช้ในแคมเปญนี้/ }).check();
@@ -1058,6 +1066,18 @@ test.describe('online campaign', () => {
       await expect(row.getByText(/Selected for this campaign|เลือกใช้ในแคมเปญนี้แล้ว/)).toBeVisible();
       const assignment = await fixture.service.from('promotion_assignments').select('is_paused').eq('campaign_id', campaignId).eq('promotion_id', offer.data.id).single();
       expect(assignment.data?.is_paused).toBe(false);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      for (const language of ['en', 'th'] as const) {
+        await selectLanguage(page, language);
+        await page.getByRole('button', { name: /Promotions|โปรโมชั่น/, exact: true }).click();
+        await expect(page.getByRole('region', { name: /Campaign promotions|โปรโมชั่นในแคมเปญ/ })).toBeVisible();
+        await expect(page.getByText('Campaign offer test', { exact: true })).toBeVisible();
+        for (const width of [390, 768, 1280, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          await page.screenshot({ path: test.info().outputPath(`promotion-campaign-${language}-${width}.png`), fullPage: true });
+        }
+      }
     } finally {
       await fixture.service.from('promotion_assignments').delete().eq('promotion_id', offer.data.id);
       await fixture.service.from('artist_promotions').delete().eq('id', offer.data.id);

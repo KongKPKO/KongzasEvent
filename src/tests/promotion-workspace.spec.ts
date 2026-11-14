@@ -46,6 +46,7 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     await expect(form.getByRole('heading', { name: /4\s*ช่วงเวลา ช่องทาง และจำนวนสิทธิ์/ })).toBeVisible();
 
     const previewSection = form.locator('.promotion-preview');
+    await expect(previewSection.getByText('ผลทดลองใช้ตรวจเงื่อนไขและส่วนลดเท่านั้น ยังไม่ยืนยันสต็อกหรือสิทธิ์ของแถม ระบบจะตรวจสอบอีกครั้งเมื่อสั่งซื้อจริง')).toBeVisible();
     await previewSection.getByRole('button', { name: 'คำนวณผลทดลอง', exact: true }).click();
     await expect(previewSection.getByRole('alert')).toHaveText('กรอกชื่อโปรโมชัน');
     await expect(previewSection.getByRole('alert')).toBeInViewport();
@@ -153,11 +154,18 @@ test('Promotion V1 combines a recipe discount and exact-SKU gift with a no-write
     await form.getByRole('button', { name: 'คำนวณผลทดลอง', exact: true }).click();
     await expect(form.locator('.promotion-preview-result')).toContainText('฿380');
 
-    for (const width of [320, 768, 1440]) {
+    for (const width of [320, 390, 768, 1280, 1440]) {
       await page.setViewportSize({ width, height: 950 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await page.screenshot({ path: `../promotion-v1-${width}-local.png`, fullPage: true });
+      await page.screenshot({ path: test.info().outputPath(`promotion-editor-th-${width}.png`), fullPage: true });
     }
+    await selectLanguage(page, 'en');
+    for (const width of [390, 768, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 950 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`promotion-editor-en-${width}.png`), fullPage: true });
+    }
+    await selectLanguage(page, 'th');
     await expect(form).not.toContainText(/\bSKU\b/);
     const accessibility = await new AxeBuilder({ page }).include('.promotion-workspace').withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(accessibility.violations).toEqual([]);
@@ -244,6 +252,28 @@ test('store creates offers; event selection preserves other channels and cancell
     await editor.getByLabel('Amount (THB)', { exact: true }).fill('10');
     await editor.getByRole('button', { name: 'Save promotion', exact: true }).click();
     await expect(editor).toBeHidden();
+    const workspace = page.getByRole('region', { name: 'Promotion workspace' });
+    await workspace.getByRole('combobox', { name: 'Status', exact: true }).selectOption('draft');
+    await expect(workspace.getByRole('heading', { name, exact: true })).toHaveCount(0);
+    await workspace.getByRole('combobox', { name: 'Status', exact: true }).selectOption('ready');
+    await expect(workspace.getByRole('heading', { name, exact: true })).toBeVisible();
+    await workspace.getByRole('combobox', { name: 'Sort by', exact: true }).selectOption('name');
+    await expect(workspace.getByText('Channel usage and schedules', { exact: true })).toBeVisible();
+    await expect(workspace.getByText('Terms and schedule (0)')).toHaveCount(0);
+    await expect(workspace.getByRole('heading', { name, exact: true })).toBeVisible();
+    for (const width of [390, 768, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`promotion-library-en-${width}.png`), fullPage: true });
+    }
+    await selectLanguage(page, 'th');
+    await expect(page.getByText('ช่องทางที่ใช้และช่วงเวลา', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'จัดการโปรโมชัน' }).getByRole('status')).toHaveText('บันทึกโปรโมชันแล้ว');
+    for (const width of [390, 768, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: test.info().outputPath(`promotion-library-th-${width}.png`), fullPage: true });
+    }
+    await selectLanguage(page, 'en');
     const saved = await service.from('artist_promotions').select('id,v1_config').eq('artist_id', userId).single().throwOnError();
     const promotionId = saved.data!.id;
     expect((await service.from('promotion_assignments').select('id').eq('promotion_id', promotionId)).data).toEqual([]);
@@ -255,6 +285,16 @@ test('store creates offers; event selection preserves other channels and cancell
     await expect(newSelection.getByLabel('Combining offers')).toHaveValue('combine');
     await newSelection.getByRole('button', { name: 'Save event selection', exact: true }).click();
     await expect(newSelection).toBeHidden();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const language of ['en', 'th'] as const) {
+      await selectLanguage(page, language);
+      for (const width of [390, 768, 1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`promotion-event-${language}-${width}.png`), fullPage: true });
+      }
+    }
+    await selectLanguage(page, 'en');
     expect((await service.from('promotion_assignments').select('combination_policy').eq('promotion_id', promotionId).eq('event_id', eventA).single().throwOnError()).data?.combination_policy).toBe('combine');
     must(await service.from('promotion_assignments').delete().eq('promotion_id', promotionId));
     must(await service.from('promotion_assignments').insert([

@@ -533,7 +533,20 @@ test.describe('online campaign', () => {
       expect(await download.failure()).toBeNull();
       await preview.getByRole('button', { name: /Close payment evidence|ปิดหลักฐานการชำระเงิน/ }).click();
       await expect(preview).toHaveCount(0);
-      await page.locator('article').filter({ hasText: order.order_code }).getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
+      const confirmPayment = page.locator('article').filter({ hasText: order.order_code }).getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ });
+      await confirmPayment.click();
+      const confirmDialog = page.getByRole('dialog');
+      const cancelConfirm = confirmDialog.getByRole('button', { name: /Cancel|ยกเลิก/ });
+      const acceptConfirm = confirmDialog.getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ });
+      await expect(cancelConfirm).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(acceptConfirm).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(cancelConfirm).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(confirmDialog).toHaveCount(0);
+      await expect(confirmPayment).toBeFocused();
+      await confirmPayment.click();
       await page.getByRole('dialog').getByRole('button', { name: /Confirm payment|ยืนยันการชำระเงิน/ }).click();
       await expect.poll(async () => (await fixture.service.from('order_payments').select('payment_status').eq('order_id', order.order_id).single()).data?.payment_status).toBe('payment_confirmed');
       const campaignStock = await fixture.service.from('online_campaign_products').select('stock_total,stock_reserved,stock_sold').eq('campaign_id', campaignId).eq('product_id', productId).single();
@@ -671,7 +684,14 @@ test.describe('online campaign', () => {
     await expect(readiness).toContainText('6/6');
     await expect(page.getByRole('button', { name: /Orders|คำสั่งซื้อ/ })).toBeVisible();
     await page.getByRole('button', { name: /Products|สินค้า/ }).click();
-    await expect(page.getByLabel(/Product category|หมวดหมู่สินค้า/)).toContainText('Cheki');
+    const categoryFilter = page.getByLabel(/Product category|หมวดหมู่สินค้า/);
+    if (await categoryFilter.evaluate(element => element.tagName === 'SELECT')) {
+      await expect(categoryFilter.locator('option', { hasText: 'Cheki' })).toHaveCount(1);
+    } else {
+      await categoryFilter.click();
+      await expect(page.getByRole('option', { name: 'Cheki', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
     await page.getByPlaceholder(/Search products|ค้นหาชื่อสินค้า/).fill('E2E Cheki');
     await expect(page.getByRole('row').filter({ hasText: 'E2E Cheki' })).toContainText('Cheki');
     const campaignTable = page.getByRole('table');
@@ -822,7 +842,9 @@ test.describe('online campaign', () => {
       await expect(campaignRow.locator('td[data-label="Ready to allocate"], td[data-label="พร้อมจัดสรร"]')).toBeVisible();
       await expect(campaignRow.getByLabel(/Allocated stock|สต็อกที่จัดสรร/)).toBeVisible();
       await expect(campaignRow.getByText(/In other sales or reservations: 8|อีก 8 ชิ้นอยู่ในช่องทางขายอื่น/)).toBeVisible();
-      await page.getByLabel(/Campaign membership|สถานะในแคมเปญ/).selectOption('not_added');
+      const membershipFilter = page.getByLabel(/Campaign membership|สถานะในแคมเปญ/);
+      if (await membershipFilter.evaluate(element => element.tagName === 'SELECT')) await membershipFilter.selectOption('not_added');
+      else { await membershipFilter.click(); await page.getByRole('option', { name: /Not added|ยังไม่ได้เพิ่ม/ }).click(); }
       await expect(campaignRow).toHaveCount(0);
     } finally {
       await fixture.service.from('online_campaign_products').delete().eq('campaign_id', campaignId).eq('product_id', legacyProductId);

@@ -45,6 +45,14 @@ test('TH/EN dropdown changes the workspace, survives navigation/reload and prese
   await login.goto();
   await login.login(email, password);
   await expect(page.getByRole('heading', { level: 1, name: 'Queue', exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(() => page.locator('header').first().evaluate(header => {
+    const viewport = document.documentElement.clientWidth;
+    return Array.from(header.querySelectorAll('button, a')).filter(element => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width > 0 && bounds.right > viewport + 1;
+    }).length;
+  })).toBe(0);
   const headingBounds = await page.getByRole('heading', { level: 1, name: 'Queue', exact: true }).boundingBox();
   const eventNavBounds = await page.getByRole('navigation', { name: 'Event sections', exact: true }).boundingBox();
   expect(headingBounds).not.toBeNull();

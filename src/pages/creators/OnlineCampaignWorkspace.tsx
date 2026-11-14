@@ -1,3 +1,4 @@
+import { FilterSelect } from '../../components/ui/FilterSelect';
 import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { getOrderSequences } from '../../lib/orderSequences';
@@ -663,7 +664,7 @@ export default function OnlineCampaignWorkspace() {
   ).length;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-slate-800">
+    <div className="campaign-workspace min-h-screen bg-gray-50 text-slate-800">
       <Toast message={toast} onClose={() => setToast(null)} />
       {evidencePreview && <EvidenceReview title={t('campaignEvidencePreview')} closeLabel={t('campaignCloseEvidence')} code={evidencePreview.order.order_code} customer={evidencePreview.order.customer_name} amount={evidencePreview.order.total_price} currency={evidencePreview.order.currency} url={evidencePreview.url} items={evidencePreview.order.items} onClose={() => setEvidencePreview(null)}>
         {canManage && evidencePreview.order.payment_status === 'payment_submitted' && <>
@@ -774,34 +775,13 @@ export default function OnlineCampaignWorkspace() {
                     className="min-h-11 w-full rounded-xl border border-gray-200 pl-10 pr-3 text-sm font-semibold"
                   />
                 </label>
-                <select
-                  aria-label={t('campaignProductCategory')}
-                  value={productCategory}
-                  onChange={(event) => { setProductCategory(event.target.value); setProductPage(1); }}
-                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
-                >
-                  <option value="all">{t('campaignAllCategories')}</option>
-                  {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-                </select>
-                <select
-                  aria-label={t('campaignProductMembership')}
-                  value={productMembership}
-                  onChange={(event) => { setProductMembership(event.target.value as ProductMembership); setProductPage(1); }}
-                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
-                >
-                  <option value="all">{t('campaignAllMemberships')}</option>
-                  <option value="included">{t('campaignIncluded')}</option>
-                  <option value="not_added">{t('campaignNotAdded')}</option>
-                </select>
-                <select
-                  aria-label={t('campaignProductSort')}
-                  value={productSort}
-                  onChange={(event) => { setProductSort(event.target.value as typeof productSort); setProductPage(1); }}
-                  className="min-h-11 min-w-0 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold"
-                >
-                  <option value="name_asc">{t('campaignNameAscending')}</option>
-                  <option value="name_desc">{t('campaignNameDescending')}</option>
-                </select>
+                <FilterSelect label={t('campaignProductCategory')} value={productCategory} onChange={value => { setProductCategory(value); setProductPage(1); }} options={[{ value: 'all', label: t('campaignAllCategories') }, ...productCategories.map(category => ({ value: category, label: category }))]} />
+                <FilterSelect label={t('campaignProductMembership')} value={productMembership} onChange={value => { setProductMembership(value as ProductMembership); setProductPage(1); }} options={[
+                  { value: 'all', label: t('campaignAllMemberships') }, { value: 'included', label: t('campaignIncluded') }, { value: 'not_added', label: t('campaignNotAdded') },
+                ]} />
+                <FilterSelect label={t('campaignProductSort')} value={productSort} onChange={value => { setProductSort(value as typeof productSort); setProductPage(1); }} options={[
+                  { value: 'name_asc', label: t('campaignNameAscending') }, { value: 'name_desc', label: t('campaignNameDescending') },
+                ]} />
                 <button
                   type="button"
                   disabled={!productSearch && productCategory === 'all' && productMembership === 'all' && productSort === 'name_asc'}

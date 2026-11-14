@@ -73,7 +73,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                 </Link>
                 {/* Active Event Badge */}
                 {activeEvent && (
-                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex min-w-0 items-center gap-1.5 max-w-[140px] md:max-w-none">
+                    <div className="ml-2 md:ml-3 px-2.5 py-1 bg-pink-50 border border-pink-200 rounded-full text-xs font-bold text-pink-700 flex min-w-0 items-center gap-1.5 max-w-[140px]">
                         <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse shrink-0"></span>
                         <span className="truncate">{activeEvent.event_name}</span>
                     </div>
@@ -103,7 +103,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                         <button
                             key={item.path}
                             onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate(item.path); }}
-                            className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                            className={`workspace-action px-2 min-[1360px]:px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                 isActive
                                     ? 'bg-pink-50 text-pink-700 border border-pink-200'
                                     : 'text-gray-600 hover:text-pink-600 hover:bg-gray-50'
@@ -120,7 +120,7 @@ export default function AdminHeader({ activePage, activeEvent, actorRole, userEm
                 {isPlatformAdmin && (
                     <button
                         onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate('/admin/applications'); }}
-                        className={`workspace-action px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        className={`workspace-action px-2 min-[1360px]:px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                             location.pathname === '/admin/applications'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : 'text-slate-700 hover:text-emerald-700 hover:bg-gray-50'

@@ -97,6 +97,15 @@ test('compact catalog and event tables retain stock controls on desktop and mobi
     expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`product-editor-${width}.png`) });
     if (width === 390) {
+      const focusedName = editor.getByLabel('Product name *', { exact: true });
+      await focusedName.focus();
+      await page.setViewportSize({ width, height: 500 });
+      await expect.poll(async () => {
+        const input = await focusedName.boundingBox();
+        const footer = await editor.locator('footer').boundingBox();
+        return Boolean(input && footer && input.y + input.height <= footer.y);
+      }).toBe(true);
+      await page.setViewportSize({ width, height: 900 });
       await editor.getByRole('button', { name: 'Go to items / stock' }).click();
       await expect(editor.getByRole('heading', { name: 'Item under this product' })).toBeInViewport();
       await editor.locator('input[id^="item-name-"]').first().fill('LongVariantName'.repeat(12));

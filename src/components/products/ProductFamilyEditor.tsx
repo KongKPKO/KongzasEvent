@@ -179,6 +179,7 @@ export default function ProductFamilyEditor({
   const [imageUrl, setImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const variantSectionRef = useRef<HTMLElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [variants, setVariants] = useState<EditableVariant[]>([newVariant()]);
   const [bulkPrice, setBulkPrice] = useState('');
   const [bulkStock, setBulkStock] = useState('');
@@ -188,6 +189,30 @@ export default function ProductFamilyEditor({
   const initializedFor = useRef<string | null>(null);
   const initialParent = useRef<ProductParent | null>(null);
   const dialogRef = useDialogFocus<HTMLElement>(open, () => { if (!saving && !uploadingKey) onClose(); });
+
+  useEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    const keepFocusedFieldVisible = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const form = formRef.current;
+        const active = document.activeElement;
+        if (!form || !(active instanceof HTMLElement) || !form.contains(active)) return;
+        const field = active.getBoundingClientRect();
+        const body = form.getBoundingClientRect();
+        if (field.bottom > body.bottom) form.scrollTop += field.bottom - body.bottom + 12;
+        else if (field.top < body.top) form.scrollTop -= body.top - field.top + 12;
+      });
+    };
+    window.addEventListener('resize', keepFocusedFieldVisible);
+    window.visualViewport?.addEventListener('resize', keepFocusedFieldVisible);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', keepFocusedFieldVisible);
+      window.visualViewport?.removeEventListener('resize', keepFocusedFieldVisible);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) { initializedFor.current = null; return; }
@@ -379,7 +404,7 @@ export default function ProductFamilyEditor({
           <button type="button" onClick={() => { if (!saving && !uploadingKey) onClose(); }} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100" aria-label={copy.closeEditor}><X size={20} /></button>
         </header>
 
-        <form id="product-family-form" onSubmit={submit} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <form id="product-family-form" ref={formRef} onSubmit={submit} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <button type="button" onClick={() => variantSectionRef.current?.scrollIntoView({ block: 'start' })} className="mx-5 mt-4 min-h-11 rounded-xl border border-pink-200 bg-white px-4 text-sm font-bold text-pink-700 lg:hidden">{language === 'th' ? 'ไปที่รายการสินค้า / สต็อก' : 'Go to items / stock'}</button>
           <label className="mx-5 mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm"><input type="checkbox" checked={giftOnly} onChange={event => setGiftOnly(event.target.checked)} className="mt-1 h-4 w-4" /><span><strong className="block">{language === 'th' ? 'ใช้เป็นของแถมเท่านั้น' : 'Gift only'}</strong><span className="text-xs text-gray-600">{language === 'th' ? 'ซ่อนจากรายการขาย แต่ยังจัดสรรสต็อกและเลือกเป็นของแถมในโปรโมชั่นได้' : 'Hidden from sale, but stock can be allocated and used for promotions.'}</span></span></label>
           <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.45fr)]">

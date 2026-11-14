@@ -1,3 +1,4 @@
+import { FilterSelect } from '../../components/ui/FilterSelect';
 import BundleEditor from '../../components/products/BundleEditor';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { fetchInventoryOverview, type InventoryOverview } from '../../lib/inventory';
@@ -11,7 +12,7 @@ import { useState, useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboa
 import { supabase } from '../../supabaseClient';
 import { Button } from '../../components/ui';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader, Upload, Plus, FileText, X, Search, ArrowUpDown, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
+import { Loader, Upload, Plus, FileText, X, Search, ChevronDown, Coins, AlertTriangle, Filter, PackageSearch, Sparkles, CalendarDays, Save, Download, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import Papa from 'papaparse';
 import { parseProductCsv, formatProductCsvIssue } from '../../lib/productCsvImport';
 import { getMenuImageUrl } from '../../utils/imageUtils';
@@ -3271,26 +3272,13 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                            <input
                               value={eventCatalogSearch}
                               onChange={(event) => setEventCatalogSearch(event.target.value)}
+                              aria-label={eventText("Search event products...")}
                               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-pink-200"
                               placeholder={eventText("Search event products...")}
                            />
                         </div>
-                        <select
-                           value={eventCatalogCategory}
-                           onChange={(event) => setEventCatalogCategory(event.target.value)}
-                           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label={eventText("Filter event catalog category")}
-                        >
-                           {uniqueCategories.map((item) => <option key={item} value={item}>{item === 'All' ? eventText("All categories") : item}</option>)}
-                        </select>
-                        <select
-                           value={eventCatalogTag}
-                           onChange={(event) => setEventCatalogTag(event.target.value)}
-                           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label={eventText("Filter event catalog tag")}
-                        >
-                           {uniqueTags.map((item) => <option key={item} value={item}>{item === 'All' ? eventText("All tags") : item}</option>)}
-                        </select>
+                        <FilterSelect label={eventText('Filter event catalog category')} value={eventCatalogCategory} onChange={setEventCatalogCategory} options={uniqueCategories.map(item => ({ value: item, label: item === 'All' ? eventText('All categories') : item }))} />
+                        <FilterSelect label={eventText('Filter event catalog tag')} value={eventCatalogTag} onChange={setEventCatalogTag} options={uniqueTags.map(item => ({ value: item, label: item === 'All' ? eventText('All tags') : item }))} />
                      </div>
 
                      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
@@ -3812,85 +3800,17 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                      />
                   </div>
                   
-                  <div className="relative min-w-[200px]">
-                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <ArrowUpDown className="text-gray-400" size={16} />
-                     </div>
-                     <select
-                        value={sortOption}
-                        aria-label={language === 'th' ? 'เรียงสินค้าตาม' : 'Sort products by'}
-                        onChange={(e) => setSortOption(e.target.value)}
-                        className="w-full pl-10 pr-8 py-2.5 appearance-none rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all shadow-sm font-medium text-sm"
-                     >
-                        <option value="name_asc">{uiText(language, 'Name (A-Z)')}</option>
-                        <option value="price_asc">{uiText(language, 'Price (Low to High)')}</option>
-                        <option value="price_desc">{uiText(language, 'Price (High to Low)')}</option>
-                     </select>
-                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
+                  <FilterSelect label={language === 'th' ? 'เรียงสินค้าตาม' : 'Sort products by'} value={sortOption} onChange={setSortOption} options={[
+                    { value: 'name_asc', label: uiText(language, 'Name (A-Z)') }, { value: 'price_asc', label: uiText(language, 'Price (Low to High)') }, { value: 'price_desc', label: uiText(language, 'Price (High to Low)') },
+                  ]} />
                </div>
-
                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="relative">
-                     <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label={uiText(language, 'Filter by category')}
-                     >
-                        {uniqueCategories.map((cat) => (
-                           <option key={cat} value={cat}>{cat === 'All' ? uiText(language, 'All categories') : cat}</option>
-                        ))}
-                     </select>
-                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
-
-                  <div className="relative">
-                     <select
-                        value={selectedTag}
-                        onChange={(e) => setSelectedTag(e.target.value)}
-                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label={uiText(language, 'Filter by tag')}
-                     >
-                        {uniqueTags.map(tag => (
-                           <option key={tag} value={tag}>{tag === 'All' ? uiText(language, 'All tags') : tag}</option>
-                        ))}
-                     </select>
-                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
-
-                  <div className="relative">
-                     <select
-                        value={catalogFocus}
-                        onChange={(e) => setCatalogFocus(e.target.value as typeof catalogFocus)}
-                        className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                        aria-label={uiText(language, 'Filter by catalog focus')}
-                     >
-                        <option value="all">{uiText(language, 'All stock/image states')}</option>
-                        <option value="missing-images">{uiText(language, 'Need images')} ({catalogMissingImages})</option>
-                        <option value="low-stock">{uiText(language, 'Low stock')} ({catalogLowStock})</option>
-                        <option value="inactive">{uiText(language, 'Inactive')} ({catalogInactive})</option>
-                     </select>
-                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                  </div>
-
-                  {uniqueCurrencies.length > 2 ? (
-                     <div className="relative">
-                        <select
-                           value={selectedCurrency}
-                           onChange={(e) => setSelectedCurrency(e.target.value)}
-                           className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2 pr-8 text-sm font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
-                           aria-label={uiText(language, 'Filter by currency')}
-                        >
-                           {uniqueCurrencies.map((curr) => (
-                              <option key={curr} value={curr}>{curr === 'All' ? uiText(language, 'All currencies') : `${CURRENCIES[curr]?.symbol || curr} ${curr}`}</option>
-                           ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                     </div>
-                  ) : (
-                     <div className="hidden xl:block" />
-                  )}
+                  <FilterSelect label={uiText(language, 'Filter by category')} value={selectedCategory} onChange={setSelectedCategory} options={uniqueCategories.map(cat => ({ value: cat, label: cat === 'All' ? uiText(language, 'All categories') : cat }))} />
+                  <FilterSelect label={uiText(language, 'Filter by tag')} value={selectedTag} onChange={setSelectedTag} options={uniqueTags.map(tag => ({ value: tag, label: tag === 'All' ? uiText(language, 'All tags') : tag }))} />
+                  <FilterSelect label={uiText(language, 'Filter by catalog focus')} value={catalogFocus} onChange={value => setCatalogFocus(value as typeof catalogFocus)} options={[
+                    { value: 'all', label: uiText(language, 'All stock/image states') }, { value: 'missing-images', label: `${uiText(language, 'Need images')} (${catalogMissingImages})` }, { value: 'low-stock', label: `${uiText(language, 'Low stock')} (${catalogLowStock})` }, { value: 'inactive', label: `${uiText(language, 'Inactive')} (${catalogInactive})` },
+                  ]} />
+                  {uniqueCurrencies.length > 2 && <FilterSelect label={uiText(language, 'Filter by currency')} value={selectedCurrency} onChange={setSelectedCurrency} options={uniqueCurrencies.map(curr => ({ value: curr, label: curr === 'All' ? uiText(language, 'All currencies') : `${CURRENCIES[curr]?.symbol || curr} ${curr}` }))} />}
                </div>
 
                {hasActiveFilters && (

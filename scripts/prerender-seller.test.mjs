@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 
 test('seller landing build contains public content and metadata in the initial HTML', async () => {
   const html = await readFile('dist/seller-landing.html', 'utf8');
-  assert.match(html, /<h1[^>]*>Prepare your shop for every stage of the event<\/h1>/);
+  assert.match(html, /<h1[^>]*>เตรียมร้านครั้งเดียว ดูแลการขายได้ตลอดงาน<\/h1>/);
   assert.match(html, /href="\/creator\/register"/);
-  assert.match(html, /<title>Manage your shop and events \| Paimon<\/title>/);
+  assert.match(html, /<title>จัดการร้านและอีเวนต์ \| Paimon<\/title>/);
   assert.match(html, /rel="canonical" href="https:\/\/paimonq\.com\/for-sellers"/);
   assert.match(html, /property="og:image"/);
   assert.match(html, /name="twitter:card"/);

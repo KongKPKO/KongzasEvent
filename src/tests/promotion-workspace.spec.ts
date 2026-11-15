@@ -262,6 +262,8 @@ test('store creates offers; event selection preserves other channels and cancell
     await expect(statusFilter).toBeFocused();
     await statusFilter.click();
     await expect(page.getByRole('listbox')).toBeVisible();
+    // Radix registers outside-pointer handling in the next browser task.
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
     await page.mouse.click(8, 8);
     await expect(page.getByRole('listbox')).toHaveCount(0);
     await expect(statusFilter).toContainText('All statuses');

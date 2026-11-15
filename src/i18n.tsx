@@ -1844,10 +1844,10 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-const getInitialLanguage = (): Language => {
-  if (typeof window === 'undefined') return 'en';
+export const getInitialLanguage = (): Language => {
+  if (typeof window === 'undefined') return 'th';
   const saved = window.localStorage.getItem(STORAGE_KEY);
-  return saved === 'th' ? 'th' : 'en';
+  return saved === 'en' ? 'en' : 'th';
 };
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {

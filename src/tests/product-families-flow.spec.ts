@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
 import { resolveSupabaseTestEnv } from './helpers/localSupabaseEnv';
 import { LoginPage } from './e2e/pages/LoginPage';
+import { selectLanguage } from './helpers/languageMenu';
 import { toDateInputValue } from '../lib/eventAppearances';
 
 const runId = randomUUID();
@@ -283,6 +284,73 @@ test('event save failure retains the draft and both save controls prevent duplic
   await expect.poll(async () => (await service.from('events').select('currency_override').eq('id', eventId).single()).data?.currency_override).toBe('USD');
   await page.screenshot({ path: testInfo.outputPath('event-save-retry-mobile.png') });
   must(await service.from('events').update({ currency_override: null }).eq('id', eventId));
+});
+
+test('event allocation RPC rejects over-allocation without persisting changes', async () => {
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  must(await service.from('products').update({ stock_total: 50 }).eq('id', product.data!.id));
+  const { createClient } = await import('@supabase/supabase-js');
+  const environment = resolveSupabaseTestEnv();
+  const owner = createClient(environment.url, environment.anonKey, { auth: { persistSession: false } });
+  must(await owner.auth.signInWithPassword({ email, password }));
+  const rejected = await owner.rpc('save_event_catalog', { p_event_id: eventId, p_items: [{ product_id: product.data!.id, stock_total: 100, is_unlimited: false, is_enabled: true }] });
+  expect(rejected.error?.message).toContain('event_stock_exceeds_catalog_stock');
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data).toBeNull();
+  const accepted = await owner.rpc('save_event_catalog', { p_event_id: eventId, p_items: [{ product_id: product.data!.id, stock_total: 50, is_unlimited: false, is_enabled: true }] });
+  must(accepted);
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(50);
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  must(await service.from('products').update({ stock_total: 20 }).eq('id', product.data!.id));
+});
+
+test('event allocation draft never replaces saved availability when validation or save fails', async ({ page }, testInfo) => {
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 0');
+  await item.locator(':scope > summary').click();
+  const stock = item.getByLabel('Event stock for Simple service');
+  await stock.fill('100');
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 0');
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText(/Insufficient stock/)).toBeVisible();
+  await expect(stock).toHaveValue('100');
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data).toBeNull();
+  await selectLanguage(page, 'th');
+  await page.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง', exact: true }).first().click();
+  await expect(page.getByText(/สต็อกไม่เพียงพอ สามารถจัดสรรเพิ่มได้อีก 20 ชิ้น/)).toBeVisible();
+  await selectLanguage(page, 'en');
+  await stock.fill('6');
+  await page.route('**/rest/v1/rpc/save_event_catalog', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"test failure"}' }), { times: 1 });
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText('Failed to save event catalog', { exact: true })).toBeVisible();
+  await expect(stock).toHaveValue('6');
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 0');
+  await item.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('allocation-save-failed-390.png') });
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data).toBeNull();
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect.poll(async () => (await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data?.stock_total).toBe(6);
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 6');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await item.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('allocation-save-success-1440.png') });
+  await item.getByLabel('Event price for Simple service').fill('167');
+  await page.route('**/rest/v1/rpc/save_event_catalog', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"test failure"}' }), { times: 1 });
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText('Failed to save event catalog', { exact: true })).toBeVisible();
+  page.once('dialog', dialog => void dialog.accept());
+  await page.reload();
+  await expect(item.locator(':scope > summary')).toContainText('Event allocation: 6');
+  expect((await service.from('event_products').select('stock_total,price_override').eq('event_id', eventId).eq('product_id', product.data!.id).single()).data).toMatchObject({ stock_total: 6, price_override: null });
 });
 
 test('successful event save with a failed refresh requires reload rather than retrying the save', async ({ page }) => {
@@ -767,8 +835,8 @@ test(`single-variant ${photoCount}-photo set survives navigation and reload and 
   await edit.getByRole('button', { name: 'Save family', exact: true }).click();
   await expect(edit).toBeHidden();
   await page.reload();
-  await expect(page.getByRole('heading', { name: /Product items/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Main products/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Product cards', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(card.locator('img')).toHaveCount(photoCount);
 });
 }

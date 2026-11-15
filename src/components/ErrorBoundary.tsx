@@ -1,5 +1,5 @@
 import React from 'react';
-import { uiText, type Language } from '../i18n';
+import { getInitialLanguage, uiText } from '../i18n';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -19,7 +19,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 
   render() {
     if (this.state.hasError) {
-      const language: Language = window.localStorage.getItem('nireq-language') === 'th' ? 'th' : 'en';
+      const language = getInitialLanguage();
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
           <div className="max-w-md rounded-xl border border-red-100 bg-white p-6 text-center shadow-sm">

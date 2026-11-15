@@ -46,6 +46,13 @@ export default defineConfig({
   reporter: 'html',
   use: {
     baseURL,
+    // Existing operational regressions exercise the English table interface.
+    // First-visit tests opt into an empty storage state explicitly.
+    storageState: { cookies: [], origins: [{ origin: new URL(baseURL).origin, localStorage: [
+      { name: 'nireq-language', value: 'en' },
+      { name: 'paimon-product-view-catalog', value: 'operations' },
+      { name: 'paimon-product-view-event', value: 'operations' },
+    ] }] },
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

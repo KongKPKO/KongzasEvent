@@ -6,6 +6,7 @@ export const FULL_BROWSER_SPECS = [
   "src/tests/production-readiness.spec.ts",
   "src/tests/release-cache.spec.ts",
   "src/tests/public-i18n-smoke.spec.ts",
+  "src/tests/default-preferences.spec.ts",
   "src/tests/queue-availability.spec.ts",
   "src/tests/customer-queue-ui.spec.ts",
   "src/tests/online-shop-discovery.spec.ts",
@@ -79,7 +80,7 @@ export const DOMAINS = {
     impact: 'P2', usage: 'high', rationale: 'Discovery and public shop entry are common customer paths.',
     smoke: ['src/tests/public-i18n-smoke.spec.ts › Public Nireq smoke › home supports discovery locators and language switching'],
     lightweight: browser('production-readiness', 'public-i18n-smoke', 'online-shop-discovery'),
-    full: browser('production-readiness', 'public-i18n-smoke', 'online-shop-discovery', 'seller-type-customer', 'event-card-order-link', 'release-cache'),
+    full: browser('production-readiness', 'public-i18n-smoke', 'default-preferences', 'online-shop-discovery', 'seller-type-customer', 'event-card-order-link', 'release-cache'),
     sql: sql('publication_security', 'public_online_campaign_discovery', 'seller_types'),
   },
   auth: {
@@ -111,8 +112,8 @@ export const DOMAINS = {
     impact: 'P1', usage: 'high', rationale: 'Catalog and allocation edits can oversell or corrupt shared stock.',
     smoke: browser('storefront'),
     lightweight: browser('storefront', 'production-inventory', 'catalog-sales-channels', 'event-catalog-setup'),
-    full: browser('storefront', 'production-inventory', 'catalog-sales-channels', 'event-catalog-setup', 'catalog-stock-retry', 'bundle-pos-last-stock', 'auto-bundle-editor', 'product-families-flow', 'product-types-flow', 'product-csv-import', 'product-csv-import-flow'),
-    sql: sql('stock_summary_lifecycle', 'stock_adjustment_flows', 'production_inventory', 'component_bundles', 'auto_bundle_matching', 'product_families', 'product_sales_channels', 'product_csv_import', 'event_catalog_initialization'),
+    full: browser('storefront', 'production-inventory', 'catalog-sales-channels', 'event-catalog-setup', 'catalog-stock-retry', 'bundle-pos-last-stock', 'auto-bundle-editor', 'product-families-flow', 'default-preferences', 'product-types-flow', 'product-csv-import', 'product-csv-import-flow'),
+    sql: sql('stock_summary_lifecycle', 'stock_adjustment_flows', 'event_allocation_integrity', 'production_inventory', 'component_bundles', 'auto_bundle_matching', 'product_families', 'product_sales_channels', 'product_csv_import', 'event_catalog_initialization'),
   },
   products: {
     impact: 'P2', usage: 'low', rationale: 'Product authoring and imports are less frequent and need their direct end-to-end regressions.',

@@ -1,6 +1,7 @@
 import { FilterSelect } from '../../components/ui/FilterSelect';
 import BundleEditor from '../../components/products/BundleEditor';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { useProductDisplayMode } from '../../hooks/useProductDisplayMode';
 import { fetchInventoryOverview, type InventoryOverview } from '../../lib/inventory';
 import { InventoryBreakdown } from '../../components/products/InventoryBreakdown';
 import { SupplyPolicyEditor, type SupplySettings } from '../../components/products/SupplyPolicyEditor';
@@ -321,7 +322,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [selectedTag, setSelectedTag] = useState('All');
    const [sortOption, setSortOption] = useState('name_asc');
    const [catalogFocus, setCatalogFocus] = useState<'all' | 'missing-images' | 'low-stock' | 'inactive'>('all');
-   const [catalogDisplayMode, setCatalogDisplayMode] = useState<'visual' | 'operations'>('operations');
+   const [catalogDisplayMode, setCatalogDisplayMode] = useProductDisplayMode('paimon-product-view-catalog');
    const [catalogActionMenuKey, setCatalogActionMenuKey] = useState<string | null>(null);
    const [catalogMenuPosition, setCatalogMenuPosition] = useState({ left: 8, top: 8 });
    const catalogActionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -344,7 +345,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const [eventCatalogCategory, setEventCatalogCategory] = useState('All');
    const [eventCatalogTag, setEventCatalogTag] = useState('All');
    const [eventCatalogView, setEventCatalogView] = useState<'all' | 'selling' | 'hidden' | 'overrides'>('all');
-   const [eventCatalogDisplayMode, setEventCatalogDisplayMode] = useState<'visual' | 'operations'>('operations');
+   const [eventCatalogDisplayMode, setEventCatalogDisplayMode] = useProductDisplayMode('paimon-product-view-event');
    const [eventCatalogBulkStock, setEventCatalogBulkStock] = useState('0');
    const [toast, setToast] = useState<{ tone?: 'info' | 'success' | 'warning' | 'error'; title: string; detail?: string } | null>(null);
    const [confirmAction, setConfirmAction] = useState<ProductConfirmAction>(null);
@@ -603,6 +604,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    </div>;
 
    const renderEventCatalogStockNumbers = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false) => {
+      const saved = eventCatalogSavedDraft[product.id];
+      draft = saved?.id ? saved : { ...draft, id: undefined, stock_total: '0', stock_reserved: 0, stock_sold: 0 };
       if (product.is_unlimited) {
          return (
             <div className={compact ? 'space-y-1' : 'min-w-[220px] space-y-1.5'}>
@@ -661,8 +664,8 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
    const renderEventCatalogStockFlow = (product: Product, draft: EventCatalogDraft[string], stockLimit: number, compact = false, table = false) => <div className="space-y-2">
       {product.product_kind === 'bundle' ? <div className="text-xs font-bold text-pink-800">{(() => {
          const limits = (product.bundle_items || []).map(item => {
-            const component = item.product_id ? eventCatalogDraft[item.product_id] : undefined;
-            if (!component?.is_enabled) return 0;
+            const component = item.product_id ? eventCatalogSavedDraft[item.product_id] : undefined;
+            if (!component?.id || !component.is_enabled) return 0;
             return component.is_unlimited ? Infinity : Math.floor(Math.max(0, Number(component.stock_total || 0) - (component.stock_reserved || 0) - (component.stock_sold || 0)) / item.quantity);
          });
          const quantity = limits.length ? Math.min(...limits) : 0;
@@ -1112,10 +1115,14 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       if (overAllocatedProduct) {
          const stockLimit = getEventCatalogStockLimit(overAllocatedProduct);
+         const saved = eventCatalogSavedDraft[overAllocatedProduct.id];
+         const additional = Math.max(stockLimit - Number(saved?.id ? saved.stock_total || 0 : 0), 0);
          showToast({
             tone: 'warning',
             title: uiText(language, 'Event stock exceeds available stock'),
-            detail: uiText(language, '{name} can allocate up to {count} for this event.').replace('{name}', overAllocatedProduct.name).replace('{count}', String(stockLimit)),
+            detail: language === 'th'
+               ? `${overAllocatedProduct.name}: สต็อกไม่เพียงพอ สามารถจัดสรรเพิ่มได้อีก ${additional} ชิ้น (รวมสูงสุด ${stockLimit} ชิ้น)`
+               : `${overAllocatedProduct.name}: Insufficient stock. You can allocate up to ${additional} more units (${stockLimit} total).`,
          });
          return;
       }
@@ -3553,6 +3560,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                        const draft = eventCatalogDraft[product.id] || buildEventCatalogFallback(product);
                                        const stockLimit = getEventCatalogStockLimit(product);
                                        const eventStockValue = Number(draft.stock_total || 0);
+                                       const savedAllocation = eventCatalogSavedDraft[product.id]?.id ? eventCatalogSavedDraft[product.id] : undefined;
                                        const hasAllocatedEventStock = !!draft.id && !draft.is_unlimited;
                                        const stockOverLimit =
                                           draft.is_enabled &&
@@ -3566,7 +3574,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
                                              <summary className="event-assignment-summary">
                                                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-gray-100"><ProductMedia product={product} getImageUrl={getMenuImageUrl} /></div>
                                                 <div className="min-w-0 flex-1"><strong className="block break-words text-sm">{product.name}</strong><span className="block break-words text-xs text-gray-600">{eventText('Main product')}: {productParents.find(parent => parent.id === product.parent_product_id)?.name || product.variant_group_name || product.name}{product.parent_product_id && ` · ${products.filter(item => item.parent_product_id === product.parent_product_id).length} ${eventText('items')}`}</span></div>
-                                                <div className="event-assignment-overview text-xs font-bold"><span>{draft.is_enabled ? (product.gift_only || !draft.is_sellable ? (eventText('Gift enabled')) : eventText('Selling')) : eventText('Hidden')}</span><span>{draft.price_override.trim() ? (eventText('Event price')) : (eventText('Base price'))}: {formatPrice(draft.price_override.trim() !== '' ? Number(draft.price_override) : product.price, eventCurrencyDraft || product.currency)}</span><span>{product.product_kind === 'bundle' ? (eventText('Shared component stock')) : draft.is_unlimited ? eventText('Unlimited') : `${eventText('Event allocation')}: ${draft.stock_total || 0}`}</span>{product.product_kind !== 'bundle' && !product.is_unlimited && Number.isFinite(stockLimit) && <span>{eventText('Central stock ready to allocate')}: {Math.max(stockLimit - Math.max(Number(draft.stock_total || 0), 0), 0)}</span>}{supplyPolicies[product.id]?.preorder_supply_mode === 'production' && <span>{eventText('Pre-order: made to order')}</span>}{supplyPolicies[product.id]?.postorder_supply_mode === 'production' && <span>{eventText('Post-order: made to order')}</span>}</div>
+                                                <div className="event-assignment-overview text-xs font-bold"><span>{draft.is_enabled ? (product.gift_only || !draft.is_sellable ? (eventText('Gift enabled')) : eventText('Selling')) : eventText('Hidden')}</span><span>{draft.price_override.trim() ? (eventText('Event price')) : (eventText('Base price'))}: {formatPrice(draft.price_override.trim() !== '' ? Number(draft.price_override) : product.price, eventCurrencyDraft || product.currency)}</span><span>{product.product_kind === 'bundle' ? (eventText('Shared component stock')) : draft.is_unlimited ? eventText('Unlimited') : `${eventText('Event allocation')}: ${savedAllocation?.stock_total || 0}`}</span>{product.product_kind !== 'bundle' && !product.is_unlimited && Number.isFinite(stockLimit) && <span>{eventText('Central stock ready to allocate')}: {Math.max(stockLimit - Math.max(Number(savedAllocation?.stock_total || 0), 0), 0)}</span>}{supplyPolicies[product.id]?.preorder_supply_mode === 'production' && <span>{eventText('Pre-order: made to order')}</span>}{supplyPolicies[product.id]?.postorder_supply_mode === 'production' && <span>{eventText('Post-order: made to order')}</span>}</div>
                                                 <span className="event-assignment-expand">{eventText('Configure')}</span>
                                              </summary>
                                           <div className="event-stock-grid items-start gap-3 px-4 py-3">

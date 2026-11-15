@@ -11,7 +11,7 @@ try {
     server.ssrLoadModule('/src/i18n.tsx'),
     server.ssrLoadModule('/src/lib/seo.ts'),
   ]);
-  const details = getSeoDetails('/for-sellers', 'en', 'paimonq.com');
+  const details = getSeoDetails('/for-sellers', 'th', 'paimonq.com');
   const content = renderToString(createElement(StaticRouter, { location: '/for-sellers' }, createElement(LanguageProvider, null, createElement(SellerLanding))));
   const escape = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   let html = await readFile('dist/index.html', 'utf8');

@@ -1,6 +1,7 @@
 import { FilterSelect } from '../../components/ui/FilterSelect';
 import { OrderProductionStock, useProductionOrderStock } from '../../components/products/OrderProductionStock';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { useProductDisplayMode } from '../../hooks/useProductDisplayMode';
 import { getOrderSequences } from '../../lib/orderSequences';
 import { SupplyPolicyEditor } from '../../components/products/SupplyPolicyEditor';
 import './sales-readiness.css';
@@ -114,9 +115,9 @@ export default function OnlineCampaignWorkspace() {
   const [productMembership, setProductMembership] = useState<ProductMembership>('all');
   const [productSort, setProductSort] = useState<'name_asc' | 'name_desc'>('name_asc');
   const [productPage, setProductPage] = useState(1);
-  const [productView, setProductView] = useState<'cards' | 'table'>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'cards' : 'table',
-  );
+  const [productDisplayMode, setProductDisplayMode] = useProductDisplayMode('paimon-product-view-campaign');
+  const productView = productDisplayMode === 'visual' ? 'cards' : 'table';
+  const setProductView = (view: 'cards' | 'table') => setProductDisplayMode(view === 'cards' ? 'visual' : 'operations');
   const evidenceRequest = useRef(0);
   const [evidencePreview, setEvidencePreview] = useState<{ order: CampaignOrder; url: string } | null>(null);
   const [evidenceLoadingId, setEvidenceLoadingId] = useState<string | null>(null);

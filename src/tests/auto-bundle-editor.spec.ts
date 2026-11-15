@@ -9,6 +9,7 @@ const token = randomUUID();
 const email = `auto-bundle-${token}@example.local`;
 const password = 'LocalAutoBundle123!';
 const componentName = `Auto component ${token.slice(0, 8)}`;
+const componentSku = `BUNDLE-${token.slice(0, 8).toUpperCase()}`;
 const bundleName = `Auto bundle ${token.slice(0, 8)}`;
 let service: SupabaseClient;
 let artistId = '';
@@ -32,6 +33,7 @@ test.beforeAll(async () => {
   must(await service.from('products').insert({
     artist_id: artistId,
     name: componentName,
+    sku: componentSku,
     price: 100,
     stock_total: 20,
     is_unlimited: false,
@@ -61,8 +63,9 @@ test('bundle editor saves and reloads the explicit automatic matching opt-in', a
   await dialog.getByLabel('Bundle name', { exact: true }).fill(bundleName);
   await dialog.getByLabel('Bundle price', { exact: true }).fill('80');
   await dialog.getByLabel('Automatically bundle matching items').check();
-  await dialog.getByLabel('Search products to add').fill(componentName);
+  await dialog.getByLabel('Search products to add').fill(componentSku);
   await dialog.getByRole('button', { name: componentName, exact: true }).click();
+  await expect(dialog.getByText(componentSku, { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -78,6 +81,7 @@ test('bundle editor saves and reloads the explicit automatic matching opt-in', a
   must(saved);
   expect(saved.data!.auto_bundle_enabled).toBe(true);
 
+  await page.getByRole('button', { name: 'Product cards', exact: true }).click();
   await page.getByRole('button', { name: `Edit ${bundleName}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit bundle', exact: true });
   await expect(edit.getByLabel('Automatically bundle matching items')).toBeChecked();

@@ -55,9 +55,13 @@ update public.online_campaigns set publication_status = 'published' where id = '
 set local role anon;
 select lives_ok($$select public.quote_sale_promotions(null,null,'d0000000-0000-4000-8000-000000000002','[]','[]','[]')$$, 'anonymous can quote an open public campaign');
 reset role;
-update public.online_campaigns set closes_at = now() - interval '1 minute' where id = 'd0000000-0000-4000-8000-000000000002';
+-- Use a separately created ended campaign: changing the open campaign into the
+-- past would exercise the schedule editor, not promotion authorization.
+insert into public.online_campaigns (id, artist_id, name, slug, opens_at, closes_at, publication_status)
+values ('d0000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000001',
+  'Ended auth test', 'rpc-auth-ended', now() - interval '2 hours', now() - interval '1 minute', 'published');
 set local role anon;
-select throws_ok($$select public.quote_sale_promotions(null,null,'d0000000-0000-4000-8000-000000000002','[]','[]','[]')$$,
+select throws_ok($$select public.quote_sale_promotions(null,null,'d0000000-0000-4000-8000-000000000006','[]','[]','[]')$$,
   'P0001', 'promotion_context_closed', 'anonymous cannot quote an ended campaign');
 reset role;
 -- The same calculator serves all three event phases.
@@ -83,8 +87,6 @@ select throws_ok(format('select public.quote_sale_promotions(%L,%L,null,%L,%L,%L
   'P0001', 'promotion_context_closed', 'disabled event phase is rejected: ' || phase)
 from unnest(array['live','preorder','postorder']) phase;
 reset role;
-update public.online_campaigns set closes_at = now() + interval '1 day'
-where id = 'd0000000-0000-4000-8000-000000000002';
 update public.artists set is_public = false where id = 'd0000000-0000-4000-8000-000000000001';
 set local role anon;
 select throws_ok($$select public.quote_sale_promotions(null,null,'d0000000-0000-4000-8000-000000000002','[]','[]','[]')$$,

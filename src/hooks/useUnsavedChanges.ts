@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 export function useUnsavedChanges(dirty: boolean, message: string) {
+  const allowedUnload = useRef(false);
+  const allowNextUnload = useCallback(() => { allowedUnload.current = true; }, []);
   useEffect(() => {
     if (!dirty) return;
-    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (allowedUnload.current) { allowedUnload.current = false; return; } event.preventDefault(); event.returnValue = ''; };
     const onLink = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const link = (event.target as Element | null)?.closest('a[href]') as HTMLAnchorElement | null;
@@ -25,4 +27,5 @@ export function useUnsavedChanges(dirty: boolean, message: string) {
     document.addEventListener('click', onLink, true);
     return () => { window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('popstate', onPopState, true); document.removeEventListener('click', onLink, true); };
   }, [dirty, message]);
+  return allowNextUnload;
 }

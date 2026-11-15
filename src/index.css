@@ -61,6 +61,27 @@ body {
   padding-left: 2.75rem;
 }
 
+/* Creator workspace selects keep the platform picker and share one readable trigger. */
+:is(.catalog-workspace, .campaign-workspace, .promotion-workspace) select:not([multiple]):not([size]) {
+  appearance: none;
+  min-height: 44px;
+  max-width: 100%;
+  padding-right: 2.5rem;
+  border-radius: 0.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233c4961' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+}
+
+:is(.catalog-workspace, .campaign-workspace, .promotion-workspace) select:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+:is(.catalog-workspace, .campaign-workspace, .promotion-workspace) select:has(+ svg) {
+  background-image: none;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

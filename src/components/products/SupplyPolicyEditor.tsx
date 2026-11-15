@@ -12,7 +12,7 @@ export interface SupplySettings {
 }
 
 export function SupplyPolicyEditor({ productId, eventId, campaignId, settings, onSaved }: {
-  productId: string; eventId?: string; campaignId?: string; settings: SupplySettings; onSaved?: () => void;
+  productId: string; eventId?: string; campaignId?: string; settings: SupplySettings; onSaved?: (settings: SupplySettings) => void;
 }) {
   const { language } = useI18n();
   const th = language === 'th';
@@ -29,8 +29,9 @@ export function SupplyPolicyEditor({ productId, eventId, campaignId, settings, o
     try {
       const { error } = await supabase.rpc('configure_product_supply', { p_product_id: productId, p_event_id: eventId || null, p_campaign_id: campaignId || null, p_phase: phase, p_mode: mode, p_limit: limit ?? null, p_expected: { mode: phase === 'campaign' ? saved.supply_mode || 'stock' : saved[`${phase}_supply_mode`] || 'stock', limit: (phase === 'campaign' ? saved.production_limit : saved[`${phase}_production_limit`]) ?? null } });
       if (error) throw error;
-      setSaved(current => phase === 'campaign' ? { ...current, supply_mode: mode, production_limit: limit } : { ...current, [`${phase}_supply_mode`]: mode, [`${phase}_production_limit`]: limit }); setMessage(th ? 'บันทึกวิธีขายแล้ว ออเดอร์เดิมใช้เงื่อนไขเดิม' : 'Saved. Existing orders keep their original supply policy.');
-      onSaved?.();
+      const next = phase === 'campaign' ? { ...saved, supply_mode: mode, production_limit: limit } : { ...saved, [`${phase}_supply_mode`]: mode, [`${phase}_production_limit`]: limit };
+      setSaved(next); setMessage(th ? 'บันทึกวิธีขายแล้ว ออเดอร์เดิมใช้เงื่อนไขเดิม' : 'Saved. Existing orders keep their original supply policy.');
+      onSaved?.(next);
     } catch (error) {
       const detail = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error);
       setMessage(detail.includes('supply_policy_changed_reload') ? (th ? 'วิธีขายถูกแก้จากอุปกรณ์อื่น กรุณาโหลดหน้าใหม่ก่อนบันทึก' : 'Policy changed on another device. Reload before saving.') : detail.includes('production_limit_below_orders') ? (th ? 'เพดานต้องไม่น้อยกว่ายอดที่รับออเดอร์ไว้แล้ว' : 'The cap cannot be below accepted orders.') : (th ? `บันทึกไม่สำเร็จ: ${detail}` : `Could not save: ${detail}`));

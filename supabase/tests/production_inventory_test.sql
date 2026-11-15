@@ -166,11 +166,13 @@ select is((select stock_reserved from public.products where id=(select product f
 
 
 -- Postorder stock remains allocated after the physical event ends.
-update public.event_products set stock_total=10 where id=(select ep from inv_ids);
-update public.events set start_date=now()-interval '2 days',end_date=now()-interval '1 day',postorder_enabled=true,
- postorder_opens_at=now()-interval '1 hour',postorder_closes_at=now()+interval '1 day',preorder_enabled=false where id=(select event from inv_ids);
+create temp table postorder_event as select gen_random_uuid() id;
+insert into public.events(id,artist_id,event_name,status,start_date,end_date,postorder_enabled,postorder_opens_at,postorder_closes_at)
+ select p.id,i.artist,'Postorder event','Ended',now()-interval '2 days',now()-interval '1 day',true,now()-interval '1 hour',now()+interval '1 day' from postorder_event p,inv_ids i;
+insert into public.event_products(event_id,artist_id,product_id,stock_total,is_unlimited,is_enabled,preorder_supply_mode)
+ select p.id,i.artist,i.product,10,false,true,'production' from postorder_event p,inv_ids i;
 select is((select available from public.list_product_stock_summaries((select artist from inv_ids)) where product_id=(select product from inv_ids)),17,'postorder keeps10 physically allocated, leaving17');
-select is((select is_unlimited from public.list_event_products((select event from inv_ids)) where id=(select product from inv_ids)),false,'postorder uses stock by default despite preorder production policy');
+select is((select is_unlimited from public.list_event_products((select id from postorder_event)) where id=(select product from inv_ids)),false,'postorder uses stock by default despite preorder production policy');
 
 -- A legacy Event without its own catalog cannot spend stock already assigned to another channel.
 create temp table legacy_live_event as select gen_random_uuid() id;

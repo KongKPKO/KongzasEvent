@@ -433,12 +433,12 @@ select throws_ok(
 );
 
 -- Timed post-order sales do not reopen physical event queue intake.
-update public.events set start_date=now()-interval '2 hours',end_date=now()-interval '1 hour',is_booth_open=true,
- postorder_enabled=true,postorder_opens_at=now()-interval '30 minutes',postorder_closes_at=now()+interval '1 day'
-where id=(select event from pos_queue_ids);
-select throws_ok($$select * from public.create_queue_ticket((select artist from pos_queue_ids),(select event from pos_queue_ids),'ended-event-fingerprint')$$,'P0001','event_not_in_window','ended event rejects queue intake even while post-order is enabled and booth is open');
-update public.events set status='Ended' where id=(select event from pos_queue_ids);
-select throws_ok($$select * from public.create_queue_ticket((select artist from pos_queue_ids),(select event from pos_queue_ids),'ended-event-fingerprint')$$,'P0001','event_not_active','explicitly ended event rejects new queue tickets');
+create temp table ended_queue_event as select gen_random_uuid() id;
+insert into public.events(id,artist_id,event_name,start_date,end_date,status,is_booth_open,postorder_enabled,postorder_opens_at,postorder_closes_at)
+select e.id,i.artist,'Ended queue fixture',now()-interval '2 hours',now()-interval '1 hour','Confirmed',true,true,now()-interval '30 minutes',now()+interval '1 day' from ended_queue_event e,pos_queue_ids i;
+select throws_ok($$select * from public.create_queue_ticket((select artist from pos_queue_ids),(select id from ended_queue_event),'ended-event-fingerprint')$$,'P0001','event_not_in_window','ended event rejects queue intake even while post-order is enabled and booth is open');
+update public.events set status='Ended' where id=(select id from ended_queue_event);
+select throws_ok($$select * from public.create_queue_ticket((select artist from pos_queue_ids),(select id from ended_queue_event),'ended-event-fingerprint')$$,'P0001','event_not_active','explicitly ended event rejects new queue tickets');
 
 
 -- Booth control is distinct from ticket/announcement operations.

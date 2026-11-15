@@ -13,6 +13,7 @@ interface EventNavTabsProps {
   children?: ReactNode;
   active?: EventTabKey;
   actorRole?: ActorRole | null;
+  beforeNavigate?: () => boolean;
   // Accepted for call-site compatibility; tabs no longer vary by mode.
   sellingMode?: string | null;
 }
@@ -22,7 +23,7 @@ interface EventNavTabsProps {
 // Pre-order and post-event are separate timelines of one event, so both order
 // tabs are always shown — a finished pre-order phase stays viewable after the
 // post-event store opens.
-export default function EventNavTabs({ eventId, eventName, active, actorRole, children }: EventNavTabsProps) {
+export default function EventNavTabs({ eventId, eventName, active, actorRole, children, beforeNavigate }: EventNavTabsProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
@@ -60,7 +61,7 @@ export default function EventNavTabs({ eventId, eventName, active, actorRole, ch
 
   const openTab = (key: string) => {
     const tab = tabs.find(item => item.key === key && item.visible);
-    if (!tab) return;
+    if (!tab || (tab.key !== active && beforeNavigate && !beforeNavigate())) return;
     const dates = new URLSearchParams();
     if (tab.key === 'dashboard' || tab.key === 'history') {
       for (const name of ['from', 'to']) { const value = searchParams.get(name); if (value) dates.set(name, value); }
@@ -71,7 +72,7 @@ export default function EventNavTabs({ eventId, eventName, active, actorRole, ch
   return (
     <section className="mb-5" aria-label={th ? 'อีเวนต์ที่กำลังจัดการ' : 'Current event'} data-event-context={eventId}>
       <header className="mb-3 rounded-2xl border border-pink-100 bg-gradient-to-r from-pink-50 to-white px-4 py-4 sm:px-5">
-        <button type="button" onClick={() => navigate('/manage-events?view=all')} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg text-xs font-bold text-pink-800 hover:text-pink-600">
+        <button type="button" onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate('/manage-events?view=all'); }} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg text-xs font-bold text-pink-800 hover:text-pink-600">
           <ArrowLeft size={15} aria-hidden="true" />{th ? 'ดูอีเวนต์ทั้งหมด' : 'All events'}
         </button>
         <p className="text-xs font-bold text-pink-700">{th ? 'กำลังจัดการอีเวนต์' : 'Event workspace'}</p>
@@ -103,7 +104,7 @@ export default function EventNavTabs({ eventId, eventName, active, actorRole, ch
             <button
               key={action.label}
               type="button"
-              onClick={() => navigate(action.path)}
+              onClick={() => { if (!beforeNavigate || beforeNavigate()) navigate(action.path); }}
               className="inline-flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-900 px-3 text-sm font-black text-white hover:bg-slate-800"
             >
               <action.icon size={15} /> {uiText(language, action.label)}

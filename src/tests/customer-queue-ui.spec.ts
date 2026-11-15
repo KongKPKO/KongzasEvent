@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { ensureOwnerArtistFixture } from './helpers/adminFixture';
+import AxeBuilder from '@axe-core/playwright';
 
 test('customer queue preserves a ticket across browsing and shows service completion', async ({ page }) => {
   const slug = `queue-ui-${randomUUID().slice(0, 8)}`;
@@ -13,6 +14,22 @@ test('customer queue preserves a ticket across browsing and shows service comple
     await page.goto(`/${slug}/queue`);
     await page.getByRole('button', { name: 'Get Ticket', exact: true }).click();
     const ticket = page.getByRole('region', { name: 'Your queue ticket', exact: true });
+    await expect(ticket).toContainText('#1');
+    const leave = page.getByRole('button', { name: 'Leave Queue', exact: true });
+    await leave.click();
+    const dialog = page.getByRole('dialog', { name: 'Leave Queue?' });
+    const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
+    const confirm = dialog.getByRole('button', { name: 'Leave Queue', exact: true });
+    const audit = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(audit.violations).toEqual([]);
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(confirm).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(leave).toBeFocused();
     await expect(ticket).toContainText('#1');
     await expect(ticket).toContainText('Estimated time to call: 14-52 min (0 waiting ahead)');
     const browse = page.getByRole('link', { name: /Browse this creator’s work/ });

@@ -98,7 +98,7 @@ test.describe('Public Nireq smoke', () => {
   });
 
   test('creator application form exposes stable fields and validation', async ({ page }, testInfo) => {
-    await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
+    await page.addInitScript(() => { if (!window.localStorage.getItem('nireq-language')) window.localStorage.setItem('nireq-language', 'en'); });
     await page.goto('/creator/register');
 
     await expect(page.getByTestId('creator-register-form')).toBeVisible();
@@ -175,7 +175,7 @@ test.describe('Public Nireq fixture smoke', () => {
   });
 
   test('customer home and menu work anonymously for intentionally public artists', async ({ page }) => {
-    await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
+    await page.addInitScript(() => { if (!window.localStorage.getItem('nireq-language')) window.localStorage.setItem('nireq-language', 'en'); });
     await page.context().clearCookies();
 
     const currentEventsRequest = page.waitForRequest((request) => {
@@ -203,7 +203,7 @@ test.describe('Public Nireq fixture smoke', () => {
   });
 
   test('private creator slug remains hidden from anonymous public routes', async ({ page }) => {
-    await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
+    await page.addInitScript(() => { if (!window.localStorage.getItem('nireq-language')) window.localStorage.setItem('nireq-language', 'en'); });
     await page.context().clearCookies();
     await page.goto(`/${privateSlug}/home`);
 
@@ -212,7 +212,7 @@ test.describe('Public Nireq fixture smoke', () => {
   });
 
   test('unknown creator slug shows a not found state', async ({ page }) => {
-    await page.addInitScript(() => window.localStorage.removeItem('nireq-language'));
+    await page.addInitScript(() => { if (!window.localStorage.getItem('nireq-language')) window.localStorage.setItem('nireq-language', 'en'); });
     await page.goto('/missing-creator-smoke/home');
 
     await expect(page.getByRole('heading', { name: 'Shop not found' })).toBeVisible();

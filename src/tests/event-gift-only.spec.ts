@@ -21,6 +21,7 @@ test('event gift-only setting is saved independently and global gifts are labell
     await new LoginPage(page).login(email, password);
     await expect(page).toHaveURL(/manage-events/);
     await page.goto(`/manage-events/${eventId}/catalog`);
+    await page.getByRole('button', { name: 'Visual', exact: true }).click();
     const normalCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Ordinary item', exact: true }) });
     const giftCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Gift item', exact: true }) });
     await expect(giftCard.getByText('Gift enabled', { exact: true })).toBeVisible();
@@ -30,8 +31,10 @@ test('event gift-only setting is saved independently and global gifts are labell
     await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
     await expect.poll(async () => (await service.from('event_products').select('is_sellable').eq('event_id', eventId).eq('product_id', ordinary).single()).data?.is_sellable).toBe(false);
     await page.reload();
+    await page.getByRole('button', { name: 'Visual', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: 'Gift only in this event: Ordinary item' })).toBeChecked();
     await page.getByRole('button', { name: 'Operations', exact: true }).click();
+    await page.locator('details.event-assignment-item').filter({ hasText: 'Ordinary item' }).locator(':scope > summary').click();
     await expect(page.getByRole('checkbox', { name: 'Gift only in this event: Ordinary item' })).toBeChecked();
     await expect.poll(async () => (await service.from('products').select('gift_only').eq('id', ordinary).single()).data?.gift_only).toBe(false);
   } finally {

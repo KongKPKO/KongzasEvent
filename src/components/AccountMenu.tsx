@@ -18,10 +18,14 @@ export default function AccountMenu({
   actorRole,
   userEmail,
   inline = false,
+  beforeNavigate,
+  beforeReload,
 }: {
   actorRole?: ActorRole;
   userEmail?: string | null;
   inline?: boolean;
+  beforeNavigate?: () => boolean;
+  beforeReload?: () => void;
 }) {
   const { language } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -63,11 +67,12 @@ export default function AccountMenu({
   }, [inline, open]);
 
   const switchWorkspace = async (workspace: ActorWorkspace) => {
-    if (workspace.artist_id === selectedId || switchingId) return;
+    if (workspace.artist_id === selectedId || switchingId || (beforeNavigate && !beforeNavigate())) return;
     setSwitchingId(workspace.artist_id);
     setError('');
     try {
       const context = await selectActorWorkspace(workspace.artist_id);
+      beforeReload?.();
       window.location.replace(getDefaultWorkspacePath(context.role));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Could not switch workspace.');
@@ -76,11 +81,12 @@ export default function AccountMenu({
   };
 
   const logout = async () => {
-    if (signingOut) return;
+    if (signingOut || (beforeNavigate && !beforeNavigate())) return;
     setSigningOut(true);
     setError('');
     try {
       await signOutLocally(userId || null);
+      beforeReload?.();
       window.location.replace('/manage-login');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Could not sign out. Please try again.');

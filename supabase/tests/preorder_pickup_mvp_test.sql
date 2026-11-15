@@ -252,15 +252,15 @@ select throws_ok(
   'pre-order creation fails when event mode is not preorder'
 );
 
-update public.events
-set selling_mode = 'preorder',
-    preorder_opens_at = now() + interval '1 hour',
-    preorder_closes_at = now() + interval '2 hours'
-where id = (select event_id from _preorder_ids);
+update public.events set selling_mode = 'preorder' where id = (select event_id from _preorder_ids);
+create temporary table preorder_window_fixtures as select gen_random_uuid() future_id, gen_random_uuid() past_id;
+insert into public.events(id,artist_id,event_name,start_date,end_date,status,selling_mode,preorder_enabled,preorder_opens_at,preorder_closes_at)
+select future_id,artist_id,'Future preorder fixture',now()+interval '1 day',now()+interval '2 days','Confirmed','preorder',true,now()+interval '1 hour',now()+interval '2 hours' from preorder_window_fixtures,_preorder_ids
+union all select past_id,artist_id,'Past preorder fixture',now()+interval '1 day',now()+interval '2 days','Confirmed','preorder',true,now()-interval '2 hours',now()-interval '1 hour' from preorder_window_fixtures,_preorder_ids;
 
 select throws_ok(
   $$ select * from public.create_preorder_with_stock(
-    (select event_id from _preorder_ids),
+    (select future_id from preorder_window_fixtures),
     jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
     'Too Early',
     '',
@@ -274,14 +274,9 @@ select throws_ok(
   'pre-order creation fails before preorder_opens_at'
 );
 
-update public.events
-set preorder_opens_at = now() - interval '2 hours',
-    preorder_closes_at = now() - interval '1 hour'
-where id = (select event_id from _preorder_ids);
-
 select throws_ok(
   $$ select * from public.create_preorder_with_stock(
-    (select event_id from _preorder_ids),
+    (select past_id from preorder_window_fixtures),
     jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
     'Too Late',
     '',
@@ -294,11 +289,6 @@ select throws_ok(
   'preorder_closed',
   'pre-order creation fails after preorder_closes_at'
 );
-
-update public.events
-set preorder_opens_at = now() - interval '1 hour',
-    preorder_closes_at = now() + interval '12 hours'
-where id = (select event_id from _preorder_ids);
 
 select results_eq(
   $$ select payment_status, pickup_status from public.confirm_preorder_payment((select first_order_id from _preorder_ids), 'bank checked') $$,
@@ -653,18 +643,19 @@ set payment_deadline_at = now() + interval '12 hours'
 where event_id = (select event_id from _preorder_ids);
 
 create temp table _expire_pickup_preorder as
-select *
-from public.create_preorder_with_stock(
-  (select event_id from _preorder_ids),
-  jsonb_build_array(jsonb_build_object('product_id', (select product_id from _preorder_ids), 'quantity', 1)),
-  'Expire Pickup Customer',
-  '',
-  '',
-  gen_random_uuid(),
-  '',
-  '@expire-pickup',
-  'expire-pickup@example.com'
-);
+select gen_random_uuid() order_id, gen_random_uuid() event_id, gen_random_uuid() event_product_id,
+       upper(replace(gen_random_uuid()::text, '-', '')) pickup_code;
+insert into public.events(id,artist_id,event_name,start_date,end_date,status,selling_mode)
+select e.event_id,i.artist_id,'Ended pickup event',now()-interval '2 days',now()-interval '1 day','Ended','closed'
+from _expire_pickup_preorder e,_preorder_ids i;
+insert into public.event_products(id,event_id,product_id,artist_id,stock_total,stock_reserved,is_unlimited,is_enabled)
+select e.event_product_id,e.event_id,i.product_id,i.artist_id,1,0,false,true from _expire_pickup_preorder e,_preorder_ids i;
+insert into public.orders(id,event_id,status,order_type,pickup_status,pickup_code,currency,customer_name,customer_email)
+select order_id,event_id,'draft','preorder','not_required',pickup_code,'THB','Expire Pickup Customer','expire-pickup@example.com' from _expire_pickup_preorder;
+insert into public.order_items(order_id,product_id,event_product_id,quantity,price_per_unit,currency)
+select e.order_id,i.product_id,e.event_product_id,1,100,'THB' from _expire_pickup_preorder e,_preorder_ids i;
+insert into public.order_payments(order_id,event_id,artist_id,payment_status,amount_expected,currency)
+select e.order_id,e.event_id,i.artist_id,'awaiting_payment',100,'THB' from _expire_pickup_preorder e,_preorder_ids i;
 
 update _preorder_ids set expire_pickup_order_id = (select order_id from _expire_pickup_preorder);
 
@@ -683,19 +674,14 @@ select isnt_empty(
   'no-show expiry test payment can be confirmed'
 );
 
-update public.events
-set end_date = now() - interval '1 minute',
-    selling_mode = 'closed'
-where id = (select event_id from _preorder_ids);
-
 select results_eq(
-  $$ select expired_count from public.expire_preorders_for_event((select event_id from _preorder_ids)) $$,
+  $$ select expired_count from public.expire_preorders_for_event((select event_id from _expire_pickup_preorder)) $$,
   $$ values (1) $$,
   'owner can expire confirmed no-show pre-orders after event end'
 );
 
 select is(
-  (select stock_reserved from public.event_products where id = (select event_product_id from _preorder_ids)),
+  (select stock_reserved from public.event_products where id = (select event_product_id from _expire_pickup_preorder)),
   0,
   'no-show expiry releases reserved stock'
 );

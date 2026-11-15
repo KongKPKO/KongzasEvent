@@ -41,7 +41,7 @@ begin
   values (v_artist, 'promotion.owner@nireq.local', 'owner', 'active');
 
   insert into public.events (id, artist_id, event_name, start_date, end_date)
-  values (v_event, v_artist, 'Promotion Event', now() - interval '1 hour', now() + interval '1 day');
+  values (v_event, v_artist, 'Promotion Event', now() + interval '1 day', now() + interval '2 days');
 
   insert into public.online_campaigns (
     id, artist_id, name, slug, opens_at, closes_at, publication_status
@@ -596,15 +596,17 @@ do $$
 declare
   v_order_id uuid;
 begin
-  update public.events
-  set status = 'Ended',
-      start_date = now() - interval '2 days',
-      end_date = now() - interval '1 day',
-      preorder_enabled = false,
-      postorder_enabled = true,
-      postorder_opens_at = now() - interval '1 hour',
-      postorder_closes_at = now() + interval '1 day'
-  where id = (select event_id from _promotion_ids);
+  create temp table _promotion_event_switch as
+  select event_id live_id, gen_random_uuid() post_id from _promotion_ids;
+  update public.event_products set stock_total = 0 where event_id = (select live_id from _promotion_event_switch);
+  insert into public.events(id,artist_id,event_name,status,start_date,end_date,postorder_enabled,postorder_opens_at,postorder_closes_at)
+  select s.post_id,i.artist_id,'Postorder promotion event','Ended',now()-interval '2 days',now()-interval '1 day',true,now()-interval '1 hour',now()+interval '1 day'
+  from _promotion_event_switch s,_promotion_ids i;
+  insert into public.event_products(event_id,product_id,artist_id,is_enabled,price_override,stock_total,is_unlimited)
+  select s.post_id,i.product_id,i.artist_id,true,200,10,false from _promotion_event_switch s,_promotion_ids i;
+  insert into public.event_payment_methods(event_id,artist_id,method_type,display_name,payment_deadline_at)
+  select s.post_id,i.artist_id,'promptpay','PromptPay',now()+interval '1 day' from _promotion_event_switch s,_promotion_ids i;
+  update _promotion_ids set event_id = (select post_id from _promotion_event_switch);
 
   insert into public.promotion_assignments (
     promotion_id, artist_id, event_id, event_phase
@@ -668,6 +670,10 @@ select * from private.expire_preorder_stock_hold(
   (select order_id from _promotion_postorder)
 );
 
+update public.event_products set stock_total = 0 where event_id = (select post_id from _promotion_event_switch);
+update public.event_products set stock_total = 10 where event_id = (select live_id from _promotion_event_switch);
+update _promotion_ids set event_id = (select live_id from _promotion_event_switch);
+
 do $$
 declare
   v_order_id uuid;
@@ -679,6 +685,7 @@ begin
   set status = 'Confirmed',
       start_date = now() - interval '1 hour',
       end_date = now() + interval '1 day',
+      preorder_enabled = false,
       postorder_enabled = false,
       is_booth_open = true
   where id = (select event_id from _promotion_ids);

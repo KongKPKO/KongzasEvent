@@ -286,6 +286,51 @@ test('event save failure retains the draft and both save controls prevent duplic
   must(await service.from('events').update({ currency_override: null }).eq('id', eventId));
 });
 
+test('initial hidden event allocation reports the latest stock after backend rejection in both languages', async ({ page }) => {
+  test.setTimeout(90_000);
+  const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
+  must(product);
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  must(await service.from('products').update({ stock_total: 25 }).eq('id', product.data!.id));
+  await new LoginPage(page).goto();
+  await new LoginPage(page).login(email, password);
+  await expect(page).toHaveURL(/manage-events/);
+  await page.goto(`/manage-events/${eventId}/catalog`);
+  const item = page.locator('details.event-assignment-item').filter({ hasText: 'Simple service' });
+  await item.locator(':scope > summary').click();
+  await item.getByLabel('Sell', { exact: true }).uncheck();
+  const stock = item.getByLabel('Event stock for Simple service');
+  await stock.fill('26');
+  const response = page.waitForResponse(result => result.url().includes('/rpc/save_event_catalog') && result.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  expect((await response).status()).toBeGreaterThanOrEqual(400);
+  await expect(page.getByText('Only 25 units are available in central stock, but you requested 26 units. Reduce the quantity or add stock to the central catalog first.')).toBeVisible();
+  await expect(stock).toHaveValue('26');
+  expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data).toBeNull();
+  must(await service.from('products').update({ stock_total: 20 }).eq('id', product.data!.id));
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText('Only 20 units are available in central stock, but you requested 26 units. Reduce the quantity or add stock to the central catalog first.')).toBeVisible();
+  await page.route('**/rest/v1/rpc/calculate_product_event_allocation_available', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"stock unavailable"}' }));
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText('Central stock may be insufficient. Check the latest stock and try again.')).toBeVisible();
+  await page.unroute('**/rest/v1/rpc/calculate_product_event_allocation_available');
+  must(await service.from('products').update({ stock_total: 25 }).eq('id', product.data!.id));
+  must(await service.from('event_products').insert({ artist_id: artistId, event_id: eventId, product_id: product.data!.id, stock_total: 5, stock_sold: 0, stock_reserved: 0, is_enabled: false, is_unlimited: false }));
+  await page.route('**/rest/v1/rpc/save_event_catalog', route => route.fulfill({ status: 400, contentType: 'application/json', body: '{"message":"event_stock_exceeds_catalog_stock"}' }), { times: 1 });
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect(page.getByText('Central stock may be insufficient. Check the latest stock and try again.')).toBeVisible();
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  await selectLanguage(page, 'th');
+  await page.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง', exact: true }).first().click();
+  await expect(page.getByText('สต็อกกลางพร้อมจัดสรรมี 25 ชิ้น แต่คุณต้องการจัดสรร 26 ชิ้น กรุณาลดจำนวนหรือเพิ่มสต็อกในคลังกลางก่อน')).toBeVisible();
+  await selectLanguage(page, 'en');
+  await stock.fill('25');
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
+  await expect.poll(async () => (await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data?.stock_total).toBe(25);
+  must(await service.from('event_products').delete().eq('event_id', eventId).eq('product_id', product.data!.id));
+  must(await service.from('products').update({ stock_total: 20 }).eq('id', product.data!.id));
+});
+
 test('event allocation RPC rejects over-allocation without persisting changes', async () => {
   const product = await service.from('products').select('id').eq('artist_id', artistId).eq('name', 'Simple service').single();
   must(product);
@@ -321,12 +366,12 @@ test('event allocation draft never replaces saved availability when validation o
   await stock.fill('100');
   await expect(item.locator(':scope > summary')).toContainText('Event allocation: 0');
   await page.getByRole('button', { name: 'Save Changes', exact: true }).first().click();
-  await expect(page.getByText(/Insufficient stock/)).toBeVisible();
+  await expect(page.getByText('Only 20 units are available in central stock, but you requested 100 units. Reduce the quantity or add stock to the central catalog first.')).toBeVisible();
   await expect(stock).toHaveValue('100');
   expect((await service.from('event_products').select('stock_total').eq('event_id', eventId).eq('product_id', product.data!.id).maybeSingle()).data).toBeNull();
   await selectLanguage(page, 'th');
   await page.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง', exact: true }).first().click();
-  await expect(page.getByText(/สต็อกไม่เพียงพอ สามารถจัดสรรเพิ่มได้อีก 20 ชิ้น/)).toBeVisible();
+  await expect(page.getByText('สต็อกกลางพร้อมจัดสรรมี 20 ชิ้น แต่คุณต้องการจัดสรร 100 ชิ้น กรุณาลดจำนวนหรือเพิ่มสต็อกในคลังกลางก่อน')).toBeVisible();
   await selectLanguage(page, 'en');
   await stock.fill('6');
   await page.route('**/rest/v1/rpc/save_event_catalog', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"test failure"}' }), { times: 1 });

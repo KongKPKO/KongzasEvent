@@ -1090,6 +1090,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       });
    };
 
+   const getFreshInitialAllocationCapacity = async (productId: string, eventId: string): Promise<number | null> => {
+      try {
+         const current = await supabase.from('event_products').select('id').eq('event_id', eventId).eq('product_id', productId).maybeSingle();
+         if (current.error || current.data) return null;
+         const result = await supabase.rpc('calculate_product_event_allocation_available', {
+            p_product_id: productId, p_exclude_event_id: null,
+         });
+         return !result.error && typeof result.data === 'number' && Number.isFinite(result.data) ? result.data : null;
+      } catch (error) {
+         console.error('[ManageProducts] stock check failed:', error);
+         return null;
+      }
+   };
+
    const saveEventCatalog = async () => {
       if (!selectedEventId || !artistId || eventCatalogSaveLock.current || eventCatalogReloadRequired) return;
 
@@ -1116,15 +1130,36 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
       if (overAllocatedProduct) {
          const stockLimit = getEventCatalogStockLimit(overAllocatedProduct);
          const saved = eventCatalogSavedDraft[overAllocatedProduct.id];
-         const additional = Math.max(stockLimit - Number(saved?.id ? saved.stock_total || 0 : 0), 0);
-         showToast({
-            tone: 'warning',
-            title: uiText(language, 'Event stock exceeds available stock'),
-            detail: language === 'th'
-               ? `${overAllocatedProduct.name}: สต็อกไม่เพียงพอ สามารถจัดสรรเพิ่มได้อีก ${additional} ชิ้น (รวมสูงสุด ${stockLimit} ชิ้น)`
-               : `${overAllocatedProduct.name}: Insufficient stock. You can allocate up to ${additional} more units (${stockLimit} total).`,
-         });
-         return;
+         if (!saved?.id) {
+            eventCatalogSaveLock.current = true;
+            setEventCatalogSaving(true);
+            let data: number | null = null;
+            try {
+               data = await getFreshInitialAllocationCapacity(overAllocatedProduct.id, selectedEventId);
+            } finally {
+               eventCatalogSaveLock.current = false;
+               setEventCatalogSaving(false);
+            }
+            if (data === null) {
+               showToast({ tone: 'error', title: language === 'th' ? 'ตรวจสอบสต็อกไม่สำเร็จ' : 'Unable to check stock', detail: language === 'th' ? 'ตรวจสอบสต็อกล่าสุดไม่ได้ กรุณาลองใหม่อีกครั้ง' : 'Could not check the latest stock. Please try again.' });
+               return;
+            }
+            setEventCatalogStockLimitByProduct(current => ({ ...current, [overAllocatedProduct.id]: data }));
+            if (Number(eventCatalogDraft[overAllocatedProduct.id].stock_total) > data) {
+               showToast({ tone: 'error', title: language === 'th' ? 'ไม่สามารถจัดสรรสต็อกได้' : 'Insufficient stock for allocation', detail: language === 'th' ? `สต็อกกลางพร้อมจัดสรรมี ${data} ชิ้น แต่คุณต้องการจัดสรร ${eventCatalogDraft[overAllocatedProduct.id].stock_total} ชิ้น กรุณาลดจำนวนหรือเพิ่มสต็อกในคลังกลางก่อน` : `Only ${data} units are available in central stock, but you requested ${eventCatalogDraft[overAllocatedProduct.id].stock_total} units. Reduce the quantity or add stock to the central catalog first.` });
+               return;
+            }
+         } else {
+            const additional = Math.max(stockLimit - Number(saved.stock_total || 0), 0);
+            showToast({
+               tone: 'warning',
+               title: uiText(language, 'Event stock exceeds available stock'),
+               detail: language === 'th'
+                  ? `${overAllocatedProduct.name}: สต็อกไม่เพียงพอ สามารถจัดสรรเพิ่มได้อีก ${additional} ชิ้น (รวมสูงสุด ${stockLimit} ชิ้น)`
+                  : `${overAllocatedProduct.name}: Insufficient stock. You can allocate up to ${additional} more units (${stockLimit} total).`,
+            });
+            return;
+         }
       }
 
       if (!hasPendingEventCatalogChanges) {
@@ -1134,6 +1169,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
       eventCatalogSaveLock.current = true;
       setEventCatalogSaving(true);
+      let submittedItems: Array<Record<string, string | number | boolean | null>> = [];
       try {
          const hasExistingCatalog = Object.values(eventCatalogSavedDraft).some((draft) => !!draft?.id);
          const payload = products.flatMap((product) => {
@@ -1177,6 +1213,7 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
 
             return [item];
          });
+         submittedItems = payload;
 
          if (payload.length > 0 || hasEventCurrencyChange) {
             const { error } = await supabase.rpc('save_event_catalog', {
@@ -1195,6 +1232,20 @@ const ManageProducts = ({ initialTab = 'catalog' }: ManageProductsProps) => {
          else setEventCatalogReloadRequired(true);
       } catch (error: any) {
          console.error('[ManageProducts] saveEventCatalog failed:', error);
+         if (String(error?.message || '').includes('event_stock_exceeds_catalog_stock')) {
+            const candidates = products.filter(product => {
+               const draft = eventCatalogDraft[product.id];
+               return draft && submittedItems.some(item => item.product_id === product.id) && !eventCatalogSavedDraft[product.id]?.id && product.product_kind !== 'bundle' && !product.is_unlimited && !draft.is_unlimited && Number(draft.stock_total) > 0;
+            });
+            if (candidates.length) {
+               const checks = await Promise.all(candidates.map(async product => ({ product, data: await getFreshInitialAllocationCapacity(product.id, selectedEventId) })));
+               const shortages = checks.filter(check => typeof check.data === 'number' && Number.isFinite(check.data) && Number(eventCatalogDraft[check.product.id].stock_total) > check.data);
+               const shortage = checks.every(check => typeof check.data === 'number' && Number.isFinite(check.data)) && shortages.length === 1 ? shortages[0] : null;
+               const requested = shortage ? eventCatalogDraft[shortage.product.id].stock_total : '';
+               showToast({ tone: 'error', title: language === 'th' ? 'ไม่สามารถจัดสรรสต็อกได้' : 'Insufficient stock for allocation', detail: shortage ? (language === 'th' ? `สต็อกกลางพร้อมจัดสรรมี ${shortage.data} ชิ้น แต่คุณต้องการจัดสรร ${requested} ชิ้น กรุณาลดจำนวนหรือเพิ่มสต็อกในคลังกลางก่อน` : `Only ${shortage.data} units are available in central stock, but you requested ${requested} units. Reduce the quantity or add stock to the central catalog first.`) : (language === 'th' ? 'สต็อกกลางอาจไม่เพียงพอ กรุณาตรวจสอบสต็อกล่าสุดแล้วลองอีกครั้ง' : 'Central stock may be insufficient. Check the latest stock and try again.') });
+               return;
+            }
+         }
          showToast({
             tone: 'error',
             title: getEventCatalogSaveErrorMessage(error).startsWith('This product has already')

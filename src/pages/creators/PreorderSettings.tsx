@@ -18,6 +18,7 @@ interface EventSettingsRow {
   id: string;
   artist_id: string;
   event_name: string;
+  status: string;
   start_date: string;
   end_date: string;
   event_timezone: string | null;
@@ -119,6 +120,7 @@ export default function PreorderSettings() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState<EventSettingsRow | null>(null);
+  const [savedEvent, setSavedEvent] = useState<EventSettingsRow | null>(null);
   const [catalogProducts, setCatalogProducts] = useState<EventProductRow[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDraft[]>(() => [createEmptyPaymentMethod()]);
   const [loading, setLoading] = useState(true);
@@ -153,7 +155,7 @@ export default function PreorderSettings() {
       const [{ data: eventData, error: eventError }, { data: catalogData, error: catalogError }, { data: paymentData, error: paymentError }] = await Promise.all([
         supabase
           .from('events')
-          .select('id, artist_id, event_name, start_date, end_date, event_timezone, location, location_name, location_detail, booth_detail, booth_number, queueing_area, entrance_fee, transit_info, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions')
+          .select('id, artist_id, event_name, status, start_date, end_date, event_timezone, location, location_name, location_detail, booth_detail, booth_number, queueing_area, entrance_fee, transit_info, selling_mode, preorder_enabled, preorder_opens_at, preorder_closes_at, postorder_enabled, postorder_opens_at, postorder_closes_at, sales_status_override, preorder_pickup_instructions')
           .eq('id', eventId)
           .single(),
         supabase.rpc('list_event_products_for_phase', { p_event_id: eventId, p_phase: 'setup' }),
@@ -169,6 +171,7 @@ export default function PreorderSettings() {
       if (paymentError) throw paymentError;
 
       setEvent(eventData as EventSettingsRow);
+      setSavedEvent(eventData as EventSettingsRow);
       setCatalogProducts((catalogData || []) as EventProductRow[]);
       const payments = (paymentData || []) as PaymentMethodRow[];
       setPaymentMethods(payments.length > 0 ? payments.map((payment) => {
@@ -201,6 +204,9 @@ export default function PreorderSettings() {
   }, [eventId]);
 
   const eventTimeZone = event?.event_timezone || DEFAULT_TIME_ZONE;
+  const eventEnded = Boolean(savedEvent && (Date.parse(savedEvent.end_date) <= Date.now() || savedEvent.status?.toLowerCase() === 'ended'));
+  const preorderEnded = Boolean(savedEvent?.preorder_closes_at && Date.parse(savedEvent.preorder_closes_at) <= Date.now());
+  const postorderEnded = Boolean(savedEvent?.postorder_closes_at && Date.parse(savedEvent.postorder_closes_at) <= Date.now());
   const preorderEnabled = Boolean(event?.preorder_enabled);
   const postorderEnabled = Boolean(event?.postorder_enabled);
   const orderingClosed = event?.sales_status_override === 'closed';
@@ -458,7 +464,8 @@ export default function PreorderSettings() {
       setToast({ tone: 'success', title: copy('Order settings saved') });
       await loadSettings();
     } catch (error: any) {
-      setToast({ tone: 'error', title: copy('Order settings failed'), detail: error.message });
+      const scheduleError = String(error.message || '').startsWith('event_') && String(error.message).includes('schedule_');
+      setToast({ tone: 'error', title: copy('Order settings failed'), detail: scheduleError ? localize('The schedule has started or ended and can no longer be changed this way. Reload and check the current sales period.', 'ช่วงเวลานี้เริ่มหรือสิ้นสุดแล้ว จึงแก้ไขแบบนี้ไม่ได้ กรุณาโหลดหน้าใหม่และตรวจสอบช่วงขาย') : error.message });
     } finally {
       setSaving(false);
     }
@@ -533,6 +540,7 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Event starts")}</span>
                       <input
                         type="datetime-local"
+                        disabled={eventEnded || Boolean(savedEvent && Date.parse(savedEvent.start_date) <= Date.now())}
                         value={toInputValue(event.start_date, eventTimeZone)}
                         onChange={(e) => updateEvent('start_date', fromInputValue(e.target.value, eventTimeZone) || event.start_date)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
@@ -542,12 +550,14 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Event ends")}</span>
                       <input
                         type="datetime-local"
+                        disabled={eventEnded}
                         value={toInputValue(event.end_date, eventTimeZone)}
                         onChange={(e) => updateEvent('end_date', fromInputValue(e.target.value, eventTimeZone) || event.end_date)}
                         className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold outline-none focus:border-pink-300"
                       />
                     </label>
                   </div>
+                  {(eventEnded || preorderEnded || postorderEnded) && <p className="text-xs font-semibold text-gray-600">{localize('Ended sales periods cannot be reopened. After the event ends, only an active post-order closing time can be extended.', 'ช่วงขายที่สิ้นสุดแล้วไม่สามารถเปิดใหม่ได้ หลังงานจบสามารถขยายได้เฉพาะเวลาปิดของออเดอร์หลังงานที่ยังเปิดอยู่')}</p>}
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="grid gap-2">
                       <span className="text-sm font-black text-gray-700">{copy("Location")}</span>
@@ -655,6 +665,7 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Pre-order opens")}</span>
                       <input
                         type="datetime-local"
+                        disabled={eventEnded || preorderEnded}
                         value={toInputValue(event.preorder_opens_at, eventTimeZone)}
                         onChange={(e) => updateEvent('preorder_opens_at', fromInputValue(e.target.value, eventTimeZone))}
                         className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
@@ -664,6 +675,7 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Pre-order closes")}</span>
                       <input
                         type="datetime-local"
+                        disabled={eventEnded || preorderEnded}
                         value={toInputValue(event.preorder_closes_at, eventTimeZone)}
                         onChange={(e) => updateEvent('preorder_closes_at', fromInputValue(e.target.value, eventTimeZone))}
                         className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
@@ -687,6 +699,7 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Post-order opens")}</span>
                       <input
                         type="datetime-local"
+                        disabled={eventEnded || postorderEnded}
                         value={toInputValue(event.postorder_opens_at, eventTimeZone)}
                         onChange={(e) => updateEvent('postorder_opens_at', fromInputValue(e.target.value, eventTimeZone))}
                         className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"
@@ -696,6 +709,7 @@ export default function PreorderSettings() {
                       <span className="text-sm font-black text-gray-700">{copy("Post-order closes")}</span>
                       <input
                         type="datetime-local"
+                        disabled={postorderEnded || (eventEnded && !savedEvent?.postorder_enabled)}
                         value={toInputValue(event.postorder_closes_at, eventTimeZone)}
                         onChange={(e) => updateEvent('postorder_closes_at', fromInputValue(e.target.value, eventTimeZone))}
                         className="min-h-12 rounded-xl border border-gray-200 px-3 text-sm font-bold outline-none focus:border-pink-300"

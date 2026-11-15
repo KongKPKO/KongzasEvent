@@ -963,7 +963,8 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
       void fetchWorkspace();
     } catch (err) {
       console.error('[EventWorkspace] event save failed:', err);
-      alert(uiText(language, 'Failed to save event.'));
+      const scheduleError = typeof err === 'object' && err !== null && 'message' in err && String(err.message).includes('event_schedule_');
+      alert(scheduleError ? (language === 'th' ? 'งานเริ่มหรือสิ้นสุดแล้ว ไม่สามารถแก้ช่วงเวลาแบบนี้ได้ กรุณาโหลดหน้าใหม่และตรวจสอบช่วงขาย' : 'The event has started or ended; this schedule change is not allowed. Reload and check the current sales period.') : uiText(language, 'Failed to save event.'));
     } finally {
       setEventSaving(false);
     }
@@ -1267,6 +1268,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   <input
                     type="datetime-local"
                     name="start_date"
+                    disabled={Boolean(event && (Date.parse(event.start_date) <= Date.now() || event.status?.toLowerCase() === 'ended'))}
                     value={eventDraft.start_date || ''}
                     onChange={handleEventDraftChange}
                     className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"
@@ -1277,6 +1279,7 @@ export default function EventWorkspace({ actorContext }: EventWorkspaceProps) {
                   <input
                     type="datetime-local"
                     name="end_date"
+                    disabled={Boolean(event && (Date.parse(event.end_date) <= Date.now() || event.status?.toLowerCase() === 'ended'))}
                     value={eventDraft.end_date || ''}
                     onChange={handleEventDraftChange}
                     className="min-h-11 w-full rounded-lg border border-gray-200 px-3 py-2.5 outline-none focus:border-pink-500"

@@ -55,6 +55,8 @@ type CampaignSettingsDraft = {
   flatShippingFee: string;
   shippingEnabled: boolean;
   pickupEnabled: boolean;
+  opensAt: string;
+  closesAt: string;
 };
 
 const PRODUCT_PAGE_SIZE = 20;
@@ -110,7 +112,6 @@ export default function OnlineCampaignWorkspace() {
   const [productEdits, setProductEdits] = useState<Record<string, ProductEdit>>({});
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
   const [promotionEditing, setPromotionEditing] = useState(false);
-  useUnsavedChanges(Object.keys(productEdits).length > 0 || promotionEditing, language === 'th' ? 'มีการแก้ไขสินค้าที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved product changes. Leave?');
   const [productCategory, setProductCategory] = useState('all');
   const [productMembership, setProductMembership] = useState<ProductMembership>('all');
   const [productSort, setProductSort] = useState<'name_asc' | 'name_desc'>('name_asc');
@@ -135,6 +136,12 @@ export default function OnlineCampaignWorkspace() {
   const [removeTarget, setRemoveTarget] = useState<{ kind: 'pickup' | 'payment'; id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft | null>(null);
+  const settingsHaveChanges = Boolean(settingsDraft && workspace && (
+    settingsDraft.name.trim() !== workspace.campaign.name || Number(settingsDraft.flatShippingFee) !== Number(workspace.campaign.flat_shipping_fee)
+    || settingsDraft.shippingEnabled !== workspace.campaign.shipping_enabled || settingsDraft.pickupEnabled !== workspace.campaign.pickup_enabled
+    || settingsDraft.opensAt !== localDateTime(workspace.campaign.opens_at) || settingsDraft.closesAt !== localDateTime(workspace.campaign.closes_at)
+  ));
+  useUnsavedChanges(Object.keys(productEdits).length > 0 || promotionEditing || settingsHaveChanges, language === 'th' ? 'มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?' : 'You have unsaved changes. Leave?');
   const [fulfillmentTarget, setFulfillmentTarget] = useState<{ order: CampaignOrder; action: 'ship' | 'pickup' } | null>(null);
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
@@ -172,6 +179,8 @@ export default function OnlineCampaignWorkspace() {
         flatShippingFee: String(data.campaign.flat_shipping_fee),
         shippingEnabled: data.campaign.shipping_enabled,
         pickupEnabled: data.campaign.pickup_enabled,
+        opensAt: localDateTime(data.campaign.opens_at),
+        closesAt: localDateTime(data.campaign.closes_at),
       });
       setStockSummaries(Object.fromEntries(summaries.map((summary) => [summary.product_id, summary])));
     } catch (error) {
@@ -325,7 +334,12 @@ export default function OnlineCampaignWorkspace() {
     const { error } = await supabase.from('online_campaigns').update(patch).eq('id', campaignId);
     if (error) {
       console.error(error);
-      setFeedback(t('campaignSaveFailed'));
+      const code = error.message || '';
+      setFeedback(code.includes('campaign_schedule_ended')
+        ? (language === 'th' ? 'แคมเปญนี้สิ้นสุดแล้ว ไม่สามารถแก้ไขช่วงเวลาขายเพื่อเปิดใหม่ได้ กรุณาสร้างแคมเปญใหม่' : 'This campaign has ended. Its sales schedule cannot be changed to reopen it. Please create a new campaign.')
+        : code.includes('campaign_schedule_')
+          ? (language === 'th' ? 'ไม่สามารถบันทึกช่วงเวลานี้ได้ กรุณาโหลดหน้าใหม่และตรวจสอบช่วงขายอีกครั้ง' : 'This schedule cannot be saved. Reload and check the sales window.')
+          : t('campaignSaveFailed'));
     } else {
       await load();
       setFeedback('campaignSaved');
@@ -632,23 +646,21 @@ export default function OnlineCampaignWorkspace() {
   if (!workspace) return <div className="grid min-h-screen place-items-center text-gray-500">{t('campaignNotFound')}</div>;
 
   const campaign = workspace.campaign;
-  const settingsDirty = Boolean(settingsDraft && (
-    settingsDraft.name.trim() !== campaign.name
-    || Number(settingsDraft.flatShippingFee) !== Number(campaign.flat_shipping_fee)
-    || settingsDraft.shippingEnabled !== campaign.shipping_enabled
-    || settingsDraft.pickupEnabled !== campaign.pickup_enabled
-  ));
+  const settingsDirty = settingsHaveChanges;
   const shippingFeeValid = Boolean(settingsDraft && /^(?:\d+\.?\d*|\.\d+)$/.test(settingsDraft.flatShippingFee.trim())
     && Number.isFinite(Number(settingsDraft.flatShippingFee))
     && Number(settingsDraft.flatShippingFee) >= 0);
   const settingsValid = Boolean(settingsDraft?.name.trim())
     && shippingFeeValid
+    && Boolean(settingsDraft?.opensAt && settingsDraft.closesAt && Number.isFinite(Date.parse(settingsDraft.opensAt)) && Number.isFinite(Date.parse(settingsDraft.closesAt)) && Date.parse(settingsDraft.closesAt) > Date.parse(settingsDraft.opensAt))
     && Boolean(settingsDraft?.shippingEnabled || settingsDraft?.pickupEnabled);
   const saveCampaignSettings = () => settingsDraft && updateCampaign({
     name: settingsDraft.name.trim(),
     flat_shipping_fee: Number(settingsDraft.flatShippingFee),
     shipping_enabled: settingsDraft.shippingEnabled,
     pickup_enabled: settingsDraft.pickupEnabled,
+    opens_at: settingsDraft.opensAt === localDateTime(campaign.opens_at) ? campaign.opens_at : new Date(settingsDraft.opensAt).toISOString(),
+    closes_at: settingsDraft.closesAt === localDateTime(campaign.closes_at) ? campaign.closes_at : new Date(settingsDraft.closesAt).toISOString(),
   });
   const storefrontUrl = '/' + artistSlug + '/campaign/' + campaign.slug;
   const readinessChecks: Array<{ label: string; ready: boolean; tab: Tab }> = [
@@ -1027,12 +1039,16 @@ export default function OnlineCampaignWorkspace() {
               {settingsDraft && <>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label><span className="text-xs font-black">{t('campaignName')}</span><input aria-label={t('campaignName')} value={settingsDraft.name} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, name: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                  <label><span className="text-xs font-black">{language === 'th' ? 'เริ่มขายวันที่ / เวลา' : 'Sales start date / time'}</span><input type="datetime-local" step="1" value={settingsDraft.opensAt} disabled={Date.parse(campaign.opens_at) <= Date.now()} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, opensAt: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                  <label><span className="text-xs font-black">{language === 'th' ? 'สิ้นสุดการขายวันที่ / เวลา' : 'Sales end date / time'}</span><input type="datetime-local" step="1" value={settingsDraft.closesAt} disabled={Date.parse(campaign.closes_at) <= Date.now()} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, closesAt: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" /></label>
+                  <p className="text-xs text-gray-600">{language === 'th' ? 'เวลาตามอุปกรณ์' : 'Device time zone'}: {getBrowserTimeZone()}</p>
+                  {Date.parse(campaign.closes_at) <= Date.now() && <p className="text-xs text-gray-600">{language === 'th' ? 'แคมเปญนี้สิ้นสุดแล้ว ไม่สามารถแก้ไขช่วงเวลาขายเพื่อเปิดใหม่ได้ กรุณาสร้างแคมเปญใหม่' : 'This campaign has ended. Its sales schedule cannot be changed to reopen it. Please create a new campaign.'}</p>}
                   <label><span className="text-xs font-black">{t('campaignShippingFee')}</span><input aria-label={t('campaignShippingFee')} type="text" inputMode="decimal" aria-invalid={!shippingFeeValid} aria-describedby={!shippingFeeValid ? 'campaign-shipping-fee-error' : undefined} value={settingsDraft.flatShippingFee} onChange={(event) => { const value = event.currentTarget.value; setSettingsDraft((current) => current && ({ ...current, flatShippingFee: value })); }} className="mt-1 min-h-11 w-full rounded-xl border border-gray-200 px-3" />{!shippingFeeValid && <span id="campaign-shipping-fee-error" className="mt-1 block text-xs font-semibold text-red-700">{language === 'th' ? 'กรอกค่าส่งเป็นตัวเลขตั้งแต่ 0 ขึ้นไป เช่น 40 หรือ 40.50' : 'Enter a shipping fee of 0 or more, such as 40 or 40.50.'}</span>}</label>
                   <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settingsDraft.shippingEnabled} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, shippingEnabled: event.target.checked }))} />{t('campaignShipping')}</label>
                   <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={settingsDraft.pickupEnabled} onChange={(event) => setSettingsDraft((current) => current && ({ ...current, pickupEnabled: event.target.checked }))} />{t('campaignPickup')}</label>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => void saveCampaignSettings()} disabled={saving || !settingsDirty || !settingsValid} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-40"><Save size={16} />{t('campaignSaveChanges')}</button>
+                  <button type="button" onClick={() => { if (settingsDraft.closesAt !== localDateTime(campaign.closes_at) && Date.parse(settingsDraft.closesAt) < Date.parse(campaign.closes_at) && !window.confirm(language === 'th' ? 'ช่วงขายจะสั้นลง ลูกค้าจะไม่สามารถสั่งซื้อหลังเวลาปิดใหม่ ออเดอร์เดิมยังคงอยู่ ยืนยันหรือไม่?' : 'The sales window will be shorter. Customers cannot order after the new closing time; existing orders remain. Continue?')) return; void saveCampaignSettings(); }} disabled={saving || !settingsDirty || !settingsValid} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-pink-600 px-4 text-sm font-black text-white disabled:opacity-40"><Save size={16} />{t('campaignSaveChanges')}</button>
                   {settingsDirty && <span className="text-xs font-bold text-amber-700">{t(settingsValid ? 'campaignUnsavedChanges' : 'campaignInvalidSettings')}</span>}
                 </div>
               </>}

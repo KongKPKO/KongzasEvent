@@ -270,11 +270,10 @@ test('a committed live order keeps its receipt when the response arrives after p
   const browserNow = Date.now();
   const eventEndsAt = new Date(browserNow + 59_000).toISOString();
   must(await service.from('events').update({
-    start_date: new Date(browserNow - 3_600_000).toISOString(),
     end_date: eventEndsAt,
     status: 'Confirmed',
     postorder_enabled: true,
-    postorder_opens_at: new Date(browserNow - 3_600_000).toISOString(),
+    postorder_opens_at: eventEndsAt,
     postorder_closes_at: new Date(browserNow + 86_400_000).toISOString(),
     sales_status_override: 'auto',
   }).eq('id', eventId), 'move event close to the live/postorder boundary for committed response');
@@ -353,11 +352,10 @@ test('an open menu invalidates its live quote and requotes when the event crosse
   const browserNow = Date.now();
   const eventEndsAt = new Date(browserNow + 30_000).toISOString();
   must(await service.from('events').update({
-    start_date: new Date(browserNow - 3_600_000).toISOString(),
     end_date: eventEndsAt,
     status: 'Confirmed',
     postorder_enabled: true,
-    postorder_opens_at: new Date(browserNow - 3_600_000).toISOString(),
+    postorder_opens_at: eventEndsAt,
     postorder_closes_at: new Date(browserNow + 86_400_000).toISOString(),
     sales_status_override: 'auto',
   }).eq('id', eventId), 'move event close to the live/postorder boundary');

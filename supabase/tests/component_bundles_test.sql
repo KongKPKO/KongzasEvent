@@ -102,7 +102,7 @@ select is((select consumed from private.bundle_order_components b join public.or
 update public.order_payments set payment_status='refunded' where order_id=(select id from campaign_order);
 select is((select stock_sold from public.online_campaign_products where product_id=(select a from ids)),2,'refund does not silently restock delivered components');
 -- Live POS follows the same component pool without an online timer.
-update public.events set start_date=now()-interval '1 hour',end_date=now()+interval '1 day',is_booth_open=true where id=(select event from ids);
+update public.events set start_date=now()-interval '1 hour',end_date=now()+interval '1 day',is_booth_open=true,preorder_enabled=false where id=(select event from ids);
 select lives_ok($$select public.create_walkin_order_with_stock((select event from ids),jsonb_build_array(jsonb_build_object('product_id',(select id from bundle),'quantity',1)),'cash',gen_random_uuid())$$,'live POS sells linked bundle');
 select is((select stock_sold from public.event_products where product_id=(select a from ids)),6,'POS consumes components alongside prior pickup');
 select throws_like($$select public.create_walkin_order_with_stock((select event from ids),jsonb_build_array(jsonb_build_object('product_id',(select id from bundle),'quantity',5),jsonb_build_object('product_id',(select a from ids),'quantity',6)),'cash',gen_random_uuid())$$,'insufficient%stock','mixed component and bundle oversell rolls back whole cart');

@@ -21,7 +21,15 @@ update public.online_campaign_products set stock_sold=1 where campaign_id=(selec
 select is(pg_temp.summary_available(),10,'campaign sale does not return stock');
 update public.online_campaign_products set stock_reserved=1 where campaign_id=(select campaign from _summary_ids);
 select is(pg_temp.summary_available(),10,'active campaign hold is not subtracted twice');
-update public.online_campaigns set closes_at=now()-interval '1 minute' where id=(select campaign from _summary_ids);
+-- Recreate the same stock state under an already-ended campaign; a schedule
+-- update to the past is no longer a valid way to simulate elapsed time.
+create temp table _ended_campaign as select gen_random_uuid() id;
+insert into public.online_campaigns(id,artist_id,name,slug,opens_at,closes_at)
+select e.id,s.artist,'Ended summary campaign','summary-ended',now()-interval '2 hours',now()-interval '1 minute' from _summary_ids s,_ended_campaign e;
+delete from public.online_campaign_products where campaign_id=(select campaign from _summary_ids);
+insert into public.online_campaign_products(campaign_id,artist_id,product_id,stock_total,stock_reserved,stock_sold,is_unlimited)
+select e.id,s.artist,s.product,20,1,1,false from _summary_ids s,_ended_campaign e;
+update _summary_ids set campaign=(select id from _ended_campaign);
 select is(pg_temp.summary_available(),28,'closed campaign still commits sold and held units');
 update public.online_campaign_products set stock_reserved=0 where campaign_id=(select campaign from _summary_ids);
 select is(pg_temp.summary_available(),29,'released hold returns one unit, sold stays committed');
@@ -59,7 +67,13 @@ select is(public.calculate_product_event_allocation_available((select product fr
   'event edit limit excludes its own unsold allocation but not historical sales');
 select throws_ok($$select * from public.add_event_stock((select id from public.event_products where event_id=(select event from _summary_ids)),10)$$,
   'insufficient_catalog_available_stock','increment cannot consume current allocation a second time');
-update public.events set end_date=now()-interval '1 minute' where id=(select event from _summary_ids);
+create temp table _ended_event as select gen_random_uuid() id;
+insert into public.events(id,artist_id,event_name,start_date,end_date,status)
+select e.id,s.artist,'Ended summary event',now()-interval '2 hours',now()-interval '1 minute','Confirmed' from _summary_ids s,_ended_event e;
+delete from public.event_products where event_id=(select event from _summary_ids);
+insert into public.event_products(event_id,artist_id,product_id,stock_total,stock_reserved,stock_sold,is_unlimited,is_enabled)
+select e.id,s.artist,s.product,20,1,1,false,true from _summary_ids s,_ended_event e;
+update _summary_ids set event=(select id from _ended_event);
 select is(pg_temp.summary_available(),27,'ended event preserves sold and held units');
 update public.event_products set is_enabled=false where event_id=(select event from _summary_ids);
 select is(pg_temp.summary_available(),27,'disabled event product preserves commitments');
